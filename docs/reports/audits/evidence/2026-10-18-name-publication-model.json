@@ -28,8 +28,8 @@
     "crates/knytos-services/src/bin/ns.rs": "f5e006e802eb977f8c2ee8d0c3c37a75a7daa72614e9a41ec7b0b8ec15dc59ea",
     "crates/knytos-services/src/ns_publication.rs": "c3a2f9c566c463f00e0d043b5c1d9ae59ad849278472d453310672d4a3035625",
     "crates/knytos-services/src/publication_generation.rs": "9c622776792c39b677f812be5bc7ab043b1a86f1e1da42c88f9823c41d4d623d",
-    "crates/charlotte-authorization/src/lib.rs": "3667d0733d1698cc693a37a463fb32c4e5f2b99c941a5595efbca8da7f98e75c",
-    "crates/charlotte-protocol-ns/src/lib.rs": "0bd514f7eae177ef607105fe31e6c5da82d0a8c07d844f2cc6594cabf4303f11",
+    "crates/knytos-authorization/src/lib.rs": "3667d0733d1698cc693a37a463fb32c4e5f2b99c941a5595efbca8da7f98e75c",
+    "crates/knytos-protocol-ns/src/lib.rs": "0bd514f7eae177ef607105fe31e6c5da82d0a8c07d844f2cc6594cabf4303f11",
     "crates/catten/src/service/loader.rs": "761ec0c018ce830cf805f48b7e01587eabeb64d45ea32a86237607b164b36610",
     "crates/catten/src/service/supervisor.rs": "feaba0a4322f26c56d7cc170453312a741cbc65a1966ca4a9f42c6ff3238fd82",
     "crates/knytos-rt/src/owned/completion.rs": "c9e3db6761c685c55c71a094269fa67f12af84c2f9a3780525178f81b7782910"
@@ -235,7 +235,7 @@
   },
   "source_regression": {
     "first_before_fix": {
-      "command": "cargo test --locked --manifest-path <repo>/crates/charlotte-authorization/Cargo.toml --lib (from a directory outside root Cargo config)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-authorization/Cargo.toml --lib (from a directory outside root Cargo config)",
       "exit": 101,
       "result": "0 passed, 2 failed",
       "output_sha256": "d264b5bea9ae23326f6c3f9c4fa6cb82ec0c5e9ac7a1e73720c122dcf6510d3e",
@@ -243,7 +243,7 @@
       "limit": "The first intermediate source layout was not separately archived; the final-source reproduction below is independently hashed."
     },
     "reproduced_before_fix": {
-      "construction": "Take the checked final crates/charlotte-authorization/src/lib.rs and remove its one line containing .filter(|next| *next <= MAX_SERVICE_GENERATION). Compile with rustc --edition=2024 --test --crate-name charlotte_authorization and run the binary.",
+      "construction": "Take the checked final crates/knytos-authorization/src/lib.rs and remove its one line containing .filter(|next| *next <= MAX_SERVICE_GENERATION). Compile with rustc --edition=2024 --test --crate-name knytos_authorization and run the binary.",
       "source_sha256": "5ebae8a0b3521ee3cb2f303da706761d67028f600b3d9289cd6dfcf453240e7a",
       "output_sha256": "c80b7cda3744611034e8bb193659f210f5627478413274810b151c09622d69fd",
       "exit": 101,
@@ -257,7 +257,7 @@
       ]
     },
     "after_fix": {
-      "command": "cargo test --locked --manifest-path <repo>/crates/charlotte-authorization/Cargo.toml (outside root Cargo config)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-authorization/Cargo.toml (outside root Cargo config)",
       "exit": 0,
       "passed": 16,
       "failed": 0,
@@ -294,7 +294,7 @@
       "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "command": "cargo clippy --locked --manifest-path <repo>/crates/charlotte-authorization/Cargo.toml --all-targets -- -D warnings (outside root Cargo config)",
+      "command": "cargo clippy --locked --manifest-path <repo>/crates/knytos-authorization/Cargo.toml --all-targets -- -D warnings (outside root Cargo config)",
       "exit": 0,
       "output_sha256": "9010749b4416d17bb4e0680de21523510c330e0a954c3bb964572922f1230005"
     }

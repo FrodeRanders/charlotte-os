@@ -5,7 +5,7 @@ use catten_rt::owned::{
     ReplyToken,
     Writable,
 };
-use charlotte_launch::{
+use knytos_launch::{
     release,
     release_admission::{
         MAX_LEN,

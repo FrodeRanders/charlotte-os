@@ -44,14 +44,14 @@ disco_net_test = ["virtio_net_test"]
 disco_cross_node_test = ["disco_net_test"]
 # Run the distributed name service test: a Raft group over the network whose
 # catalog replicates name registrations across the cluster.
-dns_net_test = ["disco_net_test", "dep:charlotte-protocol-dns"]
+dns_net_test = ["disco_net_test", "dep:knytos-protocol-dns"]
 # Run the cluster-deployment phase of the dns test: the leader deploys a
 # signed artifact to the peer node, the remote agent picks it up and serves
 # it across the network, and the artifact migrates between nodes.
 deploy_net_test = ["dns_net_test"]
 # Run the clusterctl administration test: upload/deploy/status through the
 # cluster administration service, plus the serial admin console.
-clusterctl_test = ["deploy_net_test", "dep:charlotte-protocol-disco"]
+clusterctl_test = ["deploy_net_test", "dep:knytos-protocol-disco"]
 # Run the TCP/IP test: the smoltcp userspace adapter served through the
 # frouter, exchanging TCP data between two guests on a QEMU stream LAN.
 tcpip_net_test = ["virtio_net_test"]
@@ -97,14 +97,14 @@ qemu = ["virtio_gpu"]
 
 [dependencies]
 knytos-syscall = { path = "../knytos-syscall" }
-charlotte-lifecycle = { path = "../charlotte-lifecycle" }
-charlotte-launch = { path = "../charlotte-launch" }
-charlotte-protocol-disco = { path = "../charlotte-protocol-disco", optional = true }
-charlotte-protocol-dns = { path = "../charlotte-protocol-dns", optional = true }
-charlotte-protocol-ns = { path = "../charlotte-protocol-ns" }
-charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
-charlotte-kafka-step = { path = "../charlotte-kafka-step" }
-charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
+knytos-lifecycle = { path = "../knytos-lifecycle" }
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-disco = { path = "../knytos-protocol-disco", optional = true }
+knytos-protocol-dns = { path = "../knytos-protocol-dns", optional = true }
+knytos-protocol-ns = { path = "../knytos-protocol-ns" }
+knytos-protocol-kafka = { path = "../knytos-protocol-kafka" }
+knytos-kafka-step = { path = "../knytos-kafka-step" }
+knytos-protocol-s3 = { path = "../knytos-protocol-s3" }
 # Keep the protocol bindings aligned with the vendored, boot-tested Limine
 # loader. 0.x releases are not API-compatible with one another, so a lower
 # bound would allow an unreviewed protocol/API migration on `cargo update`.
@@ -119,4 +119,4 @@ flanterm_bindings = { path = "../flanterm-bindings", version = "=1.1.4", optiona
 flat_device_tree = { version = "3.1.1", optional = true }
 
 [build-dependencies]
-charlotte-launch = { path = "../charlotte-launch" }
+knytos-launch = { path = "../knytos-launch" }

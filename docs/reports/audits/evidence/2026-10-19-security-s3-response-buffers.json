@@ -14,7 +14,7 @@
   },
   "baseline_reproduction": {
     "source_sha256": {
-      "crates/charlotte-s3/src/http.rs": "2f64912122f8e4362a9f0d267d50d4bc6124f0cd2d0676108e02b2180ebbf3bb",
+      "crates/knytos-s3/src/http.rs": "2f64912122f8e4362a9f0d267d50d4bc6124f0cd2d0676108e02b2180ebbf3bb",
       "crates/knytos-services/src/bin/s3.rs": "04f5d5d2aa077406b9d385e48838108d018594ed5086e4c19f28f46d82966c68"
     },
     "growth_controls": {
@@ -47,8 +47,8 @@
     "generated_http_sha256": "617bd33b4112f61a6cf26e1e9bbc19f2a4018a6c9f4e8bd7da83846861361a91",
     "integration_test_sha256": "a49a7cdd889a00d66bff920f1cb6f353f22f0a6fee010c786d3a3683471d11c9",
     "observer_sha256": "2bf4935e890c2782be50d60cfab7f5a3c695e5c510d55a93af95007fb375ec6c",
-    "manifest": "[package]\nname=\"charlotte-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"1.9\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"s3_response_erasure\"\npath=\"s3_response_erasure.rs\"\n",
-    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/charlotte-os');b=Path('/private/tmp/charlotte-sec15-s3-buffers-baseline');b.mkdir(exist_ok=True)\n(b/'src').mkdir(exist_ok=True)\nfor name in ['lib.rs','sigv4.rs','http.rs']:\n source=subprocess.check_output(['git','show','e4060b7:crates/charlotte-s3/src/'+name],cwd=r,text=True)\n if name=='http.rs':\n  source=source.replace('pub fn decode(','pub fn decode_into(').replace('decoder.decode(part, &mut output)','decoder.decode_into(part, &mut output)')\n  source+='\\nuse zeroize::Zeroizing;\\nuse alloc::vec::Vec;\\n'+'''// Host baseline bridge: preserve the old append operation and the actual\n// caller's existing Zeroizing output. It gains no reservation before copying.\nimpl ChunkedDecoder {\n pub fn decode(&mut self, input: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {\n  let mut output=Zeroizing::new(Vec::new());\n  self.decode_into(input, &mut output)?;\n  Ok(output)\n }\n}\n// Byte-operation adapter for the former service's private read_head loop.\n// Its existing erasing owner remains; only live receive access is injected.\npub struct ResponseHeadBuffer { bytes: Zeroizing<Vec<u8>> }\nimpl ResponseHeadBuffer {\n pub fn new() -> Self { Self { bytes: Zeroizing::new(Vec::new()) } }\n pub fn push(&mut self, input: &[u8]) -> Result<Option<(ResponseHead,Zeroizing<Vec<u8>>)>,Error> {\n  self.bytes.extend_from_slice(input);\n  match ResponseHead::parse(&self.bytes) {\n   Ok((head, offset)) => {\n    let mut body=Zeroizing::new(Vec::with_capacity(self.bytes.len()-offset));\n    body.extend_from_slice(&self.bytes[offset..]);\n    Ok(Some((head,body)))\n   }\n   Err(Error::Incomplete)=>Ok(None),\n   Err(e)=>Err(e),\n  }\n }\n}\n'''\n  current=(r/'crates/charlotte-s3/src/http.rs').read_text()\n  start=current.index('    #[test]\\n    fn chunk_framing_scratch_erases_after_consumption')\n  tests=current[start:current.rfind('\\n}')]\n  source+='\\n#[cfg(test)]\\nmod scratch_controls { use super::*;\\n'+tests+'\\n}\\n'\n (b/'src'/name).write_text(source)\n(b/'Cargo.toml').write_text('''[package]\nname=\"charlotte-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"1.9\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"s3_response_erasure\"\npath=\"s3_response_erasure.rs\"\n''')\nfor name in ['s3_response_erasure.rs','support.rs']:\n (b/name).write_bytes((r/'tests/transport'/name).read_bytes())\nprint('Created isolated baseline adapters and unmodified byte-operation body.')\n",
+    "manifest": "[package]\nname=\"knytos-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"1.9\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"s3_response_erasure\"\npath=\"s3_response_erasure.rs\"\n",
+    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/charlotte-os');b=Path('/private/tmp/charlotte-sec15-s3-buffers-baseline');b.mkdir(exist_ok=True)\n(b/'src').mkdir(exist_ok=True)\nfor name in ['lib.rs','sigv4.rs','http.rs']:\n source=subprocess.check_output(['git','show','e4060b7:crates/knytos-s3/src/'+name],cwd=r,text=True)\n if name=='http.rs':\n  source=source.replace('pub fn decode(','pub fn decode_into(').replace('decoder.decode(part, &mut output)','decoder.decode_into(part, &mut output)')\n  source+='\\nuse zeroize::Zeroizing;\\nuse alloc::vec::Vec;\\n'+'''// Host baseline bridge: preserve the old append operation and the actual\n// caller's existing Zeroizing output. It gains no reservation before copying.\nimpl ChunkedDecoder {\n pub fn decode(&mut self, input: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {\n  let mut output=Zeroizing::new(Vec::new());\n  self.decode_into(input, &mut output)?;\n  Ok(output)\n }\n}\n// Byte-operation adapter for the former service's private read_head loop.\n// Its existing erasing owner remains; only live receive access is injected.\npub struct ResponseHeadBuffer { bytes: Zeroizing<Vec<u8>> }\nimpl ResponseHeadBuffer {\n pub fn new() -> Self { Self { bytes: Zeroizing::new(Vec::new()) } }\n pub fn push(&mut self, input: &[u8]) -> Result<Option<(ResponseHead,Zeroizing<Vec<u8>>)>,Error> {\n  self.bytes.extend_from_slice(input);\n  match ResponseHead::parse(&self.bytes) {\n   Ok((head, offset)) => {\n    let mut body=Zeroizing::new(Vec::with_capacity(self.bytes.len()-offset));\n    body.extend_from_slice(&self.bytes[offset..]);\n    Ok(Some((head,body)))\n   }\n   Err(Error::Incomplete)=>Ok(None),\n   Err(e)=>Err(e),\n  }\n }\n}\n'''\n  current=(r/'crates/knytos-s3/src/http.rs').read_text()\n  start=current.index('    #[test]\\n    fn chunk_framing_scratch_erases_after_consumption')\n  tests=current[start:current.rfind('\\n}')]\n  source+='\\n#[cfg(test)]\\nmod scratch_controls { use super::*;\\n'+tests+'\\n}\\n'\n (b/'src'/name).write_text(source)\n(b/'Cargo.toml').write_text('''[package]\nname=\"knytos-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"1.9\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"s3_response_erasure\"\npath=\"s3_response_erasure.rs\"\n''')\nfor name in ['s3_response_erasure.rs','support.rs']:\n (b/name).write_bytes((r/'tests/transport'/name).read_bytes())\nprint('Created isolated baseline adapters and unmodified byte-operation body.')\n",
     "setup_script_sha256": "5754137e9c6beabae6126c77df209e1c366dcc554185cf3a1a1cf5635e62715d",
     "commands": [
       "cargo test --offline --manifest-path <isolated>/Cargo.toml --test s3_response_erasure never_grows",
@@ -89,13 +89,13 @@
     "log_sha256": "07329a2617cd84384e4f4389f03fbdbfc047f77f9785b76e2d09e19a08e18a0d",
     "diagnostics": [
       "error: very complex type used. Consider factoring parts into `type` definitions",
-      "   --> crates/charlotte-s3/src/http.rs:136:10",
+      "   --> crates/knytos-s3/src/http.rs:136:10",
       "136 |     ) -> Result<Option<(ResponseHead, Zeroizing<Vec<u8>>)>, Error> {",
       "    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#type_complexity",
       "    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`",
-      "error: could not compile `charlotte-s3` (lib) due to 1 previous error",
-      "error: could not compile `charlotte-s3` (lib) due to 1 previous error",
-      "error: could not compile `charlotte-s3` (lib test) due to 1 previous error"
+      "error: could not compile `knytos-s3` (lib) due to 1 previous error",
+      "error: could not compile `knytos-s3` (lib) due to 1 previous error",
+      "error: could not compile `knytos-s3` (lib test) due to 1 previous error"
     ],
     "correction": "Named the parsed head/body pair ResponseStart; final strict run passes.",
     "verification_limit": "Initial source snapshot was not separately archived; original diagnostics and current-source hash are retained."
@@ -136,56 +136,56 @@
         "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
       "runtime_tests_passed": 25,
-      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p charlotte-s3"
+      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p knytos-s3"
     },
     "release": {
       "exit_status": 0,
       "log_sha256": "23f9d9e856a89fca720f5a0a63d558f433870856b4f145f8ad13d46cfdeb668e",
       "diagnostics": [
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-kafka/1f3d27bdba0b43dc/out/charlotte_kafka-1f3d27bdba0b43dc)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
-        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
+        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/39f5a3b0ca1f167b/out/charlotte_launch-39f5a3b0ca1f167b)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
+        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
+        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
+        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
+        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
+        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
+        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
+        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
+        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
+        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
+        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
         "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s",
-        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
+        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-s3/f0dafe5cd5aebdef/out/charlotte_s3-f0dafe5cd5aebdef)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-s3/f0dafe5cd5aebdef/out/knytos_s3-f0dafe5cd5aebdef)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
         "     Running receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/08593862cd6e080b/out/receive_erasure-08593862cd6e080b)",
         "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
         "     Running s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/9b4795fdc4ccda44/out/s3_response_erasure-9b4795fdc4ccda44)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "   Doc-tests charlotte_kafka",
+        "   Doc-tests knytos_kafka",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
-        "   Doc-tests charlotte_launch",
+        "   Doc-tests knytos_launch",
         "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
-        "   Doc-tests charlotte_s3",
+        "   Doc-tests knytos_s3",
         "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
       "runtime_tests_passed": 115,
       "compile_fail_doctests_passed": 4,
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p charlotte-s3 -p charlotte-kafka -p charlotte-launch"
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p knytos-s3 -p knytos-kafka -p knytos-launch"
     },
     "strict_clippy": {
       "exit_status": 0,
@@ -193,7 +193,7 @@
       "diagnostics": [
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 0.31s"
       ],
-      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p charlotte-s3 -p charlotte-kafka --all-targets -- -D warnings"
+      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p knytos-s3 -p knytos-kafka --all-targets -- -D warnings"
     },
     "workspace_fmt": {
       "exit_status": 0,
@@ -752,7 +752,7 @@
   "reviewed_source_sha256": {
     "Cargo.lock": "afd29bfc3f65f54d346c9b2995c8148600ea3853dd3bc577330a50c33d3b39ac",
     "crates/knytos-services/src/bin/s3.rs": "9ca5e880f131029abb7431beb13b5bc329d4f614232a9051c09200eb31d9fbd6",
-    "crates/charlotte-s3/src/http.rs": "37b261bf1fc06e905d71cc25f79465633d5e3060ae7bd9b7828d916bf99a9de3",
+    "crates/knytos-s3/src/http.rs": "37b261bf1fc06e905d71cc25f79465633d5e3060ae7bd9b7828d916bf99a9de3",
     "docs/reference/api-simplification.md": "bdad6b7d9e84b2f39404b859f626b1625902bcc18ca811a5ce9091e4d6f65e41",
     "docs/reference/cleanup-recovery.md": "8fe1a311bafde3f9754ed65fff36c03e5a51aa672b2c0b42b3c6ede867b85d35",
     "docs/reference/s3-client.md": "567b65e9cda409ff865603d4bd16ac07e09f8d5b23eea0b1f31397bb7eef099d",
@@ -770,10 +770,10 @@
     "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
     "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "docker/rustfs-s3-test/compose.yaml": "b1e6cad61cf875ca1718c90c66d84769cdf3ac4a28b2c94db5dfe5164b105d42",
-    "crates/charlotte-s3/Cargo.toml": "8be3dd4631d88b2516a241552124807b2d8f6d1421f46dfe0037a8cdafff7e13",
-    "crates/charlotte-s3/src/sigv4.rs": "9f0367914f0b01c4fb1c657718021fb0bbf6e6fc104c3728d7a7f67565e5ef65",
+    "crates/knytos-s3/Cargo.toml": "8be3dd4631d88b2516a241552124807b2d8f6d1421f46dfe0037a8cdafff7e13",
+    "crates/knytos-s3/src/sigv4.rs": "9f0367914f0b01c4fb1c657718021fb0bbf6e6fc104c3728d7a7f67565e5ef65",
     "crates/knytos-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17",
-    "crates/charlotte-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9"
+    "crates/knytos-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9"
   },
   "final_checks": {
     "json_parse": "pass",
@@ -783,6 +783,6 @@
     "reviewed_source_hashes": "all match current files",
     "formal_input_hashes": "180 unchanged",
     "user_pdf": "preserved at original batch hash",
-    "dependencies": "Only existing host test package adds charlotte-s3 edge; no third-party versions changed."
+    "dependencies": "Only existing host test package adds knytos-s3 edge; no third-party versions changed."
   }
 }

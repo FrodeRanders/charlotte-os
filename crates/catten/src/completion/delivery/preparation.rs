@@ -119,7 +119,7 @@ impl Prepared {
         }) {
             return Err(CqOpenError::Ring(cq::CqRingError::FrameMisaligned));
         }
-        let slots = charlotte_lifecycle::resources::queue_backing_slots(target.capacity)
+        let slots = knytos_lifecycle::resources::queue_backing_slots(target.capacity)
             .ok_or(CqOpenError::ResourceLimit)?;
         let bytes = slots
             .checked_mul(core::mem::size_of::<BacklogEntry>())

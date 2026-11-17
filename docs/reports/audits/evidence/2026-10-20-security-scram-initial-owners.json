@@ -14,14 +14,14 @@
   },
   "baseline_reproduction": {
     "source_sha256": {
-      "crates/charlotte-kafka/src/lib.rs": "67ba75ec1ec790d12783da70c5b943aec55d0207c1db1109653844a19590e82f",
-      "crates/charlotte-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9",
-      "crates/charlotte-kafka/src/scram.rs": "c1e2fd6f2b13fb6d4a16c8d33d668096bd563b3524d04b96b671c5c7169b15cd"
+      "crates/knytos-kafka/src/lib.rs": "67ba75ec1ec790d12783da70c5b943aec55d0207c1db1109653844a19590e82f",
+      "crates/knytos-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9",
+      "crates/knytos-kafka/src/scram.rs": "c1e2fd6f2b13fb6d4a16c8d33d668096bd563b3524d04b96b671c5c7169b15cd"
     },
     "exact_crate_sources_from_git": [
-      "f1f234a:crates/charlotte-kafka/src/lib.rs",
-      "f1f234a:crates/charlotte-kafka/src/frame.rs",
-      "f1f234a:crates/charlotte-kafka/src/scram.rs"
+      "f1f234a:crates/knytos-kafka/src/lib.rs",
+      "f1f234a:crates/knytos-kafka/src/frame.rs",
+      "f1f234a:crates/knytos-kafka/src/scram.rs"
     ],
     "copied_sources_match": true,
     "release_controls": {
@@ -40,12 +40,12 @@
         "test result: FAILED. 1 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
       ]
     },
-    "control_source": "use core::hint::black_box;\nuse charlotte_kafka::scram::{Client,Error};\nmod support;\nuse support::{observe,observe_nth};\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";\nconst CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\n#[test]\nfn escaped_username_release(){\n let observed=observe(0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"escaped username retained: {observed:?}\");\n}\n#[test]\nfn nonce_initial_drop(){\n let observed=observe_nth(4,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_challenge_rejection(){\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();assert!(matches!(c.receive_server_first(b\"malformed\"),Err(Error::InvalidServerMessage)));});\n assert!(observed.copy_erased,\"rejected nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_successful_transition(){\n let mut final_phase=None;\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();final_phase=Some(c.receive_server_first(CHALLENGE).unwrap());});\n assert!(observed.copy_erased,\"transition nonce retained: {observed:?}\");\n drop(black_box(final_phase));\n}\n#[test]\nfn existing_password_owner_erases(){\n let observed=observe_nth(3,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n assert_eq!(observed.allocations,4);assert_eq!(observed.copy_releases,1);\n}\n",
+    "control_source": "use core::hint::black_box;\nuse knytos_kafka::scram::{Client,Error};\nmod support;\nuse support::{observe,observe_nth};\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";\nconst CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\n#[test]\nfn escaped_username_release(){\n let observed=observe(0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"escaped username retained: {observed:?}\");\n}\n#[test]\nfn nonce_initial_drop(){\n let observed=observe_nth(4,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_challenge_rejection(){\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();assert!(matches!(c.receive_server_first(b\"malformed\"),Err(Error::InvalidServerMessage)));});\n assert!(observed.copy_erased,\"rejected nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_successful_transition(){\n let mut final_phase=None;\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();final_phase=Some(c.receive_server_first(CHALLENGE).unwrap());});\n assert!(observed.copy_erased,\"transition nonce retained: {observed:?}\");\n drop(black_box(final_phase));\n}\n#[test]\nfn existing_password_owner_erases(){\n let observed=observe_nth(3,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n assert_eq!(observed.allocations,4);assert_eq!(observed.copy_releases,1);\n}\n",
     "control_sha256": "fc922e9c02c87b8f5ebad97a7d5af508cf1ac97a2053a988cb84350136bf6bab",
     "observer_sha256": "00a124eb9a91991514d7198a116ac634145bb5486a9736958dd0ef671a97e0bb",
-    "manifest": "[package]\nname=\"charlotte-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n",
+    "manifest": "[package]\nname=\"knytos-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n",
     "lockfile_sha256": "586438371ea679a07b1a41618453a6e9ae1905f0951d2106cb729f25a5ce759e",
-    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/charlotte-os');b=Path('/private/tmp/charlotte-sec15-scram-initial-baseline');(b/'src').mkdir(parents=True,exist_ok=True)\nfor n in ['lib.rs','frame.rs','scram.rs']:(b/'src'/n).write_bytes(subprocess.check_output(['git','show','f1f234a:crates/charlotte-kafka/src/'+n],cwd=r))\n(b/'Cargo.toml').write_text('''[package]\nname=\"charlotte-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n''')\n(b/'support.rs').write_bytes((r/'tests/transport/support.rs').read_bytes())\n(b/'release.rs').write_text('''use core::hint::black_box;\nuse charlotte_kafka::scram::{Client,Error};\nmod support;\nuse support::{observe,observe_nth};\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";\nconst CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\n#[test]\nfn escaped_username_release(){\n let observed=observe(0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"escaped username retained: {observed:?}\");\n}\n#[test]\nfn nonce_initial_drop(){\n let observed=observe_nth(4,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_challenge_rejection(){\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();assert!(matches!(c.receive_server_first(b\"malformed\"),Err(Error::InvalidServerMessage)));});\n assert!(observed.copy_erased,\"rejected nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_successful_transition(){\n let mut final_phase=None;\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();final_phase=Some(c.receive_server_first(CHALLENGE).unwrap());});\n assert!(observed.copy_erased,\"transition nonce retained: {observed:?}\");\n drop(black_box(final_phase));\n}\n#[test]\nfn existing_password_owner_erases(){\n let observed=observe_nth(3,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n assert_eq!(observed.allocations,4);assert_eq!(observed.copy_releases,1);\n}\n''')\ns=(r/'tests/transport/scram_initial_erasure.rs').read_text();a=s.index('fn escaped_username_exchange_matches_python_reference()');parity=s[a:].replace('fixtures/scram-initial-reference.txt','reference.txt')\n(b/'reference.txt').write_bytes((r/'tests/transport/fixtures/scram-initial-reference.txt').read_bytes())\n(b/'parity.rs').write_text('use charlotte_kafka::scram::Client;\\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";const CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\\n#[test]\\n'+parity)\nprint('Exact baseline SCRAM crate and pinned controls prepared')\n",
+    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/charlotte-os');b=Path('/private/tmp/charlotte-sec15-scram-initial-baseline');(b/'src').mkdir(parents=True,exist_ok=True)\nfor n in ['lib.rs','frame.rs','scram.rs']:(b/'src'/n).write_bytes(subprocess.check_output(['git','show','f1f234a:crates/knytos-kafka/src/'+n],cwd=r))\n(b/'Cargo.toml').write_text('''[package]\nname=\"knytos-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n''')\n(b/'support.rs').write_bytes((r/'tests/transport/support.rs').read_bytes())\n(b/'release.rs').write_text('''use core::hint::black_box;\nuse knytos_kafka::scram::{Client,Error};\nmod support;\nuse support::{observe,observe_nth};\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";\nconst CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\n#[test]\nfn escaped_username_release(){\n let observed=observe(0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"escaped username retained: {observed:?}\");\n}\n#[test]\nfn nonce_initial_drop(){\n let observed=observe_nth(4,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_challenge_rejection(){\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();assert!(matches!(c.receive_server_first(b\"malformed\"),Err(Error::InvalidServerMessage)));});\n assert!(observed.copy_erased,\"rejected nonce retained: {observed:?}\");\n}\n#[test]\nfn nonce_successful_transition(){\n let mut final_phase=None;\n let observed=observe_nth(4,0,0,0,||{let c=Client::new(USER,PASSWORD,NONCE).unwrap();final_phase=Some(c.receive_server_first(CHALLENGE).unwrap());});\n assert!(observed.copy_erased,\"transition nonce retained: {observed:?}\");\n drop(black_box(final_phase));\n}\n#[test]\nfn existing_password_owner_erases(){\n let observed=observe_nth(3,0,0,0,||drop(black_box(Client::new(USER,PASSWORD,NONCE).unwrap())));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n assert_eq!(observed.allocations,4);assert_eq!(observed.copy_releases,1);\n}\n''')\ns=(r/'tests/transport/scram_initial_erasure.rs').read_text();a=s.index('fn escaped_username_exchange_matches_python_reference()');parity=s[a:].replace('fixtures/scram-initial-reference.txt','reference.txt')\n(b/'reference.txt').write_bytes((r/'tests/transport/fixtures/scram-initial-reference.txt').read_bytes())\n(b/'parity.rs').write_text('use knytos_kafka::scram::Client;\\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";const CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\\n#[test]\\n'+parity)\nprint('Exact baseline SCRAM crate and pinned controls prepared')\n",
     "command": "cargo test --release --offline --manifest-path <baseline>/Cargo.toml --test release",
     "scope": "Exact old Kafka core, without byte-operation adapters. Escaped username and nonce on drop/rejection/transition fail erasure assertions; existing password owner passes. Successful transition retains final phase beyond observation. No baseline guest or native memory-release claim."
   },
@@ -81,7 +81,7 @@
         "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
       ],
       "command": "cargo test --release --offline --manifest-path <baseline>/Cargo.toml --test parity",
-      "source": "use charlotte_kafka::scram::Client;\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";const CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\n#[test]\nfn escaped_username_exchange_matches_python_reference() {\n    let mut expected = include_str!(\"reference.txt\").lines();\n    let client = Client::new(USER, PASSWORD, NONCE).unwrap();\n    assert_eq!(client.client_first().as_slice(), expected.next().unwrap().as_bytes());\n    let final_phase = client.receive_server_first(CHALLENGE).unwrap();\n    assert_eq!(final_phase.message(), expected.next().unwrap().as_bytes());\n    final_phase.receive_server_final(expected.next().unwrap().as_bytes()).unwrap();\n    assert!(expected.next().is_none());\n}\n"
+      "source": "use knytos_kafka::scram::Client;\nconst USER:&str=\"ZZZZZZZZ,=user\";const PASSWORD:&[u8]=b\"ZZZZZZZZ-password\";const NONCE:&str=\"ZZZZZZZZ-nonce\";const CHALLENGE:&[u8]=b\"r=ZZZZZZZZ-nonce-server,s=c2FsdA==,i=4096\";\n#[test]\nfn escaped_username_exchange_matches_python_reference() {\n    let mut expected = include_str!(\"reference.txt\").lines();\n    let client = Client::new(USER, PASSWORD, NONCE).unwrap();\n    assert_eq!(client.client_first().as_slice(), expected.next().unwrap().as_bytes());\n    let final_phase = client.receive_server_first(CHALLENGE).unwrap();\n    assert_eq!(final_phase.message(), expected.next().unwrap().as_bytes());\n    final_phase.receive_server_final(expected.next().unwrap().as_bytes()).unwrap();\n    assert!(expected.next().is_none());\n}\n"
     },
     "corrected_case": "escaped_username_exchange_matches_python_reference passes in debug/release, comparing client first/proof and accepting exact reference server verifier.",
     "scope": "Independent Python hashlib.pbkdf2_hmac, hmac and base64 with public escaped-username inputs. No new cryptographic algorithm or wire grammar."
@@ -243,66 +243,66 @@
         "test escaped_username_exchange_matches_python_reference ... ok",
         "test nonce_erases_before_final_phase_use ... ok",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "test crates/charlotte-kafka/src/scram.rs - scram::Client (line 42) - compile fail ... ok",
-        "test crates/charlotte-kafka/src/lib.rs - parse_sasl_authenticate (line 689) - compile fail ... ok",
-        "test crates/charlotte-kafka/src/scram.rs - scram::ClientFinal (line 58) - compile fail ... ok",
+        "test crates/knytos-kafka/src/scram.rs - scram::Client (line 42) - compile fail ... ok",
+        "test crates/knytos-kafka/src/lib.rs - parse_sasl_authenticate (line 689) - compile fail ... ok",
+        "test crates/knytos-kafka/src/scram.rs - scram::ClientFinal (line 58) - compile fail ... ok",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
-        "test crates/charlotte-protocol-kafka/src/lib.rs - Authentication (line 149) - compile fail ... ok",
-        "test crates/charlotte-protocol-kafka/src/lib.rs - Profile (line 205) - compile fail ... ok",
+        "test crates/knytos-protocol-kafka/src/lib.rs - Authentication (line 149) - compile fail ... ok",
+        "test crates/knytos-protocol-kafka/src/lib.rs - Profile (line 205) - compile fail ... ok",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
-        "test crates/charlotte-protocol-s3/src/lib.rs - Profile (line 33) - compile fail ... ok",
+        "test crates/knytos-protocol-s3/src/lib.rs - Profile (line 33) - compile fail ... ok",
         "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
-        "test crates/charlotte-s3/src/request.rs - request::OwnedRequest (line 13) - compile fail ... ok",
-        "test crates/charlotte-s3/src/http.rs - http::ResponseHead (line 126) - compile fail ... ok",
-        "test crates/charlotte-s3/src/http.rs - http::ResponseHead (line 130) - compile fail ... ok",
-        "test crates/charlotte-s3/src/profile.rs - profile::OwnedProfile (line 14) - compile fail ... ok",
-        "test crates/charlotte-s3/src/sigv4.rs - sigv4::Signature (line 112) - compile fail ... ok",
-        "test crates/charlotte-s3/src/profile.rs - profile::OwnedProfile (line 18) - compile fail ... ok",
+        "test crates/knytos-s3/src/request.rs - request::OwnedRequest (line 13) - compile fail ... ok",
+        "test crates/knytos-s3/src/http.rs - http::ResponseHead (line 126) - compile fail ... ok",
+        "test crates/knytos-s3/src/http.rs - http::ResponseHead (line 130) - compile fail ... ok",
+        "test crates/knytos-s3/src/profile.rs - profile::OwnedProfile (line 14) - compile fail ... ok",
+        "test crates/knytos-s3/src/sigv4.rs - sigv4::Signature (line 112) - compile fail ... ok",
+        "test crates/knytos-s3/src/profile.rs - profile::OwnedProfile (line 18) - compile fail ... ok",
         "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
       ],
       "runtime_tests_passed": 136,
       "compile_fail_doctests_passed": 12,
-      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-protocol-kafka -p charlotte-protocol-s3 -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests"
+      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests"
     },
     "release": {
       "exit_status": 0,
       "log_sha256": "96aa26500ede498a457b670369da2a23eeb2e510005a12c4e011911023e5549e",
       "diagnostics": [
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-kafka/1f3d27bdba0b43dc/out/charlotte_kafka-1f3d27bdba0b43dc)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
-        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
+        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/39f5a3b0ca1f167b/out/charlotte_launch-39f5a3b0ca1f167b)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
+        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
+        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
+        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
+        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
+        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
+        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
+        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
+        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
+        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
+        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
         "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s",
-        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
+        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-protocol-kafka/733b224849de1589/out/charlotte_protocol_kafka-733b224849de1589)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-kafka/733b224849de1589/out/knytos_protocol_kafka-733b224849de1589)",
         "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-protocol-s3/e698f35f1b93c1ea/out/charlotte_protocol_s3-e698f35f1b93c1ea)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-s3/e698f35f1b93c1ea/out/knytos_protocol_s3-e698f35f1b93c1ea)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/profile.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-protocol-s3/bf13b2e57913589f/out/profile-bf13b2e57913589f)",
+        "     Running tests/profile.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-s3/bf13b2e57913589f/out/profile-bf13b2e57913589f)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-s3/033cae8f3a8ba57e/out/charlotte_s3-033cae8f3a8ba57e)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
         "     Running kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/a31e1af5f38a568d/out/kafka_profile_erasure-a31e1af5f38a568d)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
@@ -324,20 +324,20 @@
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
         "     Running scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/b244a3d8538c99ab/out/scram_initial_erasure-b244a3d8538c99ab)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "   Doc-tests charlotte_kafka",
+        "   Doc-tests knytos_kafka",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
-        "   Doc-tests charlotte_launch",
+        "   Doc-tests knytos_launch",
         "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
-        "   Doc-tests charlotte_protocol_kafka",
+        "   Doc-tests knytos_protocol_kafka",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
-        "   Doc-tests charlotte_protocol_s3",
+        "   Doc-tests knytos_protocol_s3",
         "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
-        "   Doc-tests charlotte_s3",
+        "   Doc-tests knytos_s3",
         "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
       ],
       "runtime_tests_passed": 198,
       "compile_fail_doctests_passed": 13,
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-protocol-kafka -p charlotte-protocol-s3 -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests -p charlotte-launch"
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests -p knytos-launch"
     },
     "strict_clippy": {
       "exit_status": 0,
@@ -345,7 +345,7 @@
       "diagnostics": [
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 43.35s"
       ],
-      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-protocol-kafka -p charlotte-protocol-s3 -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests --all-targets -- -D warnings"
+      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests --all-targets -- -D warnings"
     },
     "workspace_fmt": {
       "exit_status": 0,
@@ -907,7 +907,7 @@
     "Networking chapter source describes nonce/transcript owners; PDF remains untouched."
   ],
   "reviewed_source_sha256": {
-    "crates/charlotte-kafka/src/scram.rs": "61339a4da450fb77257644afd3bc3a753545706df81b5163ec5990f6cd9df2ba",
+    "crates/knytos-kafka/src/scram.rs": "61339a4da450fb77257644afd3bc3a753545706df81b5163ec5990f6cd9df2ba",
     "docs/manual-v2/chapters/13-networking.tex": "3ce5d15e77354defd3902e0a39a8fdc8a564d64cc7263ab0b2ae92bd9c0cf6e1",
     "docs/reference/api-simplification.md": "3bbc0eff1071210e98edc02db1133bf42bda4d70cebd61f948a673574004fb46",
     "docs/reference/cleanup-recovery.md": "f77d4b29f3d7cf5b883a584eaefecfb662ca975560f2452bdce40e28cf99e6a1",
@@ -923,9 +923,9 @@
   },
   "unchanged_inputs_sha256": {
     "Cargo.lock": "1e425c4211e2059e3da207d53e2c06b360ba69899a3644ab65609373f58323d6",
-    "crates/charlotte-kafka/Cargo.toml": "5ccff11eb5bbf83468ef57063d7cc7d76c47c0046684f623dd7330ecee92d102",
-    "crates/charlotte-kafka/src/lib.rs": "67ba75ec1ec790d12783da70c5b943aec55d0207c1db1109653844a19590e82f",
-    "crates/charlotte-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9",
+    "crates/knytos-kafka/Cargo.toml": "5ccff11eb5bbf83468ef57063d7cc7d76c47c0046684f623dd7330ecee92d102",
+    "crates/knytos-kafka/src/lib.rs": "67ba75ec1ec790d12783da70c5b943aec55d0207c1db1109653844a19590e82f",
+    "crates/knytos-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9",
     "crates/knytos-services/src/bin/kafka.rs": "cdd8bec341ab969c4d1ebd202182a01be991f47ed611c49b90f257e6bc7583cd",
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
     "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",

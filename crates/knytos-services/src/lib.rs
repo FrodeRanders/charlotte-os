@@ -9,8 +9,8 @@ extern crate alloc;
 
 pub mod local_invocation;
 pub mod publication_generation;
-pub use charlotte_protocol_dns as dns_call;
-pub use charlotte_protocol_ns as ns_generation;
+pub use knytos_protocol_dns as dns_call;
+pub use knytos_protocol_ns as ns_generation;
 pub mod deployment_close;
 pub mod deployment_listener;
 pub mod deployment_output;
@@ -22,15 +22,15 @@ pub mod status_observation;
 
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.
-pub use charlotte_authorization as authorization;
+pub use knytos_authorization as authorization;
 /// Transactional-step profile and procedure ABI.
-pub use charlotte_kafka_step as kafka_step;
+pub use knytos_kafka_step as kafka_step;
 /// Capability-oriented Kafka client-service protocol.
-pub use charlotte_protocol_kafka as kafka;
+pub use knytos_protocol_kafka as kafka;
 /// Capability-oriented S3 data-plane service protocol.
-pub use charlotte_protocol_s3 as s3;
+pub use knytos_protocol_s3 as s3;
 /// UTC time-service protocol shared with applications.
-pub use charlotte_protocol_time as time;
+pub use knytos_protocol_time as time;
 
 pub mod clusterctl_client;
 pub mod clusterctl_relay;
@@ -130,13 +130,13 @@ pub const MAX_NAME_LEN: usize = 256;
 /// signed deployment descriptor and request one named service. The controller
 /// authenticates the descriptor and the kernel-provided caller identity, then
 /// returns only the requested attenuated connection.
-pub use charlotte_protocol_grant as grant;
+pub use knytos_protocol_grant as grant;
 
 /// Name-service interface 2; generation operations use CNSGEN01.
 pub mod ns {
     /// Interface id: "NAME".
     pub const INTERFACE: u64 = super::name(b"NAME");
-    pub const VERSION: u32 = charlotte_protocol_ns::VERSION;
+    pub const VERSION: u32 = knytos_protocol_ns::VERSION;
 
     /// Register a service under a short (<= 8 byte) name. `arg0` = packed
     /// name; the call must attach a re-delegable connection
@@ -189,7 +189,7 @@ pub mod ns {
     /// Unpublish the full name and nonzero generation in a mandatory moved
     /// CNSGEN01 record; arg0 is its exact byte length. A stale request returns
     /// [`ERR_NOT_FOUND`] and leaves a replacement untouched.
-    pub const OP_UNREGISTER_GENERATION: u32 = charlotte_protocol_ns::OP_UNREGISTER_GENERATION;
+    pub const OP_UNREGISTER_GENERATION: u32 = knytos_protocol_ns::OP_UNREGISTER_GENERATION;
 
     /// Register a service through the production authorization path. The call
     /// attaches a re-delegable connection plus a copied
@@ -224,7 +224,7 @@ pub mod ns {
     /// or changing policy. Requires a moved CNSGEN01 observation record with
     /// generation zero; arg0 is its exact length. Missing/dead names reject.
     /// Like OP_STATUS, this returns naming metadata without granting application access.
-    pub const OP_PUBLICATION_GENERATION: u32 = charlotte_protocol_ns::OP_PUBLICATION_GENERATION;
+    pub const OP_PUBLICATION_GENERATION: u32 = knytos_protocol_ns::OP_PUBLICATION_GENERATION;
 
     /// `"AUA1"` little-endian, leading an authorization-audit snapshot.
     pub const AUDIT_MAGIC: u32 = 0x3141_5541;
@@ -317,7 +317,7 @@ pub mod pl011 {
     pub const ICR: usize = 0x044;
 }
 
-/// Network-driver protocol (`charlotte-protocol-net` v1).
+/// Network-driver protocol (`knytos-protocol-net` v1).
 ///
 /// The reference userspace virtio-net driver serves this interface. Its
 /// only job is Ethernet frame transport (§6 of the networking architecture
@@ -658,7 +658,7 @@ pub mod raft {
     }
 }
 
-/// Block device protocol (`charlotte-protocol-block` v1).
+/// Block device protocol (`knytos-protocol-block` v1).
 ///
 /// Defines the interface between block device consumers (filesystems, Raft
 /// log stores, etc.) and block device drivers (NVMe, AHCI, etc.). The
@@ -848,7 +848,7 @@ pub mod frouter {
     pub const STATUS_MAGIC: u32 = 0x4652_5453;
 }
 
-/// Persistent object store protocol (`charlotte-protocol-objstore` v1).
+/// Persistent object store protocol (`knytos-protocol-objstore` v1).
 pub mod objstore {
     pub const INTERFACE: u64 = super::name(b"OBJSTR ");
     pub const VERSION: u32 = 1;
@@ -974,7 +974,7 @@ pub mod objstore {
     /// denied even though it may hold a store connection.
     pub fn reserved_mutator(principal: u64) -> bool {
         principal == KERNEL_PRINCIPAL
-            || principal == charlotte_launch::artifact_principal_id(b"clusterctl")
+            || principal == knytos_launch::artifact_principal_id(b"clusterctl")
     }
 
     /// Whether `principal` may create `id`. Creation of a new ordinary object
@@ -1137,13 +1137,13 @@ pub mod objstore {
         use super::*;
 
         fn clusterctl() -> u64 {
-            charlotte_launch::artifact_principal_id(b"clusterctl")
+            knytos_launch::artifact_principal_id(b"clusterctl")
         }
         fn ordinary() -> u64 {
-            charlotte_launch::artifact_principal_id(b"greet")
+            knytos_launch::artifact_principal_id(b"greet")
         }
         fn other() -> u64 {
-            charlotte_launch::artifact_principal_id(b"echo")
+            knytos_launch::artifact_principal_id(b"echo")
         }
 
         #[test]
@@ -1246,7 +1246,7 @@ pub mod objstore {
 
         #[test]
         fn reserved_namespaces_cover_artifacts_and_executables_only() {
-            assert!(is_reserved_object(charlotte_launch::ARTIFACT_ID_TAG | 1));
+            assert!(is_reserved_object(knytos_launch::ARTIFACT_ID_TAG | 1));
             assert!(is_reserved_object(EXECUTABLE_ECHO_ID));
             assert!(is_reserved_object(0xffff_ffff_ffff_ffff));
             assert!(!is_reserved_object(0));
@@ -1258,7 +1258,7 @@ pub mod objstore {
         #[test]
         fn reserved_mutation_requires_kernel_or_administration() {
             assert!(may_mutate(
-                charlotte_launch::ARTIFACT_ID_TAG | 7,
+                knytos_launch::ARTIFACT_ID_TAG | 7,
                 KERNEL_PRINCIPAL,
                 KERNEL_PRINCIPAL
             ));
@@ -1368,7 +1368,7 @@ pub mod objstore {
     }
 }
 
-/// Native filesystem protocol (`charlotte-protocol-fs` v1).
+/// Native filesystem protocol (`knytos-protocol-fs` v1).
 pub mod fs {
     pub const INTERFACE: u64 = super::name(b"FFS");
     pub const VERSION: u32 = 1;
@@ -1398,7 +1398,7 @@ pub mod fs {
 ///
 /// Exposes sequenced, acknowledged, retransmitted message delivery.
 /// Clients send messages addressed to peer service names; the RML
-/// encapsulates them in `charlotte-protocol-msg` frames and delivers
+/// encapsulates them in `knytos-protocol-msg` frames and delivers
 /// them via the NIC driver (or directly for same-machine peers).
 pub mod relmsg {
     pub const INTERFACE: u64 = super::name(b"RELMSG");
@@ -1541,7 +1541,7 @@ pub mod relmsg_reassembly {
     }
 }
 
-/// Cluster discovery protocol (`charlotte-protocol-disco` v1).
+/// Cluster discovery protocol (`knytos-protocol-disco` v1).
 ///
 /// Nodes broadcast probes on EtherType `0x88B6`; peers reply with unicast
 /// responses carrying node identity and service-registration information.
@@ -1556,7 +1556,7 @@ pub mod disco {
     pub const OP_LIST_PEERS: u32 = 2;
     pub const OP_STATUS: u32 = 3;
     pub const OP_SHUTDOWN: u32 = 4;
-    /// Cluster-location query: see `charlotte-protocol-disco`'s
+    /// Cluster-location query: see `knytos-protocol-disco`'s
     /// `OP_CLUSTER_STATUS` for the reply layout.
     pub const OP_CLUSTER_STATUS: u32 = 6;
     /// `OP_CLUSTER_STATUS` arg0 flag: retain the call until the local Raft
@@ -1637,7 +1637,7 @@ pub mod dns {
     use alloc::vec::Vec;
 
     pub const INTERFACE: u64 = super::name(b"DNS ");
-    pub const VERSION: u32 = charlotte_protocol_dns::VERSION;
+    pub const VERSION: u32 = knytos_protocol_dns::VERSION;
     pub const NAME: u64 = super::name(b"dns");
 
     /// Register a locally published service, or a uniquely attached mintable
@@ -1655,7 +1655,7 @@ pub mod dns {
     /// Names contain 1..=256 bytes; retired packed-name/12-byte calls reject.
     /// The deferred reply is the target scalar result; accepted work that
     /// cannot be confirmed returns ERR_UNCERTAIN and must not be replayed.
-    pub const OP_CALL: u32 = charlotte_protocol_dns::OP_CALL;
+    pub const OP_CALL: u32 = knytos_protocol_dns::OP_CALL;
     /// Return the complete locally applied active catalog as a moved
     /// [`crate::dns_catalog`] record set. The scalar result is its exact byte
     /// length. A catalog above the wire bound rejects instead of returning a
@@ -1740,7 +1740,7 @@ pub mod dns {
     /// key. The reply moves `[generation:u64][CSHUTDN1 envelope]`.
     pub const OP_SHUTDOWN_QUERY: u32 = 25;
     /// Return the locally applied committed ingress snapshot. `arg0` is the
-    /// compact [`charlotte_launch::ingress::ServiceId::pack`] identity. Its routable
+    /// compact [`knytos_launch::ingress::ServiceId::pack`] identity. Its routable
     /// member set comes from Raft membership; when launch policy binds a VIP
     /// to an application name, new-flow eligibility also requires matching
     /// committed placement and exact-generation readiness.
@@ -1755,7 +1755,7 @@ pub mod dns {
     /// Resolve all launch-authorized external identities assigned to one
     /// artifact/service name. The moved request contains the complete name
     /// (`arg0` = length); the reply is a filtered canonical
-    /// [`charlotte_launch::ingress`] table.
+    /// [`knytos_launch::ingress`] table.
     pub const OP_INGRESS_ASSIGNMENTS_NAMED: u32 = 28;
     /// Admit a complete operator-signed `CINGPOL1` assignment replacement.
     /// Followers relay the envelope and the leader re-verifies operations
@@ -1791,8 +1791,8 @@ pub mod dns {
     pub fn ingress_assignments(
         connection: catten_rt::owned::ConnectionRef<'_>,
         artifact_name: &[u8],
-    ) -> Result<Vec<charlotte_launch::ingress::ServiceId>, IngressAssignmentError> {
-        if !charlotte_launch::deployment::valid_artifact_name(artifact_name) {
+    ) -> Result<Vec<knytos_launch::ingress::ServiceId>, IngressAssignmentError> {
+        if !knytos_launch::deployment::valid_artifact_name(artifact_name) {
             return Err(IngressAssignmentError::InvalidName);
         }
         let request =
@@ -1816,7 +1816,7 @@ pub mod dns {
         }
         let mapping =
             memory.map_read_only().map_err(|(_, error)| IngressAssignmentError::Memory(error))?;
-        let assignments = charlotte_launch::ingress::decode(&mapping.as_slice()[..len])
+        let assignments = knytos_launch::ingress::decode(&mapping.as_slice()[..len])
             .ok_or(IngressAssignmentError::InvalidReply)?
             .map(|binding| binding.service)
             .collect();
@@ -1860,15 +1860,15 @@ pub mod dns {
     /// physical reference in a deployment record is the pair
     /// `(node_key, artifact_object_id(name))` and the node dimension never
     /// leaks into the identifier itself.
-    pub const ARTIFACT_ID_TAG: u64 = charlotte_launch::ARTIFACT_ID_TAG;
+    pub const ARTIFACT_ID_TAG: u64 = knytos_launch::ARTIFACT_ID_TAG;
 
     /// The stable, cluster-wide object-store id for a logical artifact name.
     pub fn artifact_object_id(name: &[u8]) -> u64 {
-        charlotte_launch::artifact_object_id(name)
+        knytos_launch::artifact_object_id(name)
     }
 
     /// Shared byte offsets in the DNS service's diagnostic status page.
-    pub use charlotte_launch::dns_status as status;
+    pub use knytos_launch::dns_status as status;
 
     /// The name is registered on this node (lookup returns a connection).
     pub const RESULT_LOCAL: i64 = 0;
@@ -1924,7 +1924,7 @@ pub mod clusterctl {
     pub const NAME: u64 = super::name(b"ctl");
     /// Plain HTTP notification ingress. Authenticity and integrity come from
     /// the signed descriptor; the transport deliberately carries no secrets.
-    pub const NOTIFY_PORT: u16 = charlotte_launch::DEPLOY_NOTIFY_PORT;
+    pub const NOTIFY_PORT: u16 = knytos_launch::DEPLOY_NOTIFY_PORT;
     pub const NOTIFY_PATH: &[u8] = b"/v1/deployments";
     pub const RELEASE_PATH: &[u8] = b"/v1/releases";
     pub const OPERATIONS_PATH: &[u8] = b"/v1/operations";
@@ -2780,7 +2780,7 @@ pub fn publication_generation_owned(
 
 /// Wait for the local boot-ready marker using ownership-aware IPC.
 pub fn wait_for_local_ready_owned(ns_connection: catten_rt::owned::ConnectionRef<'_>) -> bool {
-    wait_for_registered_name_owned(ns_connection, charlotte_launch::LOCAL_READY_NAME).is_some()
+    wait_for_registered_name_owned(ns_connection, knytos_launch::LOCAL_READY_NAME).is_some()
 }
 
 /// Wait for the node-ready marker without making startup an uninterruptible
@@ -2798,7 +2798,7 @@ pub fn wait_for_local_ready_or_shutdown(
     wait_for_registered_name_or_shutdown_owned(
         ctx,
         ns_connection,
-        charlotte_launch::LOCAL_READY_NAME,
+        knytos_launch::LOCAL_READY_NAME,
     )
     .map(|_| ())
 }
@@ -2845,7 +2845,7 @@ pub fn scalar_call_with_backpressure(connection: u64, opcode: u32, arg0: u64) ->
     }
 }
 
-/// Block until the kernel has registered [`charlotte_launch::LOCAL_READY_NAME`]
+/// Block until the kernel has registered [`knytos_launch::LOCAL_READY_NAME`]
 /// in the name service, signalling that the *local* node is ready — its disk
 /// stack is serving and the boot storm has settled — before it starts any
 /// cluster-facing communication.
@@ -2857,7 +2857,7 @@ pub fn scalar_call_with_backpressure(connection: u64, opcode: u32, arg0: u64) ->
 /// to communicate with other nodes.
 pub fn wait_for_local_ready(ns_conn: u64) -> bool {
     let Some((_, connection)) =
-        wait_for_registered_name(ns_conn, charlotte_launch::LOCAL_READY_NAME)
+        wait_for_registered_name(ns_conn, knytos_launch::LOCAL_READY_NAME)
     else {
         return false;
     };
@@ -2888,7 +2888,7 @@ pub mod rcapacity {
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct Report {
-        pub target: charlotte_launch::execution_target::ExecutionTarget,
+        pub target: knytos_launch::execution_target::ExecutionTarget,
         pub node_key: u64,
         /// Nonzero random word generated once at service start. Reporting is
         /// withheld until either CPU or delegated VirtIO entropy is available.
@@ -2919,7 +2919,7 @@ pub mod rcapacity {
         }
         let payload = &frame[1..];
         let report = Report {
-            target: charlotte_launch::execution_target::ExecutionTarget::decode(&payload[42..58])?,
+            target: knytos_launch::execution_target::ExecutionTarget::decode(&payload[42..58])?,
             node_key: u64::from_le_bytes(payload[0..8].try_into().ok()?),
             boot_nonce: u64::from_le_bytes(payload[8..16].try_into().ok()?),
             epoch: u64::from_le_bytes(payload[16..24].try_into().ok()?),
@@ -2943,8 +2943,8 @@ pub mod rcapacity {
         #[test]
         fn capacity_report_round_trips() {
             let report = Report {
-                target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+                target: knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 ),
                 node_key: 0x1234,
                 boot_nonce: 0xfeed_face,
@@ -2995,8 +2995,8 @@ pub mod rdeploy {
     pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
         if request.caller.is_empty()
             || request.caller.len() > 255
-            || request.descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-            || charlotte_launch::deployment::decode(&request.descriptor).is_none()
+            || request.descriptor.len() > knytos_launch::deployment::MAX_DESCRIPTOR_LEN
+            || knytos_launch::deployment::decode(&request.descriptor).is_none()
         {
             return None;
         }
@@ -3027,8 +3027,8 @@ pub mod rdeploy {
         let descriptor = frame.get(start..end)?;
         if caller_len == 0
             || frame.len() != end
-            || len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-            || charlotte_launch::deployment::decode(descriptor).is_none()
+            || len > knytos_launch::deployment::MAX_DESCRIPTOR_LEN
+            || knytos_launch::deployment::decode(descriptor).is_none()
         {
             return None;
         }
@@ -3076,8 +3076,8 @@ pub mod rrelease {
     pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
         if request.caller.is_empty()
             || request.caller.len() > 255
-            || request.envelope.len() > charlotte_launch::release::MAX_RELEASE_LEN
-            || charlotte_launch::release::decode(&request.envelope).is_none()
+            || request.envelope.len() > knytos_launch::release::MAX_RELEASE_LEN
+            || knytos_launch::release::decode(&request.envelope).is_none()
         {
             return None;
         }
@@ -3107,9 +3107,9 @@ pub mod rrelease {
         let envelope_start = envelope_len_offset + 2;
         let envelope_end = envelope_start.checked_add(envelope_len)?;
         if caller_len == 0
-            || envelope_len > charlotte_launch::release::MAX_RELEASE_LEN
+            || envelope_len > knytos_launch::release::MAX_RELEASE_LEN
             || frame.len() != envelope_end
-            || charlotte_launch::release::decode(frame.get(envelope_start..envelope_end)?).is_none()
+            || knytos_launch::release::decode(frame.get(envelope_start..envelope_end)?).is_none()
         {
             return None;
         }
@@ -3129,8 +3129,8 @@ pub mod rrelease {
     impl PreparedReply {
         pub fn prepare(session: u64, request_id: u64) -> Option<Self> {
             let mut bytes = alloc::vec::Vec::new();
-            bytes.try_reserve_exact(18 + charlotte_launch::release_admission::MAX_LEN).ok()?;
-            bytes.resize(18 + charlotte_launch::release_admission::MAX_LEN, 0);
+            bytes.try_reserve_exact(18 + knytos_launch::release_admission::MAX_LEN).ok()?;
+            bytes.resize(18 + knytos_launch::release_admission::MAX_LEN, 0);
             bytes[..8].copy_from_slice(&session.to_le_bytes());
             bytes[8..16].copy_from_slice(&request_id.to_le_bytes());
             Some(Self {
@@ -3140,7 +3140,7 @@ pub mod rrelease {
 
         pub fn finish(mut self, result: &[u8]) -> alloc::vec::Vec<u8> {
             let fallback = crate::dns::ERR_UNCERTAIN.to_le_bytes();
-            let result = if charlotte_launch::release_admission::decode_result(result).is_some() {
+            let result = if knytos_launch::release_admission::decode_result(result).is_some() {
                 result
             } else {
                 &fallback
@@ -3165,7 +3165,7 @@ pub mod rrelease {
             return None;
         }
         let result = frame.get(19..)?;
-        let _ = charlotte_launch::release_admission::decode_result(result)?;
+        let _ = knytos_launch::release_admission::decode_result(result)?;
         Some((
             u64::from_le_bytes(frame[1..9].try_into().ok()?),
             u64::from_le_bytes(frame[9..17].try_into().ok()?),
@@ -3192,8 +3192,8 @@ pub mod roperations {
     pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
         if request.caller.is_empty()
             || request.caller.len() > 255
-            || request.bundle.len() > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
-            || charlotte_launch::operations_bundle::decode(&request.bundle).is_none()
+            || request.bundle.len() > knytos_launch::operations_bundle::MAX_BUNDLE_LEN
+            || knytos_launch::operations_bundle::decode(&request.bundle).is_none()
         {
             return None;
         }
@@ -3230,9 +3230,9 @@ pub mod roperations {
         let bundle_end = bundle_start.checked_add(bundle_len)?;
         let bundle = frame.get(bundle_start..bundle_end)?;
         if caller_len == 0
-            || bundle_len > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
+            || bundle_len > knytos_launch::operations_bundle::MAX_BUNDLE_LEN
             || frame.len() != bundle_end
-            || charlotte_launch::operations_bundle::decode(bundle).is_none()
+            || knytos_launch::operations_bundle::decode(bundle).is_none()
         {
             return None;
         }
@@ -3276,12 +3276,12 @@ pub mod rshutdown {
     pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
         if request.caller.is_empty()
             || request.caller.len() > 255
-            || charlotte_launch::shutdown::decode(&request.envelope).is_none()
+            || knytos_launch::shutdown::decode(&request.envelope).is_none()
         {
             return None;
         }
         let mut frame = alloc::vec::Vec::with_capacity(
-            17 + request.caller.len() + charlotte_launch::shutdown::ENCODED_LEN,
+            17 + request.caller.len() + knytos_launch::shutdown::ENCODED_LEN,
         );
         frame.extend_from_slice(&request.session.to_le_bytes());
         frame.extend_from_slice(&request.request_id.to_le_bytes());
@@ -3302,8 +3302,8 @@ pub mod rshutdown {
         let envelope_start = caller_start.checked_add(caller_len)?;
         let envelope = frame.get(envelope_start..)?;
         if caller_len == 0
-            || envelope.len() != charlotte_launch::shutdown::ENCODED_LEN
-            || charlotte_launch::shutdown::decode(envelope).is_none()
+            || envelope.len() != knytos_launch::shutdown::ENCODED_LEN
+            || knytos_launch::shutdown::decode(envelope).is_none()
         {
             return None;
         }
@@ -3347,7 +3347,7 @@ pub mod ringress_policy {
     pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
         if request.caller.is_empty()
             || request.caller.len() > 255
-            || charlotte_launch::ingress_policy::decode(&request.envelope).is_none()
+            || knytos_launch::ingress_policy::decode(&request.envelope).is_none()
         {
             return None;
         }
@@ -3371,7 +3371,7 @@ pub mod ringress_policy {
         let caller_start = 18usize;
         let envelope_start = caller_start.checked_add(caller_len)?;
         let envelope = frame.get(envelope_start..)?;
-        if caller_len == 0 || charlotte_launch::ingress_policy::decode(envelope).is_none() {
+        if caller_len == 0 || knytos_launch::ingress_policy::decode(envelope).is_none() {
             return None;
         }
         Some(Request {

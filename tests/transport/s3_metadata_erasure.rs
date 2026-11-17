@@ -1,7 +1,7 @@
 //! Metadata ranges borrow a single consumed response owner.
 use core::hint::black_box;
 
-use charlotte_s3::http::{
+use knytos_s3::http::{
     Error,
     MAX_RESPONSE_HEAD,
     ResponseHead,

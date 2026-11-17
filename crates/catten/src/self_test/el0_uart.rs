@@ -204,21 +204,21 @@ extern "C" fn verify_el0_uart() {
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe {
-            crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::STAGE)
+            crate::self_test::status_u32(client_cfg, knytos_launch::uart_client_status::STAGE)
         } < 5
         {
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
                 let driver_stage = unsafe {
-                    crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::STAGE)
+                    crate::self_test::status_u32(driver_cfg, knytos_launch::uart_status::STAGE)
                 };
                 let served = unsafe {
-                    crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::SERVED)
+                    crate::self_test::status_u32(driver_cfg, knytos_launch::uart_status::SERVED)
                 };
                 let client_stage = unsafe {
                     crate::self_test::status_u32(
                         client_cfg,
-                        charlotte_launch::uart_client_status::STAGE,
+                        knytos_launch::uart_client_status::STAGE,
                     )
                 };
                 logln!(
@@ -233,11 +233,11 @@ extern "C" fn verify_el0_uart() {
         }
     }
     let write_status = unsafe {
-        crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::WRITE_STATUS)
+        crate::self_test::status_u32(client_cfg, knytos_launch::uart_client_status::WRITE_STATUS)
     };
     assert_eq!(write_status, 0, "[uart] console write must reply 0");
     let driver_served =
-        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::SERVED) };
+        unsafe { crate::self_test::status_u32(driver_cfg, knytos_launch::uart_status::SERVED) };
     assert!(driver_served >= 1, "[uart] driver must have served console writes");
     logln!(
         "[uart] console client wrote through the EL0 driver ({} bytes served via PL011 MMIO)",
@@ -255,7 +255,7 @@ extern "C" fn verify_el0_uart() {
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe {
-            crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::READ_ARMED)
+            crate::self_test::status_u32(driver_cfg, knytos_launch::uart_status::READ_ARMED)
         } != 1
         {
             deadline.assert_pending("UART driver deferred-read arm");
@@ -269,7 +269,7 @@ extern "C" fn verify_el0_uart() {
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe {
-            crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::SENTINEL)
+            crate::self_test::status_u32(client_cfg, knytos_launch::uart_client_status::SENTINEL)
         } != CLIENT_SENTINEL
         {
             deadline.assert_pending("UART interrupt-driven deferred read");
@@ -278,13 +278,13 @@ extern "C" fn verify_el0_uart() {
     }
 
     let irq_count = unsafe {
-        crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::IRQ_COUNT)
+        crate::self_test::status_u32(driver_cfg, knytos_launch::uart_status::IRQ_COUNT)
     };
     assert!(irq_count >= 1, "[uart] driver must have acknowledged a device interrupt");
     // The deferred read result encodes the driver's interrupt count in bits
     // 8.., so a nonzero high half proves the reply was interrupt-driven.
     let read_result = unsafe {
-        crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::READ_RESULT)
+        crate::self_test::status_u32(client_cfg, knytos_launch::uart_client_status::READ_RESULT)
     };
     assert!(
         read_result >> 8 >= 1,
@@ -325,7 +325,7 @@ extern "C" fn verify_el0_uart() {
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe {
-            crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::READ_ARMED)
+            crate::self_test::status_u32(driver_cfg, knytos_launch::uart_status::READ_ARMED)
         } != 1
         {
             deadline.assert_pending("UART verifier deferred-read arm");

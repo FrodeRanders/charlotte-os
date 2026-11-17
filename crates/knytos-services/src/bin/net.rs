@@ -46,7 +46,7 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_launch::net_status as status;
+use knytos_launch::net_status as status;
 
 // The kernel-assigned base of the delegated virtio BAR, set once at map
 // time. The device-config/ISR/doorbell helpers must read it: the old fixed

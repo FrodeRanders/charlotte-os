@@ -208,7 +208,7 @@ Evidence:
   scalar reply.
 - [tcpip.rs:1330](../../../crates/knytos-services/src/bin/tcpip.rs#L1330):
   explicit client close is the normal resource-release trigger.
-- [lib.rs:635](../../../crates/charlotte-launch/src/lib.rs#L635): default
+- [lib.rs:635](../../../crates/knytos-launch/src/lib.rs#L635): default
   shared capacity is 64 and the per-owner ceiling is also 64, with two MiB of
   per-owner buffer allowance. TCP buffers consume 32 KiB per socket. Apart
   from DHCP's dedicated protocol slot, ordinary clients and platform clients

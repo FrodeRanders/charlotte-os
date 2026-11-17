@@ -17,8 +17,8 @@
     "crates/catten/src/self_test/el0_security/profile_validation.rs": "cfed1b9c87e2b778864fbccf17457f67b686a12ca6ad63be57b0a8da5e54c279",
     "crates/catten/src/service/launch.rs": "4babdf6ee654122af66837b1b08d2ba005e207159cb71bd5781173290a01d4b9",
     "crates/catten/src/syscall/mod.rs": "a383cb27e8296f14a1e65386971a0e2efc0ad934e0a19f36580807954e1a54dd",
-    "crates/charlotte-protocol-kafka/src/lib.rs": "f4b4c19f3a3e6a9b3ab2a6a8bcaeaf9e5f53e9ba2e88d5095ec4daea3b70dd74",
-    "crates/charlotte-protocol-kafka/src/validation_tests.rs": "cfcb2f6092989068e0d89ff6aa829ed6285e795031290750cf9fe91f646ffa8b",
+    "crates/knytos-protocol-kafka/src/lib.rs": "f4b4c19f3a3e6a9b3ab2a6a8bcaeaf9e5f53e9ba2e88d5095ec4daea3b70dd74",
+    "crates/knytos-protocol-kafka/src/validation_tests.rs": "cfcb2f6092989068e0d89ff6aa829ed6285e795031290750cf9fe91f646ffa8b",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/tests/fixtures/bootstrap-storage.rs": "d40cbe632ecd72dcad3ecc5ff63615d91e12567da6d32c99fe8c16782bc4e4ee",
     "scripts/tests/test-bootstrap-storage.py": "ddd6dcd93184c6d3783e0759068e51c83fc4cf6967c0ea6714721ee6a2a6a8a0"

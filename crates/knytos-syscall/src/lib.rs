@@ -166,7 +166,7 @@ define_syscall_numbers!(
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
-/// envelope. These bits intentionally match `charlotte_authorization::Roles`.
+/// envelope. These bits intentionally match `knytos_authorization::Roles`.
 pub mod domain_roles {
     pub const POLICY_ADMIN: u32 = 1 << 0;
     pub const SERVICE_MANAGER: u32 = 1 << 1;

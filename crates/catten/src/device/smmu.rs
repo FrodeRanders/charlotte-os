@@ -387,7 +387,7 @@ impl Domain {
 
 impl Commands {
     fn issue(&mut self, command: [u64; 2]) -> Result<(), Error> {
-        if !charlotte_lifecycle::iommu::smmu_queue_has_space(
+        if !knytos_lifecycle::iommu::smmu_queue_has_space(
             self.cmd_prod,
             read32(self.base, CMDQ_CONS),
             QUEUE_ENTRIES,

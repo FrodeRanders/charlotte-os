@@ -88,11 +88,11 @@ aborts the entire domain rather than interpreting unchecked offsets or leaving
 sibling threads running with an invalid launch contract.
 
 The kernel and runtime import this representation from the shared no-std
-`charlotte-launch` crate. Compile-time size assertions keep the header and
+`knytos-launch` crate. Compile-time size assertions keep the header and
 capability record layouts stable across both sides of the boundary.
 This launch-page version is separate from runtime syscall ABI 4, which signed
 executable variants must match exactly. The source constants in
-`charlotte-launch` define both contracts.
+`knytos-launch` define both contracts.
 
 The manifest is a bounded vector of named, typed records. Keys are stable
 packed names of up to eight bytes, while values may be unsigned integers, signed
@@ -145,7 +145,7 @@ adopted a second time.
 
 The host test suite injects failures at unmap, DMA release, MMIO release,
 completion cancellation, and IPC submission boundaries. The shared
-`charlotte-lifecycle` crate exhaustively checks the generation decisions used
+`knytos-lifecycle` crate exhaustively checks the generation decisions used
 by both thread joins and timed completion waits.
 
 ## Authenticated service lookup
@@ -161,7 +161,7 @@ stable signed-artifact principal, and deployment roles captured at submission.
 The canonical runtime methods are `Endpoint::receive` and `try_receive`. See
 the [receive ABI contract](../reference/ipc-receive.md).
 Callers encode only the service name and explicit requested rights with
-`charlotte_authorization::wire::encode_lookup`, copy that request into
+`knytos_authorization::wire::encode_lookup`, copy that request into
 `OP_LOOKUP_AUTHORIZED`, and receive a connection attenuated to the policy
 decision. Default is deny.
 
@@ -271,6 +271,6 @@ development keys, and a `VERSION` file recording the OS revision and pinned
 toolchain. A project unpacks it and builds against it without a Knytos
 checkout.
 
-The `charlotte-kafka-broker` repository is the reference out-of-tree project:
+The `knytos-kafka-broker` repository is the reference out-of-tree project:
 its `tools/charlotte-sdk.sh`, `tools/build-elf.sh`, and `tools/package.sh`
 resolve either a checkout or an exported SDK, build the EL0 image, and sign it.

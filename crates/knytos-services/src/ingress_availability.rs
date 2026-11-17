@@ -302,7 +302,7 @@ pub fn snapshot(
     let assignment_sequence = catalog
         .ingress_policy()
         .and_then(|entry| {
-            charlotte_launch::ingress_policy::decode(&entry.envelope).map(|policy| policy.sequence)
+            knytos_launch::ingress_policy::decode(&entry.envelope).map(|policy| policy.sequence)
         })
         .unwrap_or(0);
     let epoch = service_load_balancing_epoch(

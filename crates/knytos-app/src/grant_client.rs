@@ -144,7 +144,7 @@ pub fn publish_until(
     if deadline.expired() {
         return Err(Error::Admission(AdmissionError::Deadline));
     }
-    let payload = request(descriptor, service, charlotte_launch::deployment::RIGHT_PUBLISH)?;
+    let payload = request(descriptor, service, knytos_launch::deployment::RIGHT_PUBLISH)?;
     let pending = controller
         .call_connection_copy(
             grant::OP_PUBLISH,

@@ -926,7 +926,7 @@ pub fn test_syscall_dispatch() {
         ));
     }
 
-    let policy_digest = charlotte_launch::sha256::digest(b"admitted deployment policy");
+    let policy_digest = knytos_launch::sha256::digest(b"admitted deployment policy");
     let owner_identity = crate::memory::current_address_space_handle(memory_owner).unwrap();
     let generation = owner_identity.generation() as u64;
     crate::memory::register_domain_authority(owner_identity, 1, 0).unwrap();
@@ -941,7 +941,7 @@ pub fn test_syscall_dispatch() {
     assert!(!crate::memory::launch_descriptor_matches(
         memory_owner,
         generation,
-        &charlotte_launch::sha256::digest(b"another signed policy for the same logical artifact"),
+        &knytos_launch::sha256::digest(b"another signed policy for the same logical artifact"),
     ));
     let mut query = synthetic_trap_frame_in(memory_owner, 0, memory_owner as u64, generation, 0);
     for (word, chunk) in query.regs[3..7].iter_mut().zip(policy_digest.as_chunks::<8>().0) {

@@ -88,8 +88,8 @@ fn telemetry_archive() {
     const INPUT: &str = "CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS";
     println!("cargo:rerun-if-env-changed={INPUT}");
     let interval = match env::var(INPUT) {
-        Err(env::VarError::NotPresent) => charlotte_launch::telemetry::DEFAULT_ARCHIVE_INTERVAL_MS,
-        Ok(value) => charlotte_launch::telemetry::parse_archive_interval(&value)
+        Err(env::VarError::NotPresent) => knytos_launch::telemetry::DEFAULT_ARCHIVE_INTERVAL_MS,
+        Ok(value) => knytos_launch::telemetry::parse_archive_interval(&value)
             .expect("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000"),
         Err(_) => panic!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be ASCII decimal"),
     };
@@ -97,7 +97,7 @@ fn telemetry_archive() {
 }
 
 fn otlp_export() {
-    use charlotte_launch::otlp;
+    use knytos_launch::otlp;
     for name in ["CATTEN_OTLP_ENDPOINT", "CATTEN_OTLP_INTERVAL_MS", "CATTEN_OTLP_TIMEOUT_MS"] {
         println!("cargo:rerun-if-env-changed={name}");
     }
@@ -133,7 +133,7 @@ fn otlp_export() {
     };
     let path = std::path::PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("otlp-profile.bin");
     std::fs::write(&path, &bytes).expect("stage outbound OTLP profile");
-    let hash = charlotte_launch::sha256::digest(&bytes)
+    let hash = knytos_launch::sha256::digest(&bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
@@ -147,7 +147,7 @@ fn otlp_export() {
 fn boot_test_installed_policy() {
     use std::io::Read;
 
-    use charlotte_launch::trust::signed_policy;
+    use knytos_launch::trust::signed_policy;
     const INPUT: &str = "CATTEN_BOOT_TEST_INSTALLED_POLICY";
     println!("cargo:rerun-if-env-changed={INPUT}");
     let selected = env::var_os(INPUT);
@@ -184,7 +184,7 @@ fn boot_test_installed_policy() {
 fn management_resource() {
     use std::io::Read;
 
-    use charlotte_launch::management::sealed;
+    use knytos_launch::management::sealed;
     println!("cargo:rustc-check-cfg=cfg(catten_management_resource)");
     println!("cargo:rerun-if-env-changed=CATTEN_MANAGEMENT_TLS_RESOURCE");
     let Some(path) = env::var_os("CATTEN_MANAGEMENT_TLS_RESOURCE") else {

@@ -46,7 +46,7 @@ pub fn request_node_shutdown(
     mut envelope: OwnedMemory,
     envelope_len: usize,
 ) -> Result<(), NodeShutdownRequestError> {
-    if envelope_len != charlotte_launch::shutdown::ENCODED_LEN || envelope_len > envelope.len() {
+    if envelope_len != knytos_launch::shutdown::ENCODED_LEN || envelope_len > envelope.len() {
         return Err(NodeShutdownRequestError::InvalidEnvelope);
     }
     let cap = envelope.cap.take().expect("shutdown envelope capability already consumed");
@@ -69,9 +69,9 @@ pub fn launch_scoped_artifact(
 ) -> Result<DeployedArtifact, ArtifactLaunchError> {
     if artifact_len == 0
         || artifact_len > artifact.len()
-        || descriptor_len < charlotte_launch::deployment::HEADER_LEN
+        || descriptor_len < knytos_launch::deployment::HEADER_LEN
         || descriptor_len > descriptor.len()
-        || descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+        || descriptor_len > knytos_launch::deployment::MAX_DESCRIPTOR_LEN
     {
         return Err(ArtifactLaunchError::InvalidLength);
     }
@@ -98,14 +98,14 @@ pub fn launch_operational_connector(
     package_len: usize,
     artifact_name: &[u8],
 ) -> Result<DeployedArtifact, ArtifactLaunchError> {
-    if package_len < charlotte_launch::operations_pickup::PICKUP_HEADER_LEN
+    if package_len < knytos_launch::operations_pickup::PICKUP_HEADER_LEN
         || package_len > package.len()
-        || package_len > charlotte_launch::operations_pickup::MAX_PICKUP_LEN
-        || !charlotte_launch::deployment::valid_artifact_name(artifact_name)
+        || package_len > knytos_launch::operations_pickup::MAX_PICKUP_LEN
+        || !knytos_launch::deployment::valid_artifact_name(artifact_name)
     {
         return Err(ArtifactLaunchError::InvalidLength);
     }
-    let principal = charlotte_launch::artifact_principal_id(artifact_name);
+    let principal = knytos_launch::artifact_principal_id(artifact_name);
     let package_cap = package.cap.take().expect("pickup capability already consumed");
     let asid = kernel::spawn_operational_connector(package_cap, package_len, principal);
     if asid == 0 {

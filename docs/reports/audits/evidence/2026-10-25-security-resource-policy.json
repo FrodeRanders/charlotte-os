@@ -152,7 +152,7 @@
     "scripts/tests/test-resource-policy.py": "22b35faa28ac729b82e1e6183b38b31071d90e02c6d20d0ab6b8a442ae614163",
     "AGENTS.md": "6f2ea18519ea608718bc502207ce82dd1d758e02f5d8276d3a30ede3772eccfd",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
-    "crates/charlotte-lifecycle/src/resources.rs": "68b602c7c679aea044d237ce3f9b9f84803f580504fa68588651b83c206c2686",
+    "crates/knytos-lifecycle/src/resources.rs": "68b602c7c679aea044d237ce3f9b9f84803f580504fa68588651b83c206c2686",
     "docs/manual-v2/charlotte.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
     "docs/manual-v2/chapters/22-configuration.tex": "7fa827aec2b8251fb87fa830883ef55fbbdde2f83f8017215d0d83d8a1643c28",
     "docs/guides/configuration.md": "79b5c14afee2ee6e87e8140386185797d5b2c4ce9a31de2dd2f8f68318220d13",

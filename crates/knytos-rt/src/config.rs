@@ -3,7 +3,7 @@
 //! The kernel maps read-only launch metadata at `CONFIG_VADDR` and a separate
 //! mutable diagnostic/status page at `STATUS_VADDR` in every runtime domain.
 
-use charlotte_launch::{
+use knytos_launch::{
     CAPABILITY_VECTOR_CAPACITY,
     CapabilityRecord,
     LAUNCH_HEADER_OFFSET,
@@ -11,7 +11,7 @@ use charlotte_launch::{
     MANIFEST_VECTOR_CAPACITY,
     ManifestRecord,
 };
-pub use charlotte_launch::{
+pub use knytos_launch::{
     CONFIG_PAGE_SIZE,
     CONFIG_VADDR,
     CapabilityKind,
@@ -190,22 +190,22 @@ pub(crate) fn lifecycle_control() -> Option<(u32, u32, u64)> {
         Ordering,
     };
 
-    let magic = unsafe { read_launch::<u64>(charlotte_launch::lifecycle::CONTROL_MAGIC_OFFSET) };
-    if magic != charlotte_launch::lifecycle::CONTROL_MAGIC {
+    let magic = unsafe { read_launch::<u64>(knytos_launch::lifecycle::CONTROL_MAGIC_OFFSET) };
+    if magic != knytos_launch::lifecycle::CONTROL_MAGIC {
         return None;
     }
     let state = unsafe {
-        &*((CONFIG_VADDR + charlotte_launch::lifecycle::CONTROL_STATE_OFFSET) as *const AtomicU32)
+        &*((CONFIG_VADDR + knytos_launch::lifecycle::CONTROL_STATE_OFFSET) as *const AtomicU32)
     }
     .load(Ordering::Acquire);
-    let reason = unsafe { read_launch::<u32>(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) };
+    let reason = unsafe { read_launch::<u32>(knytos_launch::lifecycle::CONTROL_REASON_OFFSET) };
     let deadline =
-        unsafe { read_launch::<u64>(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) };
+        unsafe { read_launch::<u64>(knytos_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) };
     Some((state, reason, deadline))
 }
 
 pub(crate) fn publish_lifecycle_status(state: u32) {
-    write_u32_release(charlotte_launch::lifecycle::STATUS_STATE_OFFSET, state);
+    write_u32_release(knytos_launch::lifecycle::STATUS_STATE_OFFSET, state);
 }
 
 unsafe fn read_launch<T: Copy>(offset: usize) -> T {

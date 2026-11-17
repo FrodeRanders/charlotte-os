@@ -25,7 +25,7 @@
     "crates/catten/src/memory/mod.rs": "38f62c7001de437b8d6f340a0bfa3a734c8c676aad53736e6741b96c4982c935",
     "crates/catten/src/memory/usage/principal_history/kernel_buffers.rs": "927f080ded3460ab7120ae3c44ff42f1f3d57fcc45aebf3f826d2cf7d9df2b2c",
     "crates/catten/src/resource_policy/defaults.rs": "48be11b7ee2dea19d1abbc0025cab6eaba40f53acebd6387492908b993b84b30",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-host-tests.sh": "ad7bfdabf1d8ae43f7459917d6f0773b878bb363b65654576f51526a657a2d58"
   },

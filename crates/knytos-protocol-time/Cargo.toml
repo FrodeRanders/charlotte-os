@@ -1,0 +1,9 @@
+[package]
+name = "knytos-protocol-time"
+version = "0.1.0"
+edition = "2024"
+description = "Knytos internal UTC time-service protocol"
+
+[lib]
+test = true
+bench = false

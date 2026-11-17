@@ -377,7 +377,7 @@ captured before thread publication; `ThreadHandle` retains it; and
 `observe_thread_exit_with_generation`. A missing or recycled slot completes
 immediately. `CharlotteThreadJoin_unsafe.cfg` restores TID-only registration
 and must violate `ObserverMatchesCapturedHandle` after slot reuse. Generation
-allocation uses `charlotte_lifecycle::claim_generation` and the scheduler's
+allocation uses `knytos_lifecycle::claim_generation` and the scheduler's
 single global atomic `try_update`; it starts at one and reserves `u64::MAX` as
 the exhausted state instead of ever issuing it. Concrete exhaustion panics
 (fail-stop) instead of returning the model's non-fatal `RejectExhaustedSpawn`;
@@ -958,7 +958,7 @@ echoed session and pending sequence before consuming the pending call.
 ## Authorization policy and capability issuance
 
 The target-independent state machine is implemented and host-tested in
-`charlotte-authorization` and the co-located production path is wired into
+`knytos-authorization` and the co-located production path is wired into
 `ns`. The signed loader derives a stable principal from authenticated artifact
 metadata, installs its exact address-space generation and roles in a
 kernel-only table, and IPC enqueue snapshots those values for the authenticated

@@ -53,7 +53,7 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_authorization::{
+use knytos_authorization::{
     AuditLog,
     AuditOutcome,
     AuthorizationError,
@@ -64,7 +64,7 @@ use charlotte_authorization::{
     Roles,
     wire,
 };
-use charlotte_launch::ns_status as status;
+use knytos_launch::ns_status as status;
 
 #[path = "ns/status_snapshot.rs"]
 mod status_snapshot;

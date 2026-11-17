@@ -17,8 +17,8 @@ pub(crate) fn check() {
     let mut fork = hash.clone();
     hash.update(b"bc");
     fork.update(b"bc");
-    assert_eq!(hash.finalize(), charlotte_launch::sha256::TEST_VECTOR_ABC);
-    assert_eq!(fork.finalize(), charlotte_launch::sha256::TEST_VECTOR_ABC);
+    assert_eq!(hash.finalize(), knytos_launch::sha256::TEST_VECTOR_ABC);
+    assert_eq!(fork.finalize(), knytos_launch::sha256::TEST_VECTOR_ABC);
 
     // Independently checked with Python hmac/hashlib. Short and partial input
     // covers the concrete adapter's incremental, clone and consuming paths.

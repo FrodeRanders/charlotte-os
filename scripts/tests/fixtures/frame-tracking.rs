@@ -2,7 +2,7 @@
 #![allow(dead_code, unused_imports, unused_attributes)]
 extern crate alloc;
 extern crate self as knytos_syscall;
-extern crate self as charlotte_lifecycle;
+extern crate self as knytos_lifecycle;
 #[path = SDK]
 mod syscall_format;
 pub use syscall_format::*;

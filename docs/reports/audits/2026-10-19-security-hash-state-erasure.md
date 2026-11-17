@@ -48,7 +48,7 @@ buffered block is erased before further input. The expanded message schedule
 and eight working words have local zeroizing owners. This adds no allocation,
 locking, capability cleanup, physical-release proof or recovery custody.
 
-One shared `charlotte_launch::sha256::hmac_sha256` owns key normalization,
+One shared `knytos_launch::sha256::hmac_sha256` owns key normalization,
 including the long-key digest, both pads, hash contexts and inner digest. It
 returns `Zeroizing<[u8; 32]>`. The two old S3/SCRAM helper implementations and
 plain-array HMAC return paths are removed. SigV4 retains each returned key owner;
@@ -56,7 +56,7 @@ SCRAM PBKDF2 replaces its current owner and transfers its accumulated result
 owner directly to the exchange. Public SHA digests still return arrays, with
 secret-derived consumers responsible for their result owners.
 
-`zeroize` 1.9 was already in the locked dependency graph. `charlotte-launch`
+`zeroize` 1.9 was already in the locked dependency graph. `knytos-launch`
 adds a direct dependency with default features disabled; the lockfile adds only
 that edge. No package version, cryptographic format or persistent record changes.
 

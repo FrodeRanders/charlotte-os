@@ -109,7 +109,7 @@ fn pressure() {
 fn retirement() {
     let before = snapshot();
     let entries = waiter_budget::node_used();
-    let principal = charlotte_launch::artifact_principal_id(b"reactor-lifetime-klib");
+    let principal = knytos_launch::artifact_principal_id(b"reactor-lifetime-klib");
     let space = AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),

@@ -199,7 +199,7 @@ impl LpTimerIfce for ApicTimer {
         // APIC initial counts are 32-bit. Use multiple hardware checkpoints
         // to reach a distant logical deadline within that range. TimerQueue
         // compares `now` with the unchanged logical deadline on every IRQ.
-        self.reset_value = charlotte_lifecycle::timer_checkpoint_count(ticks);
+        self.reset_value = knytos_lifecycle::timer_checkpoint_count(ticks);
         Ok(())
     }
 

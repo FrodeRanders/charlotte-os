@@ -34,11 +34,11 @@ on the service, storage stack and device flush contract.
     proto/.style={align=left, font=\footnotesize},
 ]
     \node[layer] (fs) {Filesystem (``fs'')};
-    \node[proto, right=0.5cm of fs] (fsproto) {charlotte-protocol-fs};
+    \node[proto, right=0.5cm of fs] (fsproto) {knytos-protocol-fs};
     \node[layer, below=0.6cm of fs] (obj) {Object store (``obj'')};
-    \node[proto, right=0.5cm of obj] (objproto) {charlotte-protocol-objstore};
+    \node[proto, right=0.5cm of obj] (objproto) {knytos-protocol-objstore};
     \node[layer, below=0.6cm of obj] (blk) {Block driver (``blk0'')};
-    \node[proto, right=0.5cm of blk] (blkproto) {charlotte-protocol-block};
+    \node[proto, right=0.5cm of blk] (blkproto) {knytos-protocol-block};
     \node[layer, below=0.6cm of blk] (nvme) {NVMe controller};
     \node[proto, right=0.5cm of nvme] (nvmeproto) {MMIO + DMA + MSI-X\\(granted at boot)};
 
@@ -141,7 +141,7 @@ The NVMe driver exposed several non-obvious requirements:
 
 \section{Block device protocol}
 
-The block protocol (\texttt{charlotte-protocol-block}) is a minimal
+The block protocol (\texttt{knytos-protocol-block}) is a minimal
 \texttt{no\_std} crate defining the endpoint IPC interface between block
 device consumers and drivers:
 
@@ -169,7 +169,7 @@ would still require separate implementations.
 
 \section{Object store}
 
-The persistent object-store prototype (\texttt{charlotte-protocol-objstore})
+The persistent object-store prototype (\texttt{knytos-protocol-objstore})
 provides dynamically sized blob storage on top of a block device. Ordinary objects
 receive monotonically increasing 64-bit IDs, while service-owned objects can use
 stable IDs through \texttt{OP\_CREATE\_AT}. Stable IDs let a replacement Raft
@@ -381,7 +381,7 @@ remains a single-voter restart test.
 
 \section{Native filesystem}
 
-The filesystem (\texttt{charlotte-protocol-fs}) builds hierarchical naming on
+The filesystem (\texttt{knytos-protocol-fs}) builds hierarchical naming on
 top of the object store. Directories and files are stored as objects, and the root
 directory is a fixed object ID (100).
 

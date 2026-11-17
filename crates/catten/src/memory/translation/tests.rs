@@ -60,7 +60,7 @@ pub(crate) fn run(
         unsafe {
             core::ptr::write_bytes(bytes, 0x5a, 4096);
         }
-        let first = VAddr::from(charlotte_launch::HEAP_VADDR);
+        let first = VAddr::from(knytos_launch::HEAP_VADDR);
         let result = map(&mut space, first, data.frame(), accepted);
         if accepted < needed {
             assert!(matches!(

@@ -3,7 +3,7 @@
 //! early artifact selection and policy publication only. Protected enrollment, persistent
 //! installation and key custody need separate support.
 
-use charlotte_launch::trust::{
+use knytos_launch::trust::{
     self,
     AdmissionTrust,
     signed_policy::VerifiedBootPolicy,
@@ -47,7 +47,7 @@ impl PreparedBootTrust {
         if trust::cluster_id(cluster) != Some(public.cluster_id) {
             return Err(PreparationError::WrongCluster);
         }
-        if charlotte_launch::operations::recipient_public_key(&recipient).ok()
+        if knytos_launch::operations::recipient_public_key(&recipient).ok()
             != Some(public.recipient_key)
         {
             return Err(PreparationError::RecipientMismatch);
@@ -68,7 +68,7 @@ impl PreparedBootTrust {
             0x10, 0x7d, 0x3b, 0x0d,
         ];
         Self {
-            public: charlotte_launch::development_admission_trust(cluster)
+            public: knytos_launch::development_admission_trust(cluster)
                 .expect("valid development admission trust"),
             verified_digest: None,
             recipient: Zeroizing::new(DEVELOPMENT_RECIPIENT_PRIVATE_KEY),
@@ -82,10 +82,10 @@ impl PreparedBootTrust {
         &self,
         resource: &[u8],
     ) -> Result<
-        charlotte_launch::management::sealed::PreparedProfile,
-        charlotte_launch::management::sealed::Error,
+        knytos_launch::management::sealed::PreparedProfile,
+        knytos_launch::management::sealed::Error,
     > {
-        charlotte_launch::management::sealed::open(resource, &self.public, &self.recipient)
+        knytos_launch::management::sealed::open(resource, &self.public, &self.recipient)
     }
 
     /// Rejection returns the entire preparation owner after unlocking. An

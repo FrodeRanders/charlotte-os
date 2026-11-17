@@ -45,7 +45,7 @@ pub fn test_el0_smoke() {
     let status_ptr: *mut u8 = loaded.status_frame.into();
     loop {
         let sentinel = unsafe {
-            crate::self_test::status_u32(status_ptr, charlotte_launch::smoke_status::MARKER)
+            crate::self_test::status_u32(status_ptr, knytos_launch::smoke_status::MARKER)
         };
         if sentinel == SMOKE_SENTINEL {
             logln!("[el0 smoke] SUCCESS: x86_64 Rust ELF ran at ring 3 and wrote the sentinel.");

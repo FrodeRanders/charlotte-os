@@ -185,8 +185,8 @@
     "docs/tla/check.sh": "84c7a44f36c73a1f8bb10352eae74fa4bba71b4fc732b307371a11d01ea81076"
   },
   "reviewed_source_sha256": {
-    "crates/charlotte-launch/src/trust/signed_policy.rs": "4fb6416b12deeb954ff37534104a3fd56543b9b2f2be8b4e4c547198648adb2c",
-    "crates/charlotte-launch/tests/signed_policy.rs": "2d223f5e7d80a685943e35139a5eb1103602cbbca1e821410fadbf5aaf043779",
+    "crates/knytos-launch/src/trust/signed_policy.rs": "4fb6416b12deeb954ff37534104a3fd56543b9b2f2be8b4e4c547198648adb2c",
+    "crates/knytos-launch/tests/signed_policy.rs": "2d223f5e7d80a685943e35139a5eb1103602cbbca1e821410fadbf5aaf043779",
     "crates/catten/src/service/admission.rs": "8d770e4de7413af64ae17f23c67381bcae59e19bec49725a6cc6f6ccd3376b9f",
     "crates/catten/src/service/admission/boot_fixture.rs": "9045686b20714a942789e71deed63a698a9334e9e47b5cafc36f56c3afd98005",
     "crates/catten/src/service/admission/tests.rs": "f99225521702e61b4657a4c602b0278c2a92d1beeb51f9e899eca2b6efd8e193",
@@ -575,7 +575,7 @@
   },
   "host_checks": [
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/charlotte-launch/Cargo.toml --test signed_policy (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-launch/Cargo.toml --test signed_policy (outside root Cargo configuration)",
       "exit": 0,
       "passed": 9,
       "failed": 0,

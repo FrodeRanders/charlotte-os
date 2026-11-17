@@ -184,7 +184,7 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   in those bits silently overwrite a directory entry.
 - **L — block `OP_WRITE` documented as "Move" but implemented as "BorrowRead"**
   (`docs/manual-v2/chapters/17-storage.tex:73-75,119` vs `../../../crates/knytos-services`).
-- **L — `charlotte-protocol-objstore` crate docstring is a version behind**
+- **L — `knytos-protocol-objstore` crate docstring is a version behind**
   ("v2", "512-entry directory", "one extent" vs v3, device-scaled, ≤16 extents).
 
 ### 3.6 Networking (M/L)
@@ -306,7 +306,7 @@ should be corrected in a follow-up pass (no code change implied):
 | `docs/architecture/live-upgrade.md` | Endpoint-takeover + multi-state rollback path is dead code; the manual is correct. |
 | `17-storage.tex` | Block `OP_WRITE` "Move" vs implemented "BorrowRead"; filesystem operation count (eight, not six). |
 | `docs/architecture/persistent-storage.md` | §3.2 init sequence missing Set-Features; §3.3 `memory_get_phys` wording (superseded by IOVA/`dma_map`); §4.2 "two objects" vs four object slots in code. |
-| `charlotte-protocol-objstore` (crate doc) | "v2", "512-entry directory", "one extent" (now v3, device-scaled, ≤16 extents). |
+| `knytos-protocol-objstore` (crate doc) | "v2", "512-entry directory", "one extent" (now v3, device-scaled, ≤16 extents). |
 | `docs/reference/raft-conformance.md` | "host tests obstructed by duplicate core" (host tests pass). |
 | `docs/architecture/sitas-xous.md` | "per-shard CQ boot-validated" (not exercised by sitas test); "TX completion reclamation not claimed" (now implemented). |
 | `knytos-rt` / `el0_sitas` comments | Heap VADDR "0x13000" (actual `0x30000`); stale "adder program" verifier branch. |

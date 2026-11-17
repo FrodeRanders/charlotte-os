@@ -414,7 +414,7 @@ impl AddressSpaceInterface for AddressSpace {
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
         if mapping.page_type.is_user_accessible()
-            && !charlotte_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
+            && !knytos_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
         {
             return Err(super::Error::PermissionDenied);
         }
@@ -433,7 +433,7 @@ impl AddressSpaceInterface for AddressSpace {
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
         if mapping.page_type.is_user_accessible()
-            && !charlotte_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
+            && !knytos_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
         {
             return Err(super::Error::PermissionDenied);
         }

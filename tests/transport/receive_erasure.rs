@@ -2,7 +2,7 @@
 use core::hint::black_box;
 
 use catten_services::tls_client::read_owned_chunk;
-use charlotte_kafka::{
+use knytos_kafka::{
     self as wire,
     frame::{
         FrameReceiver,

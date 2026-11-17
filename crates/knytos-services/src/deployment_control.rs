@@ -45,7 +45,7 @@ struct Prepared {
 fn prepare(request: Request, available: usize) -> Result<Prepared, i64> {
     let (opcode, arg, body, prefix, kind) = match request {
         Request::Notify(bytes) => {
-            let value = charlotte_launch::deployment::decode(&bytes)
+            let value = knytos_launch::deployment::decode(&bytes)
                 .ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
             if value.artifact_name.is_empty() {
                 return Err(clusterctl::ERR_TOO_LARGE);
@@ -53,7 +53,7 @@ fn prepare(request: Request, available: usize) -> Result<Prepared, i64> {
             (clusterctl::OP_NOTIFY, 0, bytes, true, ReplyKind::Scalar)
         }
         Request::Release(bytes) => {
-            if charlotte_launch::release::decode(&bytes).is_none() {
+            if knytos_launch::release::decode(&bytes).is_none() {
                 return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
             }
             // The same owner validates the receipt after the moved request's
@@ -61,19 +61,19 @@ fn prepare(request: Request, available: usize) -> Result<Prepared, i64> {
             return prepare_release(bytes, available);
         }
         Request::Operations(bytes) => {
-            if charlotte_launch::operations_bundle::decode(&bytes).is_none() {
+            if knytos_launch::operations_bundle::decode(&bytes).is_none() {
                 return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
             }
             (clusterctl::OP_NOTIFY_OPERATIONS, 0, bytes, true, ReplyKind::Scalar)
         }
         Request::Shutdown(bytes) => {
-            if charlotte_launch::shutdown::decode(&bytes).is_none() {
+            if knytos_launch::shutdown::decode(&bytes).is_none() {
                 return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
             }
             (clusterctl::OP_NOTIFY_SHUTDOWN, 0, bytes, true, ReplyKind::Scalar)
         }
         Request::IngressPolicy(bytes) => {
-            if charlotte_launch::ingress_policy::decode(&bytes).is_none() {
+            if knytos_launch::ingress_policy::decode(&bytes).is_none() {
                 return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
             }
             (clusterctl::OP_NOTIFY_INGRESS_POLICY, 0, bytes, true, ReplyKind::Scalar)
@@ -162,7 +162,7 @@ fn prepare_memory(
 fn decode_release(
     mut reply: CallResult,
     envelope: &[u8],
-) -> Result<charlotte_launch::release_admission::Receipt, i64> {
+) -> Result<knytos_launch::release_admission::Receipt, i64> {
     if reply.result < 0 {
         return Err(reply.result);
     }
@@ -171,7 +171,7 @@ fn decode_release(
     }
     let len = usize::try_from(reply.result).map_err(|_| crate::dns::ERR_UNCERTAIN)?;
     let memory = reply.memory.take().ok_or(crate::dns::ERR_UNCERTAIN)?;
-    if len > memory.len() || len > charlotte_launch::release_admission::MAX_LEN {
+    if len > memory.len() || len > knytos_launch::release_admission::MAX_LEN {
         return Err(crate::dns::ERR_UNCERTAIN);
     }
     let mapping = memory.map_read_only().map_err(|_| crate::dns::ERR_UNCERTAIN)?;
@@ -212,7 +212,7 @@ fn decode_policy(reply: CallResult) -> Result<alloc::string::String, i64> {
         mapping.as_slice().get(..len).ok_or(clusterctl::ERR_NOT_FOUND)?,
     )
     .ok_or(clusterctl::ERR_NOT_FOUND)?;
-    let policy = charlotte_launch::ingress_policy::decode(&entry.envelope)
+    let policy = knytos_launch::ingress_policy::decode(&entry.envelope)
         .ok_or(clusterctl::ERR_NOT_FOUND)?;
     Ok(format!(
         "{{\"generation\":{},\"sequence\":{},\"assignments\":{},\"not_before_unix_seconds\":{},\"\
@@ -225,13 +225,13 @@ fn decode_policy(reply: CallResult) -> Result<alloc::string::String, i64> {
     ))
 }
 fn release_response(
-    result: Result<charlotte_launch::release_admission::Receipt, i64>,
+    result: Result<knytos_launch::release_admission::Receipt, i64>,
 ) -> alloc::string::String {
     let receipt = match result {
         Ok(receipt) => receipt,
         Err(code) => return response(code),
     };
-    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
+    let mut bytes = [0; knytos_launch::release_admission::MAX_LEN];
     let Some(len) = receipt.encode(&mut bytes) else {
         return response(crate::dns::ERR_UNCERTAIN);
     };
@@ -806,7 +806,7 @@ mod tests {
         assert_eq!(request_size(4090, true, 100, 8291), Err(clusterctl::ERR_UPLOAD_FAILED));
         assert_eq!(request_size(usize::MAX, true, 0, usize::MAX), Err(clusterctl::ERR_TOO_LARGE));
         assert_eq!(request_size(1, false, usize::MAX, usize::MAX), Err(clusterctl::ERR_TOO_LARGE));
-        let size = charlotte_launch::operations_bundle::MAX_BUNDLE_LEN;
+        let size = knytos_launch::operations_bundle::MAX_BUNDLE_LEN;
         assert_eq!(
             request_size(size, true, 0, crate::deployment_input::MAX_BUFFERED_BYTES),
             Ok((256, 1048576))

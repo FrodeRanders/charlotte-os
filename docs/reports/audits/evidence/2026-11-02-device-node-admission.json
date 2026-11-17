@@ -23,7 +23,7 @@
     "crates/catten/src/resource_policy.rs": "a703f056bf58c0d0a13901d8d998e3bc05b556456ffe25b4f8e65995887972c8",
     "crates/catten/src/resource_policy/defaults.rs": "7d0b63fc235396cbd78b86c989ff0d02c25133450fcbb15ca8fff948d45cf506",
     "crates/catten/src/resource_policy/tests.rs": "4bcf8cb20326c77b13b7e20a4800dbc9a90c0839b97780a95d909f840040b6bf",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/tests/test-resource-policy.py": "05e518a7f3cc0627cddbb324c3b3f683a09bc67d71d4aa1d2191a23eb8f22032"
   },

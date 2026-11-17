@@ -16,7 +16,7 @@
 //! use catten_rt::{config, Context};
 //!
 //! fn main(ctx: Context) -> ! {
-//!     let mode = ctx.manifest_value(charlotte_launch::manifest_key(b"mode"));
+//!     let mode = ctx.manifest_value(knytos_launch::manifest_key(b"mode"));
 //!     config::write(0, mode.is_some() as u32);
 //!     unsafe { thread_exit(); }
 //! }
@@ -38,7 +38,7 @@ pub mod log;
 pub mod owned;
 /// ABI constants and register types for protocol adapters; prefer owned operations.
 pub use knytos_syscall as abi;
-pub use charlotte_launch::manifest_key;
+pub use knytos_launch::manifest_key;
 pub use owned::NodeShutdownRequestError;
 
 // ---- entry macro -----------------------------------------------------------
@@ -118,10 +118,10 @@ impl Context {
     /// by the launch environment for the domain lifetime.
     pub fn profile_memory(&self) -> Option<owned::LaunchMemoryRef<'_>> {
         let record = config::capability_record_by_kind(config::CapabilityKind::Profile)?;
-        if record.rights != charlotte_launch::PROFILE_CAPABILITY_RIGHT_MAP_READ {
+        if record.rights != knytos_launch::PROFILE_CAPABILITY_RIGHT_MAP_READ {
             return None;
         }
-        let metadata = charlotte_launch::ProfileCapabilityMetadata::decode(record.metadata)?;
+        let metadata = knytos_launch::ProfileCapabilityMetadata::decode(record.metadata)?;
         // The config page is the trusted ABI boundary and the returned borrow
         // cannot outlive this Context reference.
         unsafe {
@@ -255,7 +255,7 @@ impl ShutdownRequest {
     /// Call this only after owned resources have been explicitly closed or
     /// dropped. `thread_exit` does not unwind the Rust stack.
     pub fn complete(self) -> ! {
-        config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_READY);
+        config::publish_lifecycle_status(knytos_launch::lifecycle::STATUS_READY);
         unsafe { knytos_syscall::thread_exit() }
     }
 
@@ -268,7 +268,7 @@ impl ShutdownRequest {
     /// The kernel will not reclaim a hardware-root domain on ordinary
     /// [`complete`](Self::complete) acknowledgement alone.
     pub fn complete_device_quiesced(self) -> ! {
-        config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED);
+        config::publish_lifecycle_status(knytos_launch::lifecycle::STATUS_DEVICE_QUIESCED);
         unsafe { knytos_syscall::thread_exit() }
     }
 }
@@ -287,15 +287,15 @@ impl Lifecycle<'_> {
     /// A blocking endpoint receive alone does not observe lifecycle requests.
     pub fn shutdown_requested(&self) -> Option<ShutdownRequest> {
         let (state, reason, deadline_ms) = config::lifecycle_control()?;
-        if state == charlotte_launch::lifecycle::STATE_RUNNING {
+        if state == knytos_launch::lifecycle::STATE_RUNNING {
             return None;
         }
-        config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_REQUEST_SEEN);
+        config::publish_lifecycle_status(knytos_launch::lifecycle::STATUS_REQUEST_SEEN);
         let reason = match reason {
-            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED => {
+            knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED => {
                 ShutdownReason::DeploymentRetired
             }
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN => ShutdownReason::NodeShutdown,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN => ShutdownReason::NodeShutdown,
             value => ShutdownReason::Unknown(value),
         };
         Some(ShutdownRequest {
@@ -328,14 +328,14 @@ pub struct InitialCapability {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InitialCapabilityMetadata {
     None,
-    Profile(charlotte_launch::ProfileCapabilityMetadata),
+    Profile(knytos_launch::ProfileCapabilityMetadata),
     Unknown(u32),
 }
 
-fn capability_metadata(record: charlotte_launch::CapabilityRecord) -> InitialCapabilityMetadata {
+fn capability_metadata(record: knytos_launch::CapabilityRecord) -> InitialCapabilityMetadata {
     match config::CapabilityKind::from_raw(record.kind) {
         Some(config::CapabilityKind::Profile) => {
-            charlotte_launch::ProfileCapabilityMetadata::decode(record.metadata)
+            knytos_launch::ProfileCapabilityMetadata::decode(record.metadata)
                 .map(InitialCapabilityMetadata::Profile)
                 .unwrap_or(InitialCapabilityMetadata::Unknown(record.metadata))
         }
@@ -504,7 +504,7 @@ unsafe impl lock_api::RawMutex for CountingMutex {
 /// The per-domain heap arena with standard status-page accounting.
 ///
 /// Every allocation and free updates this domain's published heap counters
-/// (`charlotte_launch::heap_status`) so the kernel can expose current, peak,
+/// (`knytos_launch::heap_status`) so the kernel can expose current, peak,
 /// rate, and lock-contention evidence alongside the per-thread statistics. The
 /// arena is claimed lazily from the launch header's `heap_size`, so a
 /// deployment can be sized without rebuilding the runtime. It remains a single
@@ -541,11 +541,11 @@ fn configured_heap_bytes() -> usize {
     const PAGE: usize = 4096;
     let requested = crate::config::launch_layout().heap_size as usize;
     let candidate = if requested == 0 {
-        charlotte_launch::HEAP_SIZE
+        knytos_launch::HEAP_SIZE
     } else {
         requested
     };
-    candidate.clamp(PAGE, charlotte_launch::HEAP_VA_LIMIT) & !(PAGE - 1)
+    candidate.clamp(PAGE, knytos_launch::HEAP_VA_LIMIT) & !(PAGE - 1)
 }
 
 impl HeapLock {
@@ -568,7 +568,7 @@ impl HeapLock {
             Ok(_) => {
                 let capacity = configured_heap_bytes();
                 let arena = TalcLock::new(unsafe {
-                    Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, capacity)
+                    Claim::new(knytos_launch::HEAP_VADDR as *mut u8, capacity)
                 });
                 // SAFETY: this thread won the initializing transition, so no
                 // other thread can observe the arena before the publish below.
@@ -587,7 +587,7 @@ impl HeapLock {
 
 /// Publish the domain's standard heap record to its status page.
 fn publish_heap_status() {
-    use charlotte_launch::{
+    use knytos_launch::{
         STATUS_VADDR,
         heap_status,
     };

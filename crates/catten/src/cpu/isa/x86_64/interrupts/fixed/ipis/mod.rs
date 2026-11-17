@@ -19,7 +19,7 @@ unsafe extern "custom" {
 
 use alloc::vec::Vec;
 
-use charlotte_lifecycle::shootdown::{
+use knytos_lifecycle::shootdown::{
     Acknowledgement,
     BeginError,
     Observation,

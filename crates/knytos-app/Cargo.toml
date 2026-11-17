@@ -6,17 +6,17 @@ description = "Owned application context and typed service clients for Knytos"
 
 [features]
 default = []
-kafka = ["dep:charlotte-protocol-kafka"]
-s3 = ["dep:charlotte-protocol-s3"]
+kafka = ["dep:knytos-protocol-kafka"]
+s3 = ["dep:knytos-protocol-s3"]
 socket = []
 test-support = []
 
 [dependencies]
 knytos-rt = { path = "../knytos-rt" }
-charlotte-launch = { path = "../charlotte-launch" }
-charlotte-protocol-grant = { path = "../charlotte-protocol-grant" }
-charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka", optional = true }
-charlotte-protocol-s3 = { path = "../charlotte-protocol-s3", optional = true }
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-grant = { path = "../knytos-protocol-grant" }
+knytos-protocol-kafka = { path = "../knytos-protocol-kafka", optional = true }
+knytos-protocol-s3 = { path = "../knytos-protocol-s3", optional = true }
 
 [[example]]
 name = "reconnecting_client"

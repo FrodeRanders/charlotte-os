@@ -173,7 +173,7 @@ fn failed_cleanup(failure: Failure) {
         registry::tests::principal_root(b"device-namespace-retained-principal", false);
     let principal_base = memory::kernel_buffers::test_metadata_used(principal);
     let node_base = node_budget::snapshot().0[0];
-    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     let first = grant_mmio(handle.id(), 0x0900_0000, 1).unwrap();
     let authority_bytes = memory::kernel_buffers::test_metadata_used(principal)
         - principal_base

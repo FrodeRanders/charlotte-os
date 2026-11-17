@@ -1,7 +1,7 @@
 use super::*;
 
 // Exercise the actual counter implementation, not a duplicate policy model.
-#[path = "../../../charlotte-lifecycle/src/resources.rs"]
+#[path = "../../../knytos-lifecycle/src/resources.rs"]
 mod resources;
 
 fn exhaust<const N: usize>(pool: Pool<N>) {

@@ -45,12 +45,12 @@ use knytos_syscall::{
     IpcRights,
     thread_exit,
 };
-use charlotte_kafka::{
+use knytos_kafka::{
     self as wire,
     ProducerIdentity,
     RecordInput,
 };
-use charlotte_protocol_kafka::{
+use knytos_protocol_kafka::{
     Authentication,
     DeliveredRecord,
     RecordRequest,

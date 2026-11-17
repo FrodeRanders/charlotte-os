@@ -353,7 +353,7 @@ Where the bring-up landed and what happened to the earlier plan:
   (the `mapc` clippy fix removed the always-zero `CMD_TARGET_MASK`).
 - Spurious check (now `1020..=1023`): `crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`.
 - Heap mapping loop: `crates/catten/src/service/loader.rs` (now quiet) over `HEAP_PAGES`.
-- Heap geometry: `crates/charlotte-launch/src/lib.rs`
+- Heap geometry: `../../crates/knytos-launch`
   (`HEAP_VADDR = 0x300000`, `HEAP_SIZE = 0x400000`).
 - Kernel entry / EL2→EL1 descent: `crates/catten/src/main.rs` (`_start`;
   `# Safety` doc added).

@@ -1,7 +1,7 @@
 //! Shared capability-record admission. Every kind reserves before mutation;
 //! there is no unbounded allocation or retirement bypass.
 
-use charlotte_lifecycle::resources::CountBudget;
+use knytos_lifecycle::resources::CountBudget;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 

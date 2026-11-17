@@ -11,7 +11,7 @@ use catten_rt::{
         PendingCall,
     },
 };
-use charlotte_s3::http::{
+use knytos_s3::http::{
     ChunkedDecoder,
     ResponseHeadBuffer,
 };
@@ -144,7 +144,7 @@ impl Export<'_> {
 pub unsafe fn post(
     ctx: &Context,
     tcpip: ConnectionRef<'_>,
-    profile: &charlotte_launch::otlp::Profile,
+    profile: &knytos_launch::otlp::Profile,
     request: Vec<u8>,
     deadline: Deadline,
 ) -> Result<Outcome, Error> {
@@ -208,7 +208,7 @@ pub unsafe fn post(
             offset += written as usize;
         }
         let mut parser = ResponseHeadBuffer::new();
-        let mut head: Option<charlotte_s3::http::ResponseHead> = None;
+        let mut head: Option<knytos_s3::http::ResponseHead> = None;
         let mut chunked = ChunkedDecoder::new();
         let outcome = loop {
             op.check(ctx)?;

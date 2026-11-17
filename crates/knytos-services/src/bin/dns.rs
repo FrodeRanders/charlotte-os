@@ -122,7 +122,7 @@ use knytos_syscall::{
     submit_detached_timer,
     thread_exit,
 };
-use charlotte_protocol_msg::{
+use knytos_protocol_msg::{
     IPC_MESSAGE_HEADER_SIZE,
     parse_ipc_message_header,
 };
@@ -406,16 +406,16 @@ fn ingress_membership_snapshot(
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct EffectiveIngressBinding {
-    service: charlotte_launch::ingress::ServiceId,
+    service: knytos_launch::ingress::ServiceId,
     backend_name: Option<Vec<u8>>,
 }
 
 fn effective_ingress_bindings(
     catalog: &NameCatalog,
-    bootstrap: &[charlotte_launch::ingress::ServiceBinding<'_>],
+    bootstrap: &[knytos_launch::ingress::ServiceBinding<'_>],
 ) -> Vec<EffectiveIngressBinding> {
     if let Some(entry) = catalog.ingress_policy()
-        && let Some(policy) = charlotte_launch::ingress_policy::decode(&entry.envelope)
+        && let Some(policy) = knytos_launch::ingress_policy::decode(&entry.envelope)
     {
         return policy
             .assignments()
@@ -437,13 +437,13 @@ fn effective_ingress_bindings(
 fn encode_effective_ingress_bindings(bindings: &[EffectiveIngressBinding]) -> Option<Vec<u8>> {
     let borrowed = bindings
         .iter()
-        .map(|binding| charlotte_launch::ingress::ServiceBinding {
+        .map(|binding| knytos_launch::ingress::ServiceBinding {
             service: binding.service,
             backend_name: binding.backend_name.as_deref(),
         })
         .collect::<Vec<_>>();
-    let mut bytes = vec![0; charlotte_launch::ingress::encoded_len(&borrowed).ok()?];
-    charlotte_launch::ingress::encode(&borrowed, &mut bytes).ok()?;
+    let mut bytes = vec![0; knytos_launch::ingress::encoded_len(&borrowed).ok()?];
+    knytos_launch::ingress::encode(&borrowed, &mut bytes).ok()?;
     Some(bytes)
 }
 
@@ -459,7 +459,7 @@ fn cluster_observability_snapshot(
     transport: &RelmsgRaftTransport,
     catalog: &NameCatalog,
     local_mac: [u8; 6],
-    ingress_services: &[charlotte_launch::ingress::ServiceBinding<'_>],
+    ingress_services: &[knytos_launch::ingress::ServiceBinding<'_>],
     capacity_last_seen_ms: &BTreeMap<u64, (u64, u64)>,
     controller: cluster_observe::ControllerCounters,
 ) -> Option<Vec<u8>> {
@@ -483,7 +483,7 @@ fn cluster_observability_snapshot(
     let deployments = catalog.deployments();
     let mut committed_frames = BTreeMap::<u64, u64>::new();
     for (_, deployment) in &deployments {
-        let Some(descriptor) = charlotte_launch::deployment::decode(&deployment.descriptor) else {
+        let Some(descriptor) = knytos_launch::deployment::decode(&deployment.descriptor) else {
             continue;
         };
         let demand = operations_admission::descriptor_memory_demand(&descriptor);
@@ -570,7 +570,7 @@ fn cluster_observability_snapshot(
             desired_nodes.truncate(cluster_observe::MAX_NODES);
             ready_nodes.truncate(cluster_observe::MAX_NODES);
         }
-        let demand_frames = charlotte_launch::deployment::decode(&deployment.descriptor)
+        let demand_frames = knytos_launch::deployment::decode(&deployment.descriptor)
             .map(|descriptor| operations_admission::descriptor_memory_demand(&descriptor))
             .unwrap_or(0);
         let state = if !ready_nodes.is_empty() && ready_nodes.len() == desired_nodes.len() {
@@ -681,7 +681,7 @@ fn reconcile_replica_placements(
         .into_iter()
         .filter(|(_, entry)| {
             !entry.descriptor.is_empty()
-                && charlotte_launch::deployment::decode(&entry.descriptor)
+                && knytos_launch::deployment::decode(&entry.descriptor)
                     .is_some_and(|descriptor| descriptor.node_key == 0)
         })
         .collect::<Vec<_>>();
@@ -989,7 +989,7 @@ fn capacity_with_reservations(
         if replacing.contains(&artifact) {
             continue;
         }
-        let Some(descriptor) = charlotte_launch::deployment::decode(&entry.descriptor) else {
+        let Some(descriptor) = knytos_launch::deployment::decode(&entry.descriptor) else {
             continue;
         };
         let demand = operations_admission::descriptor_memory_demand(&descriptor);
@@ -1018,10 +1018,10 @@ fn capacity_with_reservations(
 }
 
 fn release_replacements(envelope: &[u8]) -> BTreeSet<Vec<u8>> {
-    charlotte_launch::release::decode(envelope).map_or_else(BTreeSet::new, |release| {
+    knytos_launch::release::decode(envelope).map_or_else(BTreeSet::new, |release| {
         release
             .descriptors()
-            .filter_map(charlotte_launch::deployment::decode)
+            .filter_map(knytos_launch::deployment::decode)
             .map(|descriptor| descriptor.artifact_name.to_vec())
             .collect()
     })
@@ -1040,7 +1040,7 @@ fn operations_capacity_view(
     capacity: operations_admission::NodeCapacityView,
     bundle: &[u8],
 ) -> operations_admission::NodeCapacityView {
-    let replacing = charlotte_launch::operations_bundle::decode(bundle)
+    let replacing = knytos_launch::operations_bundle::decode(bundle)
         .map_or_else(BTreeSet::new, |bundle| release_replacements(bundle.release));
     capacity_with_reservations(catalog, capacity, &replacing)
 }
@@ -1154,7 +1154,7 @@ fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
 
 fn operations_command(
     bundle: &[u8],
-    trust: &charlotte_launch::trust::AdmissionTrust,
+    trust: &knytos_launch::trust::AdmissionTrust,
     time: ConnectionRef<'_>,
     eligible_nodes: &[u64],
     automatic_node: u64,
@@ -1194,17 +1194,17 @@ fn operations_command(
 fn shutdown_command(
     envelope: &[u8],
     catalog: &NameCatalog,
-    trust: &charlotte_launch::trust::AdmissionTrust,
+    trust: &knytos_launch::trust::AdmissionTrust,
     time: ConnectionRef<'_>,
 ) -> Result<Vec<u8>, i64> {
     let key = catalog.cluster_key().unwrap_or(trust.deployment_key);
-    if charlotte_launch::shutdown::verify(envelope, &key)
-        != charlotte_launch::shutdown::VerifyOutcome::Valid
+    if knytos_launch::shutdown::verify(envelope, &key)
+        != knytos_launch::shutdown::VerifyOutcome::Valid
     {
         return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
     }
     let fields =
-        charlotte_launch::shutdown::decode(envelope).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
+        knytos_launch::shutdown::decode(envelope).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
     let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
     if now < fields.not_before_unix_seconds || now > fields.expires_unix_seconds {
         return Err(clusterctl::ERR_OUTSIDE_VALIDITY);
@@ -1214,22 +1214,22 @@ fn shutdown_command(
 
 fn ingress_policy_command(
     envelope: &[u8],
-    trust: &charlotte_launch::trust::AdmissionTrust,
+    trust: &knytos_launch::trust::AdmissionTrust,
     time: ConnectionRef<'_>,
 ) -> Result<Vec<u8>, i64> {
-    match charlotte_launch::ingress_policy::verify(
+    match knytos_launch::ingress_policy::verify(
         envelope,
         &trust.cluster_id,
         &trust.operations_key,
     ) {
-        charlotte_launch::ingress_policy::VerifyOutcome::Valid => {}
-        charlotte_launch::ingress_policy::VerifyOutcome::Invalid
-        | charlotte_launch::ingress_policy::VerifyOutcome::WrongCluster
-        | charlotte_launch::ingress_policy::VerifyOutcome::WrongKey => {
+        knytos_launch::ingress_policy::VerifyOutcome::Valid => {}
+        knytos_launch::ingress_policy::VerifyOutcome::Invalid
+        | knytos_launch::ingress_policy::VerifyOutcome::WrongCluster
+        | knytos_launch::ingress_policy::VerifyOutcome::WrongKey => {
             return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
         }
     }
-    let policy = charlotte_launch::ingress_policy::decode(envelope)
+    let policy = knytos_launch::ingress_policy::decode(envelope)
         .ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
     let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
     if now < policy.not_before_unix_seconds || now > policy.expires_unix_seconds {
@@ -1505,15 +1505,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         _ => 300,
     };
     let ingress_services = match ctx.manifest_value(INGRESS_SERVICES_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::ingress::decode(bytes)
+        Some(ManifestValue::Bytes(bytes)) => knytos_launch::ingress::decode(bytes)
             .unwrap_or_else(|| fatal(23))
             .collect::<Vec<_>>(),
         Some(_) => fatal(23),
         None => Vec::new(),
     };
-    let admission_trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
+    let admission_trust = match ctx.manifest_value(knytos_launch::ADMISSION_TRUST_MANIFEST_KEY) {
         Some(ManifestValue::Bytes(bytes)) => {
-            charlotte_launch::trust::AdmissionTrust::decode(bytes).unwrap_or_else(|| fatal(21))
+            knytos_launch::trust::AdmissionTrust::decode(bytes).unwrap_or_else(|| fatal(21))
         }
         _ => fatal(21),
     };
@@ -1542,7 +1542,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         fatal(4);
     }
     let (status, _) = unsafe { wait_reply(status_call) };
-    let (link, local_mac) = charlotte_protocol_net::decode_status(status);
+    let (link, local_mac) = knytos_protocol_net::decode_status(status);
     if link == 0 {
         fatal(5);
     }
@@ -1790,7 +1790,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             let (free_frames, usable_frames, cpu_load_permille, packed, features) =
                 knytos_syscall::node_pressure();
-            let target = charlotte_launch::execution_target::ExecutionTarget::from_pressure(
+            let target = knytos_launch::execution_target::ExecutionTarget::from_pressure(
                 packed, features,
             );
             if let (Some(node_key), Some(boot_nonce), Some(target)) =
@@ -3370,7 +3370,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 dns::OP_DEPLOY_OPERATIONS => {
                     let bundle = read_moved_bytes(
                         &message,
-                        charlotte_launch::operations_bundle::MAX_BUNDLE_LEN,
+                        knytos_launch::operations_bundle::MAX_BUNDLE_LEN,
                     );
                     let result = match bundle {
                         Some(bundle) if node.state == NodeState::Leader => {
@@ -3441,7 +3441,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
                 dns::OP_SHUTDOWN_SUBMIT => {
                     let envelope =
-                        read_moved_bytes(&message, charlotte_launch::shutdown::ENCODED_LEN);
+                        read_moved_bytes(&message, knytos_launch::shutdown::ENCODED_LEN);
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
                             match submit_deferred(
@@ -3501,7 +3501,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                     if let Some(entry) = catalog.shutdown_intent(message.arg0) {
                         let mut bytes =
-                            Vec::with_capacity(8 + charlotte_launch::shutdown::ENCODED_LEN);
+                            Vec::with_capacity(8 + knytos_launch::shutdown::ENCODED_LEN);
                         bytes.extend_from_slice(&entry.generation.to_le_bytes());
                         bytes.extend_from_slice(&entry.envelope);
                         reply_move_bytes(message.reply, &bytes);
@@ -3514,7 +3514,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 dns::OP_INGRESS_POLICY_SUBMIT => {
                     let envelope = read_moved_bytes(
                         &message,
-                        charlotte_launch::ingress_policy::MAX_ENCODED_LEN,
+                        knytos_launch::ingress_policy::MAX_ENCODED_LEN,
                     );
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
@@ -3626,7 +3626,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let bindings = stored
                         .iter()
                         .map(|(profile_name, entry)| {
-                            charlotte_launch::operations_pickup::CatalogBinding {
+                            knytos_launch::operations_pickup::CatalogBinding {
                                 generation: entry.generation,
                                 bundle_sequence: entry.bundle_sequence,
                                 sequence: entry.sequence,
@@ -3646,10 +3646,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         })
                         .collect::<Vec<_>>();
                     if let Some(len) =
-                        charlotte_launch::operations_pickup::catalog_list_encoded_len(&bindings)
+                        knytos_launch::operations_pickup::catalog_list_encoded_len(&bindings)
                     {
                         let mut bytes = vec![0; len];
-                        if charlotte_launch::operations_pickup::encode_catalog_list(
+                        if knytos_launch::operations_pickup::encode_catalog_list(
                             &bindings, &mut bytes,
                         )
                         .is_some()
@@ -3716,7 +3716,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         dns::ERR_NOT_LEADER
                     } else {
                         match read_key(&message) {
-                            Some(key) if key == charlotte_launch::CLUSTER_PUBLIC_KEY => {
+                            Some(key) if key == knytos_launch::CLUSTER_PUBLIC_KEY => {
                                 // The key ceremony: commit the cluster's
                                 // public key to the replicated state. The
                                 // reply is deferred until it has committed.
@@ -3799,7 +3799,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if message.memory != 0 {
                         memory_close(message.memory);
                     }
-                    let service = charlotte_launch::ingress::ServiceId::unpack(message.arg0)
+                    let service = knytos_launch::ingress::ServiceId::unpack(message.arg0)
                         .and_then(|service| {
                             effective_ingress_bindings(&catalog, &ingress_services)
                                 .into_iter()
@@ -3832,10 +3832,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 dns::OP_INGRESS_ASSIGNMENTS_NAMED => {
                     let name = read_moved_bytes(
                         &message,
-                        charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN,
+                        knytos_launch::deployment::MAX_ARTIFACT_NAME_LEN,
                     );
                     let Some(name) =
-                        name.filter(|name| charlotte_launch::deployment::valid_artifact_name(name))
+                        name.filter(|name| knytos_launch::deployment::valid_artifact_name(name))
                     else {
                         if message.reply != 0 {
                             ipc_reply(message.reply, dns::ERR_TOO_LARGE);
@@ -4646,9 +4646,9 @@ fn deployment_command(
     capacity: &operations_admission::NodeCapacityView,
 ) -> Result<Vec<u8>, i64> {
     let descriptor =
-        charlotte_launch::deployment::decode(bytes).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
+        knytos_launch::deployment::decode(bytes).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
     let artifact = descriptor.artifact_name;
-    if descriptor.placement != charlotte_launch::placement::PlacementPolicy::singleton() {
+    if descriptor.placement != knytos_launch::placement::PlacementPolicy::singleton() {
         return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
     }
     let capacity =

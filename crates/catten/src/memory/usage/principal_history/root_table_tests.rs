@@ -32,8 +32,8 @@ fn warm_slot() {
 
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
-    let principal = charlotte_launch::artifact_principal_id(b"root-table-sponsor");
-    let other = charlotte_launch::artifact_principal_id(b"root-table-other");
+    let principal = knytos_launch::artifact_principal_id(b"root-table-sponsor");
+    let other = knytos_launch::artifact_principal_id(b"root-table-other");
     let mut first = root(principal);
     let sibling = root(principal);
     let healthy = root(other);
@@ -97,8 +97,8 @@ pub(super) fn run() {
 
 fn late_refund() {
     warm_slot(); // Both publications below reuse an existing slot without growth.
-    let principal = charlotte_launch::artifact_principal_id(b"root-table-late");
-    let other = charlotte_launch::artifact_principal_id(b"root-table-successor");
+    let principal = knytos_launch::artifact_principal_id(b"root-table-late");
+    let other = knytos_launch::artifact_principal_id(b"root-table-successor");
     let first = root(principal);
     let table = AddressSpaceTable::new();
     let request = table.growth_request().unwrap().unwrap();
@@ -118,7 +118,7 @@ fn late_refund() {
 }
 
 fn abandonment() {
-    let principal = charlotte_launch::artifact_principal_id(b"root-table-abandoned");
+    let principal = knytos_launch::artifact_principal_id(b"root-table-abandoned");
     let root = root(principal);
     let table = AddressSpaceTable::new();
     let request = table.growth_request().unwrap().unwrap();

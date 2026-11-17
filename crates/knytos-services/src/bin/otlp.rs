@@ -139,7 +139,7 @@ impl Inputs {
         if status.memory.is_some() || status.connection.is_some() {
             return Err(());
         }
-        let (link, mac) = charlotte_protocol_net::decode_status(status.result);
+        let (link, mac) = knytos_protocol_net::decode_status(status.result);
         if link == 0 {
             return Err(());
         }
@@ -150,8 +150,8 @@ impl Inputs {
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
-    let profile = match ctx.manifest_value(charlotte_launch::otlp::KEY) {
-        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::otlp::Profile::decode(bytes),
+    let profile = match ctx.manifest_value(knytos_launch::otlp::KEY) {
+        Some(ManifestValue::Bytes(bytes)) => knytos_launch::otlp::Profile::decode(bytes),
         _ => None,
     }
     .unwrap_or_else(|| catten_rt::domain_abort());

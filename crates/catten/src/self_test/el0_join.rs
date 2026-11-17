@@ -111,7 +111,7 @@ pub mod inner {
         };
         let bytes = read_moved_memory(memory, len);
         let (_self_role, self_raft_id, _self_leader_id, peers) =
-            charlotte_protocol_disco::parse_cluster_answer(&bytes)?;
+            knytos_protocol_disco::parse_cluster_answer(&bytes)?;
         Some((self_raft_id.to_vec(), peers))
     }
 
@@ -189,7 +189,7 @@ pub mod inner {
             core::ptr::read_volatile(dns_status.add(offset) as *const u32)
         };
         let serving_deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while status_word(charlotte_launch::dns_status::RAFT_STATE) == 0 {
+        while status_word(knytos_launch::dns_status::RAFT_STATE) == 0 {
             serving_deadline.assert_pending("EL0 join DNS-owned Raft serving");
             // This is a fixture-only observation of a shared status page.
             // Yielding keeps the deadline live even on a
@@ -248,19 +248,19 @@ pub mod inner {
                         (
                             crate::self_test::status_u32(
                                 frouter,
-                                charlotte_launch::frouter_status::RX_TOTAL,
+                                knytos_launch::frouter_status::RX_TOTAL,
                             ),
                             crate::self_test::status_u32(
                                 frouter,
-                                charlotte_launch::frouter_status::FORWARDED,
+                                knytos_launch::frouter_status::FORWARDED,
                             ),
                             crate::self_test::status_u32(
                                 frouter,
-                                charlotte_launch::frouter_status::DROPPED,
+                                knytos_launch::frouter_status::DROPPED,
                             ),
                             crate::self_test::status_u32(
                                 frouter,
-                                charlotte_launch::frouter_status::ROUTES,
+                                knytos_launch::frouter_status::ROUTES,
                             ),
                         )
                     }
@@ -268,15 +268,15 @@ pub mod inner {
             crate::logln!(
                 "[join] timeout diagnostics: stage={} state={} members={} term={} catalog={} \
                  transport={} ipc={} calls={} queries={} frouter={}/{}/{}/{}",
-                status_word(charlotte_launch::dns_status::STAGE),
-                status_word(charlotte_launch::dns_status::RAFT_STATE),
-                status_word(charlotte_launch::dns_status::PEER_COUNT),
-                status_word(charlotte_launch::dns_status::CURRENT_TERM),
-                status_word(charlotte_launch::dns_status::CATALOG_ENTRIES),
-                status_word(charlotte_launch::dns_status::TRANSPORT_COMPLETIONS),
-                status_word(charlotte_launch::dns_status::IPC_REQUESTS_SERVED),
-                status_word(charlotte_launch::dns_status::REMOTE_CALLS_SERVED),
-                status_word(charlotte_launch::dns_status::REMOTE_QUERIES_SERVED),
+                status_word(knytos_launch::dns_status::STAGE),
+                status_word(knytos_launch::dns_status::RAFT_STATE),
+                status_word(knytos_launch::dns_status::PEER_COUNT),
+                status_word(knytos_launch::dns_status::CURRENT_TERM),
+                status_word(knytos_launch::dns_status::CATALOG_ENTRIES),
+                status_word(knytos_launch::dns_status::TRANSPORT_COMPLETIONS),
+                status_word(knytos_launch::dns_status::IPC_REQUESTS_SERVED),
+                status_word(knytos_launch::dns_status::REMOTE_CALLS_SERVED),
+                status_word(knytos_launch::dns_status::REMOTE_QUERIES_SERVED),
                 frouter_rx,
                 frouter_forwarded,
                 frouter_dropped,

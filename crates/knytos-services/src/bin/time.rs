@@ -41,7 +41,7 @@ use knytos_syscall::{
     monotonic_clock,
     thread_exit,
 };
-use charlotte_launch::time_status as status;
+use knytos_launch::time_status as status;
 
 catten_rt::entry!(main);
 
@@ -874,7 +874,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let (_, tcp_conn) =
         wait_for_registered_name_owned(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     let persistence_requested =
-        ctx.manifest_value(charlotte_launch::manifest_key(b"persist")).is_some();
+        ctx.manifest_value(knytos_launch::manifest_key(b"persist")).is_some();
     let obj_conn = if persistence_requested {
         Some(
             wait_for_registered_name_owned(ns_conn, objstore::NAME)
@@ -884,7 +884,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     } else {
         None
     };
-    let server_ipv4 = match ctx.manifest_value(charlotte_launch::manifest_key(b"ntp_ip")) {
+    let server_ipv4 = match ctx.manifest_value(knytos_launch::manifest_key(b"ntp_ip")) {
         Some(ManifestValue::Bytes(bytes)) if bytes.len() == 4 => {
             [bytes[0], bytes[1], bytes[2], bytes[3]]
         }

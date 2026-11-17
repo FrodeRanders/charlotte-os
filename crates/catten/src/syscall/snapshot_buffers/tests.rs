@@ -23,7 +23,7 @@ fn root() -> AddressSpaceHandle {
     crate::service::loader::create_user_address_space_handle()
 }
 fn signed_root(name: &[u8]) -> (AddressSpaceHandle, u64) {
-    let principal = charlotte_launch::artifact_principal_id(name);
+    let principal = knytos_launch::artifact_principal_id(name);
     let space = memory::AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),
@@ -66,16 +66,16 @@ fn simultaneous_maxima() {
     let before = used();
     let (handle, principal) = signed_root(b"primitive-snapshot-maxima");
     let class = Class::capture(handle).unwrap();
-    let maximum = charlotte_launch::operations_pickup::MAX_PICKUP_LEN;
-    let profile = charlotte_launch::operations::MAX_PROFILE_LEN;
+    let maximum = knytos_launch::operations_pickup::MAX_PICKUP_LEN;
+    let profile = knytos_launch::operations::MAX_PROFILE_LEN;
     let cap = input(handle, maximum);
-    let descriptor = input(handle, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN);
+    let descriptor = input(handle, knytos_launch::deployment::MAX_DESCRIPTOR_LEN);
     let baseline = used();
     {
         let inputs = class
             .scoped(
-                (cap, charlotte_launch::MAX_ARTIFACT_ELF_SIZE),
-                (descriptor, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN),
+                (cap, knytos_launch::MAX_ARTIFACT_ELF_SIZE),
+                (descriptor, knytos_launch::deployment::MAX_DESCRIPTOR_LEN),
             )
             .unwrap();
         let bytes = inputs.image.len() + inputs.descriptor.len();
@@ -124,8 +124,8 @@ fn simultaneous_maxima() {
     crate::logln!(
         "[syscall snapshot maxima] image+descriptor={}+{}; two pickup+plaintext={}+{} each and \
          3145728 actual mixed bytes; peak additional=11815160; policy={}/{}; exact recovery",
-        charlotte_launch::MAX_ARTIFACT_ELF_SIZE,
-        charlotte_launch::deployment::MAX_DESCRIPTOR_LEN,
+        knytos_launch::MAX_ARTIFACT_ELF_SIZE,
+        knytos_launch::deployment::MAX_DESCRIPTOR_LEN,
         maximum,
         profile,
         SnapshotBuffers::ORDINARY[0],
@@ -313,16 +313,16 @@ fn syscall_consumption() {
             call_no::REQUEST_NODE_SHUTDOWN,
         ] {
             let len = if number == call_no::REQUEST_NODE_SHUTDOWN {
-                charlotte_launch::shutdown::ENCODED_LEN
+                knytos_launch::shutdown::ENCODED_LEN
             } else {
                 512
             };
             let cap = input(handle, len);
-            let descriptor = input(handle, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN);
+            let descriptor = input(handle, knytos_launch::deployment::MAX_DESCRIPTOR_LEN);
             let mut frame = frame(handle, cap, len);
             if number == call_no::SPAWN_ARTIFACT_SCOPED {
                 frame.regs[3] = descriptor;
-                frame.regs[4] = charlotte_launch::deployment::MAX_DESCRIPTOR_LEN as u64;
+                frame.regs[4] = knytos_launch::deployment::MAX_DESCRIPTOR_LEN as u64;
             }
             let baseline = used();
             let pressure = (denied == 1).then(|| fill_budget(false, 0));

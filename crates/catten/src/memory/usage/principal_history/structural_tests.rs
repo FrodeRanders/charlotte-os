@@ -80,7 +80,7 @@ pub(super) fn run() {
 }
 
 fn initial_root_admission() {
-    let principal = charlotte_launch::artifact_principal_id(b"principal-constructor-control");
+    let principal = knytos_launch::artifact_principal_id(b"principal-constructor-control");
     let sponsor = memory::prepare_principal_backing(principal, false).unwrap();
     limit(principal, 0);
     let frame = PreparingUserFrame::allocate_zeroed().unwrap();
@@ -108,7 +108,7 @@ fn initial_root_admission() {
 }
 
 fn sparse_roots() {
-    let principal = charlotte_launch::artifact_principal_id(b"principal-sparse-control");
+    let principal = knytos_launch::artifact_principal_id(b"principal-sparse-control");
     let first = root(principal);
     let second = root(principal);
     // This foreign frame is owned by the kernel fixture. Only the private
@@ -140,8 +140,8 @@ fn sparse_roots() {
 }
 
 fn maximum_stack_reservation() {
-    let principal = charlotte_launch::artifact_principal_id(b"principal-stack-control");
-    let other_principal = charlotte_launch::artifact_principal_id(b"principal-stack-other");
+    let principal = knytos_launch::artifact_principal_id(b"principal-stack-control");
+    let other_principal = knytos_launch::artifact_principal_id(b"principal-stack-other");
     let first = root(principal);
     let second = root(principal);
     let other = root(other_principal);
@@ -159,7 +159,7 @@ fn maximum_stack_reservation() {
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..64 {
         assert!(Stacks::user(second, 4).is_err());
-        assert!(!memory::commit_user_heap_page_handle(second, charlotte_launch::HEAP_VADDR));
+        assert!(!memory::commit_user_heap_page_handle(second, knytos_launch::HEAP_VADDR));
         let mut healthy = Stacks::user(other, 4).unwrap();
         healthy.release().unwrap();
     }

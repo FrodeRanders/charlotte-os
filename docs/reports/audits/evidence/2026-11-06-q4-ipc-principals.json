@@ -706,9 +706,9 @@
       "log_sha256": "deedcebcf2b1bd084ecbc3cf139964a975ad38e53dfd283e6496ba5f288a9d6a",
       "diagnostics": [
         "    Checking knytos-syscall v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-syscall)",
-        "    Checking charlotte-protocol-kafka v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-protocol-kafka)",
+        "    Checking knytos-protocol-kafka v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-protocol-kafka)",
         "   Compiling catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
-        "    Checking charlotte-kafka-step v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-kafka-step)",
+        "    Checking knytos-kafka-step v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-kafka-step)",
         "error[E0277]: `ipc::attachments::Charge` doesn't implement `Debug`",
         "error[E0308]: arguments to this function are incorrect",
         "94 |             let pressure = Charge::reserve(",

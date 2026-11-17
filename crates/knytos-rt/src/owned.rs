@@ -20,7 +20,7 @@ use knytos_syscall::{
     IpcRights,
     OpCode,
 };
-use charlotte_lifecycle::ThreadIdentity;
+use knytos_lifecycle::ThreadIdentity;
 
 mod completion;
 mod device;
@@ -1393,21 +1393,21 @@ mod tests {
             artifact,
             1,
             descriptor,
-            charlotte_launch::deployment::HEADER_LEN,
+            knytos_launch::deployment::HEADER_LEN,
         )
         .expect("scoped launch");
         assert_eq!(domain.asid(), 2);
         assert_eq!(domain.principal(), 0x8000_abcd);
         assert_eq!(
             kernel::events(),
-            [kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN)]
+            [kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN)]
         );
         assert_eq!(domain.poll_retire(), Ok(true));
         drop(domain);
         assert_eq!(
             kernel::events(),
             [
-                kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN),
+                kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN),
                 kernel::Event::RetireArtifact(0x8000_abcd),
             ]
         );
@@ -1423,14 +1423,14 @@ mod tests {
             artifact,
             1,
             descriptor,
-            charlotte_launch::deployment::HEADER_LEN,
+            knytos_launch::deployment::HEADER_LEN,
         )
         .expect("scoped launch");
         drop(domain);
         assert_eq!(
             kernel::events(),
             [
-                kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN),
+                kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN),
                 kernel::Event::ForceRetireArtifact(0x8000_dcba),
             ]
         );
@@ -1679,12 +1679,12 @@ mod tests {
         let envelope = unsafe { OwnedMemory::from_raw(15) }.expect("shutdown envelope");
 
         assert_eq!(
-            request_node_shutdown(envelope, charlotte_launch::shutdown::ENCODED_LEN),
+            request_node_shutdown(envelope, knytos_launch::shutdown::ENCODED_LEN),
             Ok(())
         );
         assert_eq!(
             kernel::events(),
-            [kernel::Event::RequestNodeShutdown(15, charlotte_launch::shutdown::ENCODED_LEN,)]
+            [kernel::Event::RequestNodeShutdown(15, knytos_launch::shutdown::ENCODED_LEN,)]
         );
     }
 
@@ -1694,7 +1694,7 @@ mod tests {
         let envelope = unsafe { OwnedMemory::from_raw(16) }.expect("shutdown envelope");
 
         assert_eq!(
-            request_node_shutdown(envelope, charlotte_launch::shutdown::ENCODED_LEN - 1),
+            request_node_shutdown(envelope, knytos_launch::shutdown::ENCODED_LEN - 1),
             Err(NodeShutdownRequestError::InvalidEnvelope)
         );
         assert_eq!(kernel::events(), [kernel::Event::MemoryClose(16)]);
@@ -1712,14 +1712,14 @@ mod tests {
                 artifact,
                 1,
                 descriptor,
-                charlotte_launch::deployment::HEADER_LEN,
+                knytos_launch::deployment::HEADER_LEN,
             )
             .err(),
             Some(ArtifactLaunchError::Rejected)
         );
         assert_eq!(
             kernel::events(),
-            [kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN)]
+            [kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN)]
         );
     }
 
@@ -1744,7 +1744,7 @@ mod tests {
         assert!(matches!(
             launch_operational_connector(
                 package,
-                charlotte_launch::operations_pickup::PICKUP_HEADER_LEN,
+                knytos_launch::operations_pickup::PICKUP_HEADER_LEN,
                 b"kafka",
             ),
             Err(ArtifactLaunchError::Rejected)

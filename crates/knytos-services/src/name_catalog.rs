@@ -114,7 +114,7 @@ impl DeploymentEntry {
         &self,
         capacity: &crate::operations_admission::NodeCapacityView,
     ) -> bool {
-        let Some(descriptor) = charlotte_launch::deployment::decode(&self.descriptor) else {
+        let Some(descriptor) = knytos_launch::deployment::decode(&self.descriptor) else {
             return true;
         };
         self.replica_nodes.len() != self.replica_variants.len()
@@ -166,9 +166,9 @@ pub struct OperationalBindingEntry {
     pub profile_kind: u16,
     pub sequence: u64,
     pub expires_unix_seconds: u64,
-    pub recipient_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
-    pub signing_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
-    pub authorization_signature: [u8; charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN],
+    pub recipient_key_id: [u8; knytos_launch::operations::KEY_ID_LEN],
+    pub signing_key_id: [u8; knytos_launch::operations::KEY_ID_LEN],
+    pub authorization_signature: [u8; knytos_launch::operations_bundle::BINDING_SIGNATURE_LEN],
 }
 
 /// Latest replicated, operator-signed shutdown intent for one node.
@@ -196,7 +196,7 @@ pub struct IngressPolicyEntry {
 /// delayed delivery.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapacityEntry {
-    pub target: charlotte_launch::execution_target::ExecutionTarget,
+    pub target: knytos_launch::execution_target::ExecutionTarget,
     pub node_key: u64,
     pub boot_nonce: u64,
     pub epoch: u64,
@@ -238,9 +238,9 @@ struct CompactOperationalBinding {
     profile_kind: u16,
     sequence: u64,
     expires_unix_seconds: u64,
-    recipient_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
-    signing_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
-    authorization_signature: [u8; charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN],
+    recipient_key_id: [u8; knytos_launch::operations::KEY_ID_LEN],
+    signing_key_id: [u8; knytos_launch::operations::KEY_ID_LEN],
+    authorization_signature: [u8; knytos_launch::operations_bundle::BINDING_SIGNATURE_LEN],
 }
 
 struct CompactOperationalSet {
@@ -256,13 +256,13 @@ fn release_receipt(
     generation: u64,
     components: impl Iterator<Item = u64>,
 ) -> Option<Vec<u8>> {
-    let mut generations = [0; charlotte_launch::release::MAX_DESCRIPTORS];
+    let mut generations = [0; knytos_launch::release::MAX_DESCRIPTORS];
     let mut count = 0;
     for generation in components {
         *generations.get_mut(count)? = generation;
         count += 1;
     }
-    let receipt = charlotte_launch::release_admission::Receipt::new(
+    let receipt = knytos_launch::release_admission::Receipt::new(
         envelope,
         generation,
         &generations[..count],
@@ -279,11 +279,11 @@ fn repeated_release_receipt(
     generation: u64,
     deployments: &BTreeMap<Vec<u8>, DeploymentEntry>,
 ) -> Option<Vec<u8>> {
-    let release = charlotte_launch::release::decode(envelope)?;
-    let mut generations = [0; charlotte_launch::release::MAX_DESCRIPTORS];
+    let release = knytos_launch::release::decode(envelope)?;
+    let mut generations = [0; knytos_launch::release::MAX_DESCRIPTORS];
     let mut count = 0;
     for descriptor in release.descriptors() {
-        let name = charlotte_launch::deployment::decode(descriptor)?.artifact_name;
+        let name = knytos_launch::deployment::decode(descriptor)?.artifact_name;
         let current = deployments.get(name)?;
         if current.descriptor != descriptor {
             return None;
@@ -295,11 +295,11 @@ fn repeated_release_receipt(
 }
 
 fn release_contains_artifact(
-    release: &charlotte_launch::release::ReleaseEnvelope<'_>,
+    release: &knytos_launch::release::ReleaseEnvelope<'_>,
     target: &[u8],
 ) -> bool {
     release.descriptors().any(|bytes| {
-        charlotte_launch::deployment::decode(bytes)
+        knytos_launch::deployment::decode(bytes)
             .is_some_and(|descriptor| descriptor.artifact_name == target)
     })
 }
@@ -307,7 +307,7 @@ fn release_contains_artifact(
 fn parse_operational_tail(
     command: &[u8],
     offset: usize,
-    release: &charlotte_launch::release::ReleaseEnvelope<'_>,
+    release: &knytos_launch::release::ReleaseEnvelope<'_>,
 ) -> Option<ParsedOperationalTail> {
     if offset == command.len() {
         return Some(None);
@@ -319,7 +319,7 @@ fn parse_operational_tail(
     if bundle_sequence == 0
         || bundle_digest.iter().all(|byte| *byte == 0)
         || binding_count == 0
-        || usize::from(binding_count) > charlotte_launch::operations_bundle::MAX_BINDINGS
+        || usize::from(binding_count) > knytos_launch::operations_bundle::MAX_BINDINGS
     {
         return None;
     }
@@ -333,12 +333,12 @@ fn parse_operational_tail(
         let (object_len, after_object_len) = read_u16(command, after_profile_len)?;
         let envelope_digest: [u8; 32] =
             command.get(after_object_len..after_object_len + 32)?.try_into().ok()?;
-        let recipient_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN] =
+        let recipient_key_id: [u8; knytos_launch::operations::KEY_ID_LEN] =
             command.get(after_object_len + 32..after_object_len + 48)?.try_into().ok()?;
-        let signing_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN] =
+        let signing_key_id: [u8; knytos_launch::operations::KEY_ID_LEN] =
             command.get(after_object_len + 48..after_object_len + 64)?.try_into().ok()?;
         let authorization_signature: [u8;
-            charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN] =
+            knytos_launch::operations_bundle::BINDING_SIGNATURE_LEN] =
             command.get(after_object_len + 64..after_object_len + 128)?.try_into().ok()?;
         let target_start = after_object_len + 128;
         let target_end = target_start.checked_add(usize::from(target_len))?;
@@ -349,11 +349,11 @@ fn parse_operational_tail(
         let object_key = command.get(profile_end..object_end)?;
         if sequence == 0
             || expires_unix_seconds == 0
-            || !charlotte_launch::operations::valid_profile_kind(profile_kind)
-            || !charlotte_launch::deployment::valid_artifact_name(target_artifact)
+            || !knytos_launch::operations::valid_profile_kind(profile_kind)
+            || !knytos_launch::deployment::valid_artifact_name(target_artifact)
             || !release_contains_artifact(release, target_artifact)
-            || !charlotte_launch::operations::valid_profile_name(profile_name)
-            || !charlotte_launch::operations_bundle::valid_object_key(object_key)
+            || !knytos_launch::operations::valid_profile_name(profile_name)
+            || !knytos_launch::operations_bundle::valid_object_key(object_key)
             || envelope_digest.iter().all(|byte| *byte == 0)
             || recipient_key_id.iter().all(|byte| *byte == 0)
             || signing_key_id.iter().all(|byte| *byte == 0)
@@ -389,14 +389,14 @@ fn parse_operational_tail(
 
 impl NameCatalog {
     pub fn new() -> Arc<Self> {
-        Self::new_with_deployment_key(charlotte_launch::CLUSTER_PUBLIC_KEY)
+        Self::new_with_deployment_key(knytos_launch::CLUSTER_PUBLIC_KEY)
     }
 
     pub fn new_with_deployment_key(bootstrap_deployment_key: [u8; 32]) -> Arc<Self> {
         Self::new_with_control_plane_trust(
             bootstrap_deployment_key,
             bootstrap_deployment_key,
-            charlotte_launch::trust::cluster_id(b"knytos").expect("static cluster name"),
+            knytos_launch::trust::cluster_id(b"knytos").expect("static cluster name"),
         )
     }
 
@@ -566,7 +566,7 @@ impl NameCatalog {
 
     fn assignments_compatible(
         &self,
-        descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+        descriptor: &knytos_launch::deployment::DeploymentDescriptor<'_>,
         nodes: &[u64],
         variants: &[u16],
     ) -> bool {
@@ -879,19 +879,19 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 if end != command.len()
-                    || descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+                    || descriptor.len() > knytos_launch::deployment::MAX_DESCRIPTOR_LEN
                 {
                     return Vec::new();
                 }
-                let Some(signed) = charlotte_launch::deployment::decode(descriptor) else {
+                let Some(signed) = knytos_launch::deployment::decode(descriptor) else {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 };
                 let artifact = signed.artifact_name;
                 let key = (*self.cluster_key.lock()).unwrap_or(self.bootstrap_deployment_key);
-                if charlotte_launch::deployment::verify(descriptor, &key)
-                    != charlotte_launch::deployment::VerifyOutcome::Valid
+                if knytos_launch::deployment::verify(descriptor, &key)
+                    != knytos_launch::deployment::VerifyOutcome::Valid
                     || (signed.node_key != 0 && signed.node_key != node_key)
-                    || signed.placement != charlotte_launch::placement::PlacementPolicy::singleton()
+                    || signed.placement != knytos_launch::placement::PlacementPolicy::singleton()
                 {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 }
@@ -910,7 +910,7 @@ impl NameCatalog {
                     return existing.generation.to_le_bytes().to_vec();
                 }
                 if let Some(existing) = deployments.get(artifact) {
-                    let Some(previous) = charlotte_launch::deployment::decode(&existing.descriptor)
+                    let Some(previous) = knytos_launch::deployment::decode(&existing.descriptor)
                     else {
                         return Vec::new();
                     };
@@ -997,12 +997,12 @@ impl NameCatalog {
                 if current.generation != expected_generation || current.descriptor.is_empty() {
                     return 0u64.to_le_bytes().to_vec();
                 }
-                let Some(descriptor) = charlotte_launch::deployment::decode(&current.descriptor)
+                let Some(descriptor) = knytos_launch::deployment::decode(&current.descriptor)
                 else {
                     return Vec::new();
                 };
                 let every_node = descriptor.placement.flags
-                    & charlotte_launch::placement::EVERY_ELIGIBLE_NODE
+                    & knytos_launch::placement::EVERY_ELIGIBLE_NODE
                     != 0;
                 if descriptor.node_key != 0
                     || (!every_node && nodes.len() != usize::from(descriptor.placement.replicas))
@@ -1106,19 +1106,19 @@ impl NameCatalog {
                 // ceremony on the first node.
                 let cluster_key =
                     (*self.cluster_key.lock()).unwrap_or(self.bootstrap_deployment_key);
-                if charlotte_launch::release::verify(envelope_bytes, &cluster_key)
-                    != charlotte_launch::release::VerifyOutcome::Valid
+                if knytos_launch::release::verify(envelope_bytes, &cluster_key)
+                    != knytos_launch::release::VerifyOutcome::Valid
                 {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 }
-                let Some(envelope) = charlotte_launch::release::decode(envelope_bytes) else {
+                let Some(envelope) = knytos_launch::release::decode(envelope_bytes) else {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 };
                 if usize::from(descriptor_count) != envelope.descriptors().count() {
                     return Vec::new();
                 }
                 for (index, bytes) in envelope.descriptors().enumerate() {
-                    let Some(descriptor) = charlotte_launch::deployment::decode(bytes) else {
+                    let Some(descriptor) = knytos_launch::deployment::decode(bytes) else {
                         return Vec::new();
                     };
                     if !self.assignments_compatible(
@@ -1136,14 +1136,14 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 let has_operational_tail = operational_tail.is_some();
-                let release_digest = charlotte_launch::sha256::digest(envelope_bytes);
+                let release_digest = knytos_launch::sha256::digest(envelope_bytes);
 
                 let mut releases = self.releases.lock();
                 let existing_release = releases.get(envelope.release_name);
                 let mut release_exact = false;
                 let release_generation = match existing_release {
                     Some(existing) => {
-                        let Some(previous) = charlotte_launch::release::decode(&existing.envelope)
+                        let Some(previous) = knytos_launch::release::decode(&existing.envelope)
                         else {
                             return Vec::new();
                         };
@@ -1206,7 +1206,7 @@ impl NameCatalog {
                     usize::from(descriptor_count).min(command.len().saturating_sub(after_envelope)),
                 );
                 for (index, descriptor_bytes) in envelope.descriptors().enumerate() {
-                    let Some(descriptor) = charlotte_launch::deployment::decode(descriptor_bytes)
+                    let Some(descriptor) = knytos_launch::deployment::decode(descriptor_bytes)
                     else {
                         return Vec::new();
                     };
@@ -1217,7 +1217,7 @@ impl NameCatalog {
                         return crate::clusterctl::ERR_INCOMPATIBLE_TARGET.to_le_bytes().to_vec();
                     }
                     let every_node = descriptor.placement.flags
-                        & charlotte_launch::placement::EVERY_ELIGIBLE_NODE
+                        & knytos_launch::placement::EVERY_ELIGIBLE_NODE
                         != 0;
                     if (descriptor.node_key != 0
                         && assigned_nodes.as_slice() != [descriptor.node_key])
@@ -1231,7 +1231,7 @@ impl NameCatalog {
                         match deployments.get(descriptor.artifact_name) {
                             Some(current) => {
                                 let Some(previous) =
-                                    charlotte_launch::deployment::decode(&current.descriptor)
+                                    knytos_launch::deployment::decode(&current.descriptor)
                                 else {
                                     return Vec::new();
                                 };
@@ -1474,18 +1474,18 @@ impl NameCatalog {
                 }
                 let cluster_key =
                     (*self.cluster_key.lock()).unwrap_or(self.bootstrap_deployment_key);
-                if charlotte_launch::shutdown::verify(envelope, &cluster_key)
-                    != charlotte_launch::shutdown::VerifyOutcome::Valid
+                if knytos_launch::shutdown::verify(envelope, &cluster_key)
+                    != knytos_launch::shutdown::VerifyOutcome::Valid
                 {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 }
-                let Some(fields) = charlotte_launch::shutdown::decode(envelope) else {
+                let Some(fields) = knytos_launch::shutdown::decode(envelope) else {
                     return Vec::new();
                 };
                 let mut intents = self.shutdown_intents.lock();
                 let generation = match intents.get(&fields.target_node) {
                     Some(existing) => {
-                        let Some(previous) = charlotte_launch::shutdown::decode(&existing.envelope)
+                        let Some(previous) = knytos_launch::shutdown::decode(&existing.envelope)
                         else {
                             return Vec::new();
                         };
@@ -1526,22 +1526,22 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 if after_envelope != command.len()
-                    || charlotte_launch::ingress_policy::verify(
+                    || knytos_launch::ingress_policy::verify(
                         envelope,
                         &self.cluster_id,
                         &self.bootstrap_operations_key,
-                    ) != charlotte_launch::ingress_policy::VerifyOutcome::Valid
+                    ) != knytos_launch::ingress_policy::VerifyOutcome::Valid
                 {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 }
-                let Some(policy) = charlotte_launch::ingress_policy::decode(envelope) else {
+                let Some(policy) = knytos_launch::ingress_policy::decode(envelope) else {
                     return Vec::new();
                 };
                 let mut current = self.ingress_policy.lock();
                 let generation = match current.as_ref() {
                     Some(existing) => {
                         let Some(previous) =
-                            charlotte_launch::ingress_policy::decode(&existing.envelope)
+                            knytos_launch::ingress_policy::decode(&existing.envelope)
                         else {
                             return Vec::new();
                         };
@@ -1725,7 +1725,7 @@ fn decode_node_capacity(command: &[u8]) -> Option<NodeCapacityEntry> {
     let (usable_frames, position) = read_u64(command, position)?;
     let (cpu_load_permille, end) = read_u16(command, position)?;
     let target =
-        charlotte_launch::execution_target::ExecutionTarget::decode(command.get(end..end + 16)?)?;
+        knytos_launch::execution_target::ExecutionTarget::decode(command.get(end..end + 16)?)?;
     if end + 16 != command.len()
         || node_key == 0
         || boot_nonce == 0
@@ -1837,12 +1837,12 @@ pub fn encode_shutdown_query(node_key: u64) -> Vec<u8> {
 }
 
 pub fn decode_shutdown_result(bytes: &[u8]) -> Option<ShutdownIntentEntry> {
-    if bytes.len() != 8 + charlotte_launch::shutdown::ENCODED_LEN {
+    if bytes.len() != 8 + knytos_launch::shutdown::ENCODED_LEN {
         return None;
     }
     let generation = u64::from_le_bytes(bytes[..8].try_into().ok()?);
     let envelope = bytes[8..].to_vec();
-    (generation != 0 && charlotte_launch::shutdown::decode(&envelope).is_some()).then_some(
+    (generation != 0 && knytos_launch::shutdown::decode(&envelope).is_some()).then_some(
         ShutdownIntentEntry {
             generation,
             envelope,
@@ -1855,12 +1855,12 @@ pub fn encode_ingress_policy_query() -> Vec<u8> {
 }
 
 pub fn decode_ingress_policy_result(bytes: &[u8]) -> Option<IngressPolicyEntry> {
-    if bytes.len() < 8 + charlotte_launch::ingress_policy::HEADER_LEN {
+    if bytes.len() < 8 + knytos_launch::ingress_policy::HEADER_LEN {
         return None;
     }
     let generation = u64::from_le_bytes(bytes[..8].try_into().ok()?);
     let envelope = bytes[8..].to_vec();
-    (generation != 0 && charlotte_launch::ingress_policy::decode(&envelope).is_some()).then_some(
+    (generation != 0 && knytos_launch::ingress_policy::decode(&envelope).is_some()).then_some(
         IngressPolicyEntry {
             generation,
             envelope,
@@ -1881,10 +1881,10 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
         return None;
     }
     let (descriptor, end) = take_len_bytes(bytes, 16)?;
-    if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
+    if descriptor.len() > knytos_launch::deployment::MAX_DESCRIPTOR_LEN {
         return None;
     }
-    let signed = charlotte_launch::deployment::decode(descriptor)?;
+    let signed = knytos_launch::deployment::decode(descriptor)?;
     let (count, mut position) = read_u16(bytes, end)?;
     if position.checked_add(usize::from(count).checked_mul(10)?)? != bytes.len() {
         return None;
@@ -1912,14 +1912,14 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
 
 pub fn encode_deployment_result(entry: &DeploymentEntry) -> Option<Vec<u8>> {
     if entry.generation == 0
-        || entry.descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+        || entry.descriptor.len() > knytos_launch::deployment::MAX_DESCRIPTOR_LEN
         || entry.replica_nodes.contains(&0)
         || entry.replica_nodes.windows(2).any(|nodes| nodes[0] >= nodes[1])
         || entry.replica_nodes.len() != entry.replica_variants.len()
     {
         return None;
     }
-    let signed = charlotte_launch::deployment::decode(&entry.descriptor)?;
+    let signed = knytos_launch::deployment::decode(&entry.descriptor)?;
     if entry.replica_variants.iter().any(|index| signed.variant(usize::from(*index)).is_none()) {
         return None;
     }
@@ -1973,7 +1973,7 @@ pub fn encode_reassign(
     buf.extend_from_slice(artifact);
     buf.extend_from_slice(&expected_generation.to_le_bytes());
     buf.extend_from_slice(&(replica_nodes.len() as u16).to_le_bytes());
-    let signed = charlotte_launch::deployment::decode(descriptor)?;
+    let signed = knytos_launch::deployment::decode(descriptor)?;
     for node in replica_nodes {
         buf.extend_from_slice(&node.to_le_bytes());
         buf.extend_from_slice(&signed.select_variant(capacity.get(node)?.target?)?.to_le_bytes());
@@ -1989,7 +1989,7 @@ pub fn encode_release(
     assigned_nodes: &[u64],
     capacity: &crate::operations_admission::NodeCapacityView,
 ) -> Option<Vec<u8>> {
-    let release = charlotte_launch::release::decode(envelope)?;
+    let release = knytos_launch::release::decode(envelope)?;
     if release.descriptors().count() != assigned_nodes.len()
         || assigned_nodes.len() > u16::MAX as usize
     {
@@ -2001,7 +2001,7 @@ pub fn encode_release(
     buf.extend_from_slice(envelope);
     buf.extend_from_slice(&(assigned_nodes.len() as u16).to_le_bytes());
     for (node, bytes) in assigned_nodes.iter().zip(release.descriptors()) {
-        let signed = charlotte_launch::deployment::decode(bytes)?;
+        let signed = knytos_launch::deployment::decode(bytes)?;
         buf.extend_from_slice(&node.to_le_bytes());
         buf.extend_from_slice(&signed.select_variant(capacity.get(node)?.target?)?.to_le_bytes());
     }
@@ -2016,7 +2016,7 @@ pub fn encode_release_replicas(
     assignments: &[Vec<u64>],
     capacity: &crate::operations_admission::NodeCapacityView,
 ) -> Option<Vec<u8>> {
-    let release = charlotte_launch::release::decode(envelope)?;
+    let release = knytos_launch::release::decode(envelope)?;
     if release.descriptors().count() != assignments.len() || assignments.len() > u16::MAX as usize {
         return None;
     }
@@ -2037,7 +2037,7 @@ pub fn encode_release_replicas(
     buf.extend_from_slice(envelope);
     buf.extend_from_slice(&(assignments.len() as u16).to_le_bytes());
     for (nodes, bytes) in assignments.iter().zip(release.descriptors()) {
-        let signed = charlotte_launch::deployment::decode(bytes)?;
+        let signed = knytos_launch::deployment::decode(bytes)?;
         buf.extend_from_slice(&(nodes.len() as u16).to_le_bytes());
         for node in nodes {
             buf.extend_from_slice(&node.to_le_bytes());
@@ -2054,14 +2054,14 @@ pub fn encode_release_replicas(
 /// The large encrypted envelopes are transport proofs and remain in the
 /// central object store. This command retains their signed identities,
 /// routing metadata and replay fences alongside the exact release. The DNS
-/// leader must call [`charlotte_launch::operations_bundle::verify`] before
+/// leader must call [`knytos_launch::operations_bundle::verify`] before
 /// constructing this trusted compact command.
 pub fn encode_release_with_operations(
     bundle_bytes: &[u8],
     assigned_nodes: &[u64],
     capacity: &crate::operations_admission::NodeCapacityView,
 ) -> Option<Vec<u8>> {
-    let bundle = charlotte_launch::operations_bundle::decode(bundle_bytes)?;
+    let bundle = knytos_launch::operations_bundle::decode(bundle_bytes)?;
     let mut command = encode_release(bundle.release, assigned_nodes, capacity)?;
     append_operational_tail(&mut command, bundle_bytes, &bundle)?;
     (command.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(command)
@@ -2070,14 +2070,14 @@ pub fn encode_release_with_operations(
 fn append_operational_tail(
     command: &mut Vec<u8>,
     bundle_bytes: &[u8],
-    bundle: &charlotte_launch::operations_bundle::Bundle<'_>,
+    bundle: &knytos_launch::operations_bundle::Bundle<'_>,
 ) -> Option<()> {
     command.extend_from_slice(&bundle.sequence.to_le_bytes());
-    command.extend_from_slice(&charlotte_launch::sha256::digest(bundle_bytes));
+    command.extend_from_slice(&knytos_launch::sha256::digest(bundle_bytes));
     let binding_count = u16::try_from(bundle.bindings().count()).ok()?;
     command.extend_from_slice(&binding_count.to_le_bytes());
     for binding in bundle.bindings() {
-        let envelope = charlotte_launch::operations::decode(binding.envelope)?;
+        let envelope = knytos_launch::operations::decode(binding.envelope)?;
         command.extend_from_slice(&envelope.sequence.to_le_bytes());
         command.extend_from_slice(&envelope.expires_unix_seconds.to_le_bytes());
         command.extend_from_slice(&envelope.profile_kind.to_le_bytes());
@@ -2102,7 +2102,7 @@ pub fn encode_release_replicas_with_operations(
     assignments: &[Vec<u64>],
     capacity: &crate::operations_admission::NodeCapacityView,
 ) -> Option<Vec<u8>> {
-    let bundle = charlotte_launch::operations_bundle::decode(bundle_bytes)?;
+    let bundle = knytos_launch::operations_bundle::decode(bundle_bytes)?;
     let mut command = encode_release_replicas(bundle.release, assignments, capacity)?;
     append_operational_tail(&mut command, bundle_bytes, &bundle)?;
     (command.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(command)
@@ -2119,7 +2119,7 @@ pub fn encode_set_cluster_key(key: &[u8; 32]) -> Vec<u8> {
 /// Encode an operator-signed shutdown intent for deterministic Raft
 /// admission. Signature and replay checks are repeated by the state machine.
 pub fn encode_shutdown(envelope: &[u8]) -> Option<Vec<u8>> {
-    charlotte_launch::shutdown::decode(envelope)?;
+    knytos_launch::shutdown::decode(envelope)?;
     let mut buf = Vec::with_capacity(1 + 4 + envelope.len());
     buf.push(CMD_SHUTDOWN);
     buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());
@@ -2130,7 +2130,7 @@ pub fn encode_shutdown(envelope: &[u8]) -> Option<Vec<u8>> {
 /// Encode a complete operator-signed ingress-policy replacement. Signature,
 /// cluster binding and replay checks are repeated by the state machine.
 pub fn encode_ingress_policy(envelope: &[u8]) -> Option<Vec<u8>> {
-    charlotte_launch::ingress_policy::decode(envelope)?;
+    knytos_launch::ingress_policy::decode(envelope)?;
     let mut buf = Vec::with_capacity(1 + 4 + envelope.len());
     buf.push(CMD_INGRESS_POLICY);
     buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());

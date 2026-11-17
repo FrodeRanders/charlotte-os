@@ -8,7 +8,7 @@ acceptance criteria. **No finding is newly closed by this batch.**
 ## Changes
 
 `ProductionTrustCandidate` is an immutable public-policy preflight result in
-`charlotte-launch`. It requires a caller-supplied expected cluster and nonzero
+`knytos-launch`. It requires a caller-supplied expected cluster and nonzero
 minimum policy revision. The four public role keys must be distinct; every shipped
 development root is rejected in every role. Curve validation rejects invalid,
 noncanonical, small-order or mixed-order Ed25519 points, and noncanonical or
@@ -54,7 +54,7 @@ the previously unlisted October 7 remediation batches.
   cluster mismatch, revision floor/zero/overflow boundary, truncated/reserved
   wire fields, oversized or private-length inputs, existing output, symlinks,
   directories and FIFOs.
-- Host Clippy for `charlotte-launch` and `cluster-sign`, all targets,
+- Host Clippy for `knytos-launch` and `cluster-sign`, all targets,
   `--locked`, `-D warnings`: passed.
 - Direct `CATTEN_TRUST_MODE=production` kernel check: rejected by the expected
   build-script trust gate, confirmed by its specific diagnostic. The new

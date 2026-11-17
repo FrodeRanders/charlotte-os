@@ -45,12 +45,12 @@ use knytos_syscall::{
     IpcRights,
     thread_exit,
 };
-use charlotte_launch::{
+use knytos_launch::{
     s3_status as status,
     sha256::Sha256,
 };
-use charlotte_protocol_s3::ObjectMetadata;
-use charlotte_s3::{
+use knytos_protocol_s3::ObjectMetadata;
+use knytos_s3::{
     http::{
         ChunkedDecoder,
         RequestHead,

@@ -142,7 +142,7 @@ fn new_control_outputs_verify() {
         assert!(verified.status.success(), "{kind}: {verified:?}");
         let bytes = fs::read(&output).unwrap();
         let digest: String =
-            charlotte_launch::sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+            knytos_launch::sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
         println!("fresh-output {kind}: bytes={} sha256={digest}", bytes.len());
     }
 }

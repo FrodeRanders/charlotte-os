@@ -248,13 +248,13 @@ fn prefixed(opcode: u32) -> bool {
 }
 fn limit(opcode: u32) -> usize {
     match opcode {
-        clusterctl::OP_NOTIFY => charlotte_launch::deployment::MAX_DESCRIPTOR_LEN,
-        clusterctl::OP_NOTIFY_RELEASE => charlotte_launch::release::MAX_RELEASE_LEN,
-        clusterctl::OP_NOTIFY_OPERATIONS => charlotte_launch::operations_bundle::MAX_BUNDLE_LEN,
-        clusterctl::OP_NOTIFY_SHUTDOWN => charlotte_launch::shutdown::ENCODED_LEN,
-        clusterctl::OP_NOTIFY_INGRESS_POLICY => charlotte_launch::ingress_policy::MAX_ENCODED_LEN,
+        clusterctl::OP_NOTIFY => knytos_launch::deployment::MAX_DESCRIPTOR_LEN,
+        clusterctl::OP_NOTIFY_RELEASE => knytos_launch::release::MAX_RELEASE_LEN,
+        clusterctl::OP_NOTIFY_OPERATIONS => knytos_launch::operations_bundle::MAX_BUNDLE_LEN,
+        clusterctl::OP_NOTIFY_SHUTDOWN => knytos_launch::shutdown::ENCODED_LEN,
+        clusterctl::OP_NOTIFY_INGRESS_POLICY => knytos_launch::ingress_policy::MAX_ENCODED_LEN,
         clusterctl::OP_STATUS | clusterctl::OP_ROLLOUT => {
-            charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
+            knytos_launch::deployment::MAX_ARTIFACT_NAME_LEN
         }
         _ => 0,
     }
@@ -303,37 +303,37 @@ fn payload_len(opcode: u32, arg0: u64, bytes: &[u8]) -> Result<usize, i64> {
 fn validate(opcode: u32, bytes: &[u8], key: &[u8; 32]) -> Result<(), i64> {
     let trusted = match opcode {
         clusterctl::OP_NOTIFY => {
-            if charlotte_launch::deployment::verify(bytes, key)
-                != charlotte_launch::deployment::VerifyOutcome::Valid
+            if knytos_launch::deployment::verify(bytes, key)
+                != knytos_launch::deployment::VerifyOutcome::Valid
             {
                 return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
             }
-            let descriptor = charlotte_launch::deployment::decode(bytes)
+            let descriptor = knytos_launch::deployment::decode(bytes)
                 .ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
             if descriptor.node_key == 0
-                && descriptor.placement != charlotte_launch::placement::PlacementPolicy::singleton()
+                && descriptor.placement != knytos_launch::placement::PlacementPolicy::singleton()
             {
                 return Err(clusterctl::ERR_UNSATISFIABLE_PLACEMENT);
             }
             true
         }
         clusterctl::OP_NOTIFY_RELEASE => {
-            charlotte_launch::release::verify(bytes, key)
-                == charlotte_launch::release::VerifyOutcome::Valid
+            knytos_launch::release::verify(bytes, key)
+                == knytos_launch::release::VerifyOutcome::Valid
         }
         // These envelopes are authenticated with current keys, UTC and recipient
         // context at the DNS leader, as before. This hop validates their grammar.
         clusterctl::OP_NOTIFY_OPERATIONS => {
-            charlotte_launch::operations_bundle::decode(bytes).is_some()
+            knytos_launch::operations_bundle::decode(bytes).is_some()
         }
-        clusterctl::OP_NOTIFY_SHUTDOWN => charlotte_launch::shutdown::decode(bytes).is_some(),
+        clusterctl::OP_NOTIFY_SHUTDOWN => knytos_launch::shutdown::decode(bytes).is_some(),
         clusterctl::OP_NOTIFY_INGRESS_POLICY => {
-            charlotte_launch::ingress_policy::decode(bytes).is_some()
+            knytos_launch::ingress_policy::decode(bytes).is_some()
         }
         clusterctl::OP_STATUS | clusterctl::OP_ROLLOUT => {
             // These operations carry an unsigned identity, not a descriptor.
             // Keep name grammar rejection distinct from notification trust.
-            return charlotte_launch::deployment::valid_artifact_name(bytes)
+            return knytos_launch::deployment::valid_artifact_name(bytes)
                 .then_some(())
                 .ok_or(clusterctl::ERR_TOO_LARGE);
         }
@@ -369,13 +369,13 @@ fn dns_opcode(opcode: u32) -> u32 {
 // decoder vectors, even when the returned backing is larger than its claimed frame.
 fn reply_bound(opcode: u32, len: usize, backing: usize) -> bool {
     let maximum = match opcode {
-        clusterctl::OP_NOTIFY_RELEASE => charlotte_launch::release_admission::MAX_LEN,
+        clusterctl::OP_NOTIFY_RELEASE => knytos_launch::release_admission::MAX_LEN,
         clusterctl::OP_STATUS => {
-            22 + charlotte_launch::deployment::MAX_DESCRIPTOR_LEN + usize::from(u16::MAX) * 10
+            22 + knytos_launch::deployment::MAX_DESCRIPTOR_LEN + usize::from(u16::MAX) * 10
         }
         clusterctl::OP_ROLLOUT => clusterctl::ROLLOUT_STATUS_LEN,
         clusterctl::OP_INGRESS_POLICY_STATUS => {
-            8 + charlotte_launch::ingress_policy::MAX_ENCODED_LEN
+            8 + knytos_launch::ingress_policy::MAX_ENCODED_LEN
         }
         _ => return false,
     };
@@ -384,7 +384,7 @@ fn reply_bound(opcode: u32, len: usize, backing: usize) -> bool {
 /// Only an explicit absent record permits first submission. Decode/transport
 /// failure never substitutes for absence or permits advancing to mutation.
 fn preflight(descriptor: &[u8], result: i64, memory: Option<&[u8]>) -> Result<Option<i64>, i64> {
-    let requested = charlotte_launch::deployment::decode(descriptor).ok_or(dns::ERR_UNCERTAIN)?;
+    let requested = knytos_launch::deployment::decode(descriptor).ok_or(dns::ERR_UNCERTAIN)?;
     if result == dns::ERR_NOT_FOUND && memory.is_none() {
         return Ok(None);
     }
@@ -398,7 +398,7 @@ fn preflight(descriptor: &[u8], result: i64, memory: Option<&[u8]>) -> Result<Op
     let bytes = memory.ok_or(dns::ERR_UNCERTAIN)?;
     let current = name_catalog::decode_deployment_result(bytes).ok_or(dns::ERR_UNCERTAIN)?;
     let previous =
-        charlotte_launch::deployment::decode(&current.descriptor).ok_or(dns::ERR_UNCERTAIN)?;
+        knytos_launch::deployment::decode(&current.descriptor).ok_or(dns::ERR_UNCERTAIN)?;
     if previous.artifact_name != requested.artifact_name {
         return Err(dns::ERR_UNCERTAIN);
     }
@@ -445,7 +445,7 @@ impl Calls for Runtime<'_> {
             (dns::OP_INGRESS_POLICY_QUERY, 0, None)
         } else {
             let bytes = if preflight {
-                charlotte_launch::deployment::decode(owner.bytes()).unwrap().artifact_name
+                knytos_launch::deployment::decode(owner.bytes()).unwrap().artifact_name
             } else {
                 owner.bytes()
             };
@@ -542,7 +542,7 @@ impl Calls for Runtime<'_> {
                 }
                 clusterctl::OP_STATUS => {
                     name_catalog::decode_deployment_result(bytes).is_some_and(|entry| {
-                        charlotte_launch::deployment::decode(&entry.descriptor)
+                        knytos_launch::deployment::decode(&entry.descriptor)
                             .is_some_and(|descriptor| descriptor.artifact_name == owner.bytes())
                     })
                 }
@@ -886,7 +886,7 @@ mod tests {
         }
     }
     fn descriptor(name: &[u8], sequence: u64) -> Vec<u8> {
-        use charlotte_launch::{
+        use knytos_launch::{
             deployment as d,
             execution_target::{
                 Architecture,

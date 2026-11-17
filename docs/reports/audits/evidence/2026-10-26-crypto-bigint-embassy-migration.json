@@ -163,7 +163,7 @@
         "tests::p256_signs_and_rejects_changed_digest",
         "tests::p384_signs_and_rejects_changed_digest"
       ],
-      "test_executable": "target/crypto-migration/host-build/debug/deps/charlotte_embassy_migration_probe-429703fe43d788a1",
+      "test_executable": "target/crypto-migration/host-build/debug/deps/knytos_embassy_migration_probe-429703fe43d788a1",
       "test_executable_sha256": "1eb6875c10febdbb7c555ea85ff9b434510177300f9aed9b4f6f0b4c28885697",
       "scope": "host links registered crypto drivers using dev-only host RNG; no TLS server interop"
     },
@@ -183,7 +183,7 @@
         "tests::p256_ecdh_agrees_and_rejects_invalid_peer",
         "tests::p384_signs_and_rejects_changed_digest"
       ],
-      "test_executable": "target/crypto-migration/host-build/release/deps/charlotte_embassy_migration_probe-3982ebb3418f880b",
+      "test_executable": "target/crypto-migration/host-build/release/deps/knytos_embassy_migration_probe-3982ebb3418f880b",
       "test_executable_sha256": "d3fd7b081c6675b4cb126e9a40944ed963d57bce344d0937c46e7c28fac68fb1",
       "scope": "host links registered crypto drivers using dev-only host RNG; no TLS server interop"
     }

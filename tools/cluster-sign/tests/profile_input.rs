@@ -5,7 +5,7 @@ use std::io::{
     Read,
 };
 
-use charlotte_launch::operations::MAX_PROFILE_LEN;
+use knytos_launch::operations::MAX_PROFILE_LEN;
 use zeroize::Zeroizing;
 
 #[path = "../src/profile_input.rs"]
@@ -186,7 +186,7 @@ fn file_adapter_rejects_unsafe_sources_and_cli_preserves_envelope_contract() {
     let signer_public = directory.0.join("operations.pub");
     fs::write(
         &recipient_public,
-        charlotte_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY
+        knytos_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>(),
@@ -194,7 +194,7 @@ fn file_adapter_rejects_unsafe_sources_and_cli_preserves_envelope_contract() {
     .unwrap();
     fs::write(
         &signer_public,
-        charlotte_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY
+        knytos_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>(),
@@ -258,7 +258,7 @@ fn file_adapter_rejects_unsafe_sources_and_cli_preserves_envelope_contract() {
     assert!(seal(&input).status.success());
     let encoded = fs::read(&output).unwrap();
     assert_eq!(
-        charlotte_launch::operations::decode(&encoded).unwrap().ciphertext.len(),
+        knytos_launch::operations::decode(&encoded).unwrap().ciphertext.len(),
         MAX_PROFILE_LEN
     );
     let result = Command::new(executable)

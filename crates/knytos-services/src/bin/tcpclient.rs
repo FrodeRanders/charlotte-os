@@ -31,21 +31,21 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::tcpclient_status as status;
-use charlotte_protocol_net::decode_status;
+use knytos_launch::tcpclient_status as status;
+use knytos_protocol_net::decode_status;
 
 const SENTINEL: u32 = 0x5345_4e54;
 const PAYLOAD: &[u8] = b"Knytos tcpip cross-node";
 const PORT: u16 = 8080;
 const ACCEPT_POLL_MS: u64 = 100;
-const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
-const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
+const VIP_KEY: u64 = knytos_launch::manifest_key(b"vip");
+const VIP_PORT_KEY: u64 = knytos_launch::manifest_key(b"vipport");
 const VIP_PROBE_REQUEST: &[u8] = b"GET /metrics HTTP/1.0\r\n\r\n";
 const VIP_PROBE_FLOWS: usize = 8;
 const VIP_PROBE_SETTLE_MS: u64 = 20_000;
 const VIP_MEMBERSHIP_CONVERGE_MS: u64 = 5_000;
 const VIP_ADVERTISER_FIXTURE_HOLD_MS: u64 = 120_000;
-const EXPECTED_MEMBERS_KEY: u64 = charlotte_launch::manifest_key(b"members");
+const EXPECTED_MEMBERS_KEY: u64 = knytos_launch::manifest_key(b"members");
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);

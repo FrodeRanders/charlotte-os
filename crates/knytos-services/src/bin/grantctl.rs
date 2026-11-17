@@ -29,7 +29,7 @@ use catten_services::{
     ns,
 };
 use knytos_syscall::IpcRights;
-use charlotte_authorization::{
+use knytos_authorization::{
     AuthorizationRights,
     wire,
 };
@@ -49,10 +49,10 @@ fn authorized_request<'a>(
 ) -> Option<grant::AcquireRequest<'a>> {
     let request = grant::decode_request(bytes)?;
     if publish {
-        if request.rights != charlotte_launch::deployment::RIGHT_PUBLISH {
+        if request.rights != knytos_launch::deployment::RIGHT_PUBLISH {
             return None;
         }
-    } else if request.rights & !charlotte_launch::deployment::CLIENT_RIGHTS != 0 {
+    } else if request.rights & !knytos_launch::deployment::CLIENT_RIGHTS != 0 {
         return None;
     }
     // Signature verification used the configured deployment key at launch.
@@ -61,12 +61,12 @@ fn authorized_request<'a>(
     if !knytos_syscall::launch_descriptor_matches(
         message.sender,
         message.sender_generation,
-        &charlotte_launch::sha256::digest(request.descriptor),
+        &knytos_launch::sha256::digest(request.descriptor),
     ) {
         return None;
     }
-    let descriptor = charlotte_launch::deployment::decode(request.descriptor)?;
-    if charlotte_launch::artifact_principal_id(descriptor.artifact_name) != message.sender_principal
+    let descriptor = knytos_launch::deployment::decode(request.descriptor)?;
+    if knytos_launch::artifact_principal_id(descriptor.artifact_name) != message.sender_principal
     {
         return None;
     }

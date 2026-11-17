@@ -6,7 +6,7 @@
 //! each (architecture doc Phase 3), and reclaim domains after they stop.
 
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
-const NODE_NAME_SERVICE_VERSION: u32 = charlotte_protocol_ns::VERSION;
+const NODE_NAME_SERVICE_VERSION: u32 = knytos_protocol_ns::VERSION;
 const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
 const CAPABILITY_GRANT_INTERFACE: u64 = u64::from_le_bytes(*b"GRANT\0\0\0");
 const CAPABILITY_GRANT_VERSION: u32 = 1;
@@ -59,7 +59,7 @@ use crate::{
     },
 };
 
-const _: () = assert!(charlotte_launch::USER_STACK_PAGE_SIZE == loader::PAGE_SIZE);
+const _: () = assert!(knytos_launch::USER_STACK_PAGE_SIZE == loader::PAGE_SIZE);
 
 #[derive(Debug)]
 pub enum ProfileLaunchError {
@@ -130,12 +130,12 @@ impl ServiceLimits {
     /// deployment descriptor. Keeping this conversion at the launch boundary
     /// prevents individual deployment paths from inventing stack policy.
     pub fn for_deployment(
-        descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+        descriptor: &knytos_launch::deployment::DeploymentDescriptor<'_>,
     ) -> Self {
         Self::default()
             .with_user_stack_size(
                 usize::from(descriptor.stack_pages_per_thread)
-                    * charlotte_launch::USER_STACK_PAGE_SIZE,
+                    * knytos_launch::USER_STACK_PAGE_SIZE,
             )
             .with_max_threads(usize::from(descriptor.max_threads))
     }
@@ -144,9 +144,9 @@ impl ServiceLimits {
 impl Default for ServiceLimits {
     fn default() -> Self {
         Self {
-            user_stack_size: charlotte_launch::DEFAULT_USER_STACK_PAGES
-                * charlotte_launch::USER_STACK_PAGE_SIZE,
-            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS,
+            user_stack_size: knytos_launch::DEFAULT_USER_STACK_PAGES
+                * knytos_launch::USER_STACK_PAGE_SIZE,
+            max_threads: knytos_launch::DEFAULT_USER_MAX_THREADS,
         }
     }
 }
@@ -356,20 +356,20 @@ pub(crate) fn adaptive_service_limits(
     if high_water == 0 {
         return default_limits;
     }
-    let desired = charlotte_lifecycle::adaptive_stack_pages(
+    let desired = knytos_lifecycle::adaptive_stack_pages(
         high_water,
-        charlotte_launch::DEFAULT_USER_STACK_PAGES,
-        charlotte_launch::MAX_USER_STACK_PAGES,
+        knytos_launch::DEFAULT_USER_STACK_PAGES,
+        knytos_launch::MAX_USER_STACK_PAGES,
     );
     let (free_frames, total_frames) = {
         let allocator = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
         let total_frames = allocator.usable_bytes() / loader::PAGE_SIZE as u64;
         (allocator.free_frames() as u64, total_frames)
     };
-    let reserve_frames = (total_frames / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
-    let pages = charlotte_lifecycle::damp_stack_growth(
+    let reserve_frames = (total_frames / knytos_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
+    let pages = knytos_lifecycle::damp_stack_growth(
         desired,
-        charlotte_launch::DEFAULT_USER_STACK_PAGES,
+        knytos_launch::DEFAULT_USER_STACK_PAGES,
         free_frames,
         reserve_frames,
     );
@@ -382,7 +382,7 @@ pub(crate) fn adaptive_service_limits(
         reserve_frames,
         pages
     );
-    default_limits.with_user_stack_size(pages * charlotte_launch::USER_STACK_PAGE_SIZE)
+    default_limits.with_user_stack_size(pages * knytos_launch::USER_STACK_PAGE_SIZE)
 }
 
 /// Load and start the name service.
@@ -558,7 +558,7 @@ extern "C" fn local_ready_publisher() {
         let (state, error) =
             bootstrap::with_service_pages(&storage.objstore, |pages| pages.object_store_status())
                 .expect("local readiness service pages unavailable");
-        if charlotte_launch::objstore_status::readiness(state, error).unwrap_or_else(
+        if knytos_launch::objstore_status::readiness(state, error).unwrap_or_else(
             |(state, error)| {
                 panic!(
                     "local object store unavailable before node readiness: state={} \
@@ -586,14 +586,14 @@ extern "C" fn local_ready_publisher() {
         bootstrap::with_service_pages(&storage.objstore, |pages| pages.object_store_status())
             .expect("local readiness service pages unavailable");
     assert_eq!(
-        charlotte_launch::objstore_status::readiness(state, error),
+        knytos_launch::objstore_status::readiness(state, error),
         Ok(true),
         "local object store stopped serving before readiness publication"
     );
     publish_local_ready();
 }
 
-/// Register `charlotte_launch::LOCAL_READY_NAME` in the node name service.
+/// Register `knytos_launch::LOCAL_READY_NAME` in the node name service.
 ///
 /// The marker points at a kernel-owned endpoint that is never called; its
 /// only purpose is to let a blocking `ns::OP_LOOKUP` resolve. Called from the
@@ -609,7 +609,7 @@ pub fn publish_local_ready() {
         KERNEL_ASID,
         ns_conn,
         NS_OP_REGISTER,
-        charlotte_launch::LOCAL_READY_NAME,
+        knytos_launch::LOCAL_READY_NAME,
         conn,
         ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
     )
@@ -750,7 +750,7 @@ pub fn try_spawn_with_read_only_profile_and_manifest_and_limits(
     }
     let profile_len =
         u32::try_from(profile.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
-    let metadata = charlotte_launch::ProfileCapabilityMetadata::new(profile_len)
+    let metadata = knytos_launch::ProfileCapabilityMetadata::new(profile_len)
         .ok_or(ProfileLaunchError::EmptyProfile)?;
     let loaded = loader::try_load_platform_domain(image).map_err(ProfileLaunchError::Load)?;
     let mut transaction = DomainLaunchTransaction::new(loaded)?;
@@ -849,31 +849,31 @@ fn try_spawn_deployment_with_manifest(
     manifest: &[bootstrap::ManifestEntry<'_>],
     prepare: impl FnOnce(crate::memory::AddressSpaceHandle) -> Result<(), loader::DomainLoadError>,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
-    let descriptor = charlotte_launch::deployment::decode(descriptor_bytes)
+    let descriptor = knytos_launch::deployment::decode(descriptor_bytes)
         .ok_or(ProfileLaunchError::InvalidDeploymentDescriptor)?;
-    if charlotte_launch::deployment::verify(descriptor_bytes, deployment_key)
-        != charlotte_launch::deployment::VerifyOutcome::Valid
+    if knytos_launch::deployment::verify(descriptor_bytes, deployment_key)
+        != knytos_launch::deployment::VerifyOutcome::Valid
     {
         return Err(ProfileLaunchError::InvalidDeploymentDescriptor);
     }
-    let metadata = charlotte_launch::signature_note::artifact_metadata(image)
+    let metadata = knytos_launch::signature_note::artifact_metadata(image)
         .ok_or(ProfileLaunchError::DescriptorArtifactMismatch)?;
     if metadata.name() != descriptor.artifact_name
         || !crate::cpu::execution_target::current()
             .is_some_and(|target| descriptor.accepts_image(image, target))
         || descriptor.placement.validate(&metadata).is_err()
-        || charlotte_launch::signature_note::verify_elf_for_name(
+        || knytos_launch::signature_note::verify_elf_for_name(
             image,
             artifact_key,
             descriptor.artifact_name,
-        ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+        ) != knytos_launch::signature_note::VerifyOutcome::Valid
     {
         return Err(ProfileLaunchError::DescriptorArtifactMismatch);
     }
     let limits = ServiceLimits::for_deployment(&descriptor);
     let descriptor_len =
         u32::try_from(descriptor_bytes.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
-    let profile_metadata = charlotte_launch::ProfileCapabilityMetadata::new(descriptor_len)
+    let profile_metadata = knytos_launch::ProfileCapabilityMetadata::new(descriptor_len)
         .ok_or(ProfileLaunchError::EmptyProfile)?;
     let loaded =
         loader::try_load_domain_with_key(image, artifact_key).map_err(ProfileLaunchError::Load)?;
@@ -1062,7 +1062,7 @@ impl PreparingObserver {
         bootstrap::write_manifest(
             self.domain.loaded().config_frame,
             &[bootstrap::ManifestEntry {
-                key: charlotte_launch::telemetry::ARCHIVE_INTERVAL_MS_KEY,
+                key: knytos_launch::telemetry::ARCHIVE_INTERVAL_MS_KEY,
                 flags: 0,
                 value: bootstrap::ManifestValue::Unsigned(archive_interval_ms),
             }],
@@ -1300,7 +1300,7 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
         return false;
     }
     let staged = crate::cpu::scheduler::threads::has_staged_asid(domain.asid);
-    charlotte_lifecycle::retirement_snapshot_is_quiescent(
+    knytos_lifecycle::retirement_snapshot_is_quiescent(
         epoch_before,
         crate::cpu::scheduler::threads::retirement_epoch(),
         crate::cpu::scheduler::threads::retirement_in_flight(),
@@ -1401,7 +1401,7 @@ pub(crate) fn try_spawn_upgrade_from(
     grant: UpgradeGrant<'_>,
 ) -> Result<ServiceDomain, UpgradeSpawnError> {
     let handoff_caps = grant.state_caps.len() + usize::from(grant.endpoint_cap != 0);
-    if handoff_caps >= charlotte_launch::CAPABILITY_VECTOR_CAPACITY {
+    if handoff_caps >= knytos_launch::CAPABILITY_VECTOR_CAPACITY {
         return Err(UpgradeSpawnError::HandoffTooLarge);
     }
     let platform = crate::memory::budget::platform_identity(old.id()) == Some(old);
@@ -1492,6 +1492,6 @@ pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
     let Some(key) = super::admission::platform_artifact_key() else {
         return false;
     };
-    charlotte_launch::signature_note::verify_elf(image, &key)
-        == charlotte_launch::signature_note::VerifyOutcome::Valid
+    knytos_launch::signature_note::verify_elf(image, &key)
+        == knytos_launch::signature_note::VerifyOutcome::Valid
 }

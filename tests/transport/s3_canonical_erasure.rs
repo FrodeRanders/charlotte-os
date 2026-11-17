@@ -1,7 +1,7 @@
 //! Public canonical-signing fixtures and initialized-byte release controls.
 use core::hint::black_box;
 
-use charlotte_s3::sigv4::{
+use knytos_s3::sigv4::{
     Credentials,
     EMPTY_PAYLOAD_SHA256,
     Error,

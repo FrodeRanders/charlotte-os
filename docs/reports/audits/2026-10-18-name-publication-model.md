@@ -34,11 +34,11 @@ that direction accurately; lookup behavior is unchanged.
 - [`ns_publication.rs`](../../../crates/knytos-services/src/ns_publication.rs):
   complete connection/watch preparation, live quota predicate, current owned
   completion observation and watch-before-source field disposal.
-- [`charlotte-authorization`](../../../crates/charlotte-authorization/src/lib.rs):
+- [`knytos-authorization`](../../../crates/knytos-authorization/src/lib.rs):
   checked service publication and retained generation tombstones. Role checks
   happen in policy publication, after candidate watch preparation.
 - [`publication_generation.rs`](../../../crates/knytos-services/src/publication_generation.rs)
-  and [`charlotte-protocol-ns`](../../../crates/charlotte-protocol-ns/src/lib.rs):
+  and [`knytos-protocol-ns`](../../../crates/knytos-protocol-ns/src/lib.rs):
   retirement authorization and the positive signed generation record range.
 - [`loader.rs`](../../../crates/catten/src/service/loader.rs): trusted NS
   construction prepares the 64+1 completion/watch budget. Its actual admission

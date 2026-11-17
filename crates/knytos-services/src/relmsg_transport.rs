@@ -654,7 +654,7 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
     if len > crate::relmsg::MAX_MSG {
         return None;
     }
-    let object_len = charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE + len;
+    let object_len = knytos_protocol_msg::IPC_MESSAGE_HEADER_SIZE + len;
     let pages = object_len.div_ceil(4096);
     let cap = memory_alloc(pages);
     if cap == 0 {
@@ -665,13 +665,13 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
         return None;
     }
     unsafe {
-        let mut header = [0u8; charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE];
-        charlotte_protocol_msg::build_ipc_message_header(&mut header, *mac, len as u32);
+        let mut header = [0u8; knytos_protocol_msg::IPC_MESSAGE_HEADER_SIZE];
+        knytos_protocol_msg::build_ipc_message_header(&mut header, *mac, len as u32);
         core::ptr::copy_nonoverlapping(header.as_ptr(), SCRATCH as *mut u8, header.len());
-        (SCRATCH as *mut u8).add(charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE).write(tag);
+        (SCRATCH as *mut u8).add(knytos_protocol_msg::IPC_MESSAGE_HEADER_SIZE).write(tag);
         core::ptr::copy_nonoverlapping(
             payload.as_ptr(),
-            (SCRATCH as *mut u8).add(charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE + 1),
+            (SCRATCH as *mut u8).add(knytos_protocol_msg::IPC_MESSAGE_HEADER_SIZE + 1),
             payload.len(),
         );
     }

@@ -116,7 +116,7 @@ that needs S3 or another service receives that capability separately through
 its launch contract.
 
 This path is implemented by `kafka_step.elf` and the bounded `no_std`
-`charlotte-kafka-step` ABI. The runner keeps the pending procedure call,
+`knytos-kafka-step` ABI. The runner keeps the pending procedure call,
 borrowed input, delivery token, and transaction in owners whose `Drop`
 implementations cancel or release an incomplete attempt. A successful reply may
 return up to 16 records; every route is checked against the step profile before

@@ -1,7 +1,7 @@
 //! Private translation admission follows the owning root, never a reusable ASID.
 use core::mem::ManuallyDrop;
 
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     Amount,
     Budget,
 };

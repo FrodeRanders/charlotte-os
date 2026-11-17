@@ -199,7 +199,7 @@ struct Runtime<'a>(core::marker::PhantomData<&'a ()>);
 
 impl<'a> Calls for Runtime<'a> {
     type Pending = ();
-    type Reply = (charlotte_management_tls::Identity, zeroize::Zeroizing<alloc::vec::Vec<u8>>);
+    type Reply = (knytos_management_tls::Identity, zeroize::Zeroizing<alloc::vec::Vec<u8>>);
     type Socket = OwnedSocket<'a>;
 
     fn receive(&mut self, socket: &mut Self::Socket, cq: u32) -> Result<(), Error> {
@@ -233,9 +233,9 @@ impl<'a> Calls for Runtime<'a> {
         let mutation = buffer.requires_administrator()
             || request.as_ref().is_some_and(Request::requires_administrator);
         let permission = if mutation {
-            charlotte_management_tls::Permission::Mutate
+            knytos_management_tls::Permission::Mutate
         } else {
-            charlotte_management_tls::Permission::Observe
+            knytos_management_tls::Permission::Observe
         };
         let allowed = identity.allows(permission);
         if request.is_some() || (!had_header && buffer.has_header()) || !allowed {

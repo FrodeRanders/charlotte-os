@@ -22,7 +22,7 @@ DMA and quiescence obligations.
 | --- | --- |
 | [`knytos-syscall`](../../crates/knytos-syscall) | Register ABI; integers at the native boundary. |
 | [`knytos-rt`](../../crates/knytos-rt) | Existing capability/mapping owners, launch context and crt0; shared monotonic deadlines, bounded admission, owner-preserving call observations, length-bearing payload preparation and native worker groups. |
-| [`charlotte-protocol-grant`](../../crates/charlotte-protocol-grant) and other protocol crates | Wire data and codecs; no live capability ownership. |
+| [`knytos-protocol-grant`](../../crates/knytos-protocol-grant) and other protocol crates | Wire data and codecs; no live capability ownership. |
 | [`knytos-app`](../../crates/knytos-app) | Borrowed application context, returning entry wrapper, synchronous serving scope and scalar test seam. Optional socket, Kafka and S3 clients are extracted implementations, independent of platform service code. |
 | [`knytos-app-sitas`](../../crates/knytos-app-sitas) | Bounded task registration and owned call futures on the existing Sitas reactor/executor. |
 | [`knytos-services`](../../crates/knytos-services) | Platform services, catalog policy, broker-facing transports, hardware adapters and reexports of the shared application clients. |

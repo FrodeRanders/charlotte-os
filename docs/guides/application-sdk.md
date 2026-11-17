@@ -132,7 +132,7 @@ interface with explicitly reviewed Cargo pins, and the builder itself does not
 replace that dependency review.
 
 The SDK contains runtime/client source, the owned async adapter, CI-pinned
-`sitas-core`, `sitas-charlotte` and `sitas-unix`, the `charlotte-kafka` client
+`sitas-core`, `sitas-charlotte` and `sitas-unix`, the `knytos-kafka` client
 codec for host conformance tests, platform definitions, a standalone signer and
 public development keys. `sdk.json` records runtime ABI, toolchain, OS and Sitas
 revisions, source dirty state and hashes of the exact distributed files. The CLI

@@ -66,7 +66,7 @@ pub(super) fn query_disco_peers(disco_conn: u64) -> Vec<([u8; 6], Vec<u8>)> {
         memory_unmap(memory);
     }
     memory_close(memory);
-    charlotte_protocol_disco::parse_peer_list(&buf)
+    knytos_protocol_disco::parse_peer_list(&buf)
 }
 
 /// Apply one inbound Raft RPC and return its response through relmsg.

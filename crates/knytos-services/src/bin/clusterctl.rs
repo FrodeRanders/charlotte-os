@@ -44,8 +44,8 @@ use catten_services::{
     wait_reply,
 };
 use knytos_syscall::*;
-use charlotte_launch::clusterctl_status as status;
-use charlotte_protocol_disco::{
+use knytos_launch::clusterctl_status as status;
+use knytos_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
@@ -154,7 +154,7 @@ fn read_payload(message: &knytos_syscall::IpcMessage) -> Option<alloc::vec::Vec<
     // The payload region is the complete multi-page memory object. Apply the
     // same admission bound as the kernel launch gate so ingress and execution
     // cannot disagree about an otherwise valid artifact.
-    if len == 0 || len > charlotte_launch::MAX_ARTIFACT_ELF_SIZE || len > capacity - 8 {
+    if len == 0 || len > knytos_launch::MAX_ARTIFACT_ELF_SIZE || len > capacity - 8 {
         memory_unmap(message.memory);
         memory_close(message.memory);
         return None;
@@ -171,9 +171,9 @@ fn read_payload(message: &knytos_syscall::IpcMessage) -> Option<alloc::vec::Vec<
 }
 
 fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
-    let trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
+    let trust = match ctx.manifest_value(knytos_launch::ADMISSION_TRUST_MANIFEST_KEY) {
         Some(ManifestValue::Bytes(bytes)) => {
-            charlotte_launch::trust::AdmissionTrust::decode(bytes).ok_or(0xdea5u32)?
+            knytos_launch::trust::AdmissionTrust::decode(bytes).ok_or(0xdea5u32)?
         }
         _ => return Err(0xdea5),
     };
@@ -253,12 +253,12 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                                 // Ingress is a trust boundary: the signature
                                 // must bless this exact logical name before
                                 // any object-store slot can be modified.
-                                let trusted = charlotte_launch::signature_note::verify_elf_for_name(
+                                let trusted = knytos_launch::signature_note::verify_elf_for_name(
                                     &artifact,
                                     &trust.artifact_key,
                                     &name,
                                 )
-                                    == charlotte_launch::signature_note::VerifyOutcome::Valid;
+                                    == knytos_launch::signature_note::VerifyOutcome::Valid;
                                 if !trusted {
                                     clusterctl::ERR_UNTRUSTED_ARTIFACT
                                 } else if store_artifact(obj_conn, object_id, &artifact) {
@@ -431,7 +431,7 @@ fn run_join(
     ns_connection: u64,
     self_raft_id: &[u8],
     self_leader_id: &[u8],
-    peers: &[charlotte_protocol_disco::PeerEntry],
+    peers: &[knytos_protocol_disco::PeerEntry],
 ) -> i64 {
     if self_raft_id.is_empty() {
         return clusterctl::ERR_NO_CLUSTER;

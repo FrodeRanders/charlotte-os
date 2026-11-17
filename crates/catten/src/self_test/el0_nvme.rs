@@ -99,15 +99,15 @@ extern "C" fn verify_el0_nvme() {
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
     logln!(
         "[nvme] driver stage={} raw_dw3={:#x} irq_count={}",
-        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::DETAIL) },
+        unsafe { crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::DETAIL) },
         unsafe {
             crate::self_test::status_u32(
                 driver_cfg,
-                charlotte_launch::nvme_status::READ_CQE_DW5_HIGH,
+                knytos_launch::nvme_status::READ_CQE_DW5_HIGH,
             )
         },
         unsafe {
-            crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IRQ_COUNT)
+            crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IRQ_COUNT)
         }
     );
 
@@ -134,36 +134,36 @@ extern "C" fn verify_el0_nvme() {
             "[nvme] timeout diagnostics: driver main={} init={} io_dw3={:#x} io_status={} \
              io_cid={} outstanding={} opcode={:#x} slot={} nblocks={}",
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::STAGE)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::STAGE)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::DETAIL)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::DETAIL)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_CQE_DW3)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IO_CQE_DW3)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_STATUS)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IO_STATUS)
             },
             unsafe {
                 crate::self_test::status_u32(
                     driver_cfg,
-                    charlotte_launch::nvme_status::IO_COMMAND_ID,
+                    knytos_launch::nvme_status::IO_COMMAND_ID,
                 )
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::OUTSTANDING)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::OUTSTANDING)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_OPCODE)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::LAST_OPCODE)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_SLOT)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::LAST_SLOT)
             },
             unsafe {
                 crate::self_test::status_u32(
                     driver_cfg,
-                    charlotte_launch::nvme_status::LAST_BLOCK_COUNT,
+                    knytos_launch::nvme_status::LAST_BLOCK_COUNT,
                 )
             }
         );
@@ -171,36 +171,36 @@ extern "C" fn verify_el0_nvme() {
             "[nvme] timeout diagnostics: objstore stage={} error={:#x} block_result={:#x} \
              block_op={:#x} reply_status={:#x} detail={:#x}",
             unsafe {
-                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::STAGE)
+                crate::self_test::status_u32(objstore_cfg, knytos_launch::objstore_status::STAGE)
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::STARTUP_ERROR,
+                    knytos_launch::objstore_status::STARTUP_ERROR,
                 )
             },
             unsafe {
                 crate::self_test::status_i64(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::BLOCK_RESULT,
+                    knytos_launch::objstore_status::BLOCK_RESULT,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::BLOCK_OP,
+                    knytos_launch::objstore_status::BLOCK_OP,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::REPLY_STATUS,
+                    knytos_launch::objstore_status::REPLY_STATUS,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::DETAIL,
+                    knytos_launch::objstore_status::DETAIL,
                 )
             }
         );
@@ -252,17 +252,17 @@ extern "C" fn verify_el0_nvme() {
         .expect("[nvme] client exit wait error");
     assert!(exited, "[nvme] I/O client did not exit within deadline");
     let state = unsafe {
-        crate::self_test::status_u32(client_cfg, charlotte_launch::nvme_client_status::STAGE)
+        crate::self_test::status_u32(client_cfg, knytos_launch::nvme_client_status::STAGE)
     };
     assert_eq!(state, 0x900d, "[nvme] I/O verifier failed: {:#x}", state);
     assert_eq!(
-        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::CAP_LOW) },
+        unsafe { crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::CAP_LOW) },
         0x900d,
         "[nvme] client completed before driver registration"
     );
     logln!("[nvme] 12 KiB PRP-list write/flush/read round trip verified");
     let irq_count = unsafe {
-        crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IRQ_COUNT)
+        crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IRQ_COUNT)
     };
     // The NVMe driver completes through MSI-X; the AHCI driver polls its
     // command slot instead, so an interrupt counter is only meaningful for
@@ -312,7 +312,7 @@ extern "C" fn verify_el0_nvme() {
     const GRANTED_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee01;
     crate::service::store::write_store_test_object(GRANTED_OBJECT_ID, b"scoped probe")
         .expect("[el0_nvme] stage scope-granted probe object");
-    let client_principal = charlotte_launch::artifact_principal_id(b"objstore_client");
+    let client_principal = knytos_launch::artifact_principal_id(b"objstore_client");
     let mut scope = [0u8; 48];
     scope[0..4].copy_from_slice(&0x5043_534fu32.to_le_bytes()); // "OSCP"
     scope[4..6].copy_from_slice(&1u16.to_le_bytes());
@@ -361,13 +361,13 @@ extern "C" fn verify_el0_nvme() {
             unsafe {
                 crate::self_test::status_u32(
                     object_cfg,
-                    charlotte_launch::objstore_client_status::STAGE,
+                    knytos_launch::objstore_client_status::STAGE,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     object_cfg,
-                    charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
+                    knytos_launch::objstore_client_status::ROUND_TRIP_BYTES,
                 )
             },
             object_threads
@@ -376,36 +376,36 @@ extern "C" fn verify_el0_nvme() {
             "[nvme] object-client timeout diagnostics: objstore stage={} error={:#x} \
              block_result={:#x} block_op={:#x} reply_status={:#x} detail={:#x} threads={:?}",
             unsafe {
-                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::STAGE)
+                crate::self_test::status_u32(objstore_cfg, knytos_launch::objstore_status::STAGE)
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::STARTUP_ERROR,
+                    knytos_launch::objstore_status::STARTUP_ERROR,
                 )
             },
             unsafe {
                 crate::self_test::status_i64(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::BLOCK_RESULT,
+                    knytos_launch::objstore_status::BLOCK_RESULT,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::BLOCK_OP,
+                    knytos_launch::objstore_status::BLOCK_OP,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::REPLY_STATUS,
+                    knytos_launch::objstore_status::REPLY_STATUS,
                 )
             },
             unsafe {
                 crate::self_test::status_u32(
                     objstore_cfg,
-                    charlotte_launch::objstore_status::DETAIL,
+                    knytos_launch::objstore_status::DETAIL,
                 )
             },
             objstore_threads
@@ -415,39 +415,39 @@ extern "C" fn verify_el0_nvme() {
              io_dw3={:#x} io_status={} io_cid={} outstanding={} opcode={:#x} slot={} nblocks={} \
              threads={:?}",
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::STAGE)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::STAGE)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::DETAIL)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::DETAIL)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IRQ_COUNT)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IRQ_COUNT)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_CQE_DW3)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IO_CQE_DW3)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_STATUS)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::IO_STATUS)
             },
             unsafe {
                 crate::self_test::status_u32(
                     driver_cfg,
-                    charlotte_launch::nvme_status::IO_COMMAND_ID,
+                    knytos_launch::nvme_status::IO_COMMAND_ID,
                 )
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::OUTSTANDING)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::OUTSTANDING)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_OPCODE)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::LAST_OPCODE)
             },
             unsafe {
-                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_SLOT)
+                crate::self_test::status_u32(driver_cfg, knytos_launch::nvme_status::LAST_SLOT)
             },
             unsafe {
                 crate::self_test::status_u32(
                     driver_cfg,
-                    charlotte_launch::nvme_status::LAST_BLOCK_COUNT,
+                    knytos_launch::nvme_status::LAST_BLOCK_COUNT,
                 )
             },
             driver_threads
@@ -455,12 +455,12 @@ extern "C" fn verify_el0_nvme() {
         logln!(
             "[nvme] object-client timeout diagnostics: name-service stage={} handled={} \
              last_opcode={} waiters={} threads={:?}",
-            unsafe { crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::STAGE) },
-            unsafe { crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::HANDLED) },
+            unsafe { crate::self_test::status_u32(ns_cfg, knytos_launch::ns_status::STAGE) },
+            unsafe { crate::self_test::status_u32(ns_cfg, knytos_launch::ns_status::HANDLED) },
             unsafe {
-                crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::LAST_OPCODE)
+                crate::self_test::status_u32(ns_cfg, knytos_launch::ns_status::LAST_OPCODE)
             },
-            unsafe { crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::WAITERS) },
+            unsafe { crate::self_test::status_u32(ns_cfg, knytos_launch::ns_status::WAITERS) },
             ns_threads
         );
     }
@@ -498,7 +498,7 @@ extern "C" fn verify_el0_nvme() {
     crate::ipc::close_cap(crate::memory::KERNEL_ASID, completion_ns)
         .expect("[nvme] close completion name-service connection");
     let state = unsafe {
-        crate::self_test::status_u32(object_cfg, charlotte_launch::objstore_client_status::STAGE)
+        crate::self_test::status_u32(object_cfg, knytos_launch::objstore_client_status::STAGE)
     };
     assert_eq!(
         state,
@@ -508,7 +508,7 @@ extern "C" fn verify_el0_nvme() {
         unsafe {
             crate::self_test::status_u32(
                 object_cfg,
-                charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
+                knytos_launch::objstore_client_status::ROUND_TRIP_BYTES,
             )
         }
     );
@@ -516,7 +516,7 @@ extern "C" fn verify_el0_nvme() {
         unsafe {
             crate::self_test::status_u32(
                 object_cfg,
-                charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
+                knytos_launch::objstore_client_status::ROUND_TRIP_BYTES,
             )
         },
         2 * 1024 * 1024 + 4096

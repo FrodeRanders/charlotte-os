@@ -7,14 +7,14 @@ It does not embed a general-purpose hosted Kafka library.
 
 The implementation is split at the userspace boundary:
 
-- `charlotte-kafka` is a transport-independent `no_std` Kafka protocol and
+- `knytos-kafka` is a transport-independent `no_std` Kafka protocol and
   RecordBatch v2 codec;
-- `charlotte-protocol-kafka` defines the bounded application/service ABI and
+- `knytos-protocol-kafka` defines the bounded application/service ABI and
   contains no live capabilities;
 - `kafka.elf` owns the broker socket, producer IDs, epochs, sequence numbers,
   group state, and transactional identity; and
 - `catten_services::kafka_client` is the owned application API; and
-- `kafka_step.elf` plus `charlotte-kafka-step` provide a generic,
+- `kafka_step.elf` plus `knytos-kafka-step` provide a generic,
   capability-separated consume--procedure--produce runner.
 
 ## Provisioning and authority
@@ -141,7 +141,7 @@ use catten_services::{
     kafka_client::Client,
     wait_for_registered_name_bytes_owned,
 };
-use charlotte_protocol_kafka::RecordRequest;
+use knytos_protocol_kafka::RecordRequest;
 
 let (_, connection) =
     wait_for_registered_name_bytes_owned(ns, b"kafka/orders/producer")?;
@@ -206,7 +206,7 @@ behind its mapping borrow while inspecting those ranges.
 
 Business procedures that only transform an input record should not own the
 Kafka connection or its delivery and transaction resources. A trusted launcher
-can instead start `kafka_step.elf` with a read-only `charlotte-kafka-step`
+can instead start `kafka_step.elf` with a read-only `knytos-kafka-step`
 profile. That profile names the connector and procedure instances, lists the
 only output route indices the procedure may select, identifies one required
 DLQ route, and bounds outputs, attempts, timeout, backoff, and polling.
@@ -374,7 +374,7 @@ other client-key algorithms are not yet implemented.
 ## Current interoperability boundary
 
 The implemented broker protocol was exercised against Apache Kafka 4.1.1. It
-uses the bounded request versions listed in `charlotte-kafka`; most are legacy
+uses the bounded request versions listed in `knytos-kafka`; most are legacy
 non-flexible forms, while generation-fenced transactional offset commit uses
 the compact/tagged flexible v3 schema.
 
@@ -475,7 +475,7 @@ not test-only functionality.
 
 ## Encoded launch-profile lifetime
 
-`charlotte_protocol_kafka::Profile::encode` returns
+`knytos_protocol_kafka::Profile::encode` returns
 `Result<Zeroizing<Vec<u8>>, ProfileError>`. Validation and the complete checked
 frame size precede allocation. The encoder installs the erasing owner before
 writing any credentials, retains its existing single zero-filled frame and
@@ -500,7 +500,7 @@ fixture and native regression evidence.
 
 ## SCRAM initial-phase lifetime
 
-`charlotte_kafka::scram::Client::new` computes the complete escaped username and
+`knytos_kafka::scram::Client::new` computes the complete escaped username and
 initial-transcript byte lengths before allocation. It writes comma/equal escapes
 directly into the reserved erasing transcript; the separate escaped-username
 string is removed. Original UTF-8 bytes and SCRAM transcript/proof bytes are

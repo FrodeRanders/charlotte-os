@@ -93,7 +93,7 @@ state; TLS protects each live connection. They solve different problems.
 
 ## Implemented foundation: `COPSENC1`
 
-`charlotte_launch::operations` now defines a bounded, `no_std` operational
+`knytos_launch::operations` now defines a bounded, `no_std` operational
 profile envelope. `cluster-sign` can generate separate keys, seal a profile,
 verify its signature and open it for development testing.
 
@@ -144,7 +144,7 @@ An operational envelope binds the SHA-256 of an exact, already signed
 would create a cryptographic cycle. Knytos therefore does not extend
 `CRELEASE1` with secret-profile references.
 
-`charlotte_launch::operations_bundle` instead defines `COPSBND2`, a separate
+`knytos_launch::operations_bundle` instead defines `COPSBND2`, a separate
 operator-signed admission proof. It contains:
 
 - the exact signed release;

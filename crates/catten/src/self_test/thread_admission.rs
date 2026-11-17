@@ -157,8 +157,8 @@ pub(crate) fn run() {
         let reserved = memory::thread_stack::StackSlot::reserve(own).unwrap();
         assert_eq!(
             reserved.base(),
-            charlotte_launch::user_address::STACK_BASE
-                + index * charlotte_launch::user_address::STACK_STRIDE
+            knytos_launch::user_address::STACK_BASE
+                + index * knytos_launch::user_address::STACK_STRIDE
         );
         *slot = Some(reserved);
     }
@@ -167,7 +167,7 @@ pub(crate) fn run() {
         slot.cancel_unpublished().unwrap();
     }
     assert_eq!(ADDRESS_SPACE_TABLE.lock().get(own.id()).unwrap().thread_stack_slots, 0);
-    let base = charlotte_launch::user_address::STACK_BASE;
+    let base = knytos_launch::user_address::STACK_BASE;
     let object = memory::object::allocate(own.id(), 1).unwrap();
     assert!(memory::object::map(own.id(), object, VAddr::from(base), true).is_err());
     memory::object::close_cap(own.id(), object).unwrap();

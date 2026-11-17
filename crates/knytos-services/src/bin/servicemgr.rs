@@ -42,7 +42,7 @@ use knytos_syscall::{
     spawn_upgrade,
     thread_exit,
 };
-use charlotte_launch::service_manager_status as status;
+use knytos_launch::service_manager_status as status;
 
 /// Pack 6 ASCII bytes into a u64 name.
 const fn name(s: &[u8]) -> u64 {

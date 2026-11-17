@@ -21,9 +21,9 @@ and structures sized by constants.
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
 | Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
 | Domain heap | Virtual window with a load-time capacity adapted from the principal's previous peak, backed on first touch; live allocation and peak are sensed through the standard status-page record | `../../crates/knytos-rt`, `crates/catten/src/memory/mod.rs`, `crates/catten/src/service/loader.rs` |
-| User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
+| User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `../../crates/knytos-launch`, `../../crates/knytos-lifecycle`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
-| Memory-object backing | Generation-scoped page/object sponsorship, node pool derived from usable RAM, and platform/physical progress reserves | `crates/catten/src/memory/budget.rs`, `crates/charlotte-lifecycle/src/resources.rs` |
+| Memory-object backing | Generation-scoped page/object sponsorship, node pool derived from usable RAM, and platform/physical progress reserves | `crates/catten/src/memory/budget.rs`, `../../crates/knytos-lifecycle` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
 | Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `../../crates/knytos-services`, `charlotte-protocol-*` |
 
@@ -51,7 +51,7 @@ Existing runtime adaptation is real but localized:
 - leader-driven replica reconciliation over committed membership, with
   low-pass-filtered per-node capacity signals, reservation-aware admission,
   and dwell-controlled pressure reassignment
-  (`crates/charlotte-launch/src/placement.rs`; see
+  (`../../crates/knytos-launch`; see
   [cluster artifacts and placement](cluster-artifacts-and-placement.md)).
 
 Local thread migration is architecture-qualified: Arm uses its assembly CPU
@@ -203,7 +203,7 @@ principal:
 
 - when an address space is torn down, `memory::usage` retains its touched
   stack high-water mark in a per-principal table (in memory, reset at boot);
-- the next launch calls the pure `charlotte_lifecycle::adaptive_stack_pages`
+- the next launch calls the pure `knytos_lifecycle::adaptive_stack_pages`
   policy: the recorded mark plus one page of headroom, clamped to the default
   and signed maxima;
 - a cold boot or an unknown principal selects the default, so the first
@@ -239,7 +239,7 @@ the current one-page CQ ABI does not support resizing its physical ring.
 ## Heap sensing and physical sizing
 
 Heap sensing is implemented. `knytos-rt` wraps the domain's talc arena with an
-accounting layer that publishes `charlotte_launch::heap_status` (magic/version,
+accounting layer that publishes `knytos_launch::heap_status` (magic/version,
 capacity, currently allocated bytes, peak bytes) into the reserved region of
 the domain's own status page. The kernel reads that page when it builds the
 domain records and exposes it as `CCOSTAT` v7, so `httpd`/`/metrics` shows live
@@ -259,7 +259,7 @@ pages, while the full 4 MiB capacity stays available — so a service can never
 fail an allocation because a capacity policy guessed too small.
 
 Capacity sizing is implemented alongside it. The loader chooses the capacity
-with `charlotte_lifecycle::adaptive_heap_bytes` — twice the principal's
+with `knytos_lifecycle::adaptive_heap_bytes` — twice the principal's
 previous heap peak plus 256 KiB, clamped to `[HEAP_SIZE, HEAP_VA_LIMIT]` —
 writes it into the launch header, registers it so faults beyond the claim stay
 domain errors, and `knytos-rt` claims exactly that size through a lazy arena

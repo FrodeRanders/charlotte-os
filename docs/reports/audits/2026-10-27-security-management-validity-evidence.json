@@ -308,7 +308,7 @@
   },
   "host_tests": [
     {
-      "command": "cargo test -p charlotte-management-tls --test server",
+      "command": "cargo test -p knytos-management-tls --test server",
       "passed": 11
     },
     {
@@ -342,7 +342,7 @@
       "scripts/build-knytos-services-x86_64.sh"
     ],
     "strict_clippy": [
-      "host charlotte-management-tls --all-targets",
+      "host knytos-management-tls --all-targets",
       "knytos-services httpd/deployd on crates/knytos-services/aarch64-unknown-none.json",
       "knytos-services httpd/deployd on crates/knytos-services/x86_64-unknown-none.json"
     ],
@@ -439,10 +439,10 @@
     }
   },
   "source_sha256_at_publication": {
-    "crates/charlotte-management-tls/src/lib.rs": "c3ebba0aedd68acb9266473a85ac7c78d05b4ff97ae52f349937a7c915c27567",
-    "crates/charlotte-management-tls/src/session.rs": "0dc7f110a8062cea21963211468be4edbdcaba7afcfb1b9dd48ae07da94e10ea",
-    "crates/charlotte-management-tls/src/policy.rs": "f2c9ea126ad5690c4bd2f994906aa9275b830aee3b6182ed0b2e2e70325b3e8b",
-    "crates/charlotte-management-tls/tests/server.rs": "f9a7e5563155d3e4722bf5b4be0d8d4bfb002568e053e3d71870c257355d8eee",
+    "crates/knytos-management-tls/src/lib.rs": "c3ebba0aedd68acb9266473a85ac7c78d05b4ff97ae52f349937a7c915c27567",
+    "crates/knytos-management-tls/src/session.rs": "0dc7f110a8062cea21963211468be4edbdcaba7afcfb1b9dd48ae07da94e10ea",
+    "crates/knytos-management-tls/src/policy.rs": "f2c9ea126ad5690c4bd2f994906aa9275b830aee3b6182ed0b2e2e70325b3e8b",
+    "crates/knytos-management-tls/tests/server.rs": "f9a7e5563155d3e4722bf5b4be0d8d4bfb002568e053e3d71870c257355d8eee",
     "crates/knytos-services/src/management_io.rs": "4cbde63cfff75f9e1d463295e0c929c5ce444c98c05b90049aa9df4e39d8990c",
     "scripts/prepare-management-tls-fixture.py": "05ff3661865afafdd7317d2cf6fcf392b9c5dcdd4796ead5b2d40bdaf796a2d1",
     "scripts/run-management-startup-tests.py": "18debdb38ae3e7196ce24979bc8841586867ebfab1a568ab5f8c3891cbe8dd84",

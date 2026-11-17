@@ -705,8 +705,8 @@ static IRQ_COUNT: [AtomicU64; TOTAL_ROUTE_SLOTS] = [const { AtomicU64::new(0) };
 /// Each routable interrupt owns exactly one statically initialized mailbox.
 /// Flooding one source cannot fill shared capacity and drop another source's
 /// only wake. Claims retain a generation watermark against delayed publishers.
-static DEFERRED_WAKES: [charlotte_lifecycle::irq::DeferredIrqWake; TOTAL_ROUTE_SLOTS] =
-    [const { charlotte_lifecycle::irq::DeferredIrqWake::new() }; TOTAL_ROUTE_SLOTS];
+static DEFERRED_WAKES: [knytos_lifecycle::irq::DeferredIrqWake; TOTAL_ROUTE_SLOTS] =
+    [const { knytos_lifecycle::irq::DeferredIrqWake::new() }; TOTAL_ROUTE_SLOTS];
 
 fn pack_route(asid: AddressSpaceId, cq: CqId) -> u64 {
     debug_assert!(asid != 0 && u32::try_from(asid).is_ok(), "driver asid must pack into 32 bits");
@@ -1219,7 +1219,7 @@ pub fn mmio_map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(DeviceError::NotPageAligned);
     }
-    if !charlotte_launch::user_address::valid_application_pages(base.into(), 1) {
+    if !knytos_launch::user_address::valid_application_pages(base.into(), 1) {
         return Err(DeviceError::MapFailed);
     }
     with_mmio_operation(asid, cap, false, || mmio_map_with_operation(asid, cap, base, writable))
@@ -1337,7 +1337,7 @@ fn map_mmio_at(
     cap: DeviceCap,
     mapping: MmioMapping,
 ) -> Result<(), DeviceError> {
-    if !charlotte_launch::user_address::valid_application_pages(mapping.base.into(), mapping.pages)
+    if !knytos_launch::user_address::valid_application_pages(mapping.base.into(), mapping.pages)
     {
         return Err(DeviceError::InvalidRange);
     }
@@ -1434,7 +1434,7 @@ pub fn interrupt_bind_cq(
     }
     let intid = irq.intid;
     let slot = route_slot(intid).expect("[dev] bound interrupt has no routing slot");
-    let generation = charlotte_lifecycle::irq::next_binding_generation(
+    let generation = knytos_lifecycle::irq::next_binding_generation(
         ROUTE_GENERATION[slot].load(Ordering::Acquire),
     )
     .ok_or(DeviceError::RouteGenerationExhausted)?;
@@ -1493,7 +1493,7 @@ fn unroute_interrupt(intid: u32) {
         // Invalidate queued wakes before clearing the route. A delivery racing
         // these stores may enqueue either generation, but neither can match a
         // subsequently rebound route.
-        let generation = charlotte_lifecycle::irq::retired_generation(
+        let generation = knytos_lifecycle::irq::retired_generation(
             ROUTE_GENERATION[slot].load(Ordering::Acquire),
         );
         DEFERRED_WAKES[slot].advance(generation);

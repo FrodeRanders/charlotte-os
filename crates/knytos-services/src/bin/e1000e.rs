@@ -50,7 +50,7 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_launch::net_status as status;
+use knytos_launch::net_status as status;
 
 const LINK_WAIT_ATTEMPTS: usize = 500;
 const LINK_WAIT_MILLIS: u64 = 10;

@@ -41,7 +41,7 @@ pub const CPU_LOAD_UNKNOWN: u16 = u16::MAX;
 /// remain neutral only after target compatibility has been established.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NodeCapacity {
-    pub target: Option<charlotte_launch::execution_target::ExecutionTarget>,
+    pub target: Option<knytos_launch::execution_target::ExecutionTarget>,
     pub free_frames: u64,
     pub usable_frames: u64,
     /// Static memory promises already committed to other deployments on this
@@ -284,7 +284,7 @@ const DOMAIN_RUNTIME_PAGES: u64 = 8;
 /// demand; an explicit signed heap request arrives with a future descriptor
 /// version, and storage or processor requests need their own node sensors.
 pub fn descriptor_memory_demand(
-    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+    descriptor: &knytos_launch::deployment::DeploymentDescriptor<'_>,
 ) -> u64 {
     u64::from(descriptor.max_threads)
         .saturating_mul(u64::from(descriptor.stack_pages_per_thread))
@@ -339,7 +339,7 @@ pub fn resolve_release_assignments_with_capacity(
     capacity: &NodeCapacityView,
 ) -> Result<Vec<Vec<u64>>, AdmissionError> {
     let release =
-        charlotte_launch::release::decode(release_bytes).ok_or(AdmissionError::Invalid)?;
+        knytos_launch::release::decode(release_bytes).ok_or(AdmissionError::Invalid)?;
     let descriptors = release.descriptors().collect::<Vec<_>>();
     resolve_descriptor_assignments_with_capacity(
         &descriptors,
@@ -369,7 +369,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
     eligible.dedup();
     let descriptors = descriptor_bytes
         .iter()
-        .map(|bytes| charlotte_launch::deployment::decode(bytes).ok_or(AdmissionError::Invalid))
+        .map(|bytes| knytos_launch::deployment::decode(bytes).ok_or(AdmissionError::Invalid))
         .collect::<Result<Vec<_>, _>>()?;
     let mut order = (0..descriptors.len()).collect::<Vec<_>>();
     order.sort_unstable_by(|left, right| {
@@ -405,7 +405,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
             .collect::<Vec<_>>();
         if !eligible.is_empty()
             && (compatible.is_empty()
-                || (descriptor.placement.flags & charlotte_launch::placement::EVERY_ELIGIBLE_NODE
+                || (descriptor.placement.flags & knytos_launch::placement::EVERY_ELIGIBLE_NODE
                     == 0
                     && compatible.len() < usize::from(descriptor.placement.replicas)))
         {
@@ -420,7 +420,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
                     && node_can_host(&projected_capacity, *node, demand)
             })
             .collect::<Vec<_>>();
-        if policy == charlotte_launch::placement::PlacementPolicy::singleton() {
+        if policy == knytos_launch::placement::PlacementPolicy::singleton() {
             let selected = if automatic_node != 0 && candidates.contains(&automatic_node) {
                 automatic_node
             } else {
@@ -432,7 +432,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
                         score_input.extend_from_slice(&node.to_le_bytes());
                         (
                             pressure_bucket(&projected_capacity, *node),
-                            charlotte_launch::fnv1a(&score_input),
+                            knytos_launch::fnv1a(&score_input),
                             core::cmp::Reverse(*node),
                         )
                     })
@@ -450,7 +450,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
             assignments[index] = Some(vec![selected]);
             continue;
         }
-        let every = policy.flags & charlotte_launch::placement::EVERY_ELIGIBLE_NODE != 0;
+        let every = policy.flags & knytos_launch::placement::EVERY_ELIGIBLE_NODE != 0;
         if every && candidates.is_empty() {
             return Err(if eligible.is_empty() {
                 AdmissionError::UnsatisfiablePlacement
@@ -469,7 +469,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
         if wanted > candidates.len() {
             return Err(AdmissionError::InsufficientCapacity);
         }
-        let seed = if policy.flags & charlotte_launch::placement::COLOCATE_AFFINITY_GROUP != 0 {
+        let seed = if policy.flags & knytos_launch::placement::COLOCATE_AFFINITY_GROUP != 0 {
             policy.affinity_group.to_le_bytes().to_vec()
         } else {
             descriptor.artifact_name.to_vec()
@@ -490,7 +490,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
             score_input.extend_from_slice(&node.to_le_bytes());
             (
                 core::cmp::Reverse(pressure_bucket(&projected_capacity, *node)),
-                core::cmp::Reverse(charlotte_launch::fnv1a(&score_input)),
+                core::cmp::Reverse(knytos_launch::fnv1a(&score_input)),
                 *node,
             )
         });
@@ -522,18 +522,18 @@ pub fn resolve_descriptor_assignments_with_capacity(
 /// Capacity-aware admission with explicit node profiles.
 pub fn verify_and_encode_with_capacity(
     bundle_bytes: &[u8],
-    trust: &charlotte_launch::trust::AdmissionTrust,
+    trust: &knytos_launch::trust::AdmissionTrust,
     now_unix_seconds: u64,
     eligible_nodes: &[u64],
     automatic_node: u64,
     capacity: &NodeCapacityView,
 ) -> Result<Vec<u8>, AdmissionError> {
-    use charlotte_launch::operations_bundle::VerifyOutcome;
+    use knytos_launch::operations_bundle::VerifyOutcome;
 
-    if bundle_bytes.len() > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN {
+    if bundle_bytes.len() > knytos_launch::operations_bundle::MAX_BUNDLE_LEN {
         return Err(AdmissionError::TooLarge);
     }
-    let outcome = charlotte_launch::operations_bundle::verify(
+    let outcome = knytos_launch::operations_bundle::verify(
         bundle_bytes,
         &trust.deployment_key,
         &trust.operations_key,
@@ -551,7 +551,7 @@ pub fn verify_and_encode_with_capacity(
         VerifyOutcome::WrongReleaseKey => return Err(AdmissionError::WrongReleaseKey),
     }
     let bundle =
-        charlotte_launch::operations_bundle::decode(bundle_bytes).ok_or(AdmissionError::Invalid)?;
+        knytos_launch::operations_bundle::decode(bundle_bytes).ok_or(AdmissionError::Invalid)?;
     let assignments = resolve_release_assignments_with_capacity(
         bundle.release,
         eligible_nodes,
@@ -577,8 +577,8 @@ mod tests {
                     *node,
                     NodeCapacity {
                         target: Some(
-                            charlotte_launch::execution_target::ExecutionTarget::baseline(
-                                charlotte_launch::execution_target::Architecture::Aarch64,
+                            knytos_launch::execution_target::ExecutionTarget::baseline(
+                                knytos_launch::execution_target::Architecture::Aarch64,
                             ),
                         ),
                         ..NodeCapacity::default()
@@ -596,7 +596,7 @@ mod tests {
     }
     fn verify_and_encode(
         bytes: &[u8],
-        trust: &charlotte_launch::trust::AdmissionTrust,
+        trust: &knytos_launch::trust::AdmissionTrust,
         now: u64,
         nodes: &[u64],
         automatic: u64,
@@ -605,7 +605,7 @@ mod tests {
     }
 
     use catten_graft::state_machine::StateMachine;
-    use charlotte_launch::{
+    use knytos_launch::{
         deployment::{
             self,
             DescriptorFields,
@@ -650,16 +650,16 @@ mod tests {
 
     fn policy_release(
         pair: &KeyPair,
-        components: &[(&[u8], charlotte_launch::placement::PlacementPolicy)],
+        components: &[(&[u8], knytos_launch::placement::PlacementPolicy)],
     ) -> Vec<u8> {
         let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
         let descriptors = components
             .iter()
             .map(|(name, placement)| {
                 let fields = DescriptorFields {
-                    variants: &[charlotte_launch::deployment::ArtifactVariant {
-                        target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-                            charlotte_launch::execution_target::Architecture::Aarch64,
+                    variants: &[knytos_launch::deployment::ArtifactVariant {
+                        target: knytos_launch::execution_target::ExecutionTarget::baseline(
+                            knytos_launch::execution_target::Architecture::Aarch64,
                         ),
                         priority: 0,
                         artifact_digest: [name[0]; 32],
@@ -671,7 +671,7 @@ mod tests {
                     artifact_name: name,
                     stack_pages_per_thread: 4,
                     max_threads: 4,
-                    shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+                    shutdown_grace_ms: knytos_launch::DEFAULT_SHUTDOWN_GRACE_MS,
                     placement: *placement,
 
                     grants: &[],
@@ -701,9 +701,9 @@ mod tests {
         let release_public: &[u8; 32] = release_pair.pk.as_ref().try_into().unwrap();
         let operational_public: &[u8; 32] = operational_pair.pk.as_ref().try_into().unwrap();
         let descriptor_fields = DescriptorFields {
-            variants: &[charlotte_launch::deployment::ArtifactVariant {
-                target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+            variants: &[knytos_launch::deployment::ArtifactVariant {
+                target: knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 ),
                 priority: 0,
                 artifact_digest: [0x77; 32],
@@ -715,8 +715,8 @@ mod tests {
             artifact_name: b"kafka",
             stack_pages_per_thread: 32,
             max_threads: 16,
-            shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
-            placement: charlotte_launch::placement::PlacementPolicy::singleton(),
+            shutdown_grace_ms: knytos_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            placement: knytos_launch::placement::PlacementPolicy::singleton(),
 
             grants: &[],
         };
@@ -743,7 +743,7 @@ mod tests {
             expires_unix_seconds: expiry,
             profile_kind: PROFILE_KIND_KAFKA,
             cluster_id,
-            release_digest: charlotte_launch::sha256::digest(&release),
+            release_digest: knytos_launch::sha256::digest(&release),
             profile_name: b"kafka/orders/transactional",
         };
         let profile = vec![0x5a; profile_len];
@@ -842,11 +842,11 @@ mod tests {
     #[test]
     fn planner_resolves_distinct_replicas_and_fails_when_capacity_is_short() {
         let pair = KeyPair::from_seed([0x53; 32].into());
-        let policy = charlotte_launch::placement::PlacementPolicy {
+        let policy = knytos_launch::placement::PlacementPolicy {
             replicas: 3,
             max_instances_per_node: 1,
             min_distinct_nodes: 3,
-            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            flags: knytos_launch::placement::SPREAD_REPLICAS,
             affinity_group: 0,
             anti_affinity_group: 0,
         };
@@ -866,7 +866,7 @@ mod tests {
         let pair = KeyPair::from_seed([0x55; 32].into());
         let release = policy_release(
             &pair,
-            &[(b"orders", charlotte_launch::placement::PlacementPolicy::singleton())],
+            &[(b"orders", knytos_launch::placement::PlacementPolicy::singleton())],
         );
         assert_eq!(resolve_release_assignments(&release, &[1, 2, 3], 2).unwrap(), vec![vec![2]]);
         let fallback = resolve_release_assignments(&release, &[1, 3], 2).unwrap();
@@ -877,11 +877,11 @@ mod tests {
     #[test]
     fn capacity_gates_and_ranks_new_placements() {
         let pair = KeyPair::from_seed([0x57; 32].into());
-        let policy = charlotte_launch::placement::PlacementPolicy {
+        let policy = knytos_launch::placement::PlacementPolicy {
             replicas: 1,
             max_instances_per_node: 1,
             min_distinct_nodes: 1,
-            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            flags: knytos_launch::placement::SPREAD_REPLICAS,
             affinity_group: 0,
             anti_affinity_group: 0,
         };
@@ -901,8 +901,8 @@ mod tests {
 
         // A pressured node loses to ample peers even when its hash wins.
         let ample = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 900,
             usable_frames: 1000,
@@ -910,8 +910,8 @@ mod tests {
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let low = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 60,
             usable_frames: 1000,
@@ -930,8 +930,8 @@ mod tests {
 
         // Below the reserve, a node is excluded from new placements.
         let exhausted = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 10,
             usable_frames: 1000,
@@ -955,8 +955,8 @@ mod tests {
     #[test]
     fn capacity_sample_change_is_hysteretic() {
         let sample = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 800,
             usable_frames: 1000,
@@ -995,8 +995,8 @@ mod tests {
     #[test]
     fn capacity_control_filters_raw_samples_and_fences_replays() {
         let initial = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 800,
             usable_frames: 1_000,
@@ -1051,11 +1051,11 @@ mod tests {
     #[test]
     fn cpu_pressure_demotes_but_never_excludes() {
         let pair = KeyPair::from_seed([0x5a; 32].into());
-        let policy = charlotte_launch::placement::PlacementPolicy {
+        let policy = knytos_launch::placement::PlacementPolicy {
             replicas: 1,
             max_instances_per_node: 1,
             min_distinct_nodes: 1,
-            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            flags: knytos_launch::placement::SPREAD_REPLICAS,
             affinity_group: 0,
             anti_affinity_group: 0,
         };
@@ -1066,8 +1066,8 @@ mod tests {
             (
                 node,
                 NodeCapacity {
-                    target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                        charlotte_launch::execution_target::Architecture::Aarch64,
+                    target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                        knytos_launch::execution_target::Architecture::Aarch64,
                     )),
                     free_frames: 900,
                     usable_frames: 1000,
@@ -1080,8 +1080,8 @@ mod tests {
         capacity.insert(
             busy,
             NodeCapacity {
-                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+                target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 )),
                 free_frames: 900,
                 usable_frames: 1000,
@@ -1098,8 +1098,8 @@ mod tests {
             (
                 node,
                 NodeCapacity {
-                    target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                        charlotte_launch::execution_target::Architecture::Aarch64,
+                    target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                        knytos_launch::execution_target::Architecture::Aarch64,
                     )),
                     free_frames: 900,
                     usable_frames: 1000,
@@ -1119,19 +1119,19 @@ mod tests {
     #[test]
     fn declared_memory_demand_fails_only_on_capacity() {
         let pair = KeyPair::from_seed([0x59; 32].into());
-        let policy = charlotte_launch::placement::PlacementPolicy {
+        let policy = knytos_launch::placement::PlacementPolicy {
             replicas: 1,
             max_instances_per_node: 1,
             min_distinct_nodes: 1,
-            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            flags: knytos_launch::placement::SPREAD_REPLICAS,
             affinity_group: 0,
             anti_affinity_group: 0,
         };
         let release = policy_release(&pair, &[(b"orders", policy)]);
         // Demand = 4 threads x 4 stack pages + 8 runtime pages = 24 frames.
         let tight = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 30,
             usable_frames: 1000,
@@ -1146,8 +1146,8 @@ mod tests {
         );
 
         let roomy = NodeCapacity {
-            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+            target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             )),
             free_frames: 200,
             usable_frames: 1000,
@@ -1171,15 +1171,15 @@ mod tests {
     #[test]
     fn release_reservations_are_charged_cumulatively() {
         let pair = KeyPair::from_seed([0x5b; 32].into());
-        let policy = charlotte_launch::placement::PlacementPolicy::singleton();
+        let policy = knytos_launch::placement::PlacementPolicy::singleton();
         let release = policy_release(&pair, &[(b"orders", policy), (b"payments", policy)]);
         // Each descriptor needs 24 frames. With a 62-frame reserve, either one
         // fits in 100 free frames, but the two together do not.
         let capacity = NodeCapacityView::from_iter([(
             1,
             NodeCapacity {
-                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+                target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 )),
                 free_frames: 100,
                 usable_frames: 1_000,
@@ -1197,11 +1197,11 @@ mod tests {
     fn release_reservations_charge_every_selected_replica() {
         let pair = KeyPair::from_seed([0x6c; 32].into());
         for flags in [
-            charlotte_launch::placement::SPREAD_REPLICAS,
-            charlotte_launch::placement::EVERY_ELIGIBLE_NODE,
+            knytos_launch::placement::SPREAD_REPLICAS,
+            knytos_launch::placement::EVERY_ELIGIBLE_NODE,
         ] {
-            let policy = charlotte_launch::placement::PlacementPolicy {
-                replicas: if flags == charlotte_launch::placement::EVERY_ELIGIBLE_NODE {
+            let policy = knytos_launch::placement::PlacementPolicy {
+                replicas: if flags == knytos_launch::placement::EVERY_ELIGIBLE_NODE {
                     0
                 } else {
                     2
@@ -1218,8 +1218,8 @@ mod tests {
                     node,
                     NodeCapacity {
                         target: Some(
-                            charlotte_launch::execution_target::ExecutionTarget::baseline(
-                                charlotte_launch::execution_target::Architecture::Aarch64,
+                            knytos_launch::execution_target::ExecutionTarget::baseline(
+                                knytos_launch::execution_target::Architecture::Aarch64,
                             ),
                         ),
                         free_frames: 100,
@@ -1249,15 +1249,15 @@ mod tests {
         let pair = KeyPair::from_seed([0x5c; 32].into());
         let release = policy_release(
             &pair,
-            &[(b"orders", charlotte_launch::placement::PlacementPolicy::singleton())],
+            &[(b"orders", knytos_launch::placement::PlacementPolicy::singleton())],
         );
         // The descriptor needs 24 frames. Dynamic free memory looks ample,
         // but prior promises leave fewer than 24 statically allocatable.
         let capacity = NodeCapacityView::from_iter([(
             1,
             NodeCapacity {
-                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+                target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 )),
                 free_frames: 900,
                 usable_frames: 1_000,
@@ -1274,11 +1274,11 @@ mod tests {
     #[test]
     fn planner_honours_affinity_and_anti_affinity_groups() {
         let pair = KeyPair::from_seed([0x54; 32].into());
-        let colocated = charlotte_launch::placement::PlacementPolicy {
+        let colocated = knytos_launch::placement::PlacementPolicy {
             replicas: 1,
             max_instances_per_node: 1,
             min_distinct_nodes: 1,
-            flags: charlotte_launch::placement::COLOCATE_AFFINITY_GROUP,
+            flags: knytos_launch::placement::COLOCATE_AFFINITY_GROUP,
             affinity_group: 7,
             anti_affinity_group: 0,
         };
@@ -1286,7 +1286,7 @@ mod tests {
         let assignments = resolve_release_assignments(&release, &[1, 2, 3], 1).unwrap();
         assert_eq!(assignments[0], assignments[1]);
 
-        let separated = charlotte_launch::placement::PlacementPolicy {
+        let separated = knytos_launch::placement::PlacementPolicy {
             flags: 0,
             affinity_group: 0,
             anti_affinity_group: 9,
@@ -1345,7 +1345,7 @@ mod tests {
 }
 
 fn compatible_node(
-    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+    descriptor: &knytos_launch::deployment::DeploymentDescriptor<'_>,
     capacity: &NodeCapacityView,
     node: u64,
 ) -> bool {

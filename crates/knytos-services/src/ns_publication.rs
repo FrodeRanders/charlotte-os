@@ -80,8 +80,8 @@ impl Publication {
 /// One slot is reserved at launch for preparing a live replacement. Tombstones
 /// remain in the existing bounded policy store and need no live watch.
 pub fn publication_admitted(live: usize, replacing_live: bool) -> bool {
-    live < charlotte_protocol_ns::MAX_LIVE_PUBLICATIONS
-        || (replacing_live && live == charlotte_protocol_ns::MAX_LIVE_PUBLICATIONS)
+    live < knytos_protocol_ns::MAX_LIVE_PUBLICATIONS
+        || (replacing_live && live == knytos_protocol_ns::MAX_LIVE_PUBLICATIONS)
 }
 
 #[cfg(test)]
@@ -181,7 +181,7 @@ mod tests {
     }
     #[test]
     fn live_capacity_keeps_one_replacement_preparation_slot() {
-        let max = charlotte_protocol_ns::MAX_LIVE_PUBLICATIONS;
+        let max = knytos_protocol_ns::MAX_LIVE_PUBLICATIONS;
         assert!(publication_admitted(max - 1, false));
         assert!(!publication_admitted(max, false));
         assert!(publication_admitted(max, true));

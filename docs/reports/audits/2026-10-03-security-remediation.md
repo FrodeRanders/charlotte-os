@@ -114,7 +114,7 @@ separate work.
 
 ### User virtual addresses
 
-`charlotte_launch::user_address` defines the current shared ABI: non-null
+`knytos_launch::user_address` defines the current shared ABI: non-null
 addresses in the lower 47-bit window, with page-aligned explicit mapping bases
 and checked, nonzero lengths. The entire range must fit; validating only the
 first page is insufficient.
@@ -576,7 +576,7 @@ Validation:
 
 - The host runner passed, including three new boundary tests for checked
   event-count admission, saturating deadlines and nonzero representable
-  hardware checkpoints. `charlotte-lifecycle` now runs 14 tests.
+  hardware checkpoints. `knytos-lifecycle` now runs 14 tests.
 - Synchronous guest tests passed for per-namespace rejection, ordinary node
   pool saturation with reserved platform admission, exact charge reconciliation,
   64 hour-long cancellation/close cycles, mixed capability/detached admission,
@@ -639,7 +639,7 @@ growth reject retirement before publication or allocation.
 Validation:
 
 - The host runner passed, including atomic multidimensional rejection,
-  overflow, underflow and reuse. `charlotte-lifecycle` now runs 15 tests.
+  overflow, underflow and reuse. `knytos-lifecycle` now runs 15 tests.
 - Synchronous guest tests passed for record and queue ceilings, metadata-charge
   rollback when queue admission fails, failed growth preserving queued data,
   successful growth and retained charges after shrink, delegated closed

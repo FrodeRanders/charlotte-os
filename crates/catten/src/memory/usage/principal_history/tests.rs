@@ -50,8 +50,8 @@ pub(in crate::memory::usage) fn run() {
 }
 
 fn exact_root_reuse() {
-    let principal = charlotte_launch::artifact_principal_id(b"principal-history-control");
-    let other = charlotte_launch::artifact_principal_id(b"principal-history-other-control");
+    let principal = knytos_launch::artifact_principal_id(b"principal-history-control");
+    let other = knytos_launch::artifact_principal_id(b"principal-history-other-control");
     assert_ne!(principal, other);
     assert_eq!(stack_high_water(principal), 0);
     assert_eq!(heap_peak(principal), 0);
@@ -69,7 +69,7 @@ fn exact_root_reuse() {
     memory::close_user_address_space_handle(first).unwrap();
     assert_eq!(stack_high_water(principal), 7);
     assert_eq!(heap_peak(principal), 8192);
-    assert_eq!(charlotte_lifecycle::adaptive_stack_pages(stack_high_water(principal), 4, 64), 8);
+    assert_eq!(knytos_lifecycle::adaptive_stack_pages(stack_high_water(principal), 4, 64), 8);
     let next =
         memory::register_user_address_space(memory::AddressSpace::try_new_user().unwrap()).unwrap();
     assert_eq!(next.id(), first.id());

@@ -1072,7 +1072,7 @@ connection.
 
 On a single Ethernet segment, nodes can discover each other without
 any seed configuration. A joining node broadcasts an Ethernet frame
-with a well-known EtherType (the `charlotte-protocol-msg` layer
+with a well-known EtherType (the `knytos-protocol-msg` layer
 already reserves `0x88B5`), carrying a "Raft peer discovery" payload.
 Existing cluster members respond with their service names and a
 connection offer. The joining node then performs a standard name

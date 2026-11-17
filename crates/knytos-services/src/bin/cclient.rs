@@ -4,7 +4,7 @@
 //! message through it → query the driver's interrupt count. Never learns
 //! kernel identifiers; reaches the device only through a delegated console
 //! connection. Results are posted to the named fields in
-//! [`charlotte_launch::uart_client_status`] for the kernel verifier: write
+//! [`knytos_launch::uart_client_status`] for the kernel verifier: write
 //! result, interrupt count, progress stage, deferred-read result, and
 //! completion sentinel.
 #![no_std]
@@ -21,7 +21,7 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::uart_client_status as status;
+use knytos_launch::uart_client_status as status;
 
 const SENTINEL: u32 = 0xc0de;
 

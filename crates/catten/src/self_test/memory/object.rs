@@ -55,7 +55,7 @@ pub fn test_memory_objects() {
         object::map(
             owner,
             invalid_range,
-            VAddr::from(charlotte_launch::user_address::USER_END - 4096),
+            VAddr::from(knytos_launch::user_address::USER_END - 4096),
             true
         ),
         Err(MemoryObjectError::MapFailed),

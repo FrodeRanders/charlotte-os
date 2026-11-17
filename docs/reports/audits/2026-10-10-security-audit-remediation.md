@@ -39,7 +39,7 @@ assembly, a missing fragment and an over-ceiling state.
 
 ## SEC-32: fail-safe transmit reservation
 
-[`CharlotteEthDevice`](../../../crates/charlotte-smoltcp/src/lib.rs#L99) now
+[`CharlotteEthDevice`](../../../crates/knytos-smoltcp/src/lib.rs#L99) now
 reserves one persistent mapped page at first transmit/receive use. `transmit`
 and `receive` return `None` when the reservation is unavailable, so smoltcp
 drops the packet instead of receiving a zero-length buffer; a queued receive
@@ -52,7 +52,7 @@ The consume path no longer allocates before invoking the smoltcp closure. It
 builds the frame in the persistent scratch, then tries a fresh moved object
 for the driver; allocation or mapping failure drops that frame and leaves the
 service running
-([lib.rs:288](../../../crates/charlotte-smoltcp/src/lib.rs#L300)).
+([lib.rs:288](../../../crates/knytos-smoltcp/src/lib.rs#L300)).
 
 Tests: `missing_tx_scratch_applies_backpressure_without_a_token` verifies no
 token is handed out without backing, the queued frame survives and is

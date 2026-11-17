@@ -16,19 +16,19 @@ use catten_services::{
     wait_for_registered_name_bytes_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_protocol_kafka::RecordRequest;
+use knytos_protocol_kafka::RecordRequest;
 
 catten_rt::entry!(main);
 
 const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
 
 fn fail(code: u32) -> ! {
-    config::write::<u32>(charlotte_launch::kafka_fence_smoke_status::ERROR, code);
+    config::write::<u32>(knytos_launch::kafka_fence_smoke_status::ERROR, code);
     unsafe { thread_exit() }
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(charlotte_launch::kafka_fence_smoke_status::STAGE, 1);
+    config::write::<u32>(knytos_launch::kafka_fence_smoke_status::STAGE, 1);
     let ns = ctx.bootstrap_connection().unwrap_or_else(|| fail(0x4b31));
     let (_, connection) =
         wait_for_registered_name_bytes_owned(ns, TRANSACTION_NAME).unwrap_or_else(|| fail(0x4b32));
@@ -41,8 +41,8 @@ fn main(ctx: Context) -> ! {
     }
     drop(transaction);
     config::write::<u32>(
-        charlotte_launch::kafka_fence_smoke_status::STAGE,
-        charlotte_launch::kafka_fence_smoke_status::SUCCESS,
+        knytos_launch::kafka_fence_smoke_status::STAGE,
+        knytos_launch::kafka_fence_smoke_status::SUCCESS,
     );
     catten_rt::logln!("[kafka-fence-smoke] stale transactional producer was fenced");
     unsafe { thread_exit() }

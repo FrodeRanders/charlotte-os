@@ -1,6 +1,6 @@
 # Signed bootstrap trust policy
 
-`charlotte_launch::trust::signed_policy` authenticates a fixed public admission
+`knytos_launch::trust::signed_policy` authenticates a fixed public admission
 policy relative to an explicitly supplied bootstrap key, cluster and acceptance
 state. Host signing and verification use the same allocation-free parser and
 verifier intended for a future protected provisioning adapter.
@@ -182,9 +182,9 @@ host_rustdoc="$(rustup which rustdoc)"
     cd "${TMPDIR:-/tmp}"
     export RUSTC="$host_rustc" RUSTDOC="$host_rustdoc"
     export CARGO_TARGET_DIR="$repo_root/target/boot-trust-host"
-    "$host_cargo" run --locked --manifest-path "$repo_root/crates/charlotte-launch/Cargo.toml" \
+    "$host_cargo" run --locked --manifest-path "$repo_root/crates/knytos-launch/Cargo.toml" \
         --example generate_boot_trust_fixtures
-    "$host_cargo" test --locked --manifest-path "$repo_root/crates/charlotte-launch/Cargo.toml" \
+    "$host_cargo" test --locked --manifest-path "$repo_root/crates/knytos-launch/Cargo.toml" \
         --test signed_policy
 )
 ```

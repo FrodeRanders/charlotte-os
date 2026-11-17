@@ -16,8 +16,8 @@ path = "s3_response_erasure.rs"
 
 [dev-dependencies]
 knytos-services = { path = "../../crates/knytos-services" }
-charlotte-kafka = { path = "../../crates/charlotte-kafka" }
-charlotte-s3 = { path = "../../crates/charlotte-s3" }
+knytos-kafka = { path = "../../crates/knytos-kafka" }
+knytos-s3 = { path = "../../crates/knytos-s3" }
 embedded-io = { version = "0.7", default-features = false }
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 

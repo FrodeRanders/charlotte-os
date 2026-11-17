@@ -43,7 +43,7 @@
     "crates/catten/src/syscall/mailbox_node_budget.rs": "1346e7183aab671f19aed8050fa0d3e02ad249043fe325f7f86f115d0b4e1fb3",
     "crates/catten/src/syscall/statistics.rs": "514085962d07de34572833fb538c16576286d4b3bf05f9af02e899d98af3485a",
     "crates/catten/src/timers/account_budget.rs": "d59e73251afd5d6940923503bc4d8f22362de1c4170e29ef5838db919bb4e81e",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-host-tests.sh": "c0b59cdb5b9f66a834d3d9fae91df45085a1e3555d61a77e3c345889ea125ef2",
     "scripts/tests/test-http-keyhole-liveness.py": "f85aec80ea182915fcc078fd69e179e5ddaaf1cb9cf2d830d9966f91fe2251ac"

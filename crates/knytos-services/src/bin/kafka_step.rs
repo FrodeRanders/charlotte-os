@@ -34,8 +34,8 @@ use catten_services::{
     wait_for_registered_name_bytes_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::kafka_step_status as status;
-use charlotte_protocol_kafka::{
+use knytos_launch::kafka_step_status as status;
+use knytos_protocol_kafka::{
     DeliveredRecord,
     RecordRequest,
 };

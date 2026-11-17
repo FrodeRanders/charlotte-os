@@ -311,7 +311,7 @@ content addressing.
 
 ## Placement contract
 
-`charlotte_launch::placement::PlacementPolicy` represents:
+`knytos_launch::placement::PlacementPolicy` represents:
 
 - desired replicas (or every eligible node);
 - maximum instances of the component on one node;

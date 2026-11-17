@@ -8,7 +8,7 @@ production trust, physical cleanup or the historical IPC exit-watch failure.
 
 ## Implementation and limits
 
-`charlotte-protocol-ns` supplies one strict CNSGEN01 record: exact total/name
+`knytos-protocol-ns` supplies one strict CNSGEN01 record: exact total/name
 lengths, a full 1..=256-byte name, and an explicit generation. Observation opcode
 18 requires zero; retirement opcode 10 requires 1..=i64::MAX. Retired scalar,
 bare-name and eight-byte generation records reject. The kernel NS endpoint and

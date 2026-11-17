@@ -90,7 +90,7 @@ retained when a repaired behavior has a small, useful counterexample.
   flat session collision, and receive-session regression.
 - `knytos-graft` passed 24 host tests, including restart-fenced join admission,
   selected-anchor rejection, snapshot correlation, and membership recovery.
-- `charlotte-protocol-msg` passed 6 host tests, including disjoint ordered
+- `knytos-protocol-msg` passed 6 host tests, including disjoint ordered
   retry/restart identities and fail-closed session exhaustion.
 - The changed `ns`, `relmsg`, and `raft` services built and passed Clippy with warnings
   denied for the AArch64 target. Workspace formatting, shell syntax, and diff

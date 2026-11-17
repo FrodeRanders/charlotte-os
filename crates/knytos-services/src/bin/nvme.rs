@@ -4,7 +4,7 @@
 //! the controller via delegated BAR0 MMIO + interrupt grants (from the PCI
 //! topology scanner, or hardcoded for QEMU virt in test mode), initialises the
 //! admin and I/O queues, identifies the first namespace, and serves the block
-//! device protocol (`charlotte-protocol-block` v1).
+//! device protocol (`knytos-protocol-block` v1).
 //!
 //! ## Initialisation sequence
 //!
@@ -56,7 +56,7 @@ use knytos_syscall::{
     ipc_status,
     *,
 };
-use charlotte_launch::nvme_status as status;
+use knytos_launch::nvme_status as status;
 
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
@@ -968,7 +968,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             continue;
                         }
                         let (lba, count) = {
-                            let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
+                            let (l, c) = knytos_protocol_block::unpack_lba_count(message.arg0);
                             (l, c)
                         };
                         let Some(transfer_bytes) = (count as u64).checked_mul(lbs as u64) else {
@@ -1022,7 +1022,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             continue;
                         }
                         let (lba, count) = {
-                            let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
+                            let (l, c) = knytos_protocol_block::unpack_lba_count(message.arg0);
                             (l, c)
                         };
                         let Some(transfer_bytes) = (count as u64).checked_mul(lbs as u64) else {

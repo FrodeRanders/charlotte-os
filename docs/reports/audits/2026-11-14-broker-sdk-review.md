@@ -1,6 +1,6 @@
 # Broker as an application SDK consumer
 
-14 November 2026. Reviewed `charlotte-kafka-broker` revision
+14 November 2026. Reviewed `knytos-kafka-broker` revision
 `09798d276cc2ce8617cbc716aac487e9e56ec866`, with a clean working tree. Its
 platform pins are Knytos `9f3d5203e4604c3113afb07e25b28ef6cd0db48c` and
 Sitas `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`; Rust is
@@ -111,7 +111,7 @@ Add explicit manifest/binary/test-package selection and an existing-project
 adoption path while retaining source/fingerprint checks. Exported platform
 crates and Git dependencies must resolve to one selected platform/Sitas source
 graph; mixing identical crate names from Git and path sources can create
-incompatible types. The host conformance suite uses `charlotte-kafka` and
+incompatible types. The host conformance suite uses `knytos-kafka` and
 `sitas-unix`, which are not currently exported. Their deliberate Git pins may
 remain, or an optional test source profile can include them with the same graph.
 

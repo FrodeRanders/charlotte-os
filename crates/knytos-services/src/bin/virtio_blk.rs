@@ -47,7 +47,7 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_launch::block_driver_status as status;
+use knytos_launch::block_driver_status as status;
 
 const PAGE_SIZE: usize = 4096;
 const QUEUE_SIZE: u16 = 8;
@@ -380,7 +380,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
             }
             block::OP_READ => {
-                let (lba, count) = charlotte_protocol_block::unpack_lba_count(message.arg0);
+                let (lba, count) = knytos_protocol_block::unpack_lba_count(message.arg0);
                 let Some(transfer_bytes) = (count as u64).checked_mul(block_size as u64) else {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;
@@ -414,7 +414,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 );
             }
             block::OP_WRITE => {
-                let (lba, count) = charlotte_protocol_block::unpack_lba_count(message.arg0);
+                let (lba, count) = knytos_protocol_block::unpack_lba_count(message.arg0);
                 let Some(transfer_bytes) = (count as u64).checked_mul(block_size as u64) else {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;

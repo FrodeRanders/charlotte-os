@@ -169,7 +169,7 @@ fn clear_launch_retry(retries: &mut Vec<LaunchRetry>, kind: LaunchRetryKind, ide
 
 fn fail(stage: u32) -> ! {
     catten_rt::logln!("[agent] fatal stage={:#x}", stage);
-    config::write_u32_release(charlotte_launch::agent_status::STAGE, stage);
+    config::write_u32_release(knytos_launch::agent_status::STAGE, stage);
     catten_rt::domain_abort()
 }
 
@@ -184,9 +184,9 @@ fn lookup(names: ConnectionRef<'_>, service: u64) -> Option<Connection> {
     wait_for_registered_name_owned(names, service).map(|(_, connection)| connection)
 }
 
-fn manifest_admission_trust(ctx: &Context) -> Option<charlotte_launch::trust::AdmissionTrust> {
-    match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::trust::AdmissionTrust::decode(bytes),
+fn manifest_admission_trust(ctx: &Context) -> Option<knytos_launch::trust::AdmissionTrust> {
+    match ctx.manifest_value(knytos_launch::ADMISSION_TRUST_MANIFEST_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => knytos_launch::trust::AdmissionTrust::decode(bytes),
         _ => None,
     }
 }
@@ -223,7 +223,7 @@ fn deployment_names(dns_connection: ConnectionRef<'_>) -> Vec<Vec<u8>> {
         let Some(name) = bytes.get(start..start.saturating_add(name_len)) else {
             return Vec::new();
         };
-        if name.is_empty() || name.len() > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN {
+        if name.is_empty() || name.len() > knytos_launch::deployment::MAX_ARTIFACT_NAME_LEN {
             return Vec::new();
         }
         names.push(name.to_vec());
@@ -262,7 +262,7 @@ fn operational_bindings(dns_connection: ConnectionRef<'_>) -> Vec<OperationalBin
     else {
         return Vec::new();
     };
-    let Some(bindings) = charlotte_launch::operations_pickup::decode_catalog_list(bytes) else {
+    let Some(bindings) = knytos_launch::operations_pickup::decode_catalog_list(bytes) else {
         return Vec::new();
     };
     let result = bindings
@@ -312,7 +312,7 @@ fn query_release(dns_connection: ConnectionRef<'_>, release_name: &[u8]) -> Opti
         .wait()
         .ok()?;
     let len = usize::try_from(reply.result).ok()?;
-    if !(charlotte_launch::release::HEADER_LEN..=charlotte_launch::release::MAX_RELEASE_LEN)
+    if !(knytos_launch::release::HEADER_LEN..=knytos_launch::release::MAX_RELEASE_LEN)
         .contains(&len)
     {
         return None;
@@ -320,7 +320,7 @@ fn query_release(dns_connection: ConnectionRef<'_>, release_name: &[u8]) -> Opti
     let memory = reply.memory?;
     let mapping = memory.map_read_only().ok()?;
     let bytes = mapping.as_slice().get(..len)?;
-    charlotte_launch::release::decode(bytes)?;
+    knytos_launch::release::decode(bytes)?;
     Some(bytes.to_vec())
 }
 
@@ -336,9 +336,9 @@ fn decode_deployment(bytes: &[u8]) -> Option<DeploymentInfo> {
 
 fn fetch_from_central_store(
     names: ConnectionRef<'_>,
-    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+    descriptor: &knytos_launch::deployment::DeploymentDescriptor<'_>,
     cluster_key: &[u8; 32],
-    variant: charlotte_launch::deployment::ArtifactVariant<'_>,
+    variant: knytos_launch::deployment::ArtifactVariant<'_>,
 ) -> Option<Vec<u8>> {
     if try_registered_name_bytes_owned(names, b"s3").is_none()
         && let Some(artifact) =
@@ -354,14 +354,14 @@ fn fetch_from_central_store(
     let artifact = fetch_s3_object(
         names,
         variant.object_key,
-        charlotte_launch::MAX_ARTIFACT_ELF_SIZE,
+        knytos_launch::MAX_ARTIFACT_ELF_SIZE,
         &variant.artifact_digest,
     )?;
-    if charlotte_launch::signature_note::verify_elf_for_name(
+    if knytos_launch::signature_note::verify_elf_for_name(
         &artifact,
         cluster_key,
         descriptor.artifact_name,
-    ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    ) != knytos_launch::signature_note::VerifyOutcome::Valid
     {
         catten_rt::logln!("[agent] fetched artifact failed identity validation");
         return None;
@@ -381,7 +381,7 @@ fn fetch_s3_object(
         return None;
     };
     let client = S3Client::new(connection.as_ref());
-    let (mut get, info) = match client.get(charlotte_protocol_s3::ObjectRequest::get(key)) {
+    let (mut get, info) = match client.get(knytos_protocol_s3::ObjectRequest::get(key)) {
         Ok(result) => result,
         Err(error) => {
             catten_rt::logln!("[agent] S3 GET begin failed for key {:?}: {:?}", key, error);
@@ -448,7 +448,7 @@ fn fetch_s3_object(
         );
         return None;
     }
-    if charlotte_launch::sha256::digest(&bytes) != *expected_digest {
+    if knytos_launch::sha256::digest(&bytes) != *expected_digest {
         catten_rt::logln!("[agent] S3 GET digest mismatch for key {:?}", key);
         return None;
     }
@@ -465,10 +465,10 @@ fn query_shutdown_intent(
     dns_connection: ConnectionRef<'_>,
     node_key: u64,
     cluster_key: &[u8; 32],
-) -> Option<(u64, charlotte_launch::shutdown::ShutdownFields, Vec<u8>)> {
+) -> Option<(u64, knytos_launch::shutdown::ShutdownFields, Vec<u8>)> {
     let reply = dns_connection.call(dns::OP_SHUTDOWN_QUERY, node_key).ok()?.wait().ok()?;
     let len = usize::try_from(reply.result).ok()?;
-    if len != 8 + charlotte_launch::shutdown::ENCODED_LEN {
+    if len != 8 + knytos_launch::shutdown::ENCODED_LEN {
         return None;
     }
     let memory = reply.memory?;
@@ -477,12 +477,12 @@ fn query_shutdown_intent(
     let generation = u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?);
     let envelope = bytes.get(8..)?;
     if generation == 0
-        || charlotte_launch::shutdown::verify(envelope, cluster_key)
-            != charlotte_launch::shutdown::VerifyOutcome::Valid
+        || knytos_launch::shutdown::verify(envelope, cluster_key)
+            != knytos_launch::shutdown::VerifyOutcome::Valid
     {
         return None;
     }
-    let fields = charlotte_launch::shutdown::decode(envelope)?;
+    let fields = knytos_launch::shutdown::decode(envelope)?;
     (fields.target_node == node_key).then_some((generation, fields, envelope.to_vec()))
 }
 
@@ -490,15 +490,15 @@ fn launch(
     names: ConnectionRef<'_>,
     name: &[u8],
     entry: &DeploymentInfo,
-    trust: &charlotte_launch::trust::AdmissionTrust,
+    trust: &knytos_launch::trust::AdmissionTrust,
     my_node_key: u64,
 ) -> Option<ActiveDeployment> {
-    if charlotte_launch::deployment::verify(&entry.descriptor, &trust.deployment_key)
-        != charlotte_launch::deployment::VerifyOutcome::Valid
+    if knytos_launch::deployment::verify(&entry.descriptor, &trust.deployment_key)
+        != knytos_launch::deployment::VerifyOutcome::Valid
     {
         return None;
     }
-    let descriptor = charlotte_launch::deployment::decode(&entry.descriptor)?;
+    let descriptor = knytos_launch::deployment::decode(&entry.descriptor)?;
     if descriptor.artifact_name != name
         || (descriptor.node_key != 0 && descriptor.node_key != my_node_key)
     {
@@ -506,7 +506,7 @@ fn launch(
     }
     let variant = selected_variant(&descriptor, entry, my_node_key)?;
     let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key, variant)?;
-    let metadata = charlotte_launch::signature_note::artifact_metadata(&artifact)?;
+    let metadata = knytos_launch::signature_note::artifact_metadata(&artifact)?;
     descriptor.placement.validate(&metadata).ok()?;
     let artifact_memory = memory_from_bytes(&artifact)?;
     let descriptor_memory = memory_from_bytes(&entry.descriptor)?;
@@ -538,34 +538,34 @@ fn launch_operational(
     dns_connection: ConnectionRef<'_>,
     binding: &OperationalBinding,
     deployment: &DeploymentInfo,
-    trust: &charlotte_launch::trust::AdmissionTrust,
+    trust: &knytos_launch::trust::AdmissionTrust,
     my_node_key: u64,
 ) -> Option<ActiveOperational> {
     if deployment.descriptor.is_empty() || !deployment.replica_nodes.contains(&my_node_key) {
         return None;
     }
-    let descriptor = charlotte_launch::deployment::decode(&deployment.descriptor)?;
+    let descriptor = knytos_launch::deployment::decode(&deployment.descriptor)?;
     if descriptor.artifact_name != binding.target_artifact {
         return None;
     }
-    if charlotte_launch::deployment::verify(&deployment.descriptor, &trust.deployment_key)
-        != charlotte_launch::deployment::VerifyOutcome::Valid
+    if knytos_launch::deployment::verify(&deployment.descriptor, &trust.deployment_key)
+        != knytos_launch::deployment::VerifyOutcome::Valid
     {
         return None;
     }
     let variant = selected_variant(&descriptor, deployment, my_node_key)?;
     let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key, variant)?;
-    let metadata = charlotte_launch::signature_note::artifact_metadata(&artifact)?;
+    let metadata = knytos_launch::signature_note::artifact_metadata(&artifact)?;
     descriptor.placement.validate(&metadata).ok()?;
     let envelope = fetch_s3_object(
         names,
         &binding.object_key,
-        charlotte_launch::operations::MAX_ENVELOPE_LEN,
+        knytos_launch::operations::MAX_ENVELOPE_LEN,
         &binding.envelope_digest,
     )?;
     let release = query_release(dns_connection, &binding.release_name)?;
     let now_unix_seconds = trusted_unix_seconds(names)?;
-    let wire_binding = charlotte_launch::operations_pickup::CatalogBinding {
+    let wire_binding = knytos_launch::operations_pickup::CatalogBinding {
         generation: binding.generation,
         bundle_sequence: binding.bundle_sequence,
         sequence: binding.sequence,
@@ -582,7 +582,7 @@ fn launch_operational(
         signing_key_id: binding.signing_key_id,
         authorization_signature: binding.authorization_signature,
     };
-    let pickup = charlotte_launch::operations_pickup::Pickup {
+    let pickup = knytos_launch::operations_pickup::Pickup {
         binding: wire_binding,
         now_unix_seconds,
         release: &release,
@@ -641,8 +641,8 @@ fn publish_if_ready(
             reply.result
         );
         active.published = true;
-        config::write::<u64>(charlotte_launch::agent_status::SERVED_GENERATION, active.generation);
-        config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SERVING);
+        config::write::<u64>(knytos_launch::agent_status::SERVED_GENERATION, active.generation);
+        config::write_u32_release(knytos_launch::agent_status::STAGE, STAGE_SERVING);
     }
 }
 
@@ -652,7 +652,7 @@ fn drain_for_node_shutdown(
     request: catten_rt::ShutdownRequest,
 ) -> catten_rt::ShutdownRequest {
     catten_rt::logln!("[agent] node shutdown requested deadline_ms={}", request.deadline_ms);
-    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_DRAINING_APPLICATIONS);
+    config::write_u32_release(knytos_launch::agent_status::STAGE, STAGE_DRAINING_APPLICATIONS);
     for running in active.iter_mut() {
         running.retiring = true;
     }
@@ -679,7 +679,7 @@ fn drain_for_node_shutdown(
             if !draining_connectors {
                 catten_rt::logln!("[agent] application domains drained; draining connectors");
                 config::write_u32_release(
-                    charlotte_launch::agent_status::STAGE,
+                    knytos_launch::agent_status::STAGE,
                     STAGE_DRAINING_CONNECTORS,
                 );
                 draining_connectors = true;
@@ -700,7 +700,7 @@ fn drain_for_node_shutdown(
 
         if active.is_empty() && operational.is_empty() {
             catten_rt::logln!("[agent] child domains drained for node shutdown");
-            config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SHUTDOWN_READY);
+            config::write_u32_release(knytos_launch::agent_status::STAGE, STAGE_SHUTDOWN_READY);
             return request;
         }
         sleep_ms(RETIREMENT_POLL_MS);
@@ -729,12 +729,12 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
         .ok()
         .and_then(|call| call.wait().ok())
         .and_then(|reply| {
-            let (link, mac) = charlotte_protocol_net::decode_status(reply.result);
+            let (link, mac) = knytos_protocol_net::decode_status(reply.result);
             (link != 0).then_some(node_identity::fnv1a(&mac) & 0xffff_ffff)
         })
         .unwrap_or_else(|| fail(STAGE_FAIL));
-    config::write::<u64>(charlotte_launch::agent_status::NODE_KEY, my_node_key);
-    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_IDENTITY);
+    config::write::<u64>(knytos_launch::agent_status::NODE_KEY, my_node_key);
+    config::write_u32_release(knytos_launch::agent_status::STAGE, STAGE_IDENTITY);
 
     let trust = manifest_admission_trust(ctx).unwrap_or_else(|| fail(STAGE_FAIL));
     let mut active: Vec<ActiveDeployment> = Vec::new();
@@ -759,7 +759,7 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
                 Ok(()) | Err(catten_rt::NodeShutdownRequestError::AlreadyInProgress) => {
                     observed_shutdown_generation = generation;
                     config::write_u32_release(
-                        charlotte_launch::agent_status::STAGE,
+                        knytos_launch::agent_status::STAGE,
                         STAGE_CLUSTER_SHUTDOWN_ACCEPTED,
                     );
                     catten_rt::logln!(
@@ -807,7 +807,7 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
                         active.swap_remove(index);
                         if active.is_empty() {
                             config::write_u32_release(
-                                charlotte_launch::agent_status::STAGE,
+                                knytos_launch::agent_status::STAGE,
                                 STAGE_RETIRED,
                             );
                         }
@@ -944,15 +944,15 @@ fn main(ctx: Context) -> ! {
 }
 
 fn selected_variant<'a>(
-    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'a>,
+    descriptor: &knytos_launch::deployment::DeploymentDescriptor<'a>,
     entry: &DeploymentInfo,
     node: u64,
-) -> Option<charlotte_launch::deployment::ArtifactVariant<'a>> {
+) -> Option<knytos_launch::deployment::ArtifactVariant<'a>> {
     let position = entry.replica_nodes.binary_search(&node).ok()?;
     let variant = descriptor.variant(usize::from(*entry.replica_variants.get(position)?))?;
     let (_, _, _, packed, features) = knytos_syscall::node_pressure();
     let target =
-        charlotte_launch::execution_target::ExecutionTarget::from_pressure(packed, features)?;
+        knytos_launch::execution_target::ExecutionTarget::from_pressure(packed, features)?;
     if !target.supports(variant.target) {
         return None;
     }
@@ -969,25 +969,25 @@ fn selected_variant<'a>(
 fn fetch_cached_artifact(
     names: ConnectionRef<'_>,
     name: &[u8],
-    variant: charlotte_launch::deployment::ArtifactVariant<'_>,
+    variant: knytos_launch::deployment::ArtifactVariant<'_>,
     key: &[u8; 32],
 ) -> Option<Vec<u8>> {
     let connection = lookup(names, catten_services::objstore::NAME)?;
     let reply = connection
         .as_ref()
-        .call(catten_services::objstore::OP_READ, charlotte_launch::artifact_object_id(name))
+        .call(catten_services::objstore::OP_READ, knytos_launch::artifact_object_id(name))
         .ok()?
         .wait()
         .ok()?;
     let len = usize::try_from(reply.result).ok()?;
-    if len == 0 || len > charlotte_launch::MAX_ARTIFACT_ELF_SIZE {
+    if len == 0 || len > knytos_launch::MAX_ARTIFACT_ELF_SIZE {
         return None;
     }
     let mapping = reply.memory?.map_read_only().ok()?;
     let bytes = mapping.as_slice().get(..len)?;
-    if charlotte_launch::sha256::digest(bytes) != variant.artifact_digest
-        || charlotte_launch::signature_note::verify_elf_for_name(bytes, key, name)
-            != charlotte_launch::signature_note::VerifyOutcome::Valid
+    if knytos_launch::sha256::digest(bytes) != variant.artifact_digest
+        || knytos_launch::signature_note::verify_elf_for_name(bytes, key, name)
+            != knytos_launch::signature_note::VerifyOutcome::Valid
     {
         return None;
     }

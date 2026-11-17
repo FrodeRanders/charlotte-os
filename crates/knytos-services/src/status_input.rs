@@ -191,7 +191,7 @@ impl<'a> Calls for Runtime<'a> {
     ) -> Result<Option<Target>, ()> {
         let target = header.append(&bytes)?;
         if target.is_some() {
-            let permission = charlotte_management_tls::Permission::Observe;
+            let permission = knytos_management_tls::Permission::Observe;
             let allowed = identity.allows(permission);
             socket.audit(identity, permission, allowed);
             if !allowed {

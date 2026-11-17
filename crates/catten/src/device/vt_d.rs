@@ -447,7 +447,7 @@ fn initialize(
     // A cache invalidation without draining accepted reads/writes does not
     // authorize physical backing reuse. Reject unsupported hardware before
     // allocating or publishing a root/context table.
-    let draining_command = charlotte_lifecycle::iommu::vtd_draining_command(cap)
+    let draining_command = knytos_lifecycle::iommu::vtd_draining_command(cap)
         .ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
     let ecap = read64(base, ECAP);
     let agaw = supported_agaw(cap).ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
@@ -1109,7 +1109,7 @@ pub(super) fn test_command_engine() {
         let mut slot = Some(Commands {
             base,
             iotlb_invalidate: 0x100,
-            draining_command: charlotte_lifecycle::iommu::vtd_draining_command(3 << 54).unwrap(),
+            draining_command: knytos_lifecycle::iommu::vtd_draining_command(3 << 54).unwrap(),
         });
         let context = CCMD_ICC | CCMD_CIRG | 0x100;
         let iotlb = IOTLB_IVA | 0x200;

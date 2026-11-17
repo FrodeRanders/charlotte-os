@@ -25,11 +25,11 @@ def run():
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes, unexpected_cfgs)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
+extern crate self as knytos_lifecycle;
 extern crate self as knytos_syscall;
 #[path = "@ROOT@/crates/knytos-syscall/src/lib.rs"] mod syscall_format;
 pub use syscall_format::*;
-#[path = "@ROOT@/crates/charlotte-lifecycle/src/resources.rs"] pub mod resources;
+#[path = "@ROOT@/crates/knytos-lifecycle/src/resources.rs"] pub mod resources;
 #[path = "@ROOT@/crates/catten/src/resource_policy.rs"] mod resource_policy;
 #[macro_export] macro_rules! logln { ($message:literal) => {{}}; }
 mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {

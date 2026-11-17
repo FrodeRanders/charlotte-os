@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use charlotte_launch::management::{
+use knytos_launch::management::{
     limit_values,
     Limits,
     LIMIT_NAMES,

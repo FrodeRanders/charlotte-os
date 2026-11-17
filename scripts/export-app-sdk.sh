@@ -9,7 +9,7 @@
 #   build-external-elf.sh   platform build wrapper (context sensitive)
 #   platform/<arch>/        target specification and linker script
 #   signer/                 standalone workspace with cluster-sign and
-#                           charlotte-launch
+#                           knytos-launch
 #   keys/                   the publicly known development keys
 #   VERSION                 sdk schema, OS revision, pinned toolchain
 #
@@ -53,20 +53,20 @@ done
 
 tar -C "$ROOT/tools" --exclude target --exclude Cargo.lock --exclude .DS_Store \
     -cf - cluster-sign | tar -C "$SDK/signer/tools" -xf -
-tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - charlotte-launch \
+tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - knytos-launch \
     | tar -C "$SDK/signer/crates" -xf -
 
 cat > "$SDK/signer/Cargo.toml" <<'EOF'
 [workspace]
-members = ["tools/cluster-sign", "crates/charlotte-launch"]
+members = ["tools/cluster-sign", "crates/knytos-launch"]
 resolver = "3"
 EOF
 
 # Application source closure is independent of the platform service package.
 mkdir -p "$SDK/crates"
-for package in knytos-rt knytos-syscall charlotte-launch charlotte-lifecycle \
-    knytos-app knytos-app-sitas charlotte-protocol-grant \
-    charlotte-protocol-kafka charlotte-protocol-s3 charlotte-kafka; do
+for package in knytos-rt knytos-syscall knytos-launch knytos-lifecycle \
+    knytos-app knytos-app-sitas knytos-protocol-grant \
+    knytos-protocol-kafka knytos-protocol-s3 knytos-kafka; do
     tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - "$package" \
         | tar -C "$SDK/crates" -xf -
 done
@@ -157,9 +157,9 @@ from pathlib import Path
 import hashlib, json, re, subprocess, sys
 sdk, revision, toolchain, sitas, root = sys.argv[1:]
 sdk = Path(sdk)
-source = (Path(root) / 'crates/charlotte-launch/src/execution_target.rs').read_text()
+source = (Path(root) / 'crates/knytos-launch/src/execution_target.rs').read_text()
 abi = int(re.search(r'pub const RUNTIME_ABI: u32 = (\d+)', source).group(1))
-launch_source = (Path(root) / 'crates/charlotte-launch/src/lib.rs').read_text()
+launch_source = (Path(root) / 'crates/knytos-launch/src/lib.rs').read_text()
 launch = {part.lower(): int(re.search(r'pub const LAUNCH_ABI_' + part + r': u16 = (\d+)', launch_source).group(1)) for part in ['MAJOR', 'MINOR']}
 files = {str(p.relative_to(sdk)): hashlib.sha256(p.read_bytes()).hexdigest()
          for p in sorted(sdk.rglob('*')) if p.is_file()}

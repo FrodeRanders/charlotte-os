@@ -18,7 +18,7 @@ pub const INGRESS_RECORD_LEN: usize = 32;
 pub const MAX_SNAPSHOT_LEN: usize = 64 * 1024;
 pub const MAX_NODES: usize = 32;
 pub const MAX_DEPLOYMENTS: usize = 256;
-pub const MAX_INGRESS: usize = charlotte_launch::ingress::MAX_SERVICES;
+pub const MAX_INGRESS: usize = knytos_launch::ingress::MAX_SERVICES;
 
 pub const FLAG_FRESH_COMMITTED: u16 = 1 << 0;
 pub const FLAG_LOCAL_LEADER: u16 = 1 << 1;
@@ -75,7 +75,7 @@ pub struct Deployment {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ingress {
-    pub service: charlotte_launch::ingress::ServiceId,
+    pub service: knytos_launch::ingress::ServiceId,
     pub backend_name: Option<Vec<u8>>,
     pub projection_present: bool,
     pub member_count: u16,
@@ -166,7 +166,7 @@ fn valid(snapshot: &Snapshot) -> bool {
         })
         && snapshot.nodes.windows(2).all(|pair| pair[0].node_key < pair[1].node_key)
         && snapshot.deployments.iter().all(|deployment| {
-            charlotte_launch::deployment::valid_artifact_name(&deployment.name)
+            knytos_launch::deployment::valid_artifact_name(&deployment.name)
                 && deployment.name.len() <= u8::MAX as usize
                 && matches!(
                     deployment.state,
@@ -183,7 +183,7 @@ fn valid(snapshot: &Snapshot) -> bool {
                 && ingress
                     .backend_name
                     .as_deref()
-                    .is_none_or(charlotte_launch::deployment::valid_artifact_name)
+                    .is_none_or(knytos_launch::deployment::valid_artifact_name)
                 && ingress.backend_name.as_ref().is_none_or(|name| name.len() <= u8::MAX as usize)
                 && valid_nodes(&ingress.eligible_nodes)
                 && ingress.member_count as usize <= MAX_NODES
@@ -403,7 +403,7 @@ pub fn decode(bytes: &[u8]) -> Option<Snapshot> {
             eligible_nodes.push(get_u64(bytes, &mut offset)?);
         }
         ingress.push(Ingress {
-            service: charlotte_launch::ingress::ServiceId {
+            service: knytos_launch::ingress::ServiceId {
                 address,
                 protocol,
                 port,
@@ -484,7 +484,7 @@ mod tests {
                 ready_nodes: vec![1],
             }],
             ingress: vec![Ingress {
-                service: charlotte_launch::ingress::ServiceId::tcp_v4([10, 0, 0, 42], 443),
+                service: knytos_launch::ingress::ServiceId::tcp_v4([10, 0, 0, 42], 443),
                 backend_name: Some(b"orders".to_vec()),
                 projection_present: true,
                 member_count: 1,

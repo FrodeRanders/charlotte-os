@@ -166,18 +166,18 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "catten"
 version = "0.8.1"
 dependencies = [
- "charlotte-kafka-step",
- "charlotte-launch",
- "charlotte-lifecycle",
- "charlotte-protocol-disco",
- "charlotte-protocol-dns",
- "charlotte-protocol-kafka",
- "charlotte-protocol-ns",
- "charlotte-protocol-s3",
  "concurrent-queue",
  "flanterm_bindings",
  "flat_device_tree",
  "hashbrown",
+ "knytos-kafka-step",
+ "knytos-launch",
+ "knytos-lifecycle",
+ "knytos-protocol-disco",
+ "knytos-protocol-dns",
+ "knytos-protocol-kafka",
+ "knytos-protocol-ns",
+ "knytos-protocol-s3",
  "knytos-syscall",
  "limine",
  "lock_api",
@@ -235,142 +235,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "charlotte-authorization"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-kafka"
+name = "knytos-s3"
 version = "0.1.0"
 dependencies = [
- "charlotte-launch",
+ "knytos-launch",
+ "knytos-protocol-s3",
  "zeroize",
-]
-
-[[package]]
-name = "charlotte-kafka-step"
-version = "0.1.0"
-dependencies = [
- "charlotte-launch",
- "charlotte-protocol-kafka",
-]
-
-[[package]]
-name = "charlotte-launch"
-version = "0.1.0"
-dependencies = [
- "curve25519-dalek 5.0.0",
- "ed25519-compact",
- "getrandom 0.4.3",
- "hpke",
- "rand_core",
- "x25519-dalek",
- "zeroize",
-]
-
-[[package]]
-name = "charlotte-lifecycle"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-management-tls"
-version = "0.1.0"
-dependencies = [
- "aes",
- "aes-gcm",
- "charlotte-launch",
- "embassy-crypto",
- "embassy-crypto-rustcrypto",
- "getrandom 0.4.3",
- "ghash",
- "p256",
- "polyval",
- "rustls",
- "zeroize",
-]
-
-[[package]]
-name = "charlotte-protocol-block"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-disco"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-dns"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-fs"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-grant"
-version = "0.1.0"
-dependencies = [
- "charlotte-launch",
-]
-
-[[package]]
-name = "charlotte-protocol-kafka"
-version = "0.1.0"
-dependencies = [
- "charlotte-launch",
- "zeroize",
-]
-
-[[package]]
-name = "charlotte-protocol-msg"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-net"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-ns"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-objstore"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-protocol-s3"
-version = "0.1.0"
-dependencies = [
- "zeroize",
-]
-
-[[package]]
-name = "charlotte-protocol-time"
-version = "0.1.0"
-
-[[package]]
-name = "charlotte-s3"
-version = "0.1.0"
-dependencies = [
- "charlotte-launch",
- "charlotte-protocol-s3",
- "zeroize",
-]
-
-[[package]]
-name = "charlotte-smoltcp"
-version = "0.1.0"
-dependencies = [
- "charlotte-protocol-net",
- "knytos-syscall",
- "smoltcp",
 ]
 
 [[package]]
 name = "charlotte-transport-tests"
 version = "0.1.0"
 dependencies = [
- "charlotte-kafka",
- "charlotte-s3",
+ "knytos-s3",
  "embedded-io",
+ "knytos-kafka",
  "knytos-services",
  "zeroize",
 ]
@@ -411,9 +290,9 @@ dependencies = [
 name = "cluster-sign"
 version = "0.1.0"
 dependencies = [
- "charlotte-launch",
  "ed25519-compact",
  "getrandom 0.4.3",
+ "knytos-launch",
  "libc",
  "rand_core",
  "rustls",
@@ -1018,10 +897,10 @@ dependencies = [
 name = "knytos-app"
 version = "0.1.0"
 dependencies = [
- "charlotte-launch",
- "charlotte-protocol-grant",
- "charlotte-protocol-kafka",
- "charlotte-protocol-s3",
+ "knytos-launch",
+ "knytos-protocol-grant",
+ "knytos-protocol-kafka",
+ "knytos-protocol-s3",
  "knytos-rt",
 ]
 
@@ -1035,6 +914,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "knytos-authorization"
+version = "0.1.0"
+
+[[package]]
 name = "knytos-graft"
 version = "0.1.0"
 dependencies = [
@@ -1044,11 +927,119 @@ dependencies = [
 ]
 
 [[package]]
+name = "knytos-kafka"
+version = "0.1.0"
+dependencies = [
+ "knytos-launch",
+ "zeroize",
+]
+
+[[package]]
+name = "knytos-kafka-step"
+version = "0.1.0"
+dependencies = [
+ "knytos-launch",
+ "knytos-protocol-kafka",
+]
+
+[[package]]
+name = "knytos-launch"
+version = "0.1.0"
+dependencies = [
+ "curve25519-dalek 5.0.0",
+ "ed25519-compact",
+ "getrandom 0.4.3",
+ "hpke",
+ "rand_core",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
+name = "knytos-lifecycle"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-management-tls"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "embassy-crypto",
+ "embassy-crypto-rustcrypto",
+ "getrandom 0.4.3",
+ "ghash",
+ "knytos-launch",
+ "p256",
+ "polyval",
+ "rustls",
+ "zeroize",
+]
+
+[[package]]
+name = "knytos-protocol-block"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-disco"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-dns"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-fs"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-grant"
+version = "0.1.0"
+dependencies = [
+ "knytos-launch",
+]
+
+[[package]]
+name = "knytos-protocol-kafka"
+version = "0.1.0"
+dependencies = [
+ "knytos-launch",
+ "zeroize",
+]
+
+[[package]]
+name = "knytos-protocol-msg"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-net"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-ns"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-objstore"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-protocol-s3"
+version = "0.1.0"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
+name = "knytos-protocol-time"
+version = "0.1.0"
+
+[[package]]
 name = "knytos-rt"
 version = "0.1.0"
 dependencies = [
- "charlotte-launch",
- "charlotte-lifecycle",
+ "knytos-launch",
+ "knytos-lifecycle",
  "knytos-syscall",
  "lock_api",
  "talc",
@@ -1060,24 +1051,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
- "charlotte-authorization",
- "charlotte-kafka",
- "charlotte-kafka-step",
- "charlotte-launch",
- "charlotte-management-tls",
- "charlotte-protocol-block",
- "charlotte-protocol-disco",
- "charlotte-protocol-dns",
- "charlotte-protocol-grant",
- "charlotte-protocol-kafka",
- "charlotte-protocol-msg",
- "charlotte-protocol-net",
- "charlotte-protocol-ns",
- "charlotte-protocol-objstore",
- "charlotte-protocol-s3",
- "charlotte-protocol-time",
- "charlotte-s3",
- "charlotte-smoltcp",
+ "knytos-s3",
  "ed25519-compact",
  "embassy-crypto",
  "embassy-crypto-rustcrypto",
@@ -1086,8 +1060,25 @@ dependencies = [
  "getrandom 0.4.3",
  "ghash",
  "knytos-app",
+ "knytos-authorization",
  "knytos-graft",
+ "knytos-kafka",
+ "knytos-kafka-step",
+ "knytos-launch",
+ "knytos-management-tls",
+ "knytos-protocol-block",
+ "knytos-protocol-disco",
+ "knytos-protocol-dns",
+ "knytos-protocol-grant",
+ "knytos-protocol-kafka",
+ "knytos-protocol-msg",
+ "knytos-protocol-net",
+ "knytos-protocol-ns",
+ "knytos-protocol-objstore",
+ "knytos-protocol-s3",
+ "knytos-protocol-time",
  "knytos-rt",
+ "knytos-smoltcp",
  "knytos-syscall",
  "p256",
  "polyval",
@@ -1095,6 +1086,15 @@ dependencies = [
  "smoltcp",
  "spin 0.12.3",
  "zeroize",
+]
+
+[[package]]
+name = "knytos-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "knytos-protocol-net",
+ "knytos-syscall",
+ "smoltcp",
 ]
 
 [[package]]

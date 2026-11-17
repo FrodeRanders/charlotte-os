@@ -242,11 +242,11 @@ page-oversized lengths.
 
 `CharlotteEthDevice::receive` first calls `ipc_reply_poll`, discards its result
 value, and then calls `ipc_reply_poll_with_memory` for the same pending call
-(`crates/charlotte-smoltcp/src/lib.rs:132-150`). Re-polling happens to work
+(`../../../crates/knytos-smoltcp`). Re-polling happens to work
 because the kernel retains and copies an observed `ReplyValue`, but it is
 redundant and, more importantly, the code discards the reply scalar that carries
 the actual frame length. `CharlotteRx::consume` consequently always presents
-2,048 bytes to smoltcp (`charlotte-smoltcp/src/lib.rs:177-190`). Padding or stale
+2,048 bytes to smoltcp (`knytos-smoltcp/src/lib.rs:177-190`). Padding or stale
 page contents become part of the apparent Ethernet frame and the supplied size
 can exceed the adapter's advertised MTU.
 

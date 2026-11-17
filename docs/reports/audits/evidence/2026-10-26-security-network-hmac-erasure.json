@@ -47,7 +47,7 @@
     },
     "host_suites": {
       "debug": {
-        "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p knytos-services -p charlotte-launch --lib (cwd /private/tmp)",
+        "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p knytos-services -p knytos-launch --lib (cwd /private/tmp)",
         "service_tests": 227,
         "launch_tests": 10,
         "failed": 0,
@@ -64,7 +64,7 @@
         ]
       },
       "release": {
-        "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p knytos-services -p charlotte-launch --lib (cwd /private/tmp)",
+        "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p knytos-services -p knytos-launch --lib (cwd /private/tmp)",
         "service_tests": 227,
         "launch_tests": 10,
         "failed": 0,
@@ -95,7 +95,7 @@
             "--target-dir",
             "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
           ],
-          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
           "source": "const _: () = assert!(core::mem::needs_drop::<hmac::Hmac<sha2::Sha256>>(),\n    \"legacy HMAC lacks Drop\");\nfn main() {}\n",
           "exit_status": 101,
           "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -116,8 +116,8 @@
             "--target-dir",
             "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
           ],
-          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
-          "source": "#[path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<charlotte_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+          "source": "#[path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<knytos_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
           "exit_status": 0,
           "stdout_sha256": "f0e5ab2dbd125c7f8e17f8bb1d3709d60c0ee5fbac66e1f8e447933ced86d304",
           "diagnostics": [],

@@ -39,7 +39,7 @@ pub(super) fn assert_detached(handle: AddressSpaceHandle) {
         "table guard leaked into final invalidation"
     );
     assert_eq!(memory::current_address_space_handle(handle.id()), None);
-    assert!(!memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(!memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     assert_eq!(
         memory::close_user_address_space_handle(handle),
         Err(AddressSpaceCloseError::AddressSpaceMissing)
@@ -72,7 +72,7 @@ pub(crate) fn run() {
 fn test_staged_close() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let object = memory::object::allocate(owner.id(), 1).unwrap();
     memory::object::map_any(owner.id(), object, true).unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
@@ -148,7 +148,7 @@ fn test_staged_close_timeout() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let retained = free - PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let operation = AddressSpaceOperation::acquire(owner).unwrap();
     #[cfg(target_arch = "aarch64")]
@@ -192,7 +192,7 @@ fn test_staged_close_timeout() {
 fn test_live_operations() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let object = memory::object::allocate(owner.id(), 1).unwrap();
     memory::object::map_any(owner.id(), object, true).unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
@@ -215,7 +215,7 @@ fn test_live_operations() {
     #[cfg(target_arch = "aarch64")]
     assert_eq!(ADDRESS_SPACE_TABLE.lock().get(owner.id()).unwrap().hw_asid(), tag);
     // Busy close has not retired heap/capability/backing admission.
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR + 4096));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR + 4096));
     let fresh = memory::object::allocate(owner.id(), 1).unwrap();
     memory::object::close_cap(owner.id(), fresh).unwrap();
     let intervening = loader::create_user_address_space_handle();
@@ -254,7 +254,7 @@ fn test_abandoned_operation() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let retained = free - PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     drop(AddressSpaceOperation::acquire(owner).unwrap());
     assert_eq!(
@@ -277,7 +277,7 @@ fn test_abandoned_operation() {
 fn test_preflight_failure() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     {
         assert!(matches!(
@@ -290,7 +290,7 @@ fn test_preflight_failure() {
     assert_eq!(memory::current_address_space_handle(owner.id()), Some(owner));
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR + 4096));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR + 4096));
     // Subsystem admission remains active too: no partial namespace retirement.
     let object = memory::object::allocate(owner.id(), 1).unwrap();
     memory::object::close_cap(owner.id(), object).unwrap();
@@ -302,7 +302,7 @@ fn test_successful_retirement() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let start_free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let physical_pages = start_free - free;
     let retired = stage(owner);
@@ -344,7 +344,7 @@ fn test_quarantine(abandon: bool) {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let start_free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let physical_pages = start_free - free;
     let retired = stage(owner);
@@ -386,7 +386,7 @@ fn test_quarantine(abandon: bool) {
 
 fn test_retry_quiescence() {
     let before = backing_budget::test_used_pages(Kind::Heap);
-    let principal = charlotte_launch::artifact_principal_id(b"retired-authority-control");
+    let principal = knytos_launch::artifact_principal_id(b"retired-authority-control");
     drop(memory::prepare_principal_backing(principal, false).unwrap());
     let history_before = memory::usage::principal_history::admission::snapshot();
     let root_metadata_before = memory::registration::metadata::admission::snapshot();
@@ -396,7 +396,7 @@ fn test_retry_quiescence() {
     memory::install_launch_descriptor(owner, b"retired authority descriptor");
     let authority = memory::domain_authority(owner.id());
     assert!(authority.is_some());
-    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let history_charged = memory::usage::principal_history::admission::snapshot();
     let bytes = history_charged.0[0] - history_before.0[0];
@@ -482,7 +482,7 @@ pub(crate) fn test_runtime_recovery() {
     }
     for timeout in [false, true] {
         let owner = loader::create_user_address_space_handle();
-        assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+        assert!(memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
         let retired = stage(owner);
         assert_eq!(
             retired.release_with(|space, handle| {

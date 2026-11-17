@@ -22,7 +22,7 @@ use std::{
     },
 };
 
-use charlotte_launch::{
+use knytos_launch::{
     deployment,
     execution_target,
     operations,
@@ -91,10 +91,10 @@ impl Fixture {
             sequence: 1,
             node_key: 0,
             artifact_name: b"connector",
-            stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
-            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
-            shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
-            placement: charlotte_launch::placement::PlacementPolicy::singleton(),
+            stack_pages_per_thread: knytos_launch::DEFAULT_USER_STACK_PAGES as u16,
+            max_threads: knytos_launch::DEFAULT_USER_MAX_THREADS as u16,
+            shutdown_grace_ms: knytos_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            placement: knytos_launch::placement::PlacementPolicy::singleton(),
             grants: &[],
         };
         let mut descriptor = vec![0; deployment::encoded_len(&fields).unwrap()];
@@ -115,12 +115,12 @@ impl Fixture {
         fs::write(fixture.path("release"), bytes).unwrap();
         fs::write(
             fixture.path("recipient.pub"),
-            hex(&charlotte_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY),
+            hex(&knytos_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY),
         )
         .unwrap();
         fs::write(
             fixture.path("operations.pub"),
-            hex(&charlotte_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY),
+            hex(&knytos_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY),
         )
         .unwrap();
         fs::write(fixture.path("plaintext"), b"public opaque envelope payload").unwrap();

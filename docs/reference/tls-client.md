@@ -23,8 +23,8 @@ differences are recorded with that workspace member.
 
 TLS enables `rustpki,p256,p384,ed25519`. The RustCrypto backend registers only
 SHA-384/512, HMAC-SHA-384, P-256 ECDH/ECDSA, P-384 ECDSA and Ed25519 operations.
-`charlotte-management-tls` registers the shared SHA-256/HMAC-SHA-256 drivers
-over `charlotte_launch::sha256`'s erasing owners. Domains supply the sole RNG
+`knytos-management-tls` registers the shared SHA-256/HMAC-SHA-256 drivers
+over `knytos_launch::sha256`'s erasing owners. Domains supply the sole RNG
 and AES-128-GCM drivers. Do not enable the stock SHA-256, HMAC-SHA-256 or GCM
 drivers, including through another workspace consumer's test dependencies;
 duplicate exported driver symbols reject the linked build. Avoid the backend

@@ -516,7 +516,7 @@ fixture signs the descriptor, not the binary. `CATTEN_APP_HOST_PORT` and
 `CATTEN_APP_GUEST_PORT` add a SLIRP forward so a host client can reach the
 deployed service; `CATTEN_APP_HOLD_SECONDS` keeps the guest alive after
 readiness so that client can run before the runner exits. Out-of-tree projects
-drive this through `charlotte-kafka-broker/tools/qemu-smoke.sh`, which packages
+drive this through `knytos-kafka-broker/tools/qemu-smoke.sh`, which packages
 the artifact, deploys it, and runs the host smoke client end to end.
 
 Mixed clusters select a committed variant per replica. Unknown profiles and

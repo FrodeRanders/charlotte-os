@@ -1,0 +1,11 @@
+[package]
+name = "knytos-authorization"
+version = "0.1.0"
+edition = "2024"
+description = "Authorization policy state machine for Knytos capability issuance"
+
+[lib]
+name = "knytos_authorization"
+path = "src/lib.rs"
+
+[dependencies]

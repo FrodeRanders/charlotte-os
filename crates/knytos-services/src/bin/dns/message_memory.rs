@@ -83,8 +83,8 @@ pub(super) fn read_generation(message: &IpcMessage) -> Option<u64> {
 
 /// Consume the exact signed descriptor supplied to `OP_DEPLOY_SUBMIT`.
 pub(super) fn read_deployment_descriptor(message: &IpcMessage) -> Option<Vec<u8>> {
-    let bytes = read_moved_bytes(message, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)?;
-    charlotte_launch::deployment::decode(&bytes)?;
+    let bytes = read_moved_bytes(message, knytos_launch::deployment::MAX_DESCRIPTOR_LEN)?;
+    knytos_launch::deployment::decode(&bytes)?;
     Some(bytes)
 }
 
@@ -117,13 +117,13 @@ pub(super) fn read_named_bytes(message: &IpcMessage) -> Option<Vec<u8>> {
 
 /// Read `[deployment_generation:u64][name]` from a moved agent registration.
 pub(super) fn read_deployment_registration(message: &IpcMessage) -> Option<(Vec<u8>, u64)> {
-    let bytes = read_moved_bytes(message, 8 + charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN)?;
+    let bytes = read_moved_bytes(message, 8 + knytos_launch::deployment::MAX_ARTIFACT_NAME_LEN)?;
     if bytes.len() < 9 || bytes.len() != message.arg0 as usize {
         return None;
     }
     let generation = u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?);
     let name = bytes.get(8..)?.to_vec();
-    if generation == 0 || !charlotte_launch::deployment::valid_artifact_name(&name) {
+    if generation == 0 || !knytos_launch::deployment::valid_artifact_name(&name) {
         return None;
     }
     Some((name, generation))
@@ -227,7 +227,7 @@ pub(super) fn read_release_request(
             return Err(dns::ERR_BAD_OPCODE);
         }
         let len = usize::try_from(incoming.arg0).map_err(|_| dns::ERR_TOO_LARGE)?;
-        if len == 0 || len > charlotte_launch::release::MAX_RELEASE_LEN {
+        if len == 0 || len > knytos_launch::release::MAX_RELEASE_LEN {
             return Err(dns::ERR_TOO_LARGE);
         }
         let memory = incoming.memory.take().ok_or(dns::ERR_BAD_OPCODE)?;

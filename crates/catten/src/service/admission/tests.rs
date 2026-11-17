@@ -2,7 +2,7 @@
 //! live boot policy. Public fixture seeds are documented in the host test;
 //! only this test uses the publicly known recipient private value [77; 32].
 
-use charlotte_launch::trust::signed_policy::{
+use knytos_launch::trust::signed_policy::{
     self,
     BootstrapKey,
     PolicyExpectation,
@@ -118,7 +118,7 @@ pub(crate) fn run() {
         };
         assert!(slot.try_lock().is_some(), "rejection retained policy guard");
         assert!(
-            charlotte_launch::operations::recipient_public_key(&returned.recipient).unwrap()
+            knytos_launch::operations::recipient_public_key(&returned.recipient).unwrap()
                 == returned.public.recipient_key
         );
         drop(returned);
@@ -146,18 +146,18 @@ pub(crate) fn run() {
     {
         let image = crate::service::store::service_elf(b"ns").unwrap();
         let selected = platform_artifact_key().unwrap();
-        assert_ne!(selected, charlotte_launch::CLUSTER_PUBLIC_KEY);
+        assert_ne!(selected, knytos_launch::CLUSTER_PUBLIC_KEY);
         assert!(crate::service::loader::validate_user_elf(image));
         assert_eq!(
-            charlotte_launch::signature_note::verify_elf(image, &selected),
-            charlotte_launch::signature_note::VerifyOutcome::Valid
+            knytos_launch::signature_note::verify_elf(image, &selected),
+            knytos_launch::signature_note::VerifyOutcome::Valid
         );
         assert_ne!(
-            charlotte_launch::signature_note::verify_elf(
+            knytos_launch::signature_note::verify_elf(
                 image,
-                &charlotte_launch::CLUSTER_PUBLIC_KEY
+                &knytos_launch::CLUSTER_PUBLIC_KEY
             ),
-            charlotte_launch::signature_note::VerifyOutcome::Valid
+            knytos_launch::signature_note::VerifyOutcome::Valid
         );
         assert!(crate::service::supervisor::persistent_elf_is_trusted(image));
     }

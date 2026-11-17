@@ -629,7 +629,7 @@ The connector stores its long-lived S3 secret in `Zeroizing<Vec<u8>>`
 ([s3.rs:99](../../../crates/knytos-services/src/bin/s3.rs#L99)), but the SigV4
 helper creates an ordinary vector containing `AWS4 || secret` and ordinary
 arrays for the derived date/region/service/signing keys
-([sigv4.rs:143](../../../crates/charlotte-s3/src/sigv4.rs#L143)). Their release
+([sigv4.rs:143](../../../crates/knytos-s3/src/sigv4.rs#L143)). Their release
 does not guarantee erasure. TLS buffer reclamation likewise frees buffers
 without an explicit wipe
 ([tls_client.rs:227](../../../crates/knytos-services/src/tls_client.rs#L227)).

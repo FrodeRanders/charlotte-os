@@ -16,7 +16,7 @@ use knytos_syscall::{
     el0_log,
     thread_exit,
 };
-use charlotte_launch::smoke_status as status;
+use knytos_launch::smoke_status as status;
 
 fn main(_ctx: Context) -> ! {
     config::write::<u32>(status::MARKER, 0xdead_beef);

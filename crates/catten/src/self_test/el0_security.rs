@@ -2,7 +2,7 @@
 mod profile_validation;
 use alloc::vec::Vec;
 
-use charlotte_launch::security_probe_status as status;
+use knytos_launch::security_probe_status as status;
 
 use crate::{
     cpu::scheduler::{
@@ -46,8 +46,8 @@ impl ProbeDomain {
     fn stop(mut self) {
         bootstrap::with_service_pages(self.get(), |pages| {
             pages.write_request(
-                charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
                 monotonic_millis().saturating_add(5_000),
             )
         })
@@ -185,9 +185,9 @@ fn verify_publication_and_lookup_boundary(expected: Option<u64>) {
     // Public naming metadata is observable without any invocation capability.
     // This must not turn the policy-published entry into a public grant below.
     // Current metadata grammar, including after logical endpoint death.
-    let frame = charlotte_protocol_ns::encode(
-        charlotte_protocol_ns::Action::Observe,
-        charlotte_protocol_ns::Request {
+    let frame = knytos_protocol_ns::encode(
+        knytos_protocol_ns::Action::Observe,
+        knytos_protocol_ns::Request {
             name: b"secavail",
             generation: 0,
         },
@@ -197,7 +197,7 @@ fn verify_publication_and_lookup_boundary(expected: Option<u64>) {
     let call = crate::ipc::scalar_call_with_memory_move(
         caller,
         connection,
-        charlotte_protocol_ns::OP_PUBLICATION_GENERATION,
+        knytos_protocol_ns::OP_PUBLICATION_GENERATION,
         frame.len() as u64,
         memory,
     )
@@ -464,7 +464,7 @@ fn verify_rng_caller_buffers(
     // Exercise the actual exact-root lifecycle publication wake without asking
     // the boot hardware driver to stop or claiming a new physical/DMA receipt.
     bootstrap::with_service_pages(producer_domain, |pages| {
-        pages.write_request(charlotte_launch::lifecycle::STATE_RUNNING, 0, 0)
+        pages.write_request(knytos_launch::lifecycle::STATE_RUNNING, 0, 0)
     })
     .unwrap();
     wait_for_rng_idle(producer_domain, Some(reparked_dispatch));
@@ -596,8 +596,8 @@ extern "C" fn verify() {
     let artifact_key = public_key(ARTIFACT_KEY_HEX);
     let deployment_key = public_key(DEPLOYMENT_KEY_HEX);
     assert_ne!(artifact_key, deployment_key);
-    assert_ne!(artifact_key, charlotte_launch::CLUSTER_PUBLIC_KEY);
-    assert_ne!(deployment_key, charlotte_launch::CLUSTER_PUBLIC_KEY);
+    assert_ne!(artifact_key, knytos_launch::CLUSTER_PUBLIC_KEY);
+    assert_ne!(deployment_key, knytos_launch::CLUSTER_PUBLIC_KEY);
     assert!(matches!(
         supervisor::try_spawn_with_deployment_descriptor(
             IMAGE,
@@ -637,15 +637,15 @@ extern "C" fn verify() {
     let tcpip_base: *const u8 = tcpip.status_frame.into();
     let tcpip_word =
         |offset: usize| unsafe { core::ptr::read_volatile(tcpip_base.add(offset).cast::<u64>()) };
-    let start_ms = tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS);
-    let start_cycles = tcpip_word(charlotte_launch::tcpip_status::REACTOR_CYCLES);
+    let start_ms = tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS);
+    let start_cycles = tcpip_word(knytos_launch::tcpip_status::REACTOR_CYCLES);
     let pressure_deadline = crate::self_test::results::Deadline::after_millis(10_000);
-    while tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)
+    while tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)
     {
         pressure_deadline.assert_pending("TCP/IP clock progress under admitted client pressure");
         sleep_millis(10);
     }
-    assert!(tcpip_word(charlotte_launch::tcpip_status::REACTOR_CYCLES) > start_cycles);
+    assert!(tcpip_word(knytos_launch::tcpip_status::REACTOR_CYCLES) > start_cycles);
     for socket_flood in socket_floods {
         let requests = word(socket_flood.get(), status::REQUESTS);
         socket_flood.stop();
@@ -678,7 +678,7 @@ extern "C" fn verify() {
             assert!(!crate::memory::launch_descriptor_matches(
                 retired.id(),
                 retired.generation() as u64,
-                &charlotte_launch::sha256::digest(POLICY)
+                &knytos_launch::sha256::digest(POLICY)
             ));
         }
         // Includes serial five-second cancellation fixtures. Their production
@@ -712,7 +712,7 @@ extern "C" fn verify() {
         verify_publication_and_lookup_boundary(Some(generation));
         previous_generation = generation;
         let retired = probe.get().address_space;
-        let digest = charlotte_launch::sha256::digest(POLICY);
+        let digest = knytos_launch::sha256::digest(POLICY);
         assert!(crate::memory::launch_descriptor_matches(
             retired.id(),
             retired.generation() as u64,

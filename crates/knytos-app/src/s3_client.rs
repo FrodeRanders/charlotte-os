@@ -15,7 +15,7 @@ use catten_rt::owned::{
     OwnedPayload,
     PayloadError,
 };
-use charlotte_protocol_s3::{
+use knytos_protocol_s3::{
     self as protocol,
     ObjectMetadata,
     ObjectRequest,

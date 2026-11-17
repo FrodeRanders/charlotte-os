@@ -178,7 +178,7 @@
       "library_result_lines": [
         "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests --quiet",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests --quiet",
       "transport_exit_status": 0,
       "transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
@@ -207,7 +207,7 @@
       "library_result_lines": [
         "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests --quiet",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests --quiet",
       "transport_exit_status": 0,
       "transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",

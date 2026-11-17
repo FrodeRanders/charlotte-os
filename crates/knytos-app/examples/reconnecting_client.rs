@@ -11,7 +11,7 @@ use knytos_app::{
     grant_client,
     prelude::*,
 };
-use charlotte_launch::deployment::RIGHT_CALL;
+use knytos_launch::deployment::RIGHT_CALL;
 
 // Protocol of the repository's deployed greeting test service.
 const OP_GET: u32 = 1;

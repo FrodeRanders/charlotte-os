@@ -59,7 +59,7 @@
     "crates/catten/src/memory/object/retirement_tests.rs": "44649f3a84543c166f374a54578b9e8bfb8ea327b0ac948cfd89a9f7e6617dba",
     "crates/catten/src/memory/retirement/tests.rs": "3f2babb46c5064d07c5bd1433cee02b63ec61e5cd3e507b29516e5e88b3da18d",
     "crates/catten/src/syscall/mod.rs": "b7474368780b0889eaf2484a757c0582bde6ab17b6fade77171b3d33b1bdd513",
-    "crates/charlotte-lifecycle/src/shootdown.rs": "bdf4165f4b346549969346e51bf1d1dc2c42951c0cef00c692c5cd7c49aae820",
+    "crates/knytos-lifecycle/src/shootdown.rs": "bdf4165f4b346549969346e51bf1d1dc2c42951c0cef00c692c5cd7c49aae820",
     "docs/manual-v2/chapters/06-memory-objects.tex": "b96e35beaea2e7d8e6a21b0dbefeb355c3285fa4ffa8eea17bdaf5ebe6c5ac3a",
     "docs/reference/cleanup-recovery.md": "84e362fc293c262d1cd1f03e3216114e6f26e632bbb1db69a8fcb696237f7e04",
     "docs/reference/memory-object-retirement.md": "72263d1740424d60ae0f4d743a32e1eb897df422e7125fd89b99e07b0e491bc8",
@@ -276,7 +276,7 @@
       "exit_status": 0
     },
     "host": {
-      "command": "cargo +nightly-2026-07-27 test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p charlotte-lifecycle --lib",
+      "command": "cargo +nightly-2026-07-27 test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-lifecycle --lib",
       "working_directory": "/private/tmp",
       "exit_status": 0,
       "passed": 31,
@@ -304,7 +304,7 @@
           "reason": "Pinned toolchain, but repository invocation inherited freestanding build-std and duplicated core lang items.",
           "selected_diagnostics": [
             "error[E0152]: duplicate lang item in crate `core` (which `std` depends on): `sized`",
-            "error: could not compile `charlotte-lifecycle` (lib test) due to 1 previous error"
+            "error: could not compile `knytos-lifecycle` (lib test) due to 1 previous error"
           ],
           "disposition": "Correct pinned/outside-repository command passed; no source workaround or allocation-policy change."
         }

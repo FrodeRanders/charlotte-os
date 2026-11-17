@@ -9,7 +9,7 @@ SEC-15 remains **partial**; overall counts remain
 
 ## Finding and scope
 
-`charlotte_protocol_s3::Profile::encode` returned a plain vector containing
+`knytos_protocol_s3::Profile::encode` returned a plain vector containing
 credentials. The kernel's `launch_s3_profile` immediately wrapped that result
 in `Zeroizing`, so its ordinary release already erased the buffer. The helper
 API left that obligation with each caller. The borrowed `Profile` also derived

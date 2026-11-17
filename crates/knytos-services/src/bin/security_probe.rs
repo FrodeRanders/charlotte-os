@@ -49,7 +49,7 @@ use catten_services::{
     socket,
 };
 use knytos_syscall::IpcRights;
-use charlotte_launch::{
+use knytos_launch::{
     deployment,
     security_probe_status as status,
 };

@@ -42,8 +42,8 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 use knytos_syscall::IpcRights;
-use charlotte_launch::objstore_status as status;
-use charlotte_protocol_objstore::disk::*;
+use knytos_launch::objstore_status as status;
+use knytos_protocol_objstore::disk::*;
 
 const PAGE_SIZE: usize = 4096;
 const MAX_IO_BYTES: usize = 512 * 1024;
@@ -184,7 +184,7 @@ impl BlockDev {
             return None;
         };
         diag_stage(13);
-        let (block_size, total_blocks) = charlotte_protocol_block::unpack_info(reply.result);
+        let (block_size, total_blocks) = knytos_protocol_block::unpack_info(reply.result);
         if !(512..=PAGE_SIZE as u32).contains(&block_size)
             || Layout::for_device(block_size, total_blocks).is_none()
         {
@@ -203,7 +203,7 @@ impl BlockDev {
         config::write::<u32>(status::BLOCK_OP, block::OP_READ);
         let pending = self.conn.call_borrow_write(
             block::OP_READ,
-            charlotte_protocol_block::pack_lba_count(lba, count),
+            knytos_protocol_block::pack_lba_count(lba, count),
             memory,
         );
         self.finish_block(block::OP_READ, lba, count, 0xd1, pending)
@@ -214,7 +214,7 @@ impl BlockDev {
         config::write::<u32>(status::BLOCK_OP, block::OP_WRITE);
         let pending = self.conn.call_borrow_read(
             block::OP_WRITE,
-            charlotte_protocol_block::pack_lba_count(lba, count),
+            knytos_protocol_block::pack_lba_count(lba, count),
             memory,
         );
         self.finish_block(block::OP_WRITE, lba, count, 0xd2, pending)

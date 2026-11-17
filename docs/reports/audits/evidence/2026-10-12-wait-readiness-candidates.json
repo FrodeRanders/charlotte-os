@@ -1771,7 +1771,7 @@
     {
       "file": "crates/catten/src/self_test/el0_security.rs",
       "line": 400,
-      "code": "while tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)",
+      "code": "while tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },

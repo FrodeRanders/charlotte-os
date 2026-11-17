@@ -36,7 +36,7 @@ pub(crate) fn test_rejected_thread_abort(stale: ServiceDomain) {
             domain: stale,
             shutdown_grace_ms: 0,
             retirement_deadline_ms: Some(0),
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            retirement_reason: knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
             retirement_acknowledged: false,
             teardown: supervisor::DeploymentTeardown::NotStarted,
@@ -48,7 +48,7 @@ pub(crate) fn test_rejected_thread_abort(stale: ServiceDomain) {
                 &registry,
                 0x6162_6f72_745f_7465,
                 true,
-                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
                 0,
             ),
             u64::MAX
@@ -69,7 +69,7 @@ pub(crate) fn test_failed_reclamation(domain: ServiceDomain) {
     test_rejected_service_pages(domain);
     let mut phase = ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, domain);
     phase.domains[0].teardown = Some(DomainTeardown::new(domain));
-    phase.domains[0].lifecycle_status = Some(charlotte_launch::lifecycle::STATUS_READY);
+    phase.domains[0].lifecycle_status = Some(knytos_launch::lifecycle::STATUS_READY);
     let mut node = NodeShutdownCoordinator::new(
         0,
         0,
@@ -199,7 +199,7 @@ pub(crate) fn test_rejected_service_pages(domain: ServiceDomain) {
                 &registry,
                 0x7061_6765_7465_7374,
                 false,
-                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
                 0,
             ),
             u64::MAX

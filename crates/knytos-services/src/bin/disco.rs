@@ -67,8 +67,8 @@ use knytos_syscall::{
     submit_detached_timer,
     thread_exit,
 };
-use charlotte_launch::disco_status as status;
-use charlotte_protocol_disco::{
+use knytos_launch::disco_status as status;
+use knytos_protocol_disco::{
     BROADCAST_MAC,
     CLUSTER_ID_LEN,
     FLAG_PROBE,
@@ -87,7 +87,7 @@ use charlotte_protocol_disco::{
     cluster_answer_len,
     parse_disco_frame,
 };
-use charlotte_protocol_net::decode_status;
+use knytos_protocol_net::decode_status;
 
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;
@@ -564,7 +564,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     config::write::<u32>(status::STAGE, 3);
 
-    let cluster_raw = ctx.manifest_value(charlotte_launch::manifest_key(b"cluster"));
+    let cluster_raw = ctx.manifest_value(knytos_launch::manifest_key(b"cluster"));
     let mnemonic: Vec<u8> = match &cluster_raw {
         Some(ManifestValue::Bytes(raw)) if !raw.is_empty() => raw.to_vec(),
         _ => b"default".to_vec(),

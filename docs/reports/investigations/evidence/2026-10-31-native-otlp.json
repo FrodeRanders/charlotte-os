@@ -261,8 +261,8 @@
   },
   "host_tests": {
     "knytos-services": 267,
-    "charlotte-launch": 14,
-    "charlotte-s3": 9,
+    "knytos-launch": 14,
+    "knytos-s3": 9,
     "boot-profile": 8,
     "tooling-contracts": 11
   },

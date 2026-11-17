@@ -35,10 +35,10 @@ mod inner {
         // Wait for disco to reach the serving stage (>= 5).
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-        while status_word(charlotte_launch::disco_status::STAGE) < 5 {
+        while status_word(knytos_launch::disco_status::STAGE) < 5 {
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
-                let stage = status_word(charlotte_launch::disco_status::STAGE);
+                let stage = status_word(knytos_launch::disco_status::STAGE);
                 logln!("[disco] waiting: stage {}", stage);
             }
             deadline.assert_pending("EL0 disco service startup");
@@ -51,18 +51,18 @@ mod inner {
         {
             let mut spins: u64 = 0;
             let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-            while status_word(charlotte_launch::disco_status::PEER_COUNT) == 0 {
+            while status_word(knytos_launch::disco_status::PEER_COUNT) == 0 {
                 spins += 1;
                 if spins.is_multiple_of(2_000_000) {
-                    let stage = status_word(charlotte_launch::disco_status::STAGE);
-                    let peers = status_word(charlotte_launch::disco_status::PEER_COUNT);
-                    let rx_raw = status_word(charlotte_launch::disco_status::RX_RAW);
-                    let sent_ok = status_word(charlotte_launch::disco_status::SENT_OK);
-                    let sent_fail = status_word(charlotte_launch::disco_status::SENT_FAIL);
-                    let decoded = status_word(charlotte_launch::disco_status::DECODED);
-                    let called = status_word(charlotte_launch::disco_status::CALLED);
-                    let hb = status_word(charlotte_launch::disco_status::HEARTBEAT);
-                    let send_progress = status_word(charlotte_launch::disco_status::SEND_PROGRESS);
+                    let stage = status_word(knytos_launch::disco_status::STAGE);
+                    let peers = status_word(knytos_launch::disco_status::PEER_COUNT);
+                    let rx_raw = status_word(knytos_launch::disco_status::RX_RAW);
+                    let sent_ok = status_word(knytos_launch::disco_status::SENT_OK);
+                    let sent_fail = status_word(knytos_launch::disco_status::SENT_FAIL);
+                    let decoded = status_word(knytos_launch::disco_status::DECODED);
+                    let called = status_word(knytos_launch::disco_status::CALLED);
+                    let hb = status_word(knytos_launch::disco_status::HEARTBEAT);
+                    let send_progress = status_word(knytos_launch::disco_status::SEND_PROGRESS);
                     let frouter_base = crate::self_test::FROUTER_STATUS_FRAME
                         .load(core::sync::atomic::Ordering::Acquire)
                         as *const u8;
@@ -72,7 +72,7 @@ mod inner {
                         unsafe {
                             crate::self_test::status_u32(
                                 frouter_base,
-                                charlotte_launch::frouter_status::RX_TOTAL,
+                                knytos_launch::frouter_status::RX_TOTAL,
                             )
                         }
                     };
@@ -82,7 +82,7 @@ mod inner {
                         unsafe {
                             crate::self_test::status_u32(
                                 frouter_base,
-                                charlotte_launch::frouter_status::FORWARDED,
+                                knytos_launch::frouter_status::FORWARDED,
                             )
                         }
                     };
@@ -92,7 +92,7 @@ mod inner {
                         unsafe {
                             crate::self_test::status_u32(
                                 frouter_base,
-                                charlotte_launch::frouter_status::ROUTES,
+                                knytos_launch::frouter_status::ROUTES,
                             )
                         }
                     };
@@ -116,7 +116,7 @@ mod inner {
                 deadline.assert_pending("EL0 disco cross-node peer");
                 yield_lp();
             }
-            let peers = status_word(charlotte_launch::disco_status::PEER_COUNT);
+            let peers = status_word(knytos_launch::disco_status::PEER_COUNT);
             logln!("[disco] discovered {} peer(s) on the network.", peers);
             assert!(peers > 0, "[disco] cross-node test requires at least one peer");
         }

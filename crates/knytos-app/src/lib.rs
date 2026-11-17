@@ -9,7 +9,7 @@ pub use catten_rt::{
     logln,
     owned,
 };
-pub use charlotte_protocol_grant as grant;
+pub use knytos_protocol_grant as grant;
 pub mod client;
 pub mod grant_client;
 #[cfg(feature = "kafka")]
@@ -92,7 +92,7 @@ impl<'ctx> Application<'ctx> {
 
     pub fn artifact_name(&self) -> Result<alloc::vec::Vec<u8>, grant_client::Error> {
         let mapping = self.descriptor.map_read_only().map_err(grant_client::Error::Memory)?;
-        let descriptor = charlotte_launch::deployment::decode(mapping.as_slice())
+        let descriptor = knytos_launch::deployment::decode(mapping.as_slice())
             .ok_or(grant_client::Error::InvalidRequest)?;
         Ok(alloc::vec::Vec::from(descriptor.artifact_name))
     }
@@ -121,10 +121,10 @@ pub fn run<E: core::fmt::Debug>(context: Context, app: fn(&Context) -> Result<Ap
 #[macro_export]
 macro_rules! entry {
     ($app:path) => {
-        fn __charlotte_main(context: $crate::Context) -> ! {
+        fn __knytos_main(context: $crate::Context) -> ! {
             $crate::run(context, $app)
         }
-        $crate::__runtime::entry!(__charlotte_main);
+        $crate::__runtime::entry!(__knytos_main);
     };
 }
 #[doc(hidden)]

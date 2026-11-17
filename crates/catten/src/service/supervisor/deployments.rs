@@ -58,7 +58,7 @@ impl<'a, const N: usize> PreparingDeployment<'a, N> {
                 domain,
                 shutdown_grace_ms,
                 retirement_deadline_ms: None,
-                retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                retirement_reason: knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
                 force_requested: false,
                 teardown: DeploymentTeardown::NotStarted,
                 retirement_acknowledged: false,
@@ -82,7 +82,7 @@ pub(super) fn test_preparation(domain: ServiceDomain) {
             &registry,
             PRINCIPAL,
             true,
-            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             0,
         ),
         1

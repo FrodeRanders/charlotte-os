@@ -1,8 +1,0 @@
-[package]
-name = "charlotte-protocol-objstore"
-version = "0.1.0"
-edition = "2024"
-description = "Persistent object store protocol for Knytos — key-value blob storage on top of a block device"
-license = "AGPL-3.0-or-later"
-
-[dependencies]

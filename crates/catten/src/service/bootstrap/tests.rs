@@ -42,13 +42,13 @@ fn fixture() -> supervisor::ServiceDomain {
 
 fn state(pages: &ServicePages<'_>) -> u32 {
     let base: *const u8 = pages.config.into();
-    unsafe { &*base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET).cast::<AtomicU32>() }
+    unsafe { &*base.add(knytos_launch::lifecycle::CONTROL_STATE_OFFSET).cast::<AtomicU32>() }
         .load(Ordering::Acquire)
 }
 
 fn acknowledge(pages: &ServicePages<'_>, value: u32) {
     let base: *const u8 = pages.status.into();
-    unsafe { &*base.add(charlotte_launch::lifecycle::STATUS_STATE_OFFSET).cast::<AtomicU32>() }
+    unsafe { &*base.add(knytos_launch::lifecycle::STATUS_STATE_OFFSET).cast::<AtomicU32>() }
         .store(value, Ordering::Release);
 }
 
@@ -66,14 +66,14 @@ fn test_success_and_staged_close() {
         );
         let cq_before = crate::completion::cq_work_generation(domain.asid, 0);
         pages.write_request(
-            charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             123,
         );
         assert_eq!(crate::completion::cq_work_generation(domain.asid, 0), cq_before + 1);
-        assert_eq!(state(pages), charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED);
-        acknowledge(pages, charlotte_launch::lifecycle::STATUS_READY);
-        assert_eq!(pages.lifecycle_status(), charlotte_launch::lifecycle::STATUS_READY);
+        assert_eq!(state(pages), knytos_launch::lifecycle::STATE_DRAIN_REQUESTED);
+        acknowledge(pages, knytos_launch::lifecycle::STATUS_READY);
+        assert_eq!(pages.lifecycle_status(), knytos_launch::lifecycle::STATUS_READY);
     })
     .unwrap();
     crate::completion::close_address_space(domain.asid);
@@ -86,10 +86,10 @@ fn test_success_and_staged_close() {
     // An older admitted access borrows its existing root, including force
     // publication; it does not reopen admission after staged close.
     let pages = ServicePages::borrow(&root, &domain).unwrap();
-    assert_eq!(pages.lifecycle_status(), charlotte_launch::lifecycle::STATUS_READY);
+    assert_eq!(pages.lifecycle_status(), knytos_launch::lifecycle::STATUS_READY);
     pages.write_request(
-        charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+        knytos_launch::lifecycle::STATE_FORCE_TERMINATING,
+        knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
         123,
     );
     let closing = match closing.poll().unwrap() {
@@ -146,7 +146,7 @@ fn test_wrong_backing_and_force_failure() {
     // Rejected publication released its lease but kept the terminal thread fence.
     assert!(ADDRESS_SPACE_TABLE.lock().get(domain.asid).unwrap().thread_admission_closed);
     with_service_pages(&domain, |pages| {
-        assert_eq!(state(pages), charlotte_launch::lifecycle::STATE_RUNNING);
+        assert_eq!(state(pages), knytos_launch::lifecycle::STATE_RUNNING);
     })
     .unwrap();
     memory::close_user_address_space_handle(domain.address_space).unwrap();
@@ -170,7 +170,7 @@ fn test_reused_root() {
     );
     crate::service::shutdown::tests::test_rejected_service_pages(stale);
     with_service_pages(&fresh, |pages| {
-        assert_eq!(state(pages), charlotte_launch::lifecycle::STATE_RUNNING);
+        assert_eq!(state(pages), knytos_launch::lifecycle::STATE_RUNNING);
         assert_eq!(pages.lifecycle_status(), 0);
     })
     .unwrap();
@@ -191,7 +191,7 @@ fn test_abandoned_access() {
     );
     assert_eq!(backing_budget::test_used_pages(Kind::Image), image + 2);
     with_service_pages(&domain, |pages| {
-        assert_eq!(state(pages), charlotte_launch::lifecycle::STATE_RUNNING)
+        assert_eq!(state(pages), knytos_launch::lifecycle::STATE_RUNNING)
     })
     .unwrap();
     assert_eq!(memory::current_address_space_handle(domain.asid), Some(domain.address_space));

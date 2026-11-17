@@ -36,7 +36,7 @@
   "failures_preserved_separately": [
     {
       "kind": "optimized production defect",
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign -p charlotte-launch -p knytos-services --lib",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign -p knytos-launch -p knytos-services --lib",
       "exit_status": 101,
       "test": "operations_admission::tests::release_reservations_are_charged_cumulatively",
       "diagnostic": "assertion left == right failed; left: Ok([[1], [1]]); right: Err(InsufficientCapacity)",
@@ -197,7 +197,7 @@
       "exit_status": 0
     },
     "host_clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign -p charlotte-launch --all-targets -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign -p knytos-launch --all-targets -- -D warnings",
       "exit_status": 0
     },
     "service_clippy": {
@@ -689,8 +689,8 @@
     "crates/knytos-services/src/name_catalog/tests.rs": "39334c666ac1407c4bdb5ade11bb9a9f6a131694db7b40b3f132276274f73ff8",
     "crates/knytos-services/src/operations_admission.rs": "8674e062b5603a9fc96ef5156cfc701d7e49ba0aabb5e02d890c273bb33dfb04",
     "crates/knytos-services/src/release_admission.rs": "59a9cc899e725402122cedb4898037afd17f4aa14698a293df3908997c148720",
-    "crates/charlotte-launch/src/lib.rs": "1ee12b6e4af7cbd413fc7362f9efa129562be4797f20c120a93f694e361e3ce5",
-    "crates/charlotte-launch/src/release_admission.rs": "55f35232f630f43bf123f7f921f7aa37117bea869d3740725680b73acda71379",
+    "crates/knytos-launch/src/lib.rs": "1ee12b6e4af7cbd413fc7362f9efa129562be4797f20c120a93f694e361e3ce5",
+    "crates/knytos-launch/src/release_admission.rs": "55f35232f630f43bf123f7f921f7aa37117bea869d3740725680b73acda71379",
     "docs/architecture/cluster-artifacts-and-placement.md": "f68f24385654b86cba2e83962a466956ca098ffdedf990943052fa39b4db4df0",
     "docs/guides/testing.md": "143ea61c6589cba90a95759f8d93dfa8bad9268e82e42ea984b42c7d1921b4f8",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "4740b335028864a90273cba1b42f7ee10cc4147f76ecb74760ab1c6b8d0e96df",

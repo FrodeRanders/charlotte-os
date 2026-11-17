@@ -62,7 +62,7 @@ inventory of compiler/cryptographic temporary copies.
 
 - `scripts/run-host-tests.sh`: passed, including nine signed-policy tests,
   13 signer tests, existing host crate tests and signing/boot-result checks.
-- Host Clippy (`charlotte-launch`, `cluster-sign`, all targets) and both custom
+- Host Clippy (`knytos-launch`, `cluster-sign`, all targets) and both custom
   kernel targets: passed with `--locked` and `-D warnings`.
 - QEMU Intel VT-d and AMD-Vi, fresh-storage/no-network suites: each passed
   **15/15**, zero failed/pending. The new boot-trust assertions passed on both.

@@ -27,7 +27,7 @@ class ToolingContracts(unittest.TestCase):
         # remain coherent. This private harness never edits the workspace lock.
         manifest = directory / "Cargo.toml"
         manifest.write_text('[package]\nname="kernel-build-script-probe"\nversion="0.0.0"\nedition="2024"\n'
-                            '[workspace]\n[dependencies]\ncharlotte-launch={path=' + json.dumps(str(ROOT / "crates/charlotte-launch")) + '}\n'
+                            '[workspace]\n[dependencies]\nknytos-launch={path=' + json.dumps(str(ROOT / "crates/knytos-launch")) + '}\n'
                             '[[bin]]\nname="kernel-build-script-probe"\npath=' + json.dumps(str(ROOT / "crates/catten/build.rs")) + '\n')
         shutil.copyfile(ROOT / "Cargo.lock", directory / "Cargo.lock")
         artifacts = subprocess.check_output(

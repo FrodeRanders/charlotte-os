@@ -524,7 +524,7 @@ backend falls out as a translation.
 
 The type sketch above is no longer only on paper. A **reference model of this
 ABI now exists and is tested in the Sitas repository** (branch
-the reactor-handle integration branch (`src/charlotte_abi.rs`): an in-memory `MockKernel`
+the reactor-handle integration branch (`src/knytos_abi.rs`): an in-memory `MockKernel`
 implementing the five operations (`submit`/`wait`/`wake`/`cancel`/`close`), plus
 a `CharlotteReactor` that implements Sitas' `ReactorBackend` contract with
 `Handle = CompletionCap`. It is not a Unix backend and talks to no kernel — it

@@ -5,7 +5,7 @@ use super::{
     operation::AddressSpaceOperation,
 };
 
-const _: () = assert!(charlotte_launch::MAX_USER_THREADS == 64);
+const _: () = assert!(knytos_launch::MAX_USER_THREADS == 64);
 pub(crate) const KERNEL_STACK_PAGES: usize = 16;
 mod budget;
 mod stacks;
@@ -211,8 +211,8 @@ impl StackSlot {
     }
 
     pub(crate) fn base(&self) -> usize {
-        charlotte_launch::user_address::STACK_BASE
-            + self.slot * charlotte_launch::user_address::STACK_STRIDE
+        knytos_launch::user_address::STACK_BASE
+            + self.slot * knytos_launch::user_address::STACK_STRIDE
     }
 
     pub(crate) fn published(&mut self) {

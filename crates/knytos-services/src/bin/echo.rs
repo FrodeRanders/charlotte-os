@@ -30,7 +30,7 @@ use knytos_syscall::{
     IpcRights,
     thread_exit,
 };
-use charlotte_launch::echo_status as status;
+use knytos_launch::echo_status as status;
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1); // stage: started
@@ -86,7 +86,7 @@ fn main(ctx: Context) -> ! {
     // An optional cluster publication delegates this endpoint to DNS. DNS
     // performs its own full-name NS publication and is its recorded registrar;
     // this does not authorize DNS to remove our existing local registrations.
-    match ctx.manifest_value(charlotte_launch::echo_config::CLUSTER_NAME) {
+    match ctx.manifest_value(knytos_launch::echo_config::CLUSTER_NAME) {
         None => (),
         Some(catten_rt::ManifestValue::Bytes(cluster_name)) => {
             let deadline = catten_services::deadline::Deadline::after(5_000);

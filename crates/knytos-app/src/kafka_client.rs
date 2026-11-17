@@ -15,7 +15,7 @@ use catten_rt::owned::{
     OwnedPayload,
     PayloadError,
 };
-use charlotte_protocol_kafka::{
+use knytos_protocol_kafka::{
     self as protocol,
     DeliveredRecord,
     RecordRequest,

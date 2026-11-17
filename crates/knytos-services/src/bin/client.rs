@@ -3,7 +3,7 @@
 //! Never learns kernel identifiers: it starts with one connection to the
 //! name service, obtains an echo-service connection by looking up a
 //! memory-carried (long) name, and calls it. Results are posted to the named
-//! fields in [`charlotte_launch::client_status`] for the kernel verifier:
+//! fields in [`knytos_launch::client_status`] for the kernel verifier:
 //! echoed value, service generation, progress stage, and completion sentinel.
 #![no_std]
 #![no_main]
@@ -20,7 +20,7 @@ use catten_services::{
     stage_name_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::client_status as status;
+use knytos_launch::client_status as status;
 
 const ECHO_VALUE: u64 = 0x1234_5678;
 const SENTINEL: u32 = 0xc0de;

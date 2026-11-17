@@ -37,8 +37,8 @@ fn fixture_profiles() -> crate::operations_admission::NodeCapacityView {
         (
             node,
             crate::operations_admission::NodeCapacity {
-                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+                target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 )),
                 ..Default::default()
             },
@@ -87,7 +87,7 @@ fn signed_deployment(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
         pair,
         name,
         sequence,
-        charlotte_launch::placement::PlacementPolicy::singleton(),
+        knytos_launch::placement::PlacementPolicy::singleton(),
     )
 }
 
@@ -95,12 +95,12 @@ fn signed_deployment_with_policy(
     pair: &KeyPair,
     name: &[u8],
     sequence: u64,
-    placement: charlotte_launch::placement::PlacementPolicy,
+    placement: knytos_launch::placement::PlacementPolicy,
 ) -> Vec<u8> {
-    let fields = charlotte_launch::deployment::DescriptorFields {
-        variants: &[charlotte_launch::deployment::ArtifactVariant {
-            target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::Architecture::Aarch64,
+    let fields = knytos_launch::deployment::DescriptorFields {
+        variants: &[knytos_launch::deployment::ArtifactVariant {
+            target: knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::Architecture::Aarch64,
             ),
             priority: 0,
             artifact_digest: [sequence as u8; 32],
@@ -110,57 +110,57 @@ fn signed_deployment_with_policy(
         node_key: 0,
 
         artifact_name: name,
-        stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
-        max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
-        shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+        stack_pages_per_thread: knytos_launch::DEFAULT_USER_STACK_PAGES as u16,
+        max_threads: knytos_launch::DEFAULT_USER_MAX_THREADS as u16,
+        shutdown_grace_ms: knytos_launch::DEFAULT_SHUTDOWN_GRACE_MS,
         placement,
 
         grants: &[],
     };
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
-    let mut bytes = vec![0; charlotte_launch::deployment::encoded_len(&fields).unwrap()];
-    charlotte_launch::deployment::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+    let mut bytes = vec![0; knytos_launch::deployment::encoded_len(&fields).unwrap()];
+    knytos_launch::deployment::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
     let signature: Signature =
-        pair.sk.sign(charlotte_launch::deployment::signature_digest(&bytes).unwrap(), None);
-    let signature: &[u8; charlotte_launch::deployment::SIGNATURE_LEN] =
+        pair.sk.sign(knytos_launch::deployment::signature_digest(&bytes).unwrap(), None);
+    let signature: &[u8; knytos_launch::deployment::SIGNATURE_LEN] =
         signature.as_ref().try_into().unwrap();
-    assert!(charlotte_launch::deployment::set_signature(&mut bytes, signature));
+    assert!(knytos_launch::deployment::set_signature(&mut bytes, signature));
     bytes
 }
 
 fn signed_release(pair: &KeyPair, name: &[u8], sequence: u64, descriptors: &[&[u8]]) -> Vec<u8> {
-    let fields = charlotte_launch::release::ReleaseFields {
+    let fields = knytos_launch::release::ReleaseFields {
         sequence,
         release_name: name,
         descriptors,
     };
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
-    let mut bytes = vec![0; charlotte_launch::release::encoded_len(&fields).unwrap()];
-    charlotte_launch::release::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+    let mut bytes = vec![0; knytos_launch::release::encoded_len(&fields).unwrap()];
+    knytos_launch::release::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
     let signature: Signature =
-        pair.sk.sign(charlotte_launch::release::signature_digest(&bytes).unwrap(), None);
-    let signature: &[u8; charlotte_launch::release::SIGNATURE_LEN] =
+        pair.sk.sign(knytos_launch::release::signature_digest(&bytes).unwrap(), None);
+    let signature: &[u8; knytos_launch::release::SIGNATURE_LEN] =
         signature.as_ref().try_into().unwrap();
-    assert!(charlotte_launch::release::set_signature(&mut bytes, signature));
+    assert!(knytos_launch::release::set_signature(&mut bytes, signature));
     bytes
 }
 
 fn signed_shutdown(pair: &KeyPair, sequence: u64, target_node: u64) -> Vec<u8> {
-    let fields = charlotte_launch::shutdown::ShutdownFields {
+    let fields = knytos_launch::shutdown::ShutdownFields {
         sequence,
         target_node,
         not_before_unix_seconds: 1_788_600_000,
         expires_unix_seconds: 1_788_600_300,
         node_grace_ms: 30_000,
         phase_grace_ms: 2_000,
-        reason: charlotte_launch::shutdown::REASON_POWER_OFF,
+        reason: knytos_launch::shutdown::REASON_POWER_OFF,
     };
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
-    let mut bytes = vec![0; charlotte_launch::shutdown::ENCODED_LEN];
-    charlotte_launch::shutdown::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+    let mut bytes = vec![0; knytos_launch::shutdown::ENCODED_LEN];
+    knytos_launch::shutdown::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
     let signature: Signature =
-        pair.sk.sign(charlotte_launch::shutdown::signature_digest(&bytes).unwrap(), None);
-    assert!(charlotte_launch::shutdown::set_signature(
+        pair.sk.sign(knytos_launch::shutdown::signature_digest(&bytes).unwrap(), None);
+    assert!(knytos_launch::shutdown::set_signature(
         &mut bytes,
         signature.as_ref().try_into().unwrap()
     ));
@@ -173,11 +173,11 @@ fn signed_ingress_policy(
     sequence: u64,
     address: [u8; 4],
 ) -> Vec<u8> {
-    let assignments = [charlotte_launch::ingress::ServiceBinding {
-        service: charlotte_launch::ingress::ServiceId::tcp_v4(address, 443),
+    let assignments = [knytos_launch::ingress::ServiceBinding {
+        service: knytos_launch::ingress::ServiceId::tcp_v4(address, 443),
         backend_name: Some(b"orders"),
     }];
-    let fields = charlotte_launch::ingress_policy::PolicyFields {
+    let fields = knytos_launch::ingress_policy::PolicyFields {
         sequence,
         not_before_unix_seconds: 1_788_600_000,
         expires_unix_seconds: 1_788_600_300,
@@ -185,11 +185,11 @@ fn signed_ingress_policy(
         assignments: &assignments,
     };
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
-    let mut bytes = vec![0; charlotte_launch::ingress_policy::encoded_len(&fields).unwrap()];
-    charlotte_launch::ingress_policy::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+    let mut bytes = vec![0; knytos_launch::ingress_policy::encoded_len(&fields).unwrap()];
+    knytos_launch::ingress_policy::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
     let signature: Signature =
-        pair.sk.sign(charlotte_launch::ingress_policy::signature_digest(&bytes).unwrap(), None);
-    assert!(charlotte_launch::ingress_policy::set_signature(
+        pair.sk.sign(knytos_launch::ingress_policy::signature_digest(&bytes).unwrap(), None);
+    assert!(knytos_launch::ingress_policy::set_signature(
         &mut bytes,
         signature.as_ref().try_into().unwrap()
     ));
@@ -206,20 +206,20 @@ fn signed_operational_bundle(
     let operational_public: &[u8; 32] = operational.pk.as_ref().try_into().unwrap();
     let recipient_private = [0x71; 32];
     let recipient_public =
-        charlotte_launch::operations::recipient_public_key(&recipient_private).unwrap();
+        knytos_launch::operations::recipient_public_key(&recipient_private).unwrap();
     let cluster_id = [0x11; 32];
-    let fields = charlotte_launch::operations::EnvelopeFields {
+    let fields = knytos_launch::operations::EnvelopeFields {
         sequence: envelope_sequence,
         expires_unix_seconds: 2_000_000_000,
-        profile_kind: charlotte_launch::operations::PROFILE_KIND_KAFKA,
+        profile_kind: knytos_launch::operations::PROFILE_KIND_KAFKA,
         cluster_id,
-        release_digest: charlotte_launch::sha256::digest(release),
+        release_digest: knytos_launch::sha256::digest(release),
         profile_name: b"kafka/orders/transactional",
     };
     let mut envelope =
-        vec![0; charlotte_launch::operations::encoded_len(&fields, profile.len()).unwrap()];
+        vec![0; knytos_launch::operations::encoded_len(&fields, profile.len()).unwrap()];
     let mut rng = UnwrapErr(getrandom::SysRng);
-    charlotte_launch::operations::seal_unsigned(
+    knytos_launch::operations::seal_unsigned(
         &fields,
         profile,
         &recipient_public,
@@ -230,24 +230,24 @@ fn signed_operational_bundle(
     .unwrap();
     let signature: Signature = operational
         .sk
-        .sign(charlotte_launch::operations::signature_digest(&envelope).unwrap(), None);
-    assert!(charlotte_launch::operations::set_signature(
+        .sign(knytos_launch::operations::signature_digest(&envelope).unwrap(), None);
+    assert!(knytos_launch::operations::set_signature(
         &mut envelope,
         signature.as_ref().try_into().unwrap()
     ));
-    let bindings = [charlotte_launch::operations_bundle::BindingFields {
+    let bindings = [knytos_launch::operations_bundle::BindingFields {
         target_artifact: b"kafka",
         object_key: b"operations/orders-kafka.cops",
         envelope: &envelope,
     }];
-    let fields = charlotte_launch::operations_bundle::BundleFields {
+    let fields = knytos_launch::operations_bundle::BundleFields {
         sequence: bundle_sequence,
         cluster_id,
         release,
         bindings: &bindings,
     };
-    let mut bundle = vec![0; charlotte_launch::operations_bundle::encoded_len(&fields).unwrap()];
-    charlotte_launch::operations_bundle::encode_unsigned(
+    let mut bundle = vec![0; knytos_launch::operations_bundle::encoded_len(&fields).unwrap()];
+    knytos_launch::operations_bundle::encode_unsigned(
         &fields,
         operational_public,
         &recipient_public,
@@ -255,18 +255,18 @@ fn signed_operational_bundle(
     )
     .unwrap();
     let binding_signature: Signature = operational.sk.sign(
-        charlotte_launch::operations_bundle::binding_signature_digest(&bundle, 0).unwrap(),
+        knytos_launch::operations_bundle::binding_signature_digest(&bundle, 0).unwrap(),
         None,
     );
-    assert!(charlotte_launch::operations_bundle::set_binding_signature(
+    assert!(knytos_launch::operations_bundle::set_binding_signature(
         &mut bundle,
         0,
         binding_signature.as_ref().try_into().unwrap()
     ));
     let signature: Signature = operational
         .sk
-        .sign(charlotte_launch::operations_bundle::signature_digest(&bundle).unwrap(), None);
-    assert!(charlotte_launch::operations_bundle::set_signature(
+        .sign(knytos_launch::operations_bundle::signature_digest(&bundle).unwrap(), None);
+    assert!(knytos_launch::operations_bundle::set_signature(
         &mut bundle,
         signature.as_ref().try_into().unwrap()
     ));
@@ -274,7 +274,7 @@ fn signed_operational_bundle(
 }
 
 fn i64_result(bytes: Vec<u8>) -> i64 {
-    match charlotte_launch::release_admission::decode_result(&bytes) {
+    match knytos_launch::release_admission::decode_result(&bytes) {
         Some(Ok(receipt)) => receipt.generation() as i64,
         _ => i64::from_le_bytes(bytes.try_into().unwrap()),
     }
@@ -355,8 +355,8 @@ fn ingress_policy_is_replay_fenced_and_survives_snapshot() {
 fn node_capacity_is_replay_fenced_and_survives_snapshot() {
     let catalog = fixture_catalog();
     let sample = |boot_nonce, epoch, free_frames| NodeCapacityEntry {
-        target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-            charlotte_launch::execution_target::Architecture::Aarch64,
+        target: knytos_launch::execution_target::ExecutionTarget::baseline(
+            knytos_launch::execution_target::Architecture::Aarch64,
         ),
         node_key: 0x1234,
         boot_nonce,
@@ -470,11 +470,11 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
         &pair,
         b"orders",
         1,
-        charlotte_launch::placement::PlacementPolicy {
+        knytos_launch::placement::PlacementPolicy {
             replicas: 2,
             max_instances_per_node: 1,
             min_distinct_nodes: 2,
-            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            flags: knytos_launch::placement::SPREAD_REPLICAS,
             affinity_group: 0,
             anti_affinity_group: 0,
         },
@@ -676,8 +676,8 @@ fn incompatible_release_rejection_preserves_catalog_before_new_admission() {
         let mut profile = catalog.node_capacity(0x2222).unwrap();
         profile.boot_nonce += 1;
         profile.epoch = 1;
-        profile.target = charlotte_launch::execution_target::ExecutionTarget::baseline(
-            charlotte_launch::execution_target::Architecture::X86_64,
+        profile.target = knytos_launch::execution_target::ExecutionTarget::baseline(
+            knytos_launch::execution_target::Architecture::X86_64,
         );
         catalog.apply(1, &encode_node_capacity(&profile));
         assert_eq!(catalog.node_capacity(0x2222), Some(profile));
@@ -693,8 +693,8 @@ fn incompatible_release_rejection_preserves_catalog_before_new_admission() {
         );
         profile.boot_nonce += 1;
         profile.epoch = 1;
-        profile.target = charlotte_launch::execution_target::ExecutionTarget::baseline(
-            charlotte_launch::execution_target::Architecture::Aarch64,
+        profile.target = knytos_launch::execution_target::ExecutionTarget::baseline(
+            knytos_launch::execution_target::Architecture::Aarch64,
         );
         catalog.apply(1, &encode_node_capacity(&profile));
         assert_eq!(
@@ -771,7 +771,7 @@ fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
     );
     let receive = catalog.deployment(b"receive").unwrap();
     assert_eq!(receive.replica_nodes, vec![0x3333]);
-    assert_eq!(charlotte_launch::deployment::decode(&receive.descriptor).unwrap().sequence, 2);
+    assert_eq!(knytos_launch::deployment::decode(&receive.descriptor).unwrap().sequence, 2);
 
     let restored = fixture_catalog();
     restored.restore(&catalog.snapshot()).unwrap();
@@ -803,7 +803,7 @@ fn operational_bindings_are_atomic_fenced_and_snapshot_persistent() {
     assert_eq!(binding.generation, 1);
     assert_eq!(binding.sequence, 1);
     assert_eq!(binding.target_artifact, b"kafka");
-    assert_eq!(binding.release_digest, charlotte_launch::sha256::digest(&release_v1));
+    assert_eq!(binding.release_digest, knytos_launch::sha256::digest(&release_v1));
     assert_eq!(catalog.release(b"orders").unwrap().operations_sequence, 1);
 
     let restored = fixture_catalog();
@@ -852,7 +852,7 @@ fn operational_bindings_are_atomic_fenced_and_snapshot_persistent() {
     let binding_v3 = catalog.operational_binding(b"kafka/orders/transactional").unwrap();
     assert_eq!(binding_v3.generation, 4);
     assert_eq!(binding_v3.sequence, 3);
-    assert_eq!(binding_v3.release_digest, charlotte_launch::sha256::digest(&release_v2));
+    assert_eq!(binding_v3.release_digest, knytos_launch::sha256::digest(&release_v2));
 }
 
 #[test]
@@ -1042,7 +1042,7 @@ fn deployment_query_rejects_invalid_generation_and_replica_pins() {
 
 #[test]
 fn mixed_architecture_rollout_pins_each_binary_and_preserves_it_through_restore() {
-    use charlotte_launch::{
+    use knytos_launch::{
         deployment::{
             self,
             ArtifactVariant,
@@ -1088,10 +1088,10 @@ fn mixed_architecture_rollout_pins_each_binary_and_preserves_it_through_restore(
         stack_pages_per_thread: 4,
         max_threads: 1,
         shutdown_grace_ms: 5000,
-        placement: charlotte_launch::placement::PlacementPolicy {
+        placement: knytos_launch::placement::PlacementPolicy {
             replicas: 2,
             min_distinct_nodes: 2,
-            ..charlotte_launch::placement::PlacementPolicy::singleton()
+            ..knytos_launch::placement::PlacementPolicy::singleton()
         },
         grants: &[],
     };
@@ -1196,7 +1196,7 @@ fn mixed_architecture_rollout_pins_each_binary_and_preserves_it_through_restore(
 
 #[test]
 fn cpu_profile_is_incarnation_bound_and_unknown_profiles_cannot_place() {
-    use charlotte_launch::execution_target::{
+    use knytos_launch::execution_target::{
         Architecture,
         ExecutionTarget,
     };
@@ -1266,7 +1266,7 @@ fn cpu_profile_is_incarnation_bound_and_unknown_profiles_cannot_place() {
 
 #[test]
 fn planner_filters_cpu_features_abi_and_every_node_before_ranking() {
-    use charlotte_launch::{
+    use knytos_launch::{
         deployment,
         execution_target::{
             AARCH64_LSE,
@@ -1458,7 +1458,7 @@ fn release_receipt_captures_independent_components_and_rejects_superseded_retry(
     let envelope = signed_release(&pair, b"receipt", 1, &[&first, &second]);
     let command = encode_release(&envelope, &[0x1111, 0x2222]).unwrap();
     let result = catalog.apply_with_result(1, &command);
-    let receipt = charlotte_launch::release_admission::Receipt::decode(&result).unwrap();
+    let receipt = knytos_launch::release_admission::Receipt::decode(&result).unwrap();
     assert_eq!(receipt.generation(), 1);
     assert_eq!(receipt.components(), &[4, 1]);
     assert!(receipt.matches(&envelope));
@@ -1480,8 +1480,8 @@ fn release_receipt_captures_independent_components_and_rejects_superseded_retry(
 fn release_relay_requires_complete_current_result() {
     let pair = fixture_pair();
     let envelope = signed_release(&pair, b"receipt", 1, &[&signed_deployment(&pair, b"app", 1)]);
-    let receipt = charlotte_launch::release_admission::Receipt::new(&envelope, 1, &[7]).unwrap();
-    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
+    let receipt = knytos_launch::release_admission::Receipt::new(&envelope, 1, &[7]).unwrap();
+    let mut bytes = [0; knytos_launch::release_admission::MAX_LEN];
     let len = receipt.encode(&mut bytes).unwrap();
     let prepared = crate::rrelease::PreparedReply::prepare(3, 9).unwrap();
     let frame = [&[crate::rrelease::TAG_REPLY][..], &prepared.finish(&bytes[..len])].concat();

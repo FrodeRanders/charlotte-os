@@ -1,7 +1,7 @@
 //! Initial SCRAM allocations use only public credential fixtures.
 use core::hint::black_box;
 
-use charlotte_kafka::scram::{
+use knytos_kafka::scram::{
     Client,
     Error,
 };

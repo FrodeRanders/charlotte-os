@@ -208,7 +208,7 @@ precedes the signed shutdown/drain check instead of racing application startup.
 | Unregistered kernel async/cross-LP demo and unused infinite logging thread | Registered EL0 cross-LP completion, CQ wait/wake, scheduler lifecycle and synchronous mailbox/queue checks. These have asserted outcomes and coordinator deadlines; the old demo's log-only success was not a reliable verdict. |
 | Separate physical-frame readback test | Mandatory startup frame/readback/accounting validation, also present in minimal builds. |
 | Verbose 1050-byte and 8 KiB allocator exercises | One mandatory aligned, multi-page heap readback; native retirement/failure controls remain in the regression suite. |
-| Native copies of elementary adaptive-stack policy assertions | The broader `charlotte-lifecycle` host boundary tests and native stack/admission/history tests. |
+| Native copies of elementary adaptive-stack policy assertions | The broader `knytos-lifecycle` host boundary tests and native stack/admission/history tests. |
 | First-boot seeding inside the NVMe verifier | Always-on operational launcher seeding, before steady-state publication; the verifier observes that initialized storage stack. |
 | Unused combined `run_self_tests` wrapper | Explicit synchronous and scheduler-owned deferred phases, preserving their distinct execution contexts. |
 

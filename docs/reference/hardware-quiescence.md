@@ -23,7 +23,7 @@ changes the deadline, epoch, IRQ context or physical-release policy. Stale and
 duplicate acknowledgements still cannot complete a newer request.
 
 The policy lives in
-[`shootdown::Attempt::observe`](../../crates/charlotte-lifecycle/src/shootdown.rs)
+[`shootdown::Attempt::observe`](../../crates/knytos-lifecycle/src/shootdown.rs)
 and is used by the x86 rendezvous. Its host controls put the last acknowledgement
 inside the deadline observation, preserve a missing target with a stale epoch,
 and keep coordinator ownership through Pending/timeout. The native withheld-IPI

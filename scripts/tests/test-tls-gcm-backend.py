@@ -12,7 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 TLS = ROOT / "crates/knytos-services/src/tls_client.rs"
 TARGET = ROOT / "crates/knytos-services/x86_64-unknown-none.json"
-MANAGEMENT_TLS = ROOT / "crates/charlotte-management-tls/src/crypto.rs"
+MANAGEMENT_TLS = ROOT / "crates/knytos-management-tls/src/crypto.rs"
 KERNEL_TARGET = ROOT / "target_specs/x86_64-unknown-none-catten.json"
 
 

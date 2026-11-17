@@ -146,8 +146,8 @@
     "targeted_host_suites": {
       "packages": [
         "knytos-services",
-        "charlotte-kafka",
-        "charlotte-s3"
+        "knytos-kafka",
+        "knytos-s3"
       ],
       "profiles": {
         "debug": {

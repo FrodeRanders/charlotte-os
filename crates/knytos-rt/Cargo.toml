@@ -10,8 +10,8 @@ path = "src/lib.rs"
 bench = false
 
 [dependencies]
-charlotte-launch = { path = "../charlotte-launch" }
-charlotte-lifecycle = { path = "../charlotte-lifecycle" }
+knytos-launch = { path = "../knytos-launch" }
+knytos-lifecycle = { path = "../knytos-lifecycle" }
 knytos-syscall = { path = "../knytos-syscall" }
 talc = { version = ">=5.0.3", default-features = false, features = ["nightly"] }
 lock_api = "0.4"

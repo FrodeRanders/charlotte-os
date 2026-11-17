@@ -14,7 +14,7 @@
 //! discovery therefore never blocks the NIC receive loop.
 //!
 //! Status-page diagnostics use the fields in
-//! [`charlotte_launch::frouter_status`]: lifecycle stage, received, forwarded,
+//! [`knytos_launch::frouter_status`]: lifecycle stage, received, forwarded,
 //! dropped and unrouted frame counters, plus the installed-route count.
 #![no_std]
 #![no_main]
@@ -66,9 +66,9 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::frouter_status as status;
-use charlotte_protocol_disco::DISCO_ETHERTYPE;
-use charlotte_protocol_msg::MSG_ETHERTYPE;
+use knytos_launch::frouter_status as status;
+use knytos_protocol_disco::DISCO_ETHERTYPE;
+use knytos_protocol_msg::MSG_ETHERTYPE;
 
 const IPV4_ETHERTYPE: u16 = 0x0800;
 const ARP_ETHERTYPE: u16 = 0x0806;
@@ -80,7 +80,7 @@ const MAX_PENDING_PER_ROUTE: usize = 8;
 const MAX_PENDING_L2_SENDS: usize = 32;
 const FLOW_EPOCH_CAPACITY: usize = 1024;
 const SNAPSHOT_HISTORY_CAPACITY: usize = 4;
-const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
+const INGRESS_SERVICES_KEY: u64 = knytos_launch::manifest_key(b"vips");
 
 /// Monotonic reactor-tick counter for periodic heartbeat logging.
 #[cfg(feature = "service-heartbeats")]
@@ -229,7 +229,7 @@ impl AssignmentClient {
                     let mapping = memory.map_read_only().ok()?;
                     let bytes = mapping.as_slice().get(..length)?;
                     return Some(
-                        charlotte_launch::ingress::decode(bytes)?
+                        knytos_launch::ingress::decode(bytes)?
                             .map(|binding| ConfiguredIngressService {
                                 service: binding.service,
                                 backend_name: binding.backend_name.map(<[u8]>::to_vec),
@@ -480,7 +480,7 @@ fn classify_configured_ingress(
 
 fn configured_ingress_services(ctx: &Context) -> Vec<IngressServiceState> {
     match ctx.manifest_value(INGRESS_SERVICES_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::ingress::decode(bytes)
+        Some(ManifestValue::Bytes(bytes)) => knytos_launch::ingress::decode(bytes)
             .unwrap_or_else(|| fail())
             .map(|binding| {
                 IngressServiceState::new(binding.service, binding.backend_name.map(<[u8]>::to_vec))

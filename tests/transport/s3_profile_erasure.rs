@@ -2,7 +2,7 @@
 use core::hint::black_box;
 
 use catten_services::s3 as wire;
-use charlotte_s3::profile::OwnedProfile;
+use knytos_s3::profile::OwnedProfile;
 use zeroize::Zeroizing;
 
 mod support;

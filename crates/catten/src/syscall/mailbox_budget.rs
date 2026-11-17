@@ -1,7 +1,7 @@
 //! Independent mailbox record and word-ring backing admission. Namespace/account
 //! metadata and the complete capability table remain outside these ceilings.
 
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     CountBudget,
     VectorBudget,
 };

@@ -103,14 +103,14 @@
   },
   "host_validation": {
     "debug": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests",
       "transport_exit_status": 0,
       "captured_transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
@@ -142,9 +142,9 @@
           "--offline",
           "--locked",
           "-p",
-          "charlotte-kafka",
+          "knytos-kafka",
           "-p",
-          "charlotte-s3",
+          "knytos-s3",
           "-p",
           "charlotte-transport-tests",
           "--no-run",
@@ -153,17 +153,17 @@
         "exit_status": 0,
         "targets": {
           "sasl_ownership": {
-            "path": "target/debug/build/charlotte-kafka/182e2005c0955d4a/out/sasl_ownership-182e2005c0955d4a",
+            "path": "target/debug/build/knytos-kafka/182e2005c0955d4a/out/sasl_ownership-182e2005c0955d4a",
             "sha256": "888a0e59f8071719f718750885f9e28030441cee4a84381d08b56dfe24158731",
             "registered_tests": 7
           },
-          "charlotte_s3": {
-            "path": "target/debug/build/charlotte-s3/68b08df4aa1f20dc/out/charlotte_s3-68b08df4aa1f20dc",
+          "knytos_s3": {
+            "path": "target/debug/build/knytos-s3/68b08df4aa1f20dc/out/knytos_s3-68b08df4aa1f20dc",
             "sha256": "7d6d9e7ab456b3bd00b5f83445a36199a799fb6c8e9acafc6df680a4c8624a9f",
             "registered_tests": 8
           },
-          "charlotte_kafka": {
-            "path": "target/debug/build/charlotte-kafka/04dc9fff74f9deb4/out/charlotte_kafka-04dc9fff74f9deb4",
+          "knytos_kafka": {
+            "path": "target/debug/build/knytos-kafka/04dc9fff74f9deb4/out/knytos_kafka-04dc9fff74f9deb4",
             "sha256": "cc6ded063d904e93547c9fbeab8a9fd9d5cdced0daadc152d8ace796568b3481",
             "registered_tests": 21
           },
@@ -223,14 +223,14 @@
       }
     },
     "release": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-services --lib -p charlotte-kafka -p charlotte-s3",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-services --lib -p knytos-kafka -p knytos-s3",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests",
       "transport_exit_status": 0,
       "captured_transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
@@ -253,9 +253,9 @@
           "--offline",
           "--locked",
           "-p",
-          "charlotte-kafka",
+          "knytos-kafka",
           "-p",
-          "charlotte-s3",
+          "knytos-s3",
           "-p",
           "charlotte-transport-tests",
           "--no-run",
@@ -265,17 +265,17 @@
         "exit_status": 0,
         "targets": {
           "sasl_ownership": {
-            "path": "target/release/build/charlotte-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a",
+            "path": "target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a",
             "sha256": "4e39fe750994075f221a952d7e942318e1d4d88fce6e95643eaa6f5aec25ed63",
             "registered_tests": 7
           },
-          "charlotte_s3": {
-            "path": "target/release/build/charlotte-s3/033cae8f3a8ba57e/out/charlotte_s3-033cae8f3a8ba57e",
+          "knytos_s3": {
+            "path": "target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e",
             "sha256": "177dbf47d8aec15f6d3d7545fe647998c24a9f7ca7c5db98771d5bb5bb8425da",
             "registered_tests": 8
           },
-          "charlotte_kafka": {
-            "path": "target/release/build/charlotte-kafka/1f3d27bdba0b43dc/out/charlotte_kafka-1f3d27bdba0b43dc",
+          "knytos_kafka": {
+            "path": "target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc",
             "sha256": "a8f64ab9aa631cdd053ebc8bd1f246d6d747c60e761f2ef41c1f76c12e8f8a79",
             "registered_tests": 21
           },

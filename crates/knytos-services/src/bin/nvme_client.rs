@@ -18,7 +18,7 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::nvme_client_status as status;
+use knytos_launch::nvme_client_status as status;
 
 fn main(ctx: Context) -> ! {
     let ns_connection = match ctx.bootstrap_connection() {
@@ -36,7 +36,7 @@ fn main(ctx: Context) -> ! {
         .and_then(|call| call.wait())
         .unwrap_or_else(|_| unsafe { thread_exit() })
         .result;
-    let (block_size, total_blocks) = charlotte_protocol_block::unpack_info(info_result);
+    let (block_size, total_blocks) = knytos_protocol_block::unpack_info(info_result);
 
     if !(512..=4096).contains(&block_size) || total_blocks == 0 {
         config::write::<u32>(status::STAGE, 0xdead);
@@ -77,7 +77,7 @@ fn main(ctx: Context) -> ! {
     let write_result = blk_conn
         .call_borrow_read(
             block::OP_WRITE,
-            charlotte_protocol_block::pack_lba_count(test_lba, block_count),
+            knytos_protocol_block::pack_lba_count(test_lba, block_count),
             &write_mem,
         )
         .and_then(|call| call.wait())
@@ -97,7 +97,7 @@ fn main(ctx: Context) -> ! {
     let read_result = blk_conn
         .call_borrow_write(
             block::OP_READ,
-            charlotte_protocol_block::pack_lba_count(test_lba, block_count),
+            knytos_protocol_block::pack_lba_count(test_lba, block_count),
             &mut read_mem,
         )
         .and_then(|call| call.wait())

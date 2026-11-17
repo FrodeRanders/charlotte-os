@@ -533,7 +533,7 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -in "$CATTEN_KAFKA_CERT_DIR/kafka.crt" \
         -certfile "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
         -out "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
-        -passout pass:charlotte-kafka-test
+        -passout pass:knytos-kafka-test
     openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/ca.crt" -outform DER \
         -out "$CATTEN_KAFKA_CERT_DIR/ca.der"
     openssl ecparam -name prime256v1 -genkey -noout \
@@ -559,10 +559,10 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -file "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
         -keystore "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12" \
         -storetype PKCS12 \
-        -storepass charlotte-kafka-test
-    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
-    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
-    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/truststore-password"
+        -storepass knytos-kafka-test
+    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
+    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
+    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/truststore-password"
     printf '%s\n' \
         'KafkaServer {' \
         '  org.apache.kafka.common.security.scram.ScramLoginModule required' \
@@ -589,7 +589,7 @@ if [ "$KAFKA_TEST" = "1" ]; then
         /opt/kafka/bin/kafka-configs.sh \
         --bootstrap-server localhost:29092 \
         --alter \
-        --add-config 'SCRAM-SHA-256=[iterations=4096,password=charlotte-kafka-test]' \
+        --add-config 'SCRAM-SHA-256=[iterations=4096,password=knytos-kafka-test]' \
         --entity-type users \
         --entity-name charlotte
     KAFKA_EVENTS_REPLICAS="1:2:3"

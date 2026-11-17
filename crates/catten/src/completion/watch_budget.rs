@@ -1,7 +1,7 @@
 //! Endpoint/thread lifecycle and kernel completion-callback entries retain admission until unlinked
 //! or detached notification storage is actually released.
 
-use charlotte_lifecycle::resources::CountBudget;
+use knytos_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;

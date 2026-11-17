@@ -1,0 +1,13 @@
+[package]
+name = "knytos-kafka"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded no_std Kafka wire protocol core for Knytos"
+
+[lib]
+test = true
+bench = false
+
+[dependencies]
+knytos-launch = { path = "../knytos-launch" }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

@@ -11,7 +11,7 @@ pub(super) fn run() {
     let loaded = crate::service::loader::try_load_domain(image).unwrap();
     let handle = loaded.address_space;
     let base: *mut u8 = loaded.status_frame.into();
-    use charlotte_launch::heap_status;
+    use knytos_launch::heap_status;
     unsafe {
         (base.add(heap_status::MAGIC_OFFSET) as *mut u64).write_volatile(heap_status::MAGIC);
         (base.add(heap_status::VERSION_OFFSET) as *mut u64).write_volatile(heap_status::VERSION);

@@ -1318,7 +1318,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Use `Endpoint::receive`/`try_receive` and authorize from the captured sender
   generation/principal/roles, never a later lookup of the recyclable ASID. Zero
   principal or missing roles grant no authority. Register-contract changes bump
-  `charlotte_launch::execution_target::RUNTIME_ABI` and rebuild/sign every variant,
+  `knytos_launch::execution_target::RUNTIME_ABI` and rebuild/sign every variant,
   including runner fixtures. Retired nine-register syscalls 22/27/53 reject.
   See `docs/reference/ipc-receive.md`.
 - `knytos-syscall` mirrors the register ABI and intentionally exposes integers.

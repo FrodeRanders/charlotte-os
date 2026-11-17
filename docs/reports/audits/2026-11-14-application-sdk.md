@@ -9,7 +9,7 @@ not close kernel cleanup gates or qualify every connector operation.
 
 - `knytos-app` has no dependency on platform service implementations.
   `knytos-services` reexports its single grant/socket/Kafka/S3 client
-  implementations. Grant wire data lives in `charlotte-protocol-grant`.
+  implementations. Grant wire data lives in `knytos-protocol-grant`.
 - Runtime helpers retain existing owners: bounded queue-pressure admission,
   deadline/wait-rejection observations, bounded payload preparation and exact
   generation-bound native worker custody. The entry wrapper runs its terminal

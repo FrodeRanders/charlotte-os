@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use catten_services::ns;
-use charlotte_protocol_ns::snapshot;
+use knytos_protocol_ns::snapshot;
 
 enum StatusBacking {
     Empty,

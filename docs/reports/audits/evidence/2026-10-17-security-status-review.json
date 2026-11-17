@@ -40,7 +40,7 @@
     "crates/catten/src/syscall/mod.rs": "6acdd2537c16f8dc2644c071d40f81eb21af9abaa711f32902b4f88509396448",
     "crates/catten/src/timers/budget.rs": "7afb85222026f368f915bc13114bad49b56cff625e19b9f4223dd76d97b24cfe",
     "crates/catten/src/timers/mod.rs": "7c33863c6754463df527a376b0434725fe15794c501fe8174484262b05af1850",
-    "crates/charlotte-smoltcp/src/lib.rs": "d49d51e7fccff69113654875d108d807c01a5635621891f925142fdc4bcf543b"
+    "crates/knytos-smoltcp/src/lib.rs": "d49d51e7fccff69113654875d108d807c01a5635621891f925142fdc4bcf543b"
   },
   "fresh_checks": {
     "host": {

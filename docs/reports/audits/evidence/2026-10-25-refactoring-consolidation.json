@@ -28,12 +28,12 @@
     "crates/catten/src/memory/registration/metadata/admission.rs": "78dbb2eddf6a991be6c6f96fb06b58ae3566d5083d5b92f4b0118a05b875afd9",
     "crates/catten/src/memory/usage/principal_history/admission.rs": "32b82c58ca19453051ef09680ad6c22664fd76a8fc2ed6315dcc5cf440c72442",
     "crates/catten/src/resource_policy/tests.rs": "4133448cb926d7185f6f0714e16bd5b599ecd8d11684c1dfc4f1149d28e5460b",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "crates/catten/src/memory/object/transfer.rs": "43bf72aaee6e73b425668f7513f796c85a54080653ca10a02b8da094ef5c47ee"
   },
   "checks": {
     "actual_lifecycle_crate": {
-      "command": "rustc --edition 2024 --test crates/charlotte-lifecycle/src/lib.rs -D warnings -o /tmp/charlotte-refactor-lifecycle-tests; /tmp/charlotte-refactor-lifecycle-tests",
+      "command": "rustc --edition 2024 --test crates/knytos-lifecycle/src/lib.rs -D warnings -o /tmp/charlotte-refactor-lifecycle-tests; /tmp/charlotte-refactor-lifecycle-tests",
       "passed": 34,
       "failed": 0
     },
@@ -88,12 +88,12 @@
   },
   "initial_validation_setup_failures": [
     {
-      "command": "cargo test -p charlotte-lifecycle --lib",
+      "command": "cargo test -p knytos-lifecycle --lib",
       "result": "compile failure before test execution",
       "diagnostic": "E0152 duplicate core::sized: workspace build-std core and sysroot std"
     },
     {
-      "command": "cargo test -p charlotte-lifecycle --lib -Z build-std=std,panic_unwind",
+      "command": "cargo test -p knytos-lifecycle --lib -Z build-std=std,panic_unwind",
       "result": "compile failure before test execution",
       "diagnostic": "duplicate core::sized, conflicting alloc_error_handler, panic_unwind lacks unwind strategy"
     },

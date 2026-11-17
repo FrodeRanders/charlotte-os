@@ -44,13 +44,13 @@ The runner currently covers:
 
 | Component | What is tested |
 |---|---|
-| `charlotte-authorization` | principal binding, role separation, default deny, attenuation, policy and service fencing, one-shot redemption, and bounded state |
-| `charlotte-protocol-disco` | discovery encoding, decoding, and malformed input |
-| `charlotte-protocol-msg` | v3 framing, checked parsing, 32-bit message lengths and fragmentation offsets, typed IPC envelopes, and session fencing |
-| `charlotte-protocol-net` | NIC status decoding |
+| `knytos-authorization` | principal binding, role separation, default deny, attenuation, policy and service fencing, one-shot redemption, and bounded state |
+| `knytos-protocol-disco` | discovery encoding, decoding, and malformed input |
+| `knytos-protocol-msg` | v3 framing, checked parsing, 32-bit message lengths and fragmentation offsets, typed IPC envelopes, and session fencing |
+| `knytos-protocol-net` | NIC status decoding |
 | `knytos-graft` | Raft election, membership, joining, snapshots, persistence projections, and wire format |
-| `charlotte-smoltcp` | receive-queue bounds and clock progression |
-| `charlotte-launch` | checked user-address mapping ranges, alias/kernel/null rejection and overflow boundaries |
+| `knytos-smoltcp` | receive-queue bounds and clock progression |
+| `knytos-launch` | checked user-address mapping ranges, alias/kernel/null rejection and overflow boundaries |
 | `knytos-services` | shared authorization/client logic, resource adapters, total monotonic deadlines and the TLS cipher owner/vector contracts |
 | `cluster-sign` | restricted key-file handling, private-key read-error/normalization erasure, digest, signed metadata, and placement-policy self-tests |
 
@@ -876,14 +876,14 @@ failure, detaches from its still-running runner instead of killing the guest.
 Its `--cleanup-on-failure` option restores teardown behavior for unattended
 automation.
 
-`knytos-rt`, `knytos-syscall`, and `charlotte-launch` also retain disabled
+`knytos-rt`, `knytos-syscall`, and `knytos-launch` also retain disabled
 standalone harnesses. They contain target runtime/ABI support and currently
 contain no dormant `#[test]` functions. Their host-compatible portions are
-compiled as dependencies of the `knytos-graft` and `charlotte-smoltcp` suites.
+compiled as dependencies of the `knytos-graft` and `knytos-smoltcp` suites.
 
-At the 12 August 2026 audit, `charlotte-protocol-net` was the only component
+At the 12 August 2026 audit, `knytos-protocol-net` was the only component
 that had an actual Rust unit test hidden by `test = false`. Its harness is now
-enabled and included in the shared runner. `charlotte-protocol-disco` already
+enabled and included in the shared runner. `knytos-protocol-disco` already
 had an enabled harness, but was missing from CI; it is now included as well.
 
 ## Demand-backed heap tests

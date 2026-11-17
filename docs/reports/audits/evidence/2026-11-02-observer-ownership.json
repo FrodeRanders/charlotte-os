@@ -98,7 +98,7 @@
     "crates/catten/src/timers/node_preparation/tests.rs": "423fdccf50328e9e83ac10a0380052ec743c936a5cbb21a28814cf2cf28970d0",
     "crates/catten/src/timers/preparation_tests.rs": "7abc4a2aac1c49bfe3747bc5d0b10458f6dd0dc9fdb1580e4032700a03cbc4af",
     "crates/catten/src/timers/waiter_tests.rs": "5581fc212abe420146705271c032717e10521c27cec46b97243e4448018a8225",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-host-tests.sh": "0c9a917a48af56468238ebfbd8e12280cf57ea4763f87cf5f8aaf9aa1faa1d5a",
     "scripts/tests/test-resource-policy.py": "05e518a7f3cc0627cddbb324c3b3f683a09bc67d71d4aa1d2191a23eb8f22032"

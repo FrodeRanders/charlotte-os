@@ -97,12 +97,12 @@ use knytos_syscall::{
     thread_statistics_header as thread_header,
     thread_statistics_record as thread_record,
 };
-use charlotte_launch::httpd_status as status;
-use charlotte_protocol_disco::parse_peer_list;
-use charlotte_protocol_msg::unpack_mac;
-use charlotte_protocol_net::decode_status;
+use knytos_launch::httpd_status as status;
+use knytos_protocol_disco::parse_peer_list;
+use knytos_protocol_msg::unpack_mac;
+use knytos_protocol_net::decode_status;
 
-const HTTP_PORT: u16 = charlotte_launch::MANAGEMENT_STATUS_PORT;
+const HTTP_PORT: u16 = knytos_launch::MANAGEMENT_STATUS_PORT;
 static TRACE_PHASES: AtomicBool = AtomicBool::new(false);
 
 fn trace_phase(phase: &str) {

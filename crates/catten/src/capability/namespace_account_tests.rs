@@ -116,7 +116,7 @@ pub(super) fn run() {
 }
 
 fn signed_root(name: &[u8]) -> (memory::AddressSpaceHandle, u64) {
-    let principal = charlotte_launch::artifact_principal_id(name);
+    let principal = knytos_launch::artifact_principal_id(name);
     let space = AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),

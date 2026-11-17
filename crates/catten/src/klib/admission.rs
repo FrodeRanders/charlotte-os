@@ -12,7 +12,7 @@ use core::{
     },
 };
 
-use charlotte_lifecycle::resources::AdmissionPool;
+use knytos_lifecycle::resources::AdmissionPool;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 #[path = "admission/byte_allocator.rs"]

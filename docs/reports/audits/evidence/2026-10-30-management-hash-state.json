@@ -3,9 +3,9 @@
   "base_revision": "b3d811ceb05bd8036317c7cd0936a511c9789a5d",
   "scope": "Management TLS provider SHA-256/HMAC state uses Knytos erasing owners. The existing one-shot HMAC delegates to the same incremental implementation. No cipher, handshake, wire, deadline or capability change; no finding closure.",
   "source_sha256": {
-    "crates/charlotte-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30",
-    "crates/charlotte-launch/tests/sha256.rs": "35f540fdbebb5976f7f3606557e0833f08abcb3b897dea3a2bb0d11bf0fce9bb",
-    "crates/charlotte-management-tls/src/crypto.rs": "cd7d05a76b1726cdffc56d2307a4adc1d207a567bb5dad13ed4ecee801100a51"
+    "crates/knytos-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30",
+    "crates/knytos-launch/tests/sha256.rs": "35f540fdbebb5976f7f3606557e0833f08abcb3b897dea3a2bb0d11bf0fce9bb",
+    "crates/knytos-management-tls/src/crypto.rs": "cd7d05a76b1726cdffc56d2307a4adc1d207a567bb5dad13ed4ecee801100a51"
   },
   "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
   "qualification": {

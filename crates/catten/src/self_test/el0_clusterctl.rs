@@ -159,7 +159,7 @@ mod inner {
             base
         };
         let bootstrap_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while status_word(ctl_cfg, charlotte_launch::clusterctl_status::STAGE) < CTL_STAGE_SERVING {
+        while status_word(ctl_cfg, knytos_launch::clusterctl_status::STAGE) < CTL_STAGE_SERVING {
             bootstrap_deadline.assert_pending("EL0 clusterctl local bootstrap");
             yield_lp();
         }
@@ -197,7 +197,7 @@ mod inner {
         // Upload an artifact whose CLS2 metadata blesses this exact name.
         let test_artifact =
             crate::service::store::service_elf(b"agent").expect("[clusterctl] agent artifact");
-        let expected_object_id = charlotte_launch::artifact_object_id(b"agent");
+        let expected_object_id = knytos_launch::artifact_object_id(b"agent");
         let mut request = Vec::with_capacity(8 + test_artifact.len());
         request.extend_from_slice(&(test_artifact.len() as u64).to_le_bytes());
         request.extend_from_slice(test_artifact);
@@ -264,7 +264,7 @@ mod inner {
                     ctl_conn,
                     CTL_OP_KEYCEREMONY,
                     0,
-                    &charlotte_launch::CLUSTER_PUBLIC_KEY,
+                    &knytos_launch::CLUSTER_PUBLIC_KEY,
                 )
                 && generation >= 1
             {
@@ -281,7 +281,7 @@ mod inner {
                 let key = read_moved_memory(memory, 32).expect("[clusterctl] readable cluster key");
                 assert_eq!(
                     key.as_slice(),
-                    &charlotte_launch::CLUSTER_PUBLIC_KEY,
+                    &knytos_launch::CLUSTER_PUBLIC_KEY,
                     "[clusterctl] the committed cluster key must match the injected key"
                 );
                 logln!("[clusterctl] cluster key committed and replicated across the cluster");

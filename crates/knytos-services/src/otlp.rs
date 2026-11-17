@@ -166,7 +166,7 @@ pub fn metrics(
     (request.len() <= MAX_REQUEST).then_some(request)
 }
 
-pub fn request(profile: &charlotte_launch::otlp::Profile, body: &[u8]) -> Option<Vec<u8>> {
+pub fn request(profile: &knytos_launch::otlp::Profile, body: &[u8]) -> Option<Vec<u8>> {
     if !profile.valid() || body.len() > MAX_REQUEST {
         return None;
     }

@@ -43,7 +43,7 @@ class NetworkRandom(unittest.TestCase):
         (directory / "src").mkdir(parents=True)
         manifest = ('[package]\nname="network-random-control"\nversion="0.0.0"\nedition="2024"\n'
                     '[workspace]\n[dependencies]\n'
-                    f'charlotte-launch={{path={json.dumps(str(ROOT / "crates/charlotte-launch"))}}}\n'
+                    f'knytos-launch={{path={json.dumps(str(ROOT / "crates/knytos-launch"))}}}\n'
                     'zeroize={version="=1.9.0",default-features=false}\n')
         if legacy:
             manifest += ('hmac={version="=0.12.1",default-features=false}\n'
@@ -70,7 +70,7 @@ class NetworkRandom(unittest.TestCase):
     def test_production_sequence_matches_independent_python_hmac(self):
         source = f'''#[path={json.dumps(str(SOURCE))}]
 mod network_random;
-const _: () = assert!(core::mem::needs_drop::<charlotte_launch::sha256::Sha256>());
+const _: () = assert!(core::mem::needs_drop::<knytos_launch::sha256::Sha256>());
 fn main() {{
     let mut random = network_random::NetworkRandom::initialize(|bytes| {{
         for (index, byte) in bytes.iter_mut().enumerate() {{ *byte = index as u8; }}

@@ -1,7 +1,7 @@
 //! Public SigV4 fixtures and complete owned HTTP request headers.
 use core::hint::black_box;
 
-use charlotte_s3::{
+use knytos_s3::{
     http::{
         Error,
         RequestHead,

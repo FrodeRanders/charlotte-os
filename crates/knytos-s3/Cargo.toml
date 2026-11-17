@@ -1,0 +1,10 @@
+[package]
+name = "knytos-s3"
+version = "0.1.0"
+edition = "2024"
+description = "no_std S3 data-plane protocol core for Knytos"
+
+[dependencies]
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-s3 = { path = "../knytos-protocol-s3" }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

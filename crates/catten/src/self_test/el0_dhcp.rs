@@ -160,7 +160,7 @@ mod inner {
         // poll the reported address until the lease lands.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe {
-            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
         } < 6
         {
             deadline.assert_pending("EL0 dhcp tcpip service startup");

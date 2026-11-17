@@ -46,8 +46,8 @@ use knytos_syscall::{
     submit_detached_timer,
     thread_exit,
 };
-use charlotte_launch::relmsg_status as status;
-use charlotte_protocol_msg::{
+use knytos_launch::relmsg_status as status;
+use knytos_protocol_msg::{
     FLAG_ACK,
     FLAG_FRAG,
     FLAG_MORE,
@@ -66,7 +66,7 @@ use charlotte_protocol_msg::{
     parse_ipc_message_header,
     wire_session_is_newer,
 };
-use charlotte_protocol_net::decode_status;
+use knytos_protocol_net::decode_status;
 
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
@@ -788,7 +788,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
 fn main(ctx: Context) -> ! {
     if matches!(
-        ctx.manifest_value(charlotte_launch::relmsg_status::AUDIT_PROBE_KEY),
+        ctx.manifest_value(knytos_launch::relmsg_status::AUDIT_PROBE_KEY),
         Some(catten_rt::ManifestValue::Unsigned(1))
     ) {
         verify_fragment_rejection();

@@ -1,7 +1,7 @@
 # name             class       release rollback flags provenance-sha256
 #
 # Build-time blessing allowlist. Flags are the CLS2 artifact flags from
-# charlotte-launch::signature_note. `-` means that no external SBOM or source
+# knytos-launch::signature_note. `-` means that no external SBOM or source
 # attestation is linked yet; production policy should provide its SHA-256.
 ns                 bootstrap   1       1        0x0   -
 otlp               service     1       1        0x0   -

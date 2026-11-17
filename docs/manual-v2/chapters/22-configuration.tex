@@ -311,7 +311,7 @@ a readiness signal or availability change cannot authorize request replay.
 \section{Management TLS configuration}
 
 The server collects policy in
-\repofile|crates/charlotte-launch/src/management/limits.rs|. Defaults allow 8 client
+\repofile|crates/knytos-launch/src/management/limits.rs|. Defaults allow 8 client
 CA roots, 64 enrolled leaf/role entries, 4 certificates per chain and 8192 bytes
 per certificate or server key. Each session permits 65536 input bytes,
 65536 output bytes and 16384 application bytes. The send-fragment setting is

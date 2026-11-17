@@ -55,7 +55,7 @@ same services and launch boundaries those gaps expose.
   object mapping, thread/stack admission, the ELF/launch gates and the boot
   trust handoff.
 - Reviewed the network-facing services (`tcpip`, `socket_state`,
-  `charlotte-smoltcp`, `relmsg`, `disco`, `ns`, `raft` transport), cluster
+  `knytos-smoltcp`, `relmsg`, `disco`, `ns`, `raft` transport), cluster
   protocol parsing and framing, and the launch/trust tooling. Four parallel
   review passes covered the network stack, ELF/launch paths,
   cluster/authorization protocols, and the `knytos-rt::owned` wrappers; every
@@ -117,7 +117,7 @@ total with an infallible allocation:
 The protocol permits the advertised total: a `SYN|FRAG|MORE` frame with
 `offset=0`, `payload_len=1` and `total_message_len=0xFFFF_FFFF` satisfies
 `end <= total` and `MORE == (end < total)`
-([charlotte-protocol-msg/src/lib.rs:344](../../../crates/charlotte-protocol-msg/src/lib.rs#L344)).
+([knytos-protocol-msg/src/lib.rs:344](../../../crates/knytos-protocol-msg/src/lib.rs#L344)).
 The frame router dispatches non-IP frames to the registered EtherType route
 without a destination-MAC check
 ([frouter.rs:1104](../../../crates/knytos-services/src/bin/frouter.rs#L1104),
@@ -147,7 +147,7 @@ The smoltcp TX token returns an **empty buffer** whenever the transmit scratch
 allocation or mapping fails, but smoltcp requires the closure to receive
 exactly `len` bytes:
 
-- [charlotte-smoltcp/src/lib.rs:215](../../../crates/charlotte-smoltcp/src/lib.rs#L215):
+- [knytos-smoltcp/src/lib.rs:215](../../../crates/knytos-smoltcp/src/lib.rs#L215):
   `len > 4096`, `memory_alloc` failure and `memory_map` failure all call
   `f(&mut empty)`.
 - smoltcp 0.13.1 (`Cargo.lock`) `dispatch_ethernet` calls
@@ -307,7 +307,7 @@ to the frame's real Ethernet source:
   inserts unconditionally into a `BTreeMap` holding three `Vec`s per entry;
   no `MAX_PEERS` equivalent is used.
 - The key comes from payload bytes
-  ([charlotte-protocol-disco/src/lib.rs:338](../../../crates/charlotte-protocol-disco/src/lib.rs#L338),
+  ([knytos-protocol-disco/src/lib.rs:338](../../../crates/knytos-protocol-disco/src/lib.rs#L338),
   shown as `frame[18..24]`), which the sender controls; the cluster id is
   broadcast in every probe.
 - The discovered raft ids propagate into the raft transport peer map
@@ -375,7 +375,7 @@ allocates infallibly:
   `Vec::with_capacity(len)` while holding the object registry lock; the only
   bound is the source object's page capacity.
 - `MAX_ARTIFACT_ELF_SIZE` is 4 MiB
-  ([charlotte-launch/src/lib.rs:57](../../../crates/charlotte-launch/src/lib.rs#L57));
+  ([knytos-launch/src/lib.rs:57](../../../crates/knytos-launch/src/lib.rs#L57));
   no equivalent check exists on this path.
 
 **Impact:** the trusted live-upgrade manager can force multi-megabyte kernel
@@ -396,12 +396,12 @@ This is not a certification that every acceptance case has been exercised.
 
 | Existing IDs | Renewed assessment |
 | --- | --- |
-| SEC-01 | Corrected; **re-verified**. `object::map` checks `valid_application_pages` before mapping ([object.rs:767](../../../crates/catten/src/memory/object.rs#L767)) and `map_locked` rechecks the complete object range under the registry ([object.rs:847](../../../crates/catten/src/memory/object.rs#L847)); the shared contract excludes the stack arena ([user_address.rs:23](../../../crates/charlotte-launch/src/user_address.rs#L23)). |
+| SEC-01 | Corrected; **re-verified**. `object::map` checks `valid_application_pages` before mapping ([object.rs:767](../../../crates/catten/src/memory/object.rs#L767)) and `map_locked` rechecks the complete object range under the registry ([object.rs:847](../../../crates/catten/src/memory/object.rs#L847)); the shared contract excludes the stack arena ([user_address.rs:23](../../../crates/knytos-launch/src/user_address.rs#L23)). |
 | SEC-02 | Corrected in the documented scope; prior evidence retained. Scoped grants are checked at the controller ([tests pass](#validation-performed)); not re-reviewed line by line. |
 | SEC-03 | Corrected; **re-verified at the dispatch boundary**. Mailbox endpoints are per-ASID namespaces with exact root/identity capture ([mailbox_publication.rs:178](../../../crates/catten/src/syscall/mailbox_publication.rs#L178)), and capability lookups check owner, kind and live state ([capability.rs:607](../../../crates/catten/src/capability.rs#L607)). |
 | SEC-04 | Partial/open as recorded. The boot path still installs the explicit development fixture ([launch.rs:956](../../../crates/catten/src/service/launch.rs#L956)); production admission has no adapter and remains disabled. Signed-policy tooling and the one-shot handoff exist; protected provisioning/custody do not. |
 | SEC-05 | Partial; **re-verified**. Raw ingress remains gated on the designated router, but socket `bind`/`listen` still accepts arbitrary local IPv4 addresses and ports ([tcpip.rs:255](../../../crates/knytos-services/src/bin/tcpip.rs#L255)), so a signed app can claim a service VIP. |
-| SEC-06 | Partial. The TCP/IP reactor is bounded to 16 requests and one ring per cycle ([lib.rs:58](../../../crates/charlotte-smoltcp/src/lib.rs#L58)); SEC-32 shows an abort path in the same service; flood fairness for management remains open. |
+| SEC-06 | Partial. The TCP/IP reactor is bounded to 16 requests and one ring per cycle ([lib.rs:58](../../../crates/knytos-smoltcp/src/lib.rs#L58)); SEC-32 shows an abort path in the same service; flood fairness for management remains open. |
 | SEC-07 | Partial. The admission-owner inventory is broad, but SEC-32 and SEC-36 identify concrete unbounded/incorrectly-lifetimed allocations; R7-1–R7-5 are not met. |
 | SEC-08 | Open; **re-verified** as the precondition for SEC-36. L2 peer identity is still spoofable, and discovery has no volume bound. |
 | SEC-09 | Open. Time remains SNTP-derived, and the operational pickup compares expiry against a caller-supplied `now_unix_seconds` ([syscall/mod.rs:2451](../../../crates/catten/src/syscall/mod.rs#L2451)); no authenticated security time exists. |
@@ -461,7 +461,7 @@ timeouts remain causally unresolved; this audit adds no new evidence on them.
 
 ## Recommended order
 
-1. **SEC-32** first: restore fail-safe transmit behavior in `charlotte-smoltcp`
+1. **SEC-32** first: restore fail-safe transmit behavior in `knytos-smoltcp`
    and bound retained receive backing. A single admitted client must not be
    able to abort the node's network stack.
 2. **SEC-31**: validate the reassembly total before state creation/allocation

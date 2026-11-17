@@ -411,7 +411,7 @@ image whose contents may be replaced.
 
 ### Phase 1 — Protocol and skeleton (complete)
 
-1. Create `charlotte-protocol-block` crate with the interface constants,
+1. Create `knytos-protocol-block` crate with the interface constants,
    opcodes, error codes, and helper functions.
 2. Add `block` module to `knytos-services/src/lib.rs` with protocol
    constants.

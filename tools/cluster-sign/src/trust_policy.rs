@@ -1,6 +1,6 @@
 //! Bounded, public-only trust-policy preparation. This does not provision keys.
 
-use charlotte_launch::trust::{
+use knytos_launch::trust::{
     self,
     signed_policy::{
         self,
@@ -49,7 +49,7 @@ pub(super) fn create(args: &[String]) -> Result<()> {
     println!(
         "wrote public trust candidate: {} sha256={}",
         args[0],
-        hex_encode(&charlotte_launch::sha256::digest(&bytes))
+        hex_encode(&knytos_launch::sha256::digest(&bytes))
     );
     println!(concat!(
         "unsigned preflight only; authenticated provisioning and ",
@@ -75,7 +75,7 @@ pub(super) fn check(args: &[String]) -> Result<()> {
         "public trust candidate passed preflight: sequence={} cluster={} sha256={}",
         candidate.public().sequence,
         hex_encode(&cluster_id),
-        hex_encode(&charlotte_launch::sha256::digest(&bytes))
+        hex_encode(&knytos_launch::sha256::digest(&bytes))
     );
     println!(concat!(
         "cluster and revision floor are caller-supplied; ",

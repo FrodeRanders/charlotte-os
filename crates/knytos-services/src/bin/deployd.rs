@@ -74,7 +74,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
 
     let trace = matches!(
-        ctx.manifest_value(charlotte_launch::deployd_status::TRACE_KEY),
+        ctx.manifest_value(knytos_launch::deployd_status::TRACE_KEY),
         Some(catten_rt::ManifestValue::Unsigned(1))
     );
     let cq = ctx.completion_queue_layout();

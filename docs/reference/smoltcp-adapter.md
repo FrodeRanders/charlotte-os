@@ -170,7 +170,7 @@ carry the complete ID; immediate and deferred send share one frame grammar.
 - Memory objects provide the buffer ownership model smoltcp needs
 - The name service handles discovery (generation-safe lookup)
 - `knytos-syscall` has all the IPC and memory primitives
-- `charlotte-smoltcp` implements the `phy::Device` adapter
+- `knytos-smoltcp` implements the `phy::Device` adapter
 - `tcpip.elf` serves the socket protocol over the `"tcpip"` name
 - A self-configuring smoke client (`tcpclient.elf`) exercises a full
   two-node TCP echo through `--tcpip-test`

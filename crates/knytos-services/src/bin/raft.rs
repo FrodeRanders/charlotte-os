@@ -90,8 +90,8 @@ use knytos_syscall::{
     submit_detached_timer,
     thread_exit,
 };
-use charlotte_launch::raft_status as status;
-use charlotte_protocol_disco::{
+use knytos_launch::raft_status as status;
+use knytos_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
@@ -671,7 +671,7 @@ fn main(ctx: Context) -> ! {
                         let (status, result, _cap) = knytos_syscall::ipc_reply_wait(status_call);
                         knytos_syscall::ipc_close(status_call);
                         let (link, mac) = if status == 0 {
-                            charlotte_protocol_net::decode_status(result as i64)
+                            knytos_protocol_net::decode_status(result as i64)
                         } else {
                             (0, [0u8; 6])
                         };

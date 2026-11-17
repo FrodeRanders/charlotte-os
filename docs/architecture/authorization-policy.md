@@ -38,7 +38,7 @@ artifacts classified as administration workloads receive policy-administrator
 and service-manager roles.
 
 An implementation skeleton now exists in the host-testable
-`charlotte-authorization` crate. It implements the modeled policy state
+`knytos-authorization` crate. It implements the modeled policy state
 machine independently of transport: exact generation-aware domain identity,
 separate administrator and service-manager roles, default-deny exact-match
 rules, versioned policy replacement, service-generation fencing, rights

@@ -64,7 +64,7 @@ Execution results and source/artifact hashes are recorded in the accompanying
 [evidence](evidence/2026-10-25-refactoring-consolidation.json).
 
 - Actual lifecycle crate compiled directly with `rustc --edition 2024 --test
-  crates/charlotte-lifecycle/src/lib.rs -D warnings`: **34 tests pass**.
+  crates/knytos-lifecycle/src/lib.rs -D warnings`: **34 tests pass**.
 - Resource-policy harness: **3 Python tests pass**; default/larger profiles each
   execute **16 Rust tests**, and all 11 invalid profiles reject compilation.
 - Strict base-kernel Clippy passes for AArch64 and x86_64, using their signed

@@ -7,9 +7,9 @@
     "revision": "9be5546",
     "original_scram_sha256": "ca521cd26ab4a39eafd757a359f3247021022989a0c654840f89ba4e543123f5",
     "fixture_scram_sha256": "aab221d48edaef70f62d3b1b1efd05fb5f0d7a16116e2886b8bdda54f4176785",
-    "fixture_manifest": "[package]\nname = \"charlotte-kafka\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Bounded no_std Kafka wire protocol core for Knytos\"\n\n[lib]\ntest = true\nbench = false\n\n[dependencies]\ncharlotte-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
+    "fixture_manifest": "[package]\nname = \"knytos-kafka\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Bounded no_std Kafka wire protocol core for Knytos\"\n\n[lib]\ntest = true\nbench = false\n\n[dependencies]\nknytos-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
     "fixture_lockfile_sha256": "40c06e4f46f14cf51e64fc2daafc2068abe730714671a7d004199d3aef7c22ee",
-    "shared_probe_path": "crates/charlotte-kafka/src/scram/erasure_tests.rs",
+    "shared_probe_path": "crates/knytos-kafka/src/scram/erasure_tests.rs",
     "shared_probe_sha256": "c065d1d12939e89888d59f18080ba567733d9a53b6a8edab308d28b2780f383a",
     "fixture_probe_sha256": "164bd5233fdf296ff3e79b3a14a348a343e1021c4864d9b1de7f4d0c08e381d0",
     "supplemental_baseline_control": "\n#[test]\nfn late_caller_wrap_cannot_prevent_decoder_growth() {\n    let observed = observe(|| {\n        if let Ok(output) = base64_decode(black_box(ENCODED)) {\n            drop(black_box(zeroize::Zeroizing::new(output)));\n        }\n    });\n    assert_erasing_release(observed);\n}\n",
@@ -26,10 +26,10 @@
     "scope": "Isolated committed Kafka source plus the shared probe and one supplemental wrapper control; direct launch dependency points to the unchanged committed local package and root lockfile seeds exact dependency versions."
   },
   "earlier_baseline_probe": {
-    "command": "cargo test --offline --locked --manifest-path <repository>/crates/charlotte-kafka/Cargo.toml erasure_tests",
+    "command": "cargo test --offline --locked --manifest-path <repository>/crates/knytos-kafka/Cargo.toml erasure_tests",
     "exit_status": 101,
     "log_sha256": "203a74333ed0414a07eb76051987fd07bbe7dfc5c3be58ab9110e42276301ae5",
-    "diagnostics": "running 3 tests\ntest scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release ... FAILED\ntest scram::erasure_tests::encoded_output_erases_before_release ... FAILED\ntest scram::erasure_tests::decoded_output_erases_before_release ... FAILED\n\nfailures:\n\n---- scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release stdout ----\n\nthread 'scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release' (20020707) panicked at crates/charlotte-kafka/src/scram/erasure_tests.rs:129:5:\nreleased prefix retained bytes: Observation { allocations: 1, growths: 2, releases: 1, prefix_erased: false }\n\n---- scram::erasure_tests::encoded_output_erases_before_release stdout ----\n\nthread 'scram::erasure_tests::encoded_output_erases_before_release' (20020706) panicked at crates/charlotte-kafka/src/scram/erasure_tests.rs:129:5:\nreleased prefix retained bytes: Observation { allocations: 1, growths: 0, releases: 1, prefix_erased: false }\n\n---- scram::erasure_tests::decoded_output_erases_before_release stdout ----\n\nthread 'scram::erasure_tests::decoded_output_erases_before_release' (20020705) panicked at crates/charlotte-kafka/src/scram/erasure_tests.rs:129:5:\nreleased prefix retained bytes: Observation { allocations: 1, growths: 2, releases: 1, prefix_erased: false }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    scram::erasure_tests::decoded_output_erases_before_release\n    scram::erasure_tests::encoded_output_erases_before_release\n    scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release\n\ntest result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "diagnostics": "running 3 tests\ntest scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release ... FAILED\ntest scram::erasure_tests::encoded_output_erases_before_release ... FAILED\ntest scram::erasure_tests::decoded_output_erases_before_release ... FAILED\n\nfailures:\n\n---- scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release stdout ----\n\nthread 'scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release' (20020707) panicked at crates/knytos-kafka/src/scram/erasure_tests.rs:129:5:\nreleased prefix retained bytes: Observation { allocations: 1, growths: 2, releases: 1, prefix_erased: false }\n\n---- scram::erasure_tests::encoded_output_erases_before_release stdout ----\n\nthread 'scram::erasure_tests::encoded_output_erases_before_release' (20020706) panicked at crates/knytos-kafka/src/scram/erasure_tests.rs:129:5:\nreleased prefix retained bytes: Observation { allocations: 1, growths: 0, releases: 1, prefix_erased: false }\n\n---- scram::erasure_tests::decoded_output_erases_before_release stdout ----\n\nthread 'scram::erasure_tests::decoded_output_erases_before_release' (20020705) panicked at crates/knytos-kafka/src/scram/erasure_tests.rs:129:5:\nreleased prefix retained bytes: Observation { allocations: 1, growths: 2, releases: 1, prefix_erased: false }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    scram::erasure_tests::decoded_output_erases_before_release\n    scram::erasure_tests::encoded_output_erases_before_release\n    scram::erasure_tests::malformed_suffix_erases_decoded_prefix_before_release\n\ntest result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
     "tests_failed": 3,
     "verification_limit": "Earlier probe version with one malformed-suffix fixture. Its source was not independently captured before extending the suffix cases; the final isolated reproduction above has exact source hashes and the supplemental caller-wrap control."
   },
@@ -54,21 +54,21 @@
   },
   "host_validation": {
     "debug_final": {
-      "command": "cargo test --offline --locked --manifest-path <repository>/crates/charlotte-kafka/Cargo.toml",
+      "command": "cargo test --offline --locked --manifest-path <repository>/crates/knytos-kafka/Cargo.toml",
       "exit_status": 0,
       "log_sha256": "1b32ba975793c8634a035c3e4bc479f11b74371e33f9ffa0927069e6eb41ef37",
       "runtime_tests_passed": 21,
       "compile_fail_doctests_passed": 2
     },
     "release": {
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-kafka -p charlotte-launch -p charlotte-s3",
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-kafka -p knytos-launch -p knytos-s3",
       "exit_status": 0,
       "log_sha256": "67f781ace388d020dfd6fe6d3d22392980791ba4c5d114c894377884ff9060fc",
       "runtime_tests_passed": 89,
       "compile_fail_doctests_passed": 3
     },
     "strict_clippy": {
-      "command": "cargo clippy --offline --locked --manifest-path <repository>/crates/charlotte-kafka/Cargo.toml --all-targets -- -D warnings",
+      "command": "cargo clippy --offline --locked --manifest-path <repository>/crates/knytos-kafka/Cargo.toml --all-targets -- -D warnings",
       "exit_status": 0,
       "log_sha256": "48b4c27a9d68b4d5f01bd6f13c16d6407965bd48e39fd84660965b0fd23e5c1d"
     },
@@ -460,8 +460,8 @@
   ],
   "reviewed_source_sha256": {
     "crates/knytos-services/src/bin/kafka.rs": "2d26cab313f5a7d1afbc65c2c48c4357b52e5abdc2c51767c1a2bab441df9d48",
-    "crates/charlotte-kafka/src/scram.rs": "c1e2fd6f2b13fb6d4a16c8d33d668096bd563b3524d04b96b671c5c7169b15cd",
-    "crates/charlotte-kafka/src/scram/erasure_tests.rs": "c065d1d12939e89888d59f18080ba567733d9a53b6a8edab308d28b2780f383a",
+    "crates/knytos-kafka/src/scram.rs": "c1e2fd6f2b13fb6d4a16c8d33d668096bd563b3524d04b96b671c5c7169b15cd",
+    "crates/knytos-kafka/src/scram/erasure_tests.rs": "c065d1d12939e89888d59f18080ba567733d9a53b6a8edab308d28b2780f383a",
     "docs/reference/api-simplification.md": "fdfebc70bf28d1f06e4a4aadf2dc32d6b03e0926a0938943c52aac431880f4a6",
     "docs/reference/cleanup-recovery.md": "746aa9cafb1de870d2cacc115d4e64ca13a1a61055c76f23216c9ecc05554e15",
     "docs/reference/kafka-client.md": "2650bcfe577de4312162ca48a828119bf6d51fedc408f0d0afc6ecf62cbaafab",
@@ -472,7 +472,7 @@
   },
   "unchanged_inputs_sha256": {
     "Cargo.lock": "4e57ea294b772b58ed3e61cdc9a779ff2d5eb6759558cd182430b77ee27a3ca0",
-    "crates/charlotte-kafka/Cargo.toml": "5ccff11eb5bbf83468ef57063d7cc7d76c47c0046684f623dd7330ecee92d102",
+    "crates/knytos-kafka/Cargo.toml": "5ccff11eb5bbf83468ef57063d7cc7d76c47c0046684f623dd7330ecee92d102",
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
     "docker/kafka-test/compose.yaml": "4f33ab72c1a548d2f72d0a9a95e186e9b71d41c0c25fc8690e4537e4e47c3d12"
   },

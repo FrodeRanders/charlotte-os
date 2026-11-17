@@ -251,7 +251,7 @@ wire-format change or new numbered format batch is added.
 
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 removes S3/SCRAM's duplicate HMAC helpers in favor of shared
-`charlotte_launch::sha256::hmac_sha256`, returning `Zeroizing<[u8; 32]>`.
+`knytos_launch::sha256::hmac_sha256`, returning `Zeroizing<[u8; 32]>`.
 SCRAM PBKDF2 also returns its existing result owner. Plain-array helper returns
 and compatibility wrappers are removed; SHA's public digest output stays an
 array. Algorithms, wire formats and persistent records are unchanged.
@@ -329,7 +329,7 @@ encoding. No compatibility parser remains. HTTP grammar, trimming, repeated
 metadata behavior, parser error statuses and public S3 wire records are unchanged.
 
 The [request-key/raw-path follow-up](../reports/audits/2026-10-20-security-s3-path-owners.md)
-moves the private byte-only request into `charlotte_s3::request::OwnedRequest`,
+moves the private byte-only request into `knytos_s3::request::OwnedRequest`,
 using the shared protocol decoder and an erasing key owner. `key()` borrows and
 `object_path` returns a reserved erasing owner. The unused Clone derive and
 private plain key/path implementation are removed. The service supplies its
@@ -337,7 +337,7 @@ validated profile fields and preserves the existing IPC mapping boundary.
 Wire formats, request limits/flags and path-policy bytes remain unchanged.
 
 The [profile-owner follow-up](../reports/audits/2026-10-20-security-s3-profile-owners.md) replaces the service's private field-copy
-profile with `charlotte_s3::profile::OwnedProfile`. One immutable erasing frame
+profile with `knytos_s3::profile::OwnedProfile`. One immutable erasing frame
 lends typed views; the view's `authority` formatter returns a reserved erasing
 string. The old plain field copies/authority formatter are removed without a
 compatibility path. Current CHS3PF1 validation, launch-memory mapping scope,

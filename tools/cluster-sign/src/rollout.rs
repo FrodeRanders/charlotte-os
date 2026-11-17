@@ -48,13 +48,13 @@ pub(super) fn incompatible_target_rejection(body: &str) -> bool {
 pub(super) fn admitted_release(
     body: &str,
     envelope: &[u8],
-) -> Option<charlotte_launch::release_admission::Receipt> {
+) -> Option<knytos_launch::release_admission::Receipt> {
     let [value] = fields(body, ["admission"])?;
     let hex = value.strip_prefix('"')?.strip_suffix('"')?;
-    if hex.len() % 2 != 0 || hex.len() > 2 * charlotte_launch::release_admission::MAX_LEN {
+    if hex.len() % 2 != 0 || hex.len() > 2 * knytos_launch::release_admission::MAX_LEN {
         return None;
     }
-    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
+    let mut bytes = [0; knytos_launch::release_admission::MAX_LEN];
     fn digit(byte: u8) -> Option<u8> {
         match byte {
             b'0'..=b'9' => Some(byte - b'0'),
@@ -65,7 +65,7 @@ pub(super) fn admitted_release(
     for (slot, pair) in bytes.iter_mut().zip(hex.as_bytes().as_chunks::<2>().0.iter()) {
         *slot = digit(pair[0])? * 16 + digit(pair[1])?;
     }
-    let receipt = charlotte_launch::release_admission::Receipt::decode(&bytes[..hex.len() / 2])?;
+    let receipt = knytos_launch::release_admission::Receipt::decode(&bytes[..hex.len() / 2])?;
     receipt.matches(envelope).then_some(receipt)
 }
 
@@ -90,9 +90,9 @@ pub(super) fn policy_status(body: &str) -> Option<()> {
     (generation > 0
         && generation <= i64::MAX as u64
         && sequence > 0
-        && assignments <= charlotte_launch::ingress::MAX_SERVICES as u64
+        && assignments <= knytos_launch::ingress::MAX_SERVICES as u64
         && start > 0
-        && end.checked_sub(start)? <= charlotte_launch::ingress_policy::MAX_VALIDITY_SECONDS)
+        && end.checked_sub(start)? <= knytos_launch::ingress_policy::MAX_VALIDITY_SECONDS)
         .then_some(())
 }
 
@@ -163,12 +163,12 @@ mod tests {
 
     #[test]
     fn policy_observation_accepts_current_bounds_without_utc_admission() {
-        for assignments in [0, charlotte_launch::ingress::MAX_SERVICES] {
+        for assignments in [0, knytos_launch::ingress::MAX_SERVICES] {
             let body = format!(
                 "{{\"generation\":1,\"sequence\":{},\"assignments\":{assignments},\"\
                  not_before_unix_seconds\":1,\"expires_unix_seconds\":{}}}",
                 u64::MAX,
-                1 + charlotte_launch::ingress_policy::MAX_VALIDITY_SECONDS
+                1 + knytos_launch::ingress_policy::MAX_VALIDITY_SECONDS
             );
             assert!(policy_status(&body).is_some());
         }
@@ -189,7 +189,7 @@ mod tests {
                 "\"expires_unix_seconds\":301",
                 &format!(
                     "\"expires_unix_seconds\":{}",
-                    2 + charlotte_launch::ingress_policy::MAX_VALIDITY_SECONDS
+                    2 + knytos_launch::ingress_policy::MAX_VALIDITY_SECONDS
                 ),
             ),
             valid.replace("\"generation\":2", "\"generation\":2,\"generation\":3"),

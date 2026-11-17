@@ -1788,7 +1788,7 @@ manifest values through `Context`; raw offsets are not the intended application 
 
 ### Remaining work
 
-Launch ABI 2.2 uses the shared no-std `charlotte-launch` crate. This launch-page
+Launch ABI 2.2 uses the shared no-std `knytos-launch` crate. This launch-page
 version is separate from runtime syscall ABI 3. It declares
 heap, input, and default-CQ layouts and carries a bounded typed initial
 capability vector. Both the kernel and crt0 consume the same fixed-width
@@ -2229,7 +2229,7 @@ Create small versioned protocol crates:
 charlotte-protocol-log
 charlotte-protocol-console
 charlotte-protocol-device-manager
-charlotte-protocol-network
+knytos-protocol-network
 ```
 
 Each crate defines:

@@ -75,7 +75,7 @@ a name lookup.
 ## SEC-38: bounded upgrade snapshot
 
 `SPAWN_UPGRADE` now rejects a persistent ELF whose length is zero or above
-`charlotte_launch::MAX_ARTIFACT_ELF_SIZE` before snapshotting, closing the
+`knytos_launch::MAX_ARTIFACT_ELF_SIZE` before snapshotting, closing the
 capability on rejection
 ([syscall/mod.rs:2069](../../../crates/catten/src/syscall/mod.rs#L2069)). The
 shared snapshot helper reserves its caller-sized buffer fallibly

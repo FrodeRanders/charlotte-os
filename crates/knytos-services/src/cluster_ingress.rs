@@ -24,7 +24,7 @@ pub const MEMBERSHIP_HEADER_LEN: usize = 40;
 pub const MEMBERSHIP_RECORD_LEN: usize = 16;
 const MEMBER_FLAG_ELIGIBLE: u8 = 1 << 0;
 
-pub use charlotte_launch::ingress::ServiceId;
+pub use knytos_launch::ingress::ServiceId;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct FlowKey {

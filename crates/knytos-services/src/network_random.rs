@@ -1,5 +1,5 @@
 //! Fresh boot entropy and independently keyed ephemeral-port selection.
-use charlotte_launch::sha256::hmac_sha256;
+use knytos_launch::sha256::hmac_sha256;
 use zeroize::{
     Zeroize,
     Zeroizing,

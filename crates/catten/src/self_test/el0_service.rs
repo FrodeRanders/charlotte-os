@@ -152,8 +152,8 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     assert!(ready, "persistent upgrade completion deadline expired");
     logln!(
         "[service] persistent upgrade completed: ns_waiters={}, ns_handled={}",
-        unsafe { crate::self_test::status_u32(ns_status, charlotte_launch::ns_status::WAITERS) },
-        unsafe { crate::self_test::status_u32(ns_status, charlotte_launch::ns_status::HANDLED) }
+        unsafe { crate::self_test::status_u32(ns_status, knytos_launch::ns_status::WAITERS) },
+        unsafe { crate::self_test::status_u32(ns_status, knytos_launch::ns_status::HANDLED) }
     );
     let upgraded = ipc::poll_reply(client_asid, upgrade)
         .expect("[service] persistent upgrade poll failed")
@@ -186,7 +186,7 @@ fn verify_rejected_upgrade_sizes(ns: &NameServiceHandle) {
         ConnectionRights::CALL,
     )
     .expect("oversized upgrade fixture target");
-    for length in [0, charlotte_launch::MAX_ARTIFACT_ELF_SIZE + 1] {
+    for length in [0, knytos_launch::MAX_ARTIFACT_ELF_SIZE + 1] {
         let memory = crate::memory::object::allocate(manager.id(), length.div_ceil(4096).max(1))
             .expect("oversized upgrade fixture backing");
         let mut frame = crate::syscall::TrapFrame {
@@ -298,14 +298,14 @@ extern "C" fn verify_el0_service() {
         assert!(exited, "[service] EL0 service client did not exit within deadline");
     }
     assert_eq!(
-        unsafe { crate::self_test::status_u32(config, charlotte_launch::client_status::SENTINEL) },
+        unsafe { crate::self_test::status_u32(config, knytos_launch::client_status::SENTINEL) },
         CLIENT_SENTINEL,
         "[service] client did not reach completion sentinel"
     );
     let echoed =
-        unsafe { crate::self_test::status_u32(config, charlotte_launch::client_status::ECHOED) };
+        unsafe { crate::self_test::status_u32(config, knytos_launch::client_status::ECHOED) };
     let generation = unsafe {
-        crate::self_test::status_u32(config, charlotte_launch::client_status::GENERATION)
+        crate::self_test::status_u32(config, knytos_launch::client_status::GENERATION)
     };
     assert_eq!(echoed, ECHO_VALUE as u32, "[service] client echoed value mismatch: {:#x}", echoed);
     assert_eq!(generation, 1, "[service] first echo instance must be generation 1");
@@ -415,13 +415,13 @@ extern "C" fn verify_el0_service() {
         unsafe {
             crate::self_test::status_u32(
                 mgr_status,
-                charlotte_launch::service_manager_status::STAGE,
+                knytos_launch::service_manager_status::STAGE,
             )
         },
         unsafe {
             crate::self_test::status_u32(
                 mgr_status,
-                charlotte_launch::service_manager_status::ERROR,
+                knytos_launch::service_manager_status::ERROR,
             )
         }
     );

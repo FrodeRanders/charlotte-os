@@ -6,7 +6,7 @@ finding. Current contract: [Kafka profile](../../reference/kafka-client.md#curre
 
 ## Change and source coverage
 
-`charlotte-protocol-kafka::Profile` now emits and accepts only `CHKAFP7\0`,
+`knytos-protocol-kafka::Profile` now emits and accepts only `CHKAFP7\0`,
 version 7, with an exact 112-byte header. One authentication choice selects none,
 SCRAM-SHA-256, P-256 mTLS, or both. Four explicit lengths delimit username,
 password, certificate and private-key bytes. Disabled mechanisms require empty

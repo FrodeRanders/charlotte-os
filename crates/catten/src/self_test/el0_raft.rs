@@ -29,10 +29,10 @@ mod inner {
         },
     };
 
-    const NODE_ID_KEY: u64 = charlotte_launch::manifest_key(b"node-id");
-    const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
-    const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
-    const STORAGE_KEY: u64 = charlotte_launch::manifest_key(b"storage");
+    const NODE_ID_KEY: u64 = knytos_launch::manifest_key(b"node-id");
+    const ELECTION_KEY: u64 = knytos_launch::manifest_key(b"elect-ms");
+    const CLUSTER_KEY: u64 = knytos_launch::manifest_key(b"cluster");
+    const STORAGE_KEY: u64 = knytos_launch::manifest_key(b"storage");
     const STORAGE_REQUIRED: u64 = 2;
 
     fn spawn_raft_node(
@@ -89,16 +89,16 @@ mod inner {
         let mut next_report = 0u64;
         loop {
             let stage = unsafe {
-                crate::self_test::status_u32(status, charlotte_launch::raft_status::STAGE)
+                crate::self_test::status_u32(status, knytos_launch::raft_status::STAGE)
             };
             let state = unsafe {
-                crate::self_test::status_u32(status, charlotte_launch::raft_status::STATE)
+                crate::self_test::status_u32(status, knytos_launch::raft_status::STATE)
             };
             let term = unsafe {
-                crate::self_test::status_u32(status, charlotte_launch::raft_status::CURRENT_TERM)
+                crate::self_test::status_u32(status, knytos_launch::raft_status::CURRENT_TERM)
             };
             let durable = unsafe {
-                crate::self_test::status_u32(status, charlotte_launch::raft_status::DURABLE)
+                crate::self_test::status_u32(status, knytos_launch::raft_status::DURABLE)
             };
             if stage >= 6 && state == 3 && term > 0 && durable == 1 {
                 crate::logln!("[raft-storage] {} reached term {}.", label, term);

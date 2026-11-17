@@ -10,7 +10,7 @@ and close-watch work. Existing security finding dispositions remain unchanged.
 
 - DNS interface 4 requires `CDNSCL01` moved-memory client requests: exact total
   length, complete 1..=256-byte name, opcode and signed argument. The new pure
-  `charlotte-protocol-dns` crate supplies the single kernel/service encoder and
+  `knytos-protocol-dns` crate supplies the single kernel/service encoder and
   strict borrowed decoder. Packed-name/untagged 12-byte clients reject without
   fallback or default fields. Register ABI 3, catalog-v18, Raft pair-v3 and
   remote relay tags remain unchanged; signed variants rebuild together.

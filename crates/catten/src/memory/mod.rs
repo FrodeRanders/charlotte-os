@@ -152,8 +152,8 @@ pub struct DomainLimits {
 impl Default for DomainLimits {
     fn default() -> Self {
         Self {
-            user_stack_pages: charlotte_launch::DEFAULT_USER_STACK_PAGES,
-            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS,
+            user_stack_pages: knytos_launch::DEFAULT_USER_STACK_PAGES,
+            max_threads: knytos_launch::DEFAULT_USER_MAX_THREADS,
         }
     }
 }
@@ -242,7 +242,7 @@ pub(crate) fn install_launch_descriptor(address_space: AddressSpaceHandle, bytes
     let authority = slot.authority.as_mut().expect("launch authority missing");
     assert_eq!(authority.address_space, address_space);
     assert!(authority.launch_descriptor_digest.is_none());
-    authority.launch_descriptor_digest = Some(charlotte_launch::sha256::digest(bytes));
+    authority.launch_descriptor_digest = Some(knytos_launch::sha256::digest(bytes));
 }
 
 /// Compare immutable admitted policy against one exact live occupancy. The
@@ -360,10 +360,10 @@ pub fn set_domain_limits(
     handle: AddressSpaceHandle,
     limits: DomainLimits,
 ) -> Result<(), DomainLimitError> {
-    if !(1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&limits.user_stack_pages) {
+    if !(1..=knytos_launch::MAX_USER_STACK_PAGES).contains(&limits.user_stack_pages) {
         return Err(DomainLimitError::InvalidUserStackPages);
     }
-    if !(1..=charlotte_launch::MAX_USER_THREADS).contains(&limits.max_threads) {
+    if !(1..=knytos_launch::MAX_USER_THREADS).contains(&limits.max_threads) {
         return Err(DomainLimitError::InvalidMaxThreads);
     }
     if !address_space_handle_is_current(handle) {
@@ -497,8 +497,8 @@ pub(crate) fn commit_user_heap_page_with_mapper(
     }
     let asid = handle.id();
     let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
-    let start = charlotte_launch::HEAP_VADDR;
-    let capacity = usage::domain_heap_capacity(asid).unwrap_or(charlotte_launch::HEAP_SIZE);
+    let start = knytos_launch::HEAP_VADDR;
+    let capacity = usage::domain_heap_capacity(asid).unwrap_or(knytos_launch::HEAP_SIZE);
     let end = start + capacity;
     if !(start..end).contains(&fault_addr) {
         return false;

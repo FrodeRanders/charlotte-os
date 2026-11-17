@@ -20,7 +20,7 @@ availability attack on the deployment chain, not code execution.
 
 ## Correction
 
-- Protocol: `charlotte_protocol_objstore::ERR_DENIED` (7).
+- Protocol: `knytos_protocol_objstore::ERR_DENIED` (7).
 - Scope rules:
   [`objstore::is_reserved_object`](../../../crates/knytos-services/src/lib.rs#L1342),
   [`reserved_mutator`](../../../crates/knytos-services/src/lib.rs#L1349) and

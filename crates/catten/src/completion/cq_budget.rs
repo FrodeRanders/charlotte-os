@@ -1,7 +1,7 @@
 //! CQ registration count and kernel-owned ring/backlog backing bytes.
 //! Mappings retain ownership of the physical ring frames independently of the CQ registry.
 
-use charlotte_lifecycle::resources::VectorBudget;
+use knytos_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
 use crate::{

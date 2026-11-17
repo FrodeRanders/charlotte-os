@@ -77,9 +77,9 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_launch::tcpip_status as status;
-use charlotte_protocol_net::decode_status;
-use charlotte_smoltcp::{
+use knytos_launch::tcpip_status as status;
+use knytos_protocol_net::decode_status;
+use knytos_smoltcp::{
     CharlotteEthDevice,
     MAX_IPC_REQUESTS_PER_CYCLE,
     ReactorClock,
@@ -291,7 +291,7 @@ impl AssignmentClient {
                     let memory = result.memory?;
                     let mapping = memory.map_read_only().ok()?;
                     let bytes = mapping.as_slice().get(..length)?;
-                    return Some(charlotte_launch::ingress::decode(bytes)?.fold(
+                    return Some(knytos_launch::ingress::decode(bytes)?.fold(
                         Vec::new(),
                         |mut addresses, binding| {
                             let [a, b, c, d] = binding.service.address;
@@ -395,13 +395,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // MAC-derived) address and acquire the interface configuration from a DHCP
     // server instead. The static path remains the default for raw two-node
     // links and SLIRP runs with an explicit address.
-    let dhcp = ctx.manifest_value(charlotte_launch::manifest_key(b"dhcp")).is_some();
+    let dhcp = ctx.manifest_value(knytos_launch::manifest_key(b"dhcp")).is_some();
 
     let default_ip = Ipv4Address::new(10, 0, 0, 100u8.wrapping_add(mac[5] % 100));
     let mut local_ip = if dhcp {
         Ipv4Address::new(0, 0, 0, 0)
     } else {
-        match ctx.manifest_value(charlotte_launch::manifest_key(b"ip")) {
+        match ctx.manifest_value(knytos_launch::manifest_key(b"ip")) {
             Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
                 Ipv4Address::new(raw[0], raw[1], raw[2], raw[3])
             }
@@ -409,14 +409,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
     };
     let mut local_cidr = (!dhcp).then(|| Ipv4Cidr::new(local_ip, 24));
-    let gateway = match ctx.manifest_value(charlotte_launch::manifest_key(b"gateway")) {
+    let gateway = match ctx.manifest_value(knytos_launch::manifest_key(b"gateway")) {
         Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
             Some(Ipv4Address::new(raw[0], raw[1], raw[2], raw[3]))
         }
         _ => None,
     };
-    let mut service_vips = match ctx.manifest_value(charlotte_launch::manifest_key(b"vips")) {
-        Some(ManifestValue::Bytes(raw)) => charlotte_launch::ingress::decode(raw)
+    let mut service_vips = match ctx.manifest_value(knytos_launch::manifest_key(b"vips")) {
+        Some(ManifestValue::Bytes(raw)) => knytos_launch::ingress::decode(raw)
             .unwrap_or_else(|| fail(0xe007))
             .map(|binding| {
                 let [a, b, c, d] = binding.service.address;
@@ -486,21 +486,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     let requested_socket_slots = tcpip_policy_value(
         ctx,
-        charlotte_launch::tcpip_config::SOCKET_SLOTS_KEY,
-        charlotte_launch::tcpip_config::DEFAULT_SOCKET_SLOTS,
-        charlotte_launch::tcpip_config::MAX_SOCKET_SLOTS,
+        knytos_launch::tcpip_config::SOCKET_SLOTS_KEY,
+        knytos_launch::tcpip_config::DEFAULT_SOCKET_SLOTS,
+        knytos_launch::tcpip_config::MAX_SOCKET_SLOTS,
     );
     let sockets_per_principal = tcpip_policy_value(
         ctx,
-        charlotte_launch::tcpip_config::SOCKET_QUOTA_KEY,
-        charlotte_launch::tcpip_config::DEFAULT_SOCKETS_PER_PRINCIPAL,
-        charlotte_launch::tcpip_config::MAX_SOCKETS_PER_PRINCIPAL,
+        knytos_launch::tcpip_config::SOCKET_QUOTA_KEY,
+        knytos_launch::tcpip_config::DEFAULT_SOCKETS_PER_PRINCIPAL,
+        knytos_launch::tcpip_config::MAX_SOCKETS_PER_PRINCIPAL,
     );
     let buffer_bytes_per_principal = tcpip_policy_value(
         ctx,
-        charlotte_launch::tcpip_config::BUFFER_QUOTA_KEY,
-        charlotte_launch::tcpip_config::DEFAULT_BUFFER_BYTES_PER_PRINCIPAL,
-        charlotte_launch::tcpip_config::MAX_BUFFER_BYTES_PER_PRINCIPAL,
+        knytos_launch::tcpip_config::BUFFER_QUOTA_KEY,
+        knytos_launch::tcpip_config::DEFAULT_BUFFER_BYTES_PER_PRINCIPAL,
+        knytos_launch::tcpip_config::MAX_BUFFER_BYTES_PER_PRINCIPAL,
     );
     let reserved_slots = usize::from(dhcp);
     let socket_slots =

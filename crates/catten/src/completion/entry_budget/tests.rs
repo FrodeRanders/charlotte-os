@@ -70,7 +70,7 @@ pub(in crate::completion) fn principal_root(
     name: &[u8],
     trusted_backing: bool,
 ) -> (AddressSpaceHandle, u64) {
-    let principal = charlotte_launch::artifact_principal_id(name);
+    let principal = knytos_launch::artifact_principal_id(name);
     let space = AddressSpace::try_new_principal_user(
         trusted_backing,
         memory::prepare_principal_backing(principal, trusted_backing).unwrap(),

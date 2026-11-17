@@ -39,8 +39,8 @@ fn prepare(root: AddressSpaceHandle, bytes: usize) -> Entry {
 }
 
 pub(super) fn run() {
-    let principal = charlotte_launch::artifact_principal_id(b"thread-metadata-pressure");
-    let other = charlotte_launch::artifact_principal_id(b"thread-metadata-healthy");
+    let principal = knytos_launch::artifact_principal_id(b"thread-metadata-pressure");
+    let other = knytos_launch::artifact_principal_id(b"thread-metadata-healthy");
     let first = domain(principal);
     let second = domain(principal);
     let healthy = domain(other);
@@ -116,7 +116,7 @@ fn node_pressure(bytes: usize) {
     let roots: Vec<_> = (0..32)
         .map(|n| {
             let name = alloc::format!("thread-metadata-node-pressure-{n}");
-            let principal = charlotte_launch::artifact_principal_id(name.as_bytes());
+            let principal = knytos_launch::artifact_principal_id(name.as_bytes());
             (domain(principal), principal)
         })
         .collect();
@@ -160,7 +160,7 @@ fn node_pressure(bytes: usize) {
 }
 
 fn abandoned_signed_thread(bytes: usize) {
-    let principal = charlotte_launch::artifact_principal_id(b"thread-metadata-abandoned");
+    let principal = knytos_launch::artifact_principal_id(b"thread-metadata-abandoned");
     let root = domain(principal);
     let thread = Thread::try_new(root.id(), unused).unwrap();
     let before = budget::thread_metadata::snapshot();

@@ -64,14 +64,14 @@ pub(in crate::memory) fn run() {
 }
 
 fn mixed_backing_and_retired_sender() {
-    let principal = charlotte_launch::artifact_principal_id(b"aggregate-backing-control");
-    let other_principal = charlotte_launch::artifact_principal_id(b"aggregate-backing-other");
+    let principal = knytos_launch::artifact_principal_id(b"aggregate-backing-control");
+    let other_principal = knytos_launch::artifact_principal_id(b"aggregate-backing-other");
     let first = new_domain(principal);
     let second = new_domain(principal);
     let other = new_domain(other_principal);
-    assert!(memory::commit_user_heap_page_handle(first, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(first, knytos_launch::HEAP_VADDR));
     image_page(second, 0x20000).unwrap();
-    assert!(memory::commit_user_heap_page_handle(other, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(other, knytos_launch::HEAP_VADDR));
     let initial = backing_used(principal).pages;
     let other_initial = backing_used(other_principal);
     let limit = initial + 4;
@@ -96,14 +96,14 @@ fn mixed_backing_and_retired_sender() {
     let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..256 {
         assert_eq!(object::allocate(second.id(), 1), Err(MemoryObjectError::ResourceLimit));
-        assert!(!memory::commit_user_heap_page_handle(second, charlotte_launch::HEAP_VADDR));
+        assert!(!memory::commit_user_heap_page_handle(second, knytos_launch::HEAP_VADDR));
         assert!(image_page(second, 0x21000).is_err());
         let healthy = object::allocate(other.id(), 1).unwrap();
         object::close_cap(other.id(), healthy).unwrap();
     }
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
     assert_eq!(backing_used(principal), amount(limit, 2));
-    assert!(memory::commit_user_heap_page_handle(other, charlotte_launch::HEAP_VADDR + 4096));
+    assert!(memory::commit_user_heap_page_handle(other, knytos_launch::HEAP_VADDR + 4096));
     // Removing the sponsor root refunds its heap and private tables. The moved object still
     // consumes the same principal's ceiling after its source generation closes.
     memory::close_user_address_space_handle(first).unwrap();
@@ -118,7 +118,7 @@ fn mixed_backing_and_retired_sender() {
     let fill = object::allocate(restarted.id(), (limit - restart_baseline.pages) as usize).unwrap();
     assert_eq!(object::allocate(restarted.id(), 1), Err(MemoryObjectError::ResourceLimit));
     object::close_cap(restarted.id(), fill).unwrap();
-    assert!(memory::commit_user_heap_page_handle(restarted, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(restarted, knytos_launch::HEAP_VADDR));
     object::close_cap(other.id(), moved).unwrap();
     assert_eq!(backing_used(principal), amount(root_pages(restarted), 0));
     assert_eq!(memory::budget::used(restarted), Amount::default());
@@ -129,15 +129,15 @@ fn mixed_backing_and_retired_sender() {
 }
 
 fn object_count_is_independent() {
-    let principal = charlotte_launch::artifact_principal_id(b"aggregate-object-count-control");
+    let principal = knytos_launch::artifact_principal_id(b"aggregate-object-count-control");
     let first = new_domain(principal);
     let second = new_domain(principal);
-    assert!(memory::commit_user_heap_page_handle(second, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(second, knytos_launch::HEAP_VADDR));
     let initial = backing_used(principal).pages;
     set_limit(principal, initial + 4, 1);
     let cap = object::allocate(first.id(), 1).unwrap();
     assert_eq!(object::allocate(second.id(), 1), Err(MemoryObjectError::ResourceLimit));
-    assert!(memory::commit_user_heap_page_handle(second, charlotte_launch::HEAP_VADDR + 4096));
+    assert!(memory::commit_user_heap_page_handle(second, knytos_launch::HEAP_VADDR + 4096));
     assert_eq!(backing_used(principal), amount(initial + 2, 1));
     object::close_cap(first.id(), cap).unwrap();
     let replacement = object::allocate(second.id(), 1).unwrap();
@@ -149,13 +149,13 @@ fn object_count_is_independent() {
 }
 
 fn binding_is_atomic() {
-    let principal = charlotte_launch::artifact_principal_id(b"aggregate-binding-control");
+    let principal = knytos_launch::artifact_principal_id(b"aggregate-binding-control");
     let mut prepared = PreparingHistory::try_new(false).unwrap();
     prepared.publish(principal);
     prepared.cancel_unpublished();
     let root = memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
     let cap = object::allocate(root.id(), 3).unwrap();
-    assert!(memory::commit_user_heap_page_handle(root, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(root, knytos_launch::HEAP_VADDR));
     image_page(root, 0x20000).unwrap();
     let pages = root_pages(root);
     set_limit(principal, pages + 2, 2);
@@ -178,7 +178,7 @@ fn binding_is_atomic() {
 }
 
 pub(in crate::memory) fn fault_principal() -> u64 {
-    charlotte_launch::artifact_principal_id(b"aggregate-backing-faults")
+    knytos_launch::artifact_principal_id(b"aggregate-backing-faults")
 }
 
 /// Raw unregistered roots in existing destructor fixtures have no authority slot.

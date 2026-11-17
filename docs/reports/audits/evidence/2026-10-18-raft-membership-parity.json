@@ -665,7 +665,7 @@
     },
     "meaning": "Read-only comparison at the recorded clean revision. No upstream tests or Jepsen suites are rerun, no upstream regression is claimed solely from handler inspection, and no upstream files are changed.",
     "user_selected_contract": "Restore upstream catch-up behavior (automatic finalization), rather than retain Knytos early finalization.",
-    "charlotte_early_finalization_history": {
+    "knytos_early_finalization_history": {
       "revision": "4d2856df541fb51d4fd0dffde867ed1d190f995c",
       "excerpt_line": 1190,
       "excerpt": [

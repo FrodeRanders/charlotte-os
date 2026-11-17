@@ -119,29 +119,29 @@ bench = false
 
 [dependencies]
 knytos-app = { path = "../knytos-app", features = ["kafka", "s3", "socket"] }
-charlotte-protocol-grant = { path = "../charlotte-protocol-grant" }
-charlotte-management-tls = { path = "../charlotte-management-tls" }
-charlotte-authorization = { path = "../charlotte-authorization" }
+knytos-protocol-grant = { path = "../knytos-protocol-grant" }
+knytos-management-tls = { path = "../knytos-management-tls" }
+knytos-authorization = { path = "../knytos-authorization" }
 knytos-rt = { path = "../knytos-rt" }
-charlotte-launch = { path = "../charlotte-launch" }
-charlotte-protocol-net = { path = "../charlotte-protocol-net" }
-charlotte-protocol-msg = { path = "../charlotte-protocol-msg" }
-charlotte-smoltcp = { path = "../charlotte-smoltcp" }
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-net = { path = "../knytos-protocol-net" }
+knytos-protocol-msg = { path = "../knytos-protocol-msg" }
+knytos-smoltcp = { path = "../knytos-smoltcp" }
 smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6", "proto-dhcpv4", "socket-raw", "socket-udp", "socket-tcp", "socket-dhcpv4"] }
 knytos-syscall = { path = "../knytos-syscall" }
 knytos-graft = { path = "../knytos-graft" }
 spin = ">=0.10.0"
-charlotte-protocol-block = { path = "../charlotte-protocol-block" }
-charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
-charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
-charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
-charlotte-protocol-dns = { path = "../charlotte-protocol-dns" }
-charlotte-protocol-ns = { path = "../charlotte-protocol-ns" }
-charlotte-protocol-time = { path = "../charlotte-protocol-time" }
-charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
-charlotte-s3 = { path = "../charlotte-s3" }
-charlotte-kafka = { path = "../charlotte-kafka" }
-charlotte-kafka-step = { path = "../charlotte-kafka-step" }
+knytos-protocol-block = { path = "../knytos-protocol-block" }
+knytos-protocol-objstore = { path = "../knytos-protocol-objstore" }
+knytos-protocol-kafka = { path = "../knytos-protocol-kafka" }
+knytos-protocol-disco = { path = "../knytos-protocol-disco" }
+knytos-protocol-dns = { path = "../knytos-protocol-dns" }
+knytos-protocol-ns = { path = "../knytos-protocol-ns" }
+knytos-protocol-time = { path = "../knytos-protocol-time" }
+knytos-protocol-s3 = { path = "../knytos-protocol-s3" }
+knytos-s3 = { path = "../knytos-s3" }
+knytos-kafka = { path = "../knytos-kafka" }
+knytos-kafka-step = { path = "../knytos-kafka-step" }
 embedded-io = { version = "0.7", default-features = false }
 # Reviewed upstream source plus the local signature-offer parser fix.
 embedded-tls = { path = "../embedded-tls", default-features = false, features = ["rustpki", "p256", "p384", "ed25519"] }

@@ -6,7 +6,7 @@ use crate::clusterctl;
 
 pub const HEADER_LIMIT: usize = 1024;
 pub const MAX_REQUEST_BYTES: usize =
-    HEADER_LIMIT + charlotte_launch::operations_bundle::MAX_BUNDLE_LEN;
+    HEADER_LIMIT + knytos_launch::operations_bundle::MAX_BUNDLE_LEN;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Request {
@@ -91,7 +91,7 @@ enum Route {
 
 impl Route {
     fn limits(&self) -> (usize, usize) {
-        use charlotte_launch::{
+        use knytos_launch::{
             deployment,
             ingress_policy,
             operations_bundle,
@@ -199,7 +199,7 @@ fn decode_path_name(path: &[u8]) -> Result<Vec<u8>, Error> {
             index += 1;
         }
     }
-    charlotte_launch::deployment::valid_artifact_name(&name).then_some(name).ok_or(Error::Malformed)
+    knytos_launch::deployment::valid_artifact_name(&name).then_some(name).ok_or(Error::Malformed)
 }
 
 fn parse(request: &[u8]) -> Result<Option<Head>, Error> {
@@ -300,12 +300,12 @@ mod tests {
 
     #[test]
     fn deployment_framing_requires_current_header_floor() {
-        for length in [0, 1, 150, charlotte_launch::deployment::HEADER_LEN - 1] {
+        for length in [0, 1, 150, knytos_launch::deployment::HEADER_LEN - 1] {
             let header =
                 format!("POST /v1/deployments HTTP/1.1\r\nContent-Length: {length}\r\n\r\n");
             assert_eq!(RequestBuffer::default().push(header.as_bytes()), Err(Error::TooLarge));
         }
-        let length = charlotte_launch::deployment::HEADER_LEN;
+        let length = knytos_launch::deployment::HEADER_LEN;
         let header = format!("POST /v1/deployments HTTP/1.1\r\nContent-Length: {length}\r\n\r\n");
         let mut request = RequestBuffer::default();
         assert_eq!(request.push(header.as_bytes()), Ok(None));
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn fragmented_body_reuses_request_backing() {
-        let length = charlotte_launch::operations_bundle::MAX_BUNDLE_LEN;
+        let length = knytos_launch::operations_bundle::MAX_BUNDLE_LEN;
         let header = format!("POST /v1/operations HTTP/1.1\r\nContent-Length: {length}\r\n\r\n");
         let mut buffer = RequestBuffer::default();
         assert_eq!(buffer.push(header.as_bytes()), Ok(None));
@@ -383,10 +383,10 @@ mod tests {
         );
         let mut request = format!(
             "POST /v1/shutdowns HTTP/1.1\r\nContent-Length: {}\r\n\r\n",
-            charlotte_launch::shutdown::ENCODED_LEN
+            knytos_launch::shutdown::ENCODED_LEN
         )
         .into_bytes();
-        request.extend(vec![0; charlotte_launch::shutdown::ENCODED_LEN + 1]);
+        request.extend(vec![0; knytos_launch::shutdown::ENCODED_LEN + 1]);
         assert_eq!(RequestBuffer::default().push(&request), Err(Error::Malformed));
         assert_eq!(
             RequestBuffer::default()

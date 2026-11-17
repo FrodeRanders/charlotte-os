@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use charlotte_launch::operations::MAX_PROFILE_LEN;
+use knytos_launch::operations::MAX_PROFILE_LEN;
 use zeroize::Zeroizing;
 
 /// Keep the complete initialized destination owned, including bytes a faulty

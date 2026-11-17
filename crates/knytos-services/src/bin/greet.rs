@@ -28,7 +28,7 @@ use catten_services::{
     sleep_ms,
 };
 use knytos_syscall::IpcRights;
-use charlotte_launch::greet_status as status;
+use knytos_launch::greet_status as status;
 
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1); // stage: started

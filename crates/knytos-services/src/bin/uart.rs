@@ -46,7 +46,7 @@ use knytos_syscall::{
     ipc_status,
     thread_exit,
 };
-use charlotte_launch::uart_status as status;
+use knytos_launch::uart_status as status;
 
 static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 

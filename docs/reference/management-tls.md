@@ -88,7 +88,7 @@ means that a controller mutation has committed.
 
 ## Complete boot resource and enrollment
 
-`charlotte-launch::management` defines one current profile, `CMGMTL01`, with an
+`knytos-launch::management` defines one current profile, `CMGMTL01`, with an
 exact 128-byte header, all eleven limits, explicit counts, ordered server chain,
 client roots, exact leaf/role records and the private server DER key. Counts and
 lengths are checked before use; missing fields, unknown roles, duplicates,
@@ -221,7 +221,7 @@ inputs transfer into logical close. All five owning phase counts must reach zero
 before the service acknowledges drain; see [deployment ingress](deployment-ingress.md).
 
 Provider hash contexts, their transcript forks and keyed HMAC contexts now use
-`charlotte_launch::sha256::{Sha256, HmacSha256}`. Both HMAC hash states erase on
+`knytos_launch::sha256::{Sha256, HmacSha256}`. Both HMAC hash states erase on
 ordinary Drop, including unfinished operations and clones. Normalization, pads,
 inner digests and provider-local hash/tag outputs retain zeroizing owners. The
 one-shot signing/SCRAM helper delegates to the same incremental HMAC algorithm;
@@ -243,7 +243,7 @@ backend rejects. The broader library-output and lifetime limits above remain.
 ## Configuration and related dimensions
 
 All TLS workload policy is collected in `Limits` in
-`crates/charlotte-launch/src/management/limits.rs`, reexported by the engine.
+`../../crates/knytos-launch`, reexported by the engine.
 The complete resource carries these boot settings; `management-limits-default`
 writes every named setting without grouping separators. Missing/unknown/duplicate
 settings and invalid relationships reject before private input or output
@@ -277,7 +277,7 @@ still exceed a selected output-flight budget and reject; no prefix is accepted
 as a complete handshake. Increase the session budget with request/response/close
 budgets and revocation policy. `MAX_PROFILE_BYTES = 65536` and
 `USER_STACK_PAGES = 32` (131072 reserved bytes, committed on demand) are central
-build-time knobs in `charlotte-launch::management`. Both management services use
+build-time knobs in `knytos-launch::management`. Both management services use
 that same stack setting, including startup without a credential profile. The
 entry frame exists before credential checks; selecting the general four-page
 stack on the missing-profile branch faulted before deployment could enter its

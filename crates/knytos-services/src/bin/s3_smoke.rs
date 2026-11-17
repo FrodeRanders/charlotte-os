@@ -23,11 +23,11 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 use knytos_syscall::thread_exit;
-use charlotte_launch::{
+use knytos_launch::{
     s3_smoke_status as status,
     sha256::Sha256,
 };
-use charlotte_protocol_s3::{
+use knytos_protocol_s3::{
     ERR_TRANSPORT,
     ERR_UNSYNCHRONIZED,
     ObjectRequest,

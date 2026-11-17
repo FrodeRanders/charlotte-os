@@ -8,7 +8,7 @@ Production trust remains disabled.
 
 ## Implemented
 
-`charlotte-management-tls` is a workspace member with a `no_std`, socket-independent
+`knytos-management-tls` is a workspace member with a `no_std`, socket-independent
 Rustls `0.23.46` server engine. The provider adapts Knytos' existing pinned
 Embassy SHA-256/HMAC/P-256 operations and erasing RustCrypto AES-128-GCM family.
 Rustls owns the standard TLS handshake, transcript, record sequencing and

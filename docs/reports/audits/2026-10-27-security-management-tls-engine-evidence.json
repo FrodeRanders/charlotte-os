@@ -8,12 +8,12 @@
     ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
     "crates/knytos-services/x86_64-unknown-none.json": "2b0725bd2ac5562f68b110a420e5f780df3e3f5f407abecb02ea7f86b82f7a59",
     "crates/knytos-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc",
-    "crates/charlotte-management-tls/src/crypto.rs": "26d6f3c3374b1b46c3383f94940e9829425e096e1d207f0d4417b0b56a297dba",
-    "crates/charlotte-management-tls/src/lib.rs": "fee0d94efdc8b5dd7a6451d03351dac1389972bc72c3194ccd540435a71a4d26",
-    "crates/charlotte-management-tls/src/policy.rs": "7b0beffdb457e2eaf38439e7e7d3c2b25ad79ac8f21b81f8500a196753ed4cd8",
-    "crates/charlotte-management-tls/src/session.rs": "3f7421a403bcc256594fe37eba88ea0b0d28381b7557930b90f7bfa0101cb3e1",
-    "crates/charlotte-management-tls/tests/server.rs": "67491fc4119687c81c548903e70f65fcffa2a49952ff494109652cc86d62a025",
-    "crates/charlotte-management-tls/Cargo.toml": "6733cfe2f41fce9d5554837132605699ea301699af94339e983dddc6ee35a7a6"
+    "crates/knytos-management-tls/src/crypto.rs": "26d6f3c3374b1b46c3383f94940e9829425e096e1d207f0d4417b0b56a297dba",
+    "crates/knytos-management-tls/src/lib.rs": "fee0d94efdc8b5dd7a6451d03351dac1389972bc72c3194ccd540435a71a4d26",
+    "crates/knytos-management-tls/src/policy.rs": "7b0beffdb457e2eaf38439e7e7d3c2b25ad79ac8f21b81f8500a196753ed4cd8",
+    "crates/knytos-management-tls/src/session.rs": "3f7421a403bcc256594fe37eba88ea0b0d28381b7557930b90f7bfa0101cb3e1",
+    "crates/knytos-management-tls/tests/server.rs": "67491fc4119687c81c548903e70f65fcffa2a49952ff494109652cc86d62a025",
+    "crates/knytos-management-tls/Cargo.toml": "6733cfe2f41fce9d5554837132605699ea301699af94339e983dddc6ee35a7a6"
   },
   "host_tests": {
     "debug": {
@@ -70,7 +70,7 @@
       "check",
       "--locked",
       "-p",
-      "charlotte-management-tls",
+      "knytos-management-tls",
       "--lib",
       "--target",
       "crates/knytos-services/x86_64-unknown-none.json",

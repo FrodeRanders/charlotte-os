@@ -28,7 +28,7 @@ The demo consumes a single exported source SDK through relative workspace
 paths. Its resolver checks the pinned revision/schema/toolchain and exact file
 hashes, including paths containing spaces, and stages mutable signer build inputs
 outside the SDK. It keeps its existing workspace and uses the public
-manifest/binary builder. The OS exporter adds `charlotte-kafka` and `sitas-unix`
+manifest/binary builder. The OS exporter adds `knytos-kafka` and `sitas-unix`
 for host conformance, accepts an explicit read-only Sitas source, and pins the
 hardened Sitas backend at `6d63266eb52492c1958c45f3ed71c8c7a451489a`. That backend
 captures spawn generations, handles rejected mandatory startup terminally and

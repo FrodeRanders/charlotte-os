@@ -5,11 +5,11 @@
   "classification": "SEC-15 partial; local named-storage hardening only",
   "reviewed_source_sha256": {
     "Cargo.lock": "6a09ea7454ebe0b229bdf6433231a8efc0bfd5bd7df1652e19acc9cfcb9165e4",
-    "crates/charlotte-kafka/src/scram.rs": "6f535b020329ef93d0f1e8638b9e158e500fb41b2d3b1316ce6cbff8ce7a124c",
-    "crates/charlotte-launch/Cargo.toml": "34a4d48a82a59d633b146a4b3633bcacf11c4f9efdb2ca592a1a5cc421a6ccfb",
-    "crates/charlotte-launch/src/sha256.rs": "b0583e16bd7afcf983ebdd14f93e7e39ed6b61e1c7b504434926391a0cf4f867",
-    "crates/charlotte-launch/tests/sha256.rs": "2ea7a8b3f149e9bdc51f5bfc23dca166a04d73341a9c303f3e15d428bc04d10c",
-    "crates/charlotte-s3/src/sigv4.rs": "9f0367914f0b01c4fb1c657718021fb0bbf6e6fc104c3728d7a7f67565e5ef65",
+    "crates/knytos-kafka/src/scram.rs": "6f535b020329ef93d0f1e8638b9e158e500fb41b2d3b1316ce6cbff8ce7a124c",
+    "crates/knytos-launch/Cargo.toml": "34a4d48a82a59d633b146a4b3633bcacf11c4f9efdb2ca592a1a5cc421a6ccfb",
+    "crates/knytos-launch/src/sha256.rs": "b0583e16bd7afcf983ebdd14f93e7e39ed6b61e1c7b504434926391a0cf4f867",
+    "crates/knytos-launch/tests/sha256.rs": "2ea7a8b3f149e9bdc51f5bfc23dca166a04d73341a9c303f3e15d428bc04d10c",
+    "crates/knytos-s3/src/sigv4.rs": "9f0367914f0b01c4fb1c657718021fb0bbf6e6fc104c3728d7a7f67565e5ef65",
     "docs/reference/README.md": "8e839c3b65b5c3e06dc68b2b2689f3bea7e0a824b88f16e19fb9828105fac54e",
     "docs/reference/api-simplification.md": "5ea65d1bad2a0ffe8ab06703f9b869f8bb1c95db1b166a38b67036a84c398644",
     "docs/reference/cleanup-recovery.md": "a6173a0a0ba58d4862b315740977d8806e95d1cedff2196d3732821c39f12adf",
@@ -23,7 +23,7 @@
   "baseline_reproduction": {
     "baseline_revision": "710b8bb",
     "baseline_sha_module_sha256": "9d1347a9fa406e834167e04d54952d421caff617452f51030255fd373e1386d0",
-    "tracked_test_location": "crates/charlotte-launch/src/sha256.rs::erasure_tests",
+    "tracked_test_location": "crates/knytos-launch/src/sha256.rs::erasure_tests",
     "injected_test_sha256": "fcbc2557542e253b1a9a7ea15e9db5e6d9882b6f5087eb619d1dff123bb3fd63",
     "command": "rustc --edition=2024 --test -O <baseline-sha-module-plus-current-erasure-tests> -o <control>; <control>",
     "refined_control": {
@@ -55,9 +55,9 @@
       "log_sha256": "00c97114cd44f1458e4aef98ae7c8de69520cae5c4832efa705396281d16bce4",
       "tests_passed": 79,
       "breakdown": {
-        "charlotte-launch": 59,
-        "charlotte-s3": 6,
-        "charlotte-kafka": 14
+        "knytos-launch": 59,
+        "knytos-s3": 6,
+        "knytos-kafka": 14
       }
     },
     "debug_launch": {
@@ -89,7 +89,7 @@
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     "independent_reference": {
-      "generator_source": "import hashlib, hmac, json\nfrom pathlib import Path\nsha = [(n, hashlib.sha256(bytes(i % 251 for i in range(n))).hexdigest())\n       for n in [0,1,7,31,55,56,63,64,65,119,120,127,128,129,257,1024]]\nmessage = bytes(i % 251 for i in range(129))\nmac = [(n, hmac.new(bytes(i % 251 for i in range(n)), message, 'sha256').hexdigest())\n       for n in [0,1,32,63,64,65,131]]\nsource = Path('crates/charlotte-launch/tests/sha256.rs').read_text()\nfor _, digest in sha + mac:\n    assert digest in source, digest\nprint('All 23 checked-in SHA/HMAC vectors match independent Python hashlib/hmac.')\nprint(json.dumps({'sha256':sha,'hmac_sha256':mac},indent=2))\n",
+      "generator_source": "import hashlib, hmac, json\nfrom pathlib import Path\nsha = [(n, hashlib.sha256(bytes(i % 251 for i in range(n))).hexdigest())\n       for n in [0,1,7,31,55,56,63,64,65,119,120,127,128,129,257,1024]]\nmessage = bytes(i % 251 for i in range(129))\nmac = [(n, hmac.new(bytes(i % 251 for i in range(n)), message, 'sha256').hexdigest())\n       for n in [0,1,32,63,64,65,131]]\nsource = Path('crates/knytos-launch/tests/sha256.rs').read_text()\nfor _, digest in sha + mac:\n    assert digest in source, digest\nprint('All 23 checked-in SHA/HMAC vectors match independent Python hashlib/hmac.')\nprint(json.dumps({'sha256':sha,'hmac_sha256':mac},indent=2))\n",
       "generator_sha256": "aaf08d3b02bb50ed59e661f5a307978163db3589ea56f1890d2231b55e662ac4",
       "log_sha256": "65a45cec197748e9bf39395ddace3c27327761de8d506a388fd6154ecf3c6ec3",
       "vectors": {

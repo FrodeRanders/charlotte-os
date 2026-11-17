@@ -495,10 +495,10 @@ fn reply_history(reply: ReplyToken, frequency_hz: u64, history: &VecDeque<Histor
 
 fn main(ctx: Context) -> ! {
     let archive_interval_ms =
-        match ctx.manifest_value(charlotte_launch::telemetry::ARCHIVE_INTERVAL_MS_KEY) {
-            None => charlotte_launch::telemetry::DEFAULT_ARCHIVE_INTERVAL_MS,
+        match ctx.manifest_value(knytos_launch::telemetry::ARCHIVE_INTERVAL_MS_KEY) {
+            None => knytos_launch::telemetry::DEFAULT_ARCHIVE_INTERVAL_MS,
             Some(ManifestValue::Unsigned(value))
-                if charlotte_launch::telemetry::valid_archive_interval(value) =>
+                if knytos_launch::telemetry::valid_archive_interval(value) =>
             {
                 value
             }

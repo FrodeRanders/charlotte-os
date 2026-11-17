@@ -40,7 +40,7 @@ impl NameCatalog {
         size += 4;
         for (name, entry) in operational_bindings.iter() {
             size += 179
-                + charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN
+                + knytos_launch::operations_bundle::BINDING_SIGNATURE_LEN
                 + name.len()
                 + entry.release_name.len()
                 + entry.target_artifact.len()
@@ -269,13 +269,13 @@ impl NameCatalog {
                     else {
                         return Err(SnapshotError::Malformed);
                     };
-                    if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
+                    if descriptor.len() > knytos_launch::deployment::MAX_DESCRIPTOR_LEN {
                         return Err(SnapshotError::Malformed);
                     }
                     (descriptor.to_vec(), after_descriptor)
                 };
                 let (replica_nodes, replica_variants, after_entry) = {
-                    let signed = charlotte_launch::deployment::decode(&descriptor)
+                    let signed = knytos_launch::deployment::decode(&descriptor)
                         .ok_or(SnapshotError::Malformed)?;
                     let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
                         return Err(SnapshotError::Malformed);
@@ -361,7 +361,7 @@ impl NameCatalog {
                 else {
                     return Err(SnapshotError::Malformed);
                 };
-                let Some(decoded) = charlotte_launch::release::decode(envelope) else {
+                let Some(decoded) = knytos_launch::release::decode(envelope) else {
                     return Err(SnapshotError::Malformed);
                 };
                 if decoded.release_name != name || generation == 0 || releases.contains_key(name) {
@@ -474,10 +474,10 @@ impl NameCatalog {
                     || bundle_sequence == 0
                     || sequence == 0
                     || expires_unix_seconds == 0
-                    || !charlotte_launch::operations::valid_profile_name(profile_name)
-                    || !charlotte_launch::deployment::valid_artifact_name(target_artifact)
-                    || !charlotte_launch::operations_bundle::valid_object_key(object_key)
-                    || !charlotte_launch::operations::valid_profile_kind(profile_kind)
+                    || !knytos_launch::operations::valid_profile_name(profile_name)
+                    || !knytos_launch::deployment::valid_artifact_name(target_artifact)
+                    || !knytos_launch::operations_bundle::valid_object_key(object_key)
+                    || !knytos_launch::operations::valid_profile_kind(profile_kind)
                 {
                     return Err(SnapshotError::Malformed);
                 }
@@ -485,11 +485,11 @@ impl NameCatalog {
                     return Err(SnapshotError::Malformed);
                 };
                 let Some(release_envelope) =
-                    charlotte_launch::release::decode(&release_entry.envelope)
+                    knytos_launch::release::decode(&release_entry.envelope)
                 else {
                     return Err(SnapshotError::Malformed);
                 };
-                if release_digest != charlotte_launch::sha256::digest(&release_entry.envelope)
+                if release_digest != knytos_launch::sha256::digest(&release_entry.envelope)
                     || !release_contains_artifact(&release_envelope, target_artifact)
                     || (*active != 0
                         && (bundle_sequence != release_entry.operations_sequence
@@ -550,7 +550,7 @@ impl NameCatalog {
                 else {
                     return Err(SnapshotError::Malformed);
                 };
-                let Some(fields) = charlotte_launch::shutdown::decode(envelope) else {
+                let Some(fields) = knytos_launch::shutdown::decode(envelope) else {
                     return Err(SnapshotError::Malformed);
                 };
                 if node_key == 0
@@ -653,11 +653,11 @@ impl NameCatalog {
                     return Err(SnapshotError::Malformed);
                 };
                 if generation == 0
-                    || charlotte_launch::ingress_policy::verify(
+                    || knytos_launch::ingress_policy::verify(
                         envelope,
                         &self.cluster_id,
                         &self.bootstrap_operations_key,
-                    ) != charlotte_launch::ingress_policy::VerifyOutcome::Valid
+                    ) != knytos_launch::ingress_policy::VerifyOutcome::Valid
                 {
                     return Err(SnapshotError::Malformed);
                 }
@@ -733,7 +733,7 @@ impl NameCatalog {
                 let Some((cpu_load_permille, after_entry)) = read_u16(data, after_usable) else {
                     return Err(SnapshotError::Malformed);
                 };
-                let target = charlotte_launch::execution_target::ExecutionTarget::decode(
+                let target = knytos_launch::execution_target::ExecutionTarget::decode(
                     data.get(after_entry..after_entry + 16).ok_or(SnapshotError::Malformed)?,
                 )
                 .ok_or(SnapshotError::Malformed)?;

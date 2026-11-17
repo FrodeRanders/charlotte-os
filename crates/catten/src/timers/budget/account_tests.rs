@@ -16,7 +16,7 @@ use crate::{
 pub(super) fn run() {
     let before = account_budget::snapshot();
     let events = node_used();
-    let principal = charlotte_launch::artifact_principal_id(b"reactor-lifetime-timers");
+    let principal = knytos_launch::artifact_principal_id(b"reactor-lifetime-timers");
     let space = AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),

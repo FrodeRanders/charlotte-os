@@ -23,7 +23,7 @@ use catten_rt::{
         PendingCall,
     },
 };
-use charlotte_management_tls::{
+use knytos_management_tls::{
     Identity,
     Permission,
     PreparedConfig,
@@ -59,7 +59,7 @@ pub enum StartupError {
 pub enum Error {
     Socket(SocketError),
     Observation(IpcError),
-    Tls(charlotte_management_tls::Error),
+    Tls(knytos_management_tls::Error),
     Clock,
     State,
     Reply,
@@ -245,7 +245,7 @@ impl<'a> Connection<'a> {
         }
     }
 
-    fn tls_error(&mut self, error: charlotte_management_tls::Error) -> Error {
+    fn tls_error(&mut self, error: knytos_management_tls::Error) -> Error {
         if !self.rejection_logged
             && let Some(rejection) = error.client_rejection()
         {
@@ -432,7 +432,7 @@ impl<'a> Connection<'a> {
             .step(milliseconds()?)
             .map_err(|error| self.tls_error(error))?;
         match event {
-            charlotte_management_tls::Event::Transmit => {
+            knytos_management_tls::Event::Transmit => {
                 let length = self
                     .session
                     .as_ref()
@@ -445,18 +445,18 @@ impl<'a> Connection<'a> {
                     _ => Advance::Progress,
                 })
             }
-            charlotte_management_tls::Event::NeedInput => {
+            knytos_management_tls::Event::NeedInput => {
                 self.arm(PendingKind::Receive, deadline).map(|state| match state {
                     Advance::Waiting => Advance::Waiting,
                     _ => Advance::Progress,
                 })
             }
-            charlotte_management_tls::Event::Progress => Ok(Advance::Progress),
-            charlotte_management_tls::Event::Application {
+            knytos_management_tls::Event::Progress => Ok(Advance::Progress),
+            knytos_management_tls::Event::Application {
                 identity,
                 bytes,
             } => Ok(Advance::Ready((identity, bytes))),
-            charlotte_management_tls::Event::Closed => Err(Error::State),
+            knytos_management_tls::Event::Closed => Err(Error::State),
         }
     }
 

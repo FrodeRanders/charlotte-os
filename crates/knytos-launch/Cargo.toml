@@ -1,0 +1,22 @@
+[package]
+name = "knytos-launch"
+version = "0.1.0"
+edition = "2024"
+description = "Shared fixed-width Knytos userspace launch ABI"
+
+[lib]
+name = "knytos_launch"
+path = "src/lib.rs"
+bench = false
+
+[dependencies]
+curve25519-dalek = { version = "5.0.0", default-features = false }
+ed25519-compact = { version = "2.3.1", default-features = false }
+hpke = { version = "0.14.0", default-features = false, features = ["chacha", "x25519"] }
+rand_core = { version = "0.10.0", default-features = false }
+# HPKE disables X25519 defaults. Require erasure for its private/shared owners.
+x25519-dalek = { version = "3.0.0", default-features = false, features = ["static_secrets", "zeroize"] }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+getrandom = { version = "0.4", features = ["sys_rng"] }

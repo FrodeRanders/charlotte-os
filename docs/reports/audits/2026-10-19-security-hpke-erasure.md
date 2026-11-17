@@ -19,7 +19,7 @@ are compiled out. HPKE's wrapper comments assume the underlying types erase
 on Drop. The baseline feature graph and two retained-storage tests reproduce
 the discrepancy: both owners retain nonzero bytes after destruction.
 
-`charlotte-launch` now depends directly on X25519 with `zeroize` enabled.
+`knytos-launch` now depends directly on X25519 with `zeroize` enabled.
 That feature also enables Curve25519's erasure support. Production constant
 trait checks require `ZeroizeOnDrop` for both underlying owners. This adds no
 runtime call or allocation. An isolated build with the feature removed rejects
