@@ -14,8 +14,8 @@ fn root(principal: u64) -> AddressSpaceHandle {
     register_user_address_space(value).unwrap()
 }
 pub(super) fn run() {
-    let principal = charlotte_launch::artifact_principal_id(b"root-container-principal");
-    let healthy = charlotte_launch::artifact_principal_id(b"root-container-healthy");
+    let principal = knytos_launch::artifact_principal_id(b"root-container-principal");
+    let healthy = knytos_launch::artifact_principal_id(b"root-container-healthy");
     let roots_before = admission::snapshot();
     let ns_before = crate::klib::namespace_node_budget::snapshot();
     let first = root(principal);

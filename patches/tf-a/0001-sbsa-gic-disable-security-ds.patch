@@ -16,7 +16,7 @@ index 962dbb3..a718a8c 100644
  	gicv3_cpuif_enable(plat_my_core_pos());
 +
 +	/*
-+	 * CharlotteOS: the whole boot chain runs at Non-secure EL1 (QEMU TCG
++	 * Knytos: the whole boot chain runs at Non-secure EL1 (QEMU TCG
 +	 * EL2 is unreliable), so no secure world is ever active. Leave the GIC
 +	 * with security disabled (DS=1) so the Non-secure EL1 kernel can
 +	 * configure its SPIs as Group 1 via GICD_IGROUPR (QEMU drops those

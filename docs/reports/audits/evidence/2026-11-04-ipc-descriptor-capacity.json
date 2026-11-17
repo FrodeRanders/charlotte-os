@@ -6,8 +6,8 @@
   "source_sha256": {
     ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten/src/ipc/attachments.rs": "f0f3628feeb62156dada3107ae5bca892f157431e7e12f68f2683ca8d0b4a6ec",
     "crates/catten/src/ipc/buffer_tests.rs": "b143837c2035d31a6c145a086afff8bbca457dc7b6fb36bff60c1a9bfaee30a2",
     "crates/catten/src/ipc/descriptor_tests.rs": "416c96bd5a5c49eae4027adbebc582a1e0ab3103d98fd76392b051db5350d376",

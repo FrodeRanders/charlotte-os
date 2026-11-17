@@ -1318,17 +1318,17 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Use `Endpoint::receive`/`try_receive` and authorize from the captured sender
   generation/principal/roles, never a later lookup of the recyclable ASID. Zero
   principal or missing roles grant no authority. Register-contract changes bump
-  `charlotte_launch::execution_target::RUNTIME_ABI` and rebuild/sign every variant,
+  `knytos_launch::execution_target::RUNTIME_ABI` and rebuild/sign every variant,
   including runner fixtures. Retired nine-register syscalls 22/27/53 reject.
   See `docs/reference/ipc-receive.md`.
-- `catten-syscall` mirrors the register ABI and intentionally exposes integers.
-- `catten-rt::owned` is the safe application layer and owns kernel resources.
+- `knytos-syscall` mirrors the register ABI and intentionally exposes integers.
+- `knytos-rt::owned` is the safe application layer and owns kernel resources.
 - Protocol crates define wire formats and opcodes; they do not own live
   capabilities.
-- Service/client helpers wrap protocol lifetimes on top of `catten-rt::owned`;
+- Service/client helpers wrap protocol lifetimes on top of `knytos-rt::owned`;
   they do not duplicate syscall cleanup.
-- `charlotte-app` packages application context and optional protocol clients
-  without depending on platform service implementations. `catten-services`
+- `knytos-app` packages application context and optional protocol clients
+  without depending on platform service implementations. `knytos-services`
   reexports the same client implementations. The Sitas adapter composes the
   existing executor/backend and never independently consumes its CQ ring; see
   `docs/guides/application-sdk.md` for ownership and wait-failure policies.

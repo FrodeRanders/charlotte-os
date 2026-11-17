@@ -2,7 +2,7 @@
 
 Date: 2026-10-21. Reviewed baseline: `c79b683`.
 
-The host signer now applies Charlotte's existing artifact bound to ELF input
+The host signer now applies Knytos' existing artifact bound to ELF input
 and note growth, admits variant count before image reads, and streams arbitrary
 file hashing. The [tracked evidence](evidence/2026-10-21-security-artifact-input.json)
 retains controls, failure diagnostics and source/artifact hashes. Overall
@@ -44,7 +44,7 @@ in the signer. Bounded image/record readers still retain their byte vectors.
 Command syntax, cryptography, signed bytes, runtime ABI and receiver authority
 are unchanged. The existing [C18 row](../../reference/cleanup-recovery.md) and
 [secret-state inventory](../../reference/secret-state-lifetimes.md) record the
-local owners. Ordinary Drop adds no Charlotte capability/root cleanup, guard,
+local owners. Ordinary Drop adds no Knytos capability/root cleanup, guard,
 wait, registry/custody or physical/replay authority. Manual LaTeX and living
 references are updated; the PDF is untouched.
 

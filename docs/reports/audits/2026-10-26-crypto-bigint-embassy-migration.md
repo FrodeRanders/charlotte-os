@@ -22,8 +22,8 @@ production trust remains disabled.
 ## Selected dependency path
 
 The current path is crypto-bigint 0.5.5 → elliptic-curve 0.13.8 → P-256/P-384 →
-embedded-tls 0.19.0 → catten-services. There is also a direct P-256/signature
-dependency in the Charlotte TLS adapter. Updating a transitive lockfile entry
+embedded-tls 0.19.0 → knytos-services. There is also a direct P-256/signature
+dependency in the Knytos TLS adapter. Updating a transitive lockfile entry
 alone cannot cross these API families. RustSec's
 [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html) lists
 patched crypto-bigint versions starting at 0.7.6.
@@ -46,7 +46,7 @@ There is one crypto-bigint package and no 0.5 copy in its complete lockfile.
 Enable TLS `rustpki,p256,p384,ed25519`; the old TLS `alloc` feature is removed.
 Select only the required SHA-256/384/512, HMAC-SHA-256/384, P-256 ECDH/ECDSA,
 P-384 ECDSA and Ed25519 backend features. Do not enable the backend's `all`
-feature. Embassy's crypto driver interface does not require migrating Charlotte
+feature. Embassy's crypto driver interface does not require migrating Knytos
 to an Embassy executor; the existing synchronous socket adapter can remain.
 
 ## Ownership and API work before cutover
@@ -103,7 +103,7 @@ forwards the registered context's destructor; it does not independently wipe
 the opaque storage. `needs_drop::<embassy_crypto::Aes128Gcm>()` alone therefore
 does not establish key erasure.
 
-The candidate disables the stock GCM feature and registers a Charlotte driver
+The candidate disables the stock GCM feature and registers a Knytos driver
 whose context is the existing AES-GCM 0.10.3 owner, retaining AES 0.8.4,
 GHASH 0.5.1 and POLYVAL 0.6.2 with their zeroize features. It uses Embassy's
 safe in/out-buffer conversion; no local arithmetic, TLS fork or unsafe pointer
@@ -137,7 +137,7 @@ contract, separate buffers/AAD, typed SEC1 OID rejection, P-256 ECDH agreement
 and invalid peer rejection, and P-256/P-384 signature verification with changed
 digest rejection. These host tests link the registered drivers. Freestanding
 checks compile libraries; they do not link a native service or exercise a
-Charlotte entropy driver.
+Knytos entropy driver.
 
 Preliminary stock-backend checks passed on both targets and its earlier
 78-package graph scanned clean. They were superseded by the erasing-driver
@@ -185,8 +185,8 @@ cp docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/Cargo.toml.in targe
 cp docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/Cargo.lock.txt target/crypto-migration/reproduce/Cargo.lock
 cp docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/lib.rs target/crypto-migration/reproduce/src/lib.rs
 cargo fetch --locked --manifest-path target/crypto-migration/reproduce/Cargo.toml
-cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build
-cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/catten-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build
+cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build
+cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/knytos-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build
 cargo audit --db target/security-audit/advisory-db --url https://github.com/RustSec/advisory-db.git --file target/crypto-migration/reproduce/Cargo.lock --json --deny warnings
 cd /private/tmp
 cargo +nightly-2026-07-27 test --locked --offline --manifest-path "$migration_root/target/crypto-migration/reproduce/Cargo.toml" --target-dir "$migration_root/target/crypto-migration/host-build"

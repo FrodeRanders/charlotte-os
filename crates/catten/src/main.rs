@@ -8,7 +8,7 @@
 
 //! # Catten
 //!
-//! Catten is the kernel of CharlotteOS, an experimental operating system.
+//! Catten is the kernel of Knytos, an experimental operating system.
 //! It initializes hardware, manages memory and threads, and provides the
 //! capability interfaces used by userspace services and applications.
 

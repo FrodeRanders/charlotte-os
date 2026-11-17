@@ -35,7 +35,7 @@ def run(*args, limit=None):
 
 class OutputFailure(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="charlotte-output-failure-")
+        self.directory = tempfile.TemporaryDirectory(prefix="knytos-output-failure-")
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         self.assertEqual(self.root.stat().st_mode & 0o777, 0o700)

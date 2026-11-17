@@ -111,7 +111,7 @@ pub fn map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(MemoryObjectError::NotPageAligned);
     }
-    if !charlotte_launch::user_address::valid_application_pages(base.into(), 1) {
+    if !knytos_launch::user_address::valid_application_pages(base.into(), 1) {
         return Err(MemoryObjectError::MapFailed);
     }
 
@@ -203,7 +203,7 @@ fn mapping_admission(
         return Err(MemoryObjectError::MissingRight);
     }
     let object = registry.objects.get(&entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if !charlotte_launch::user_address::valid_application_pages(base.into(), object.frames.len()) {
+    if !knytos_launch::user_address::valid_application_pages(base.into(), object.frames.len()) {
         return Err(MemoryObjectError::MapFailed);
     }
     if object.destroy_when_unpinned

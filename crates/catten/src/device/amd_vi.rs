@@ -329,14 +329,14 @@ impl Commands {
     fn submit_command(&mut self, cmd0: u64, cmd1: u64) -> Result<(), Error> {
         let epoch = self.completion_epoch.checked_add(1).ok_or(Error::HardwareTimeout)?;
         let command =
-            charlotte_lifecycle::iommu::amd_completion_command(u64::from(self.completion), epoch)
+            knytos_lifecycle::iommu::amd_completion_command(u64::from(self.completion), epoch)
                 .ok_or(Error::Unsupported)?;
         self.completion_epoch = epoch;
         self.queue_command(cmd0, cmd1)?;
         self.queue_command(command[0], command[1])?;
         for _ in 0..1_000_000 {
             let observed = unsafe { self.completion.into_hhdm_ptr::<u64>().read_volatile() };
-            if charlotte_lifecycle::iommu::completion_matches(observed, epoch) {
+            if knytos_lifecycle::iommu::completion_matches(observed, epoch) {
                 core::sync::atomic::fence(Ordering::Acquire);
                 return Ok(());
             }
@@ -968,7 +968,7 @@ pub(super) fn test_command_engine() {
         assert_eq!(commands.completion_epoch, 1);
         let ring = unsafe { cmd_buf.into_hhdm_ptr::<u64>() };
         let completion_command =
-            charlotte_lifecycle::iommu::amd_completion_command(u64::from(completion), 1).unwrap();
+            knytos_lifecycle::iommu::amd_completion_command(u64::from(completion), 1).unwrap();
         assert_eq!(unsafe { ring.add(2).read_volatile() }, completion_command[0]);
         assert_eq!(unsafe { ring.add(3).read_volatile() }, 1);
         // A stale coherent store must not satisfy the new exact epoch.

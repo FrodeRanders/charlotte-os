@@ -6,7 +6,7 @@
     "crates/catten/src/klib/charged_allocator/tests.rs": "14d57ef49c1034367928d19f521e09a183fa30b37154fefabc02eba78b56b621",
     "crates/catten/src/klib/observer/registration.rs": "e0af9fa2b98527c33cabf5dc57a72e2e4e9345956d2079728152433aef0c5a4c",
     "crates/catten/src/timers/event_preparation.rs": "97f13a934147aadbe5a5efe28eb0eb741512ba1157c32c1f0b3b2848f8d87a2c",
-    "crates/charlotte-lifecycle/tests/charged_allocator.rs": "2fb06d2324849e72204d8cb9bd9e8ae03ccac2efb7af127a40fc7590f553ed12"
+    "crates/knytos-lifecycle/tests/charged_allocator.rs": "2fb06d2324849e72204d8cb9bd9e8ae03ccac2efb7af127a40fc7590f553ed12"
   },
   "checks": {
     "aarch64_strict_clippy_exit": 0,
@@ -44,7 +44,7 @@
     "crates/catten/src/klib/charged_allocator/tests.rs": "8f48be4d7c6b7e0bb15e0d4ca4b20dd944eb8bc0678f7e0e20046ac7b12a70d2",
     "crates/catten/src/klib/observer/registration.rs": "e0af9fa2b98527c33cabf5dc57a72e2e4e9345956d2079728152433aef0c5a4c",
     "crates/catten/src/timers/event_preparation.rs": "97f13a934147aadbe5a5efe28eb0eb741512ba1157c32c1f0b3b2848f8d87a2c",
-    "crates/charlotte-lifecycle/tests/charged_allocator.rs": "2fb06d2324849e72204d8cb9bd9e8ae03ccac2efb7af127a40fc7590f553ed12"
+    "crates/knytos-lifecycle/tests/charged_allocator.rs": "2fb06d2324849e72204d8cb9bd9e8ae03ccac2efb7af127a40fc7590f553ed12"
   },
   "runs": [
     {

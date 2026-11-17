@@ -578,7 +578,7 @@
     "strict_service_clippy": {
       "aarch64": "pass: --lib --bins",
       "x86_64": "pass: --lib --bin tcpip --bin security_probe",
-      "common_command": "cargo clippy --locked -p catten-services --target crates/catten-services/<arch>-unknown-none.json --target-dir crates/catten-services/target <selection> -- -D warnings"
+      "common_command": "cargo clippy --locked -p knytos-services --target crates/knytos-services/<arch>-unknown-none.json --target-dir crates/knytos-services/target <selection> -- -D warnings"
     },
     "host_suites": {
       "debug": {
@@ -593,7 +593,7 @@
             "test result: ok. 227 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
             "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
           ],
-          "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml -p catten-services -p charlotte-launch --lib (cwd /private/tmp; separate recorded target dirs)"
+          "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml -p knytos-services -p knytos-launch --lib (cwd /private/tmp; separate recorded target dirs)"
         },
         "launch": {
           "passed_in_each_report": [
@@ -615,7 +615,7 @@
             "   Compiling hpke v0.14.0",
             "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/debug/build/charlotte-launch/ca28bfa825d9a715/out/hpke_erasure-ca28bfa825d9a715)",
+            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/debug/build/knytos-launch/ca28bfa825d9a715/out/hpke_erasure-ca28bfa825d9a715)",
             "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
@@ -630,7 +630,7 @@
             "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
             "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
           ],
-          "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml -p charlotte-launch (cwd /private/tmp; separate recorded target dirs)"
+          "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml -p knytos-launch (cwd /private/tmp; separate recorded target dirs)"
         },
         "signer": {
           "passed_in_each_report": [
@@ -676,7 +676,7 @@
             "test result: ok. 227 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s",
             "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
           ],
-          "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml -p catten-services -p charlotte-launch --lib (cwd /private/tmp; separate recorded target dirs)"
+          "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml -p knytos-services -p knytos-launch --lib (cwd /private/tmp; separate recorded target dirs)"
         },
         "launch": {
           "passed_in_each_report": [
@@ -698,7 +698,7 @@
             "   Compiling hpke v0.14.0",
             "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/release/build/charlotte-launch/e57fded3a3fe2fa7/out/hpke_erasure-e57fded3a3fe2fa7)",
+            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/release/build/knytos-launch/e57fded3a3fe2fa7/out/hpke_erasure-e57fded3a3fe2fa7)",
             "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
@@ -713,7 +713,7 @@
             "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
             "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
           ],
-          "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml -p charlotte-launch (cwd /private/tmp; separate recorded target dirs)"
+          "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml -p knytos-launch (cwd /private/tmp; separate recorded target dirs)"
         },
         "signer": {
           "passed_in_each_report": [
@@ -827,7 +827,7 @@
   },
   "bundle_builds": {
     "aarch64": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "bundle_sha256": {
         "agent.elf": "5e6669e5a1d563d25108026ab6d0fb1ade89ec40d8939904b773a75cea3345bf",
@@ -874,7 +874,7 @@
       },
       "service_count": 40,
       "separate_sitas": {
-        "command": "scripts/build-catten-user.sh --embed",
+        "command": "scripts/build-knytos-user.sh --embed",
         "exit_status": 0,
         "captured_sha256": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
         "rebuilt_sha256": "a97f28fc30e98206e8693262752f674f4ef6a965519541ac58c41c32c95233ee",
@@ -882,7 +882,7 @@
       }
     },
     "x86_64": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0,
       "bundle_sha256": {
         "agent.elf": "ed26c972c65051aa62bb2821dca701b50bb8bd9010f783355ade33b1df92829a",

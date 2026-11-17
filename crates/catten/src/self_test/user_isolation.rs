@@ -488,7 +488,7 @@ fn verify_stack_growth() {
                     backing.fill(|bytes| bytes.fill(0x5a));
                     backing
                         .map_with(
-                            VAddr::from(charlotte_launch::user_address::STACK_BASE + 2 * 4096),
+                            VAddr::from(knytos_launch::user_address::STACK_BASE + 2 * 4096),
                             PageType::UserData,
                             |space, mapping| space.map_existing_page(mapping).is_ok(),
                         )

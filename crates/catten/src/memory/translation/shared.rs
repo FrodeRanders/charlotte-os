@@ -5,7 +5,7 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     Amount,
     Budget,
 };

@@ -4,7 +4,7 @@
 //! material. The signed EFI/config/kernel chain authenticates these constants
 //! only within a VM whose firmware store was enrolled by the host test owner.
 
-use charlotte_launch::trust::signed_policy::{
+use knytos_launch::trust::signed_policy::{
     self,
     BootstrapKey,
     PolicyExpectation,
@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 use super::PreparedBootTrust;
 
 pub(crate) const CLUSTER: &[u8] = b"boot-trust-tests";
-pub(crate) const MODULE_NAME: &str = "charlotte.boot-trust-test";
+pub(crate) const MODULE_NAME: &str = "knytos.boot-trust-test";
 pub(super) const BOOTSTRAP_PUBLIC: [u8; 32] = [
     67, 4, 107, 254, 64, 146, 179, 233, 73, 148, 234, 218, 21, 220, 194, 13, 138, 170, 7, 182, 88,
     253, 57, 84, 235, 142, 14, 251, 139, 220, 165, 222,
@@ -25,7 +25,7 @@ pub(super) const BOOTSTRAP_PUBLIC: [u8; 32] = [
 /// authenticated kernel. It is not rollback-resistant platform storage.
 pub(super) fn installed() -> signed_policy::VerifiedBootPolicy {
     let bytes = include_bytes!(env!("CATTEN_BOOT_TEST_INSTALLED_POLICY_FILE"));
-    let public = charlotte_launch::trust::AdmissionTrust::decode(
+    let public = knytos_launch::trust::AdmissionTrust::decode(
         &bytes[signed_policy::HEADER_LEN..signed_policy::SIGNATURE_OFFSET],
     )
     .expect("valid compiled fixture state");
@@ -37,7 +37,7 @@ pub(super) fn installed() -> signed_policy::VerifiedBootPolicy {
     signed_policy::verify_for_boot(
         bytes,
         &BootstrapKey::new(BOOTSTRAP_PUBLIC).unwrap(),
-        &charlotte_launch::trust::cluster_id(CLUSTER).unwrap(),
+        &knytos_launch::trust::cluster_id(CLUSTER).unwrap(),
         &expected,
     )
     .expect("compiled installed fixture snapshot must authenticate")
@@ -62,7 +62,7 @@ pub(crate) fn prepare() -> PreparedBootTrust {
     let verified = signed_policy::verify_for_boot(
         bytes,
         &BootstrapKey::new(BOOTSTRAP_PUBLIC).unwrap(),
-        &charlotte_launch::trust::cluster_id(CLUSTER).unwrap(),
+        &knytos_launch::trust::cluster_id(CLUSTER).unwrap(),
         &expected,
     )
     .unwrap_or_else(|error| panic!("[boot trust fixture] verification rejected: {error:?}"));

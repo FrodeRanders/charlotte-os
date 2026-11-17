@@ -12,7 +12,7 @@ use core::{
     },
 };
 
-use charlotte_lifecycle::resources::AdmissionPool;
+use knytos_lifecycle::resources::AdmissionPool;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 #[path = "admission/byte_allocator.rs"]
@@ -54,16 +54,16 @@ macro_rules! families {
         })*
         /// Each sample is coherent within one pool. No cross-pool atomicity;
         /// callback runs after guard release, even for a recursively busy pool.
-        pub(crate) fn visit(mut consume: impl FnMut(catten_syscall::metadata_pools::Sample)) {
-            $(consume(sample::<$tag, $n>(catten_syscall::metadata_pools::Id::$tag));)*
+        pub(crate) fn visit(mut consume: impl FnMut(knytos_syscall::metadata_pools::Sample)) {
+            $(consume(sample::<$tag, $n>(knytos_syscall::metadata_pools::Id::$tag));)*
         }
     };
 }
-catten_syscall::metadata_pool_catalog!(families);
+knytos_syscall::metadata_pool_catalog!(families);
 
 fn sample<F: Family<N>, const N: usize>(
-    id: catten_syscall::metadata_pools::Id,
-) -> catten_syscall::metadata_pools::Sample {
+    id: knytos_syscall::metadata_pools::Id,
+) -> knytos_syscall::metadata_pools::Sample {
     let mut total = [0; 2];
     let mut ordinary = [0; 2];
     total[..N].copy_from_slice(&F::TOTAL);
@@ -76,7 +76,7 @@ fn sample<F: Family<N>, const N: usize>(
         o[..N].copy_from_slice(&b);
         (t, o)
     });
-    catten_syscall::metadata_pools::Sample {
+    knytos_syscall::metadata_pools::Sample {
         id,
         total_limit: total,
         ordinary_limit: ordinary,
@@ -238,7 +238,7 @@ pub(crate) fn with_locked<F: Family<N>, const N: usize, R>(work: impl FnOnce() -
 /// behind the observed pool. Callback entry must follow guard release.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_observation() {
-    use catten_syscall::metadata_pools::{
+    use knytos_syscall::metadata_pools::{
         ALL,
         Id,
     };

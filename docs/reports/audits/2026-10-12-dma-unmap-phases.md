@@ -116,8 +116,8 @@ cleanup-owner rows now describe the same conservative replay boundary.
 
 ## Validation and artifacts
 
-Both signed bundles were rebuilt with `scripts/build-catten-services.sh --embed`
-and `scripts/build-catten-services-x86_64.sh`. Host suite: **389 passed, 0 failed,
+Both signed bundles were rebuilt with `scripts/build-knytos-services.sh --embed`
+and `scripts/build-knytos-services-x86_64.sh`. Host suite: **389 passed, 0 failed,
 3 ignored**. Strict `-D warnings` Clippy passed for bundled services and both
 final-source kernel profiles. Formatting, diff and changed Markdown-link checks
 passed.

@@ -16,7 +16,7 @@ Unrestricted shared memory avoids the copy but permits multiple processes to mod
 the same pages. Correctness then depends on synchronization rather than page-table
 exclusivity.
 
-CharlotteOS adopts a third approach: \textbf{ownership transfer through page-table
+Knytos adopts a third approach: \textbf{ownership transfer through page-table
 manipulation.} When a memory object moves from one domain to another, the kernel
 changes the page-table mappings. The sender loses access, and the receiver gains it,
 while no bytes are copied, under MMU-enforced ownership.
@@ -45,7 +45,7 @@ messages attach \textbf{memory-object capabilities} with declared transfer modes
 Singularity transfers uniquely owned messages through an exchange heap.
 Its compiler, verifier and runtime enforce the aliasing and channel rules
 that make software-isolated processes possible \cite{prior:singularity}.
-CharlotteOS adopts the useful rule that sending an owned value removes the
+Knytos adopts the useful rule that sending an owned value removes the
 sender's right to use it, but enforces cross-domain memory access through
 kernel capabilities and page mappings. Rust owners express that lifecycle
 to callers, but they are not the sole protection against another domain.
@@ -58,7 +58,7 @@ an exchange-heap pointer. Avoiding a payload copy therefore does not establish
 a lower transfer cost, especially for small messages. Explicit copy and borrow
 modes remain useful alternatives. The transfer sections below and the
 \repofiletext|docs/guides/resource-ownership.md|{ownership guide} describe
-these obligations, but CharlotteOS does not inherit Singularity's static
+these obligations, but Knytos does not inherit Singularity's static
 channel-contract guarantees.
 \end{architecturalcomparison}
 
@@ -601,7 +601,7 @@ does not resolve remaining lock-held invalidations or general metadata admission
 
 \section{Four transfer modes}
 
-CharlotteOS defines four transfer modes. Transfer publishes capability authority, and
+Knytos defines four transfer modes. Transfer publishes capability authority, and
 the receiver maps the delivered object separately. Queued attachments and
 unobserved returned objects stay inaccessible until receive/result observation.
 Moves and write loans require unmapped source backing. Read loans permit existing

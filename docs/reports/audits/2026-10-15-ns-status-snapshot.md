@@ -12,7 +12,7 @@ rows. Its pending count measured distinct names rather than retained requests.
 The HTTP reader accepted a readable prefix. This could present an incomplete
 catalog as a complete one without preserving identity.
 
-`charlotte_protocol_ns::snapshot` now defines only CNSSTAT1: a 24-byte tagged
+`knytos_protocol_ns::snapshot` now defines only CNSSTAT1: a 24-byte tagged
 header with exact total length, active count and retained lookup-request count,
 followed by full-name/positive-generation rows. All 64 supported live publications
 fit the 17,176-byte ceiling with complete 256-byte names. Encoding plans the

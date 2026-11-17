@@ -38,10 +38,10 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/security_probe.rs": "f93ab8355db3768bb2dc5b2effc9e1f4f60387466bdd26923953c2c07a715684",
-    "crates/catten-services/src/deployment_close.rs": "5190db88c088cab951b9172e856265752d7cb53365bb467cdd62e804cf6e04c7",
-    "crates/catten-services/src/lib.rs": "1375836e528453368adfc97901e7da6819f092d10c9baa47d0f303b38e0b7e6f",
-    "crates/catten-services/src/socket_close.rs": "4e0f98db8a490076f2d2dbb790576d66e4e81625368e43535b8a32315b560596",
+    "crates/knytos-services/src/bin/security_probe.rs": "f93ab8355db3768bb2dc5b2effc9e1f4f60387466bdd26923953c2c07a715684",
+    "crates/knytos-services/src/deployment_close.rs": "5190db88c088cab951b9172e856265752d7cb53365bb467cdd62e804cf6e04c7",
+    "crates/knytos-services/src/lib.rs": "1375836e528453368adfc97901e7da6819f092d10c9baa47d0f303b38e0b7e6f",
+    "crates/knytos-services/src/socket_close.rs": "4e0f98db8a490076f2d2dbb790576d66e4e81625368e43535b8a32315b560596",
     "docs/guides/resource-ownership.md": "4dcce4dd256099fbc25d42ee8af342d6efccd1acd1952e262e5a6538dd85e590",
     "docs/guides/testing.md": "7439f1f154aad5b158c66c4a6ca5dbaff6251705977b66892fd6c8c44ee46df1",
     "docs/manual-v2/chapters/13-networking.tex": "0bf4b462cc8ee8f221b1fcefbf3f7b267ccc9a709e9791412727c4748f41c311",
@@ -333,7 +333,7 @@
   "failed_runs": [],
   "failed_run_qualification": "No runtime failure observed in this batch. Historical zero-only receipt regressions and intermittent UEFI timeout remain separately recorded in baseline evidence; this passing matrix does not resolve that historical intermittence.",
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked",
     "cwd": "/private/tmp",
     "result": "203 passed; 0 failed",
     "exit_code": 0,
@@ -356,19 +356,19 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
-    "native_clippy": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe --bin httpd -- -D warnings",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe --bin httpd -- -D warnings",
     "host_clippy_sha256": "6b0b1d44699902d2e938f6971bf35a32312514412de9625693e35bd5af641baa",
     "native_clippy_sha256": "e3dc71b5af0ec59f0d5f8ac65d418a73bd61cfe7ac7f93f32a58621c3e1cf43a",
     "bundles": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ],
     "bundle_build_capture_sha256": {
       "arm": "8e1b4edfe13dbd90d56960f8a194bc0b8144df0a95a9e3cac1264e37bb578b91",
       "x86": "18eb39be7bb0b604156ffbbad696ef80899dc69c971c78aee3ef95f9d0da01ea"
     },
-    "arm_reproduction": "scripts/build-catten-services.sh --check: signatures verified and current-source signed bytes match",
+    "arm_reproduction": "scripts/build-knytos-services.sh --check: signatures verified and current-source signed bytes match",
     "arm_reproduction_capture_sha256": "f80b4ac0c82bd5ce2dc16101790b3215548ab9ddcc3b1a65bc43f62aae95c48e"
   },
   "formal": {

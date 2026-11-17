@@ -1,7 +1,7 @@
-# UEFI Secure Boot options for bare-metal CharlotteOS
+# UEFI Secure Boot options for bare-metal Knytos
 
 Status: deployment option recorded for later evaluation, reviewed 2026-11-11.
-The shim/MOK route described here has not been qualified with CharlotteOS.
+The shim/MOK route described here has not been qualified with Knytos.
 Current signed-chain testing is the disposable x86 QEMU fixture; production
 trust remains disabled. See [current coverage](../guides/qemu-secure-boot.md)
 and the [SEC-04 integration requirements](../reference/bootstrap-trust-policy.md#protected-integration-still-required).
@@ -12,11 +12,11 @@ Leo Smith's [Not so secure boot](https://leosmith.wtf/blog/not-so-secure-boot.ht
 published 2026-11-08, describes booting a custom Linux installation through a
 Microsoft-signed shim and interactively enrolling the installation's signing
 certificate with MokManager. This suggests a possible installation route for
-CharlotteOS on PCs whose firmware already trusts a suitable shim.
+Knytos on PCs whose firmware already trusts a suitable shim.
 
 The useful security observation is that enrollment changes the accepted
 authority. Secure Boot being enabled does not establish that only the intended
-CharlotteOS installation can boot. Whether another person can authorize a key
+Knytos installation can boot. Whether another person can authorize a key
 depends on the firmware, boot access and shim management policy.
 
 Upstream [MokManager](https://github.com/rhboot/shim/blob/main/MokManager.c)
@@ -33,7 +33,7 @@ signature-verification failure or universal behaviour across machines.
 | Route | Suitable use | Benefits | Costs and limits |
 | --- | --- | --- | --- |
 | Direct firmware enrollment and signed Limine | Dedicated nodes whose provisioning we control | Explicit platform authority; fewer boot components; aligns with the existing QEMU fixture | Requires firmware enrollment support, signing-key custody, update/revocation policy and recovery procedures. Required firmware drivers and option ROMs also need an appropriate trust policy. |
-| Microsoft-signed shim, MOK enrollment and signed Limine | PCs where the owner wants to retain factory firmware trust | May permit custom boot software while retaining existing firmware authorities | Adds shim/MokManager and their enrollment, update and revocation policy. Depends on the machine trusting that exact shim and on the complete CharlotteOS chain being compatible. |
+| Microsoft-signed shim, MOK enrollment and signed Limine | PCs where the owner wants to retain factory firmware trust | May permit custom boot software while retaining existing firmware authorities | Adds shim/MokManager and their enrollment, update and revocation policy. Depends on the machine trusting that exact shim and on the complete Knytos chain being compatible. |
 
 The preferred first qualification target is direct enrollment on one selected
 physical UEFI machine. Retain shim/MOK as a compatibility option when the target
@@ -41,7 +41,7 @@ machine's provisioning requirements justify it. Neither route establishes CPU,
 device or IOMMU support for the physical machine.
 
 Retaining factory authorities may also permit other signed operating systems
-to boot. Any requirement that only the authorized CharlotteOS chain can run
+to boot. Any requirement that only the authorized Knytos chain can run
 must account for that broader trust set and every available enrollment path.
 
 ## Proposed shim chain
@@ -51,16 +51,16 @@ Firmware trust database and revocations
   -> accepted Microsoft-signed shim
   -> Limine signed by an owner key enrolled in MOK
   -> hash-bound Limine configuration
-  -> exact hashed CharlotteOS kernel and boot-policy module
+  -> exact hashed Knytos kernel and boot-policy module
   -> kernel verification of the installed policy
 ```
 
 This is a proposed composition. Shim's
 [loader documentation](https://github.com/rhboot/shim/blob/main/README.md)
 describes validating a second-stage EFI application; the selected shim build's
-actual acceptance of Limine must be tested. CharlotteOS loads its kernel through
+actual acceptance of Limine must be tested. Knytos loads its kernel through
 Limine, so the article's Linux kernel signing commands are not a complete
-CharlotteOS packaging recipe.
+Knytos packaging recipe.
 
 Preserve the existing [Limine packaging contract](../guides/limine.md#development-measured-boot-and-secure-boot):
 hash the kernel and policy module, enroll the final configuration hash into

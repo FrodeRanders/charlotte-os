@@ -473,11 +473,11 @@
   ],
   "host_tests": [
     {
-      "command": "cargo test -p charlotte-management-tls --test server",
+      "command": "cargo test -p knytos-management-tls --test server",
       "passed": 11
     },
     {
-      "command": "cargo test -p charlotte-launch --test signed_policy",
+      "command": "cargo test -p knytos-launch --test signed_policy",
       "passed": 12
     },
     {
@@ -499,13 +499,13 @@
   ],
   "checks": {
     "bundled_services": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ],
     "strict_clippy": [
-      "host charlotte-management-tls --all-targets",
-      "catten-services httpd/deployd on crates/catten-services/aarch64-unknown-none.json",
-      "catten-services httpd/deployd on crates/catten-services/x86_64-unknown-none.json",
+      "host knytos-management-tls --all-targets",
+      "knytos-services httpd/deployd on crates/knytos-services/aarch64-unknown-none.json",
+      "knytos-services httpd/deployd on crates/knytos-services/x86_64-unknown-none.json",
       "catten acpi on target_specs/aarch64-unknown-none-catten.json with explicit current service bundle",
       "catten acpi,boot_trust_test,virtio_net_test on target_specs/x86_64-unknown-none-catten.json with explicit current service bundle"
     ],
@@ -536,9 +536,9 @@
     "crates/catten/build.rs": "2906fb3b5b9a96bb535ccf287272fd14fa0770d275b1508371d57621be402803",
     "crates/catten/src/service/admission/boot_fixture.rs": "b6820578c34e64b5ae905da85b6d1b25031e19eb346eed82cf04b9d3bb9cd2ee",
     "crates/catten/src/service/admission/tests.rs": "dd49b938b5abb8988118005f92af2a34f9c4403d3e7ec74afa879b6fe9331a76",
-    "crates/catten-services/src/management_io.rs": "5b37243b9fd7093003607908aadbf9852f5743faac7fe0a15672e4948862cf89",
-    "crates/charlotte-management-tls/src/session.rs": "fc4417467d1c0c0b5d9e2e416ad689d28a3c210919f551206c0a1f17c0395bc7",
-    "crates/charlotte-management-tls/tests/server.rs": "8064d842dd1446f3b9b7654eeb43078ef90076d4913e11d43481acd8d1e63264",
+    "crates/knytos-services/src/management_io.rs": "5b37243b9fd7093003607908aadbf9852f5743faac7fe0a15672e4948862cf89",
+    "crates/knytos-management-tls/src/session.rs": "fc4417467d1c0c0b5d9e2e416ad689d28a3c210919f551206c0a1f17c0395bc7",
+    "crates/knytos-management-tls/tests/server.rs": "8064d842dd1446f3b9b7654eeb43078ef90076d4913e11d43481acd8d1e63264",
     "scripts/prepare-management-tls-fixture.py": "805ed8028f19a7291b9f61f180fc0a1c14d9ac212643965574ccd09f718b0d78",
     "scripts/run-secure-boot-test.py": "fb802328be891153d38f597ed49f085daa7a44eaa6a9230cdfe5f9697ad461e8",
     "scripts/run-management-rotation-test.py": "c30f1f0263d1f4054f024fe6dce2dfe3fe4d75d320bed104008e2d77dfc84aab",

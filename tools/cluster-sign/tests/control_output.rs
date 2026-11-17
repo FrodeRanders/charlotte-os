@@ -53,7 +53,7 @@ impl Fixture {
     fn new() -> Self {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let directory = std::env::temp_dir().join(format!(
-            "charlotte-control-output-{}-{}",
+            "knytos-control-output-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -142,7 +142,7 @@ fn new_control_outputs_verify() {
         assert!(verified.status.success(), "{kind}: {verified:?}");
         let bytes = fs::read(&output).unwrap();
         let digest: String =
-            charlotte_launch::sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+            knytos_launch::sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
         println!("fresh-output {kind}: bytes={} sha256={digest}", bytes.len());
     }
 }

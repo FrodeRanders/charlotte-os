@@ -20,7 +20,7 @@ same for its reversed and transformed key copies. POLYVAL's software state
 destructor is compiled out. These are source-confirmed gaps, without a new
 private-field memory probe or demonstrated cross-domain read.
 
-`catten-services` now enables all three features directly. The lockfile adds
+`knytos-services` now enables all three features directly. The lockfile adds
 six dependency edges; package versions and checksums are unchanged. The
 resolved graph supplies the same packages to embedded-tls. AES-GCM and GHASH
 clear their named construction temporaries after copying them into their
@@ -36,7 +36,7 @@ measurement or a general proof that every destructor erases secrets.
 The current AArch64 software backend satisfies those assertions. The optional
 PMULL backend has no erasing destructor and now rejects this build guard,
 even with the feature enabled. No PMULL or additional CPU feature is enabled
-for CharlotteOS. The pinned x86 dispatch owner also lacks Drop delegation;
+for Knytos. The pinned x86 dispatch owner also lacks Drop delegation;
 its live state remains an explicit gap. Consuming finalization can drop an
 extracted backend, while dropping the dispatcher itself does not.
 This batch does not claim complete x86 authentication-state erasure.
@@ -44,7 +44,7 @@ This batch does not claim complete x86 authentication-state erasure.
 Record/cipher bytes, TLS suite, authentication, capability ownership and error
 or reconnect policy stay unchanged. The existing
 [C18 row](../../reference/cleanup-recovery.md) records the same local record
-cipher and byte fields. Their Drop adds no Charlotte capability/root cleanup,
+cipher and byte fields. Their Drop adds no Knytos capability/root cleanup,
 allocator, guard, wait, remote teardown, registry, custody or physical/retry
 authority. No dependency source is edited or vendored.
 

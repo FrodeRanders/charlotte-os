@@ -202,7 +202,7 @@ enum Failure {
 fn failure_case(failure: Failure) {
     let owner = loader::create_user_address_space_handle();
     let peer = loader::create_user_address_space_handle();
-    assert!(crate::memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    assert!(crate::memory::commit_user_heap_page_handle(owner, knytos_launch::HEAP_VADDR));
     let heap = backing_budget::test_used_pages(backing_budget::Kind::Heap);
     let cap = allocate(owner.id(), 2).unwrap();
     let loan = lend_read(owner.id(), cap, peer.id()).unwrap();

@@ -1,10 +1,10 @@
 # Userspace resource ownership
 
-CharlotteOS application code uses Rust ownership to mirror kernel capability
+Knytos application code uses Rust ownership to mirror kernel capability
 ownership. Every closeable resource has exactly one owning Rust value. Normal
 error propagation then performs cleanup automatically.
 
-The raw functions in `catten-syscall` describe the register ABI. They are not
+The raw functions in `knytos-syscall` describe the register ABI. They are not
 the normal service-development API. Use `catten_rt::owned` in services and
 applications.
 

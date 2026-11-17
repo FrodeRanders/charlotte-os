@@ -288,8 +288,8 @@ notifications fail loudly instead of hanging.**
 - Log signature checks: `DAIF=0x0` at every yield entry for the boot continuation;
   LP0 timer PPI counter no longer freezes.
 - Builds: `cargo build` (live-upgrade and default features) and `cargo clippy` clean.
-- Both `cargo fmt` (workspace) and the excluded crates (`catten-services`,
-  `catten-user`) verified formatted.
+- Both `cargo fmt` (workspace) and the excluded crates (`knytos-services`,
+  `knytos-user`) verified formatted.
 
 ---
 

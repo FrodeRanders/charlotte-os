@@ -6,7 +6,7 @@ No kernel, runtime, service or test source was changed by this review.
 
 ## Assessment
 
-The security work is substantive, but CharlotteOS remains an experimental
+The security work is substantive, but Knytos remains an experimental
 system with explicit production blockers. The current ledger's **38 findings:
 29 corrected within their documented scope, six partial and three open** is
 consistent with the sampled source. This review does not change dispositions
@@ -22,13 +22,13 @@ and the October 16 ownership reports preserve both progress and failed samples.
 
 | Boundary | Current source observation | Limit of this check |
 | --- | --- | --- |
-| SEC-31, fragment reassembly | [`relmsg::handle_frame`](../../../crates/catten-services/src/bin/relmsg.rs#L304) rejects invalid/over-ceiling fragments before peer admission or session replacement; assembly remains behind the ceiling check. | This does not authenticate peers or establish fairness under a sustained frame flood. |
-| SEC-32, TCP/IP transmit and receive backing | [`CharlotteEthDevice`](../../../crates/charlotte-smoltcp/src/lib.rs#L215) returns no TX token until scratch backing exists. [`tcpip`](../../../crates/catten-services/src/bin/tcpip.rs#L770) adopts moved caller buffers for receive/status into `PendingReceive`, rather than allocating service-sponsored reply objects. | General heap pressure, socket progress and slow/hostile-client fairness remain separate. The adapter still has a documented raw hardware/protocol boundary. |
-| SEC-36, discovery growth | [`learn_peer`](../../../crates/catten-services/src/bin/disco.rs#L452) checks the shared admission rule before insertion; the rule caps new peers at [64](../../../crates/catten-services/src/lib.rs#L2090). | Spoofing, occupying all slots and trusted peer enrollment remain SEC-08 work. A bounded map is not peer authentication. |
-| SEC-37, public naming | Both [immediate and deferred public lookup](../../../crates/catten-services/src/bin/ns.rs#L733) deny policy-published registrations. | Raw receive/watch/transport contexts and the rest of NS authorization were not exhaustively re-audited. |
+| SEC-31, fragment reassembly | [`relmsg::handle_frame`](../../../crates/knytos-services/src/bin/relmsg.rs#L304) rejects invalid/over-ceiling fragments before peer admission or session replacement; assembly remains behind the ceiling check. | This does not authenticate peers or establish fairness under a sustained frame flood. |
+| SEC-32, TCP/IP transmit and receive backing | [`CharlotteEthDevice`](../../../crates/knytos-smoltcp/src/lib.rs#L215) returns no TX token until scratch backing exists. [`tcpip`](../../../crates/knytos-services/src/bin/tcpip.rs#L770) adopts moved caller buffers for receive/status into `PendingReceive`, rather than allocating service-sponsored reply objects. | General heap pressure, socket progress and slow/hostile-client fairness remain separate. The adapter still has a documented raw hardware/protocol boundary. |
+| SEC-36, discovery growth | [`learn_peer`](../../../crates/knytos-services/src/bin/disco.rs#L452) checks the shared admission rule before insertion; the rule caps new peers at [64](../../../crates/knytos-services/src/lib.rs#L2090). | Spoofing, occupying all slots and trusted peer enrollment remain SEC-08 work. A bounded map is not peer authentication. |
+| SEC-37, public naming | Both [immediate and deferred public lookup](../../../crates/knytos-services/src/bin/ns.rs#L733) deny policy-published registrations. | Raw receive/watch/transport contexts and the rest of NS authorization were not exhaustively re-audited. |
 | SEC-38, upgrade image ceiling | [`sys_spawn_upgrade`](../../../crates/catten/src/syscall/mod.rs#L1942) bounds supplied ELF size before snapshot allocation and restricts the caller to the current manager identity. | Separate platform/live-upgrade trust and physical device recovery are not qualified by this check. |
-| Borrowed RPC lifetime | [`PendingCall`](../../../crates/catten-rt/src/owned/ipc.rs#L1102) retains itself on close rejection and timed waiter-admission rejection. Drop aborts the domain if close cannot safely end its borrow. | This is fail-closed ownership, not recovery or a guarantee that teardown always progresses. |
-| Persistence diagnostics | [`persist_record`](../../../crates/catten-services/src/disk_raft.rs#L334) distinguishes encoding, write and flush failure, retains exact operation context and does not replay a write after rejection. | The earlier lost-error diagnostic gap is corrected. Historical persistence failures and power-loss durability remain separate questions. |
+| Borrowed RPC lifetime | [`PendingCall`](../../../crates/knytos-rt/src/owned/ipc.rs#L1102) retains itself on close rejection and timed waiter-admission rejection. Drop aborts the domain if close cannot safely end its borrow. | This is fail-closed ownership, not recovery or a guarantee that teardown always progresses. |
+| Persistence diagnostics | [`persist_record`](../../../crates/knytos-services/src/disk_raft.rs#L334) distinguishes encoding, write and flush failure, retains exact operation context and does not replay a write after rejection. | The earlier lost-error diagnostic gap is corrected. Historical persistence failures and power-loss durability remain separate questions. |
 
 These are source checks, not newly executed exploits or revalidation of all
 29 corrected findings. In particular, no new claim is made about every ELF,
@@ -45,15 +45,15 @@ authenticated boot, protected installed state and key custody. Disposable
 Secure Boot fixtures do not provide those production facilities.
 The reviewed reliable-message/discovery paths have session/sequence and size
 checks, but no enrolled cryptographic peer authentication. The HTTP services
-accept ordinary socket requests: [`httpd`](../../../crates/catten-services/src/bin/httpd.rs#L1508)
+accept ordinary socket requests: [`httpd`](../../../crates/knytos-services/src/bin/httpd.rs#L1508)
 routes read-only state requests without operator authentication, while
-[`deployd`](../../../crates/catten-services/src/bin/deployd.rs#L356) forwards signed
+[`deployd`](../../../crates/knytos-services/src/bin/deployd.rs#L356) forwards signed
 mutation payloads and status queries. Payload signatures do not authenticate
 the transport or its readers. An Internet-facing management security claim
 would therefore exceed the implemented boundary.
 
 **Security time (SEC-09).** The time service still parses
-[SNTP responses](../../../crates/catten-services/src/bin/time.rs#L551) using
+[SNTP responses](../../../crates/knytos-services/src/bin/time.rs#L551) using
 protocol/originate/timestamp checks, without authenticated security-time
 provenance. The [operational launch gate](../../../crates/catten/src/syscall/mod.rs#L2285)
 still compares expiry with `pickup.now_unix_seconds`. That value is supplied in

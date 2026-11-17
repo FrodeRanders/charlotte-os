@@ -1,4 +1,4 @@
-# CharlotteOS functionality and logic audit (2026-07-19)
+# Knytos functionality and logic audit (2026-07-19)
 
 > **Historical report:** this is point-in-time evidence and may describe
 > defects or document paths that were later corrected. See the
@@ -56,7 +56,7 @@ machine:
 | Host `cargo check --workspace` | Fail: the no-std kernel is built for the Mach-O host and its ELF Limine section names are invalid |
 | `cargo fmt --all -- --check` | Fail: widespread formatting drift (over 2,000 diff lines) |
 | Host `cargo test` for protocol/runtime/Raft/smoltcp crates | Fail before tests due to duplicate `core` lang items caused by the workspace build-std configuration |
-| Strict userspace-services check | Fail first in `catten-graft` on five `unused_unsafe` warnings |
+| Strict userspace-services check | Fail first in `knytos-graft` on five `unused_unsafe` warnings |
 | Fresh AArch64 QEMU TCG boot, four LPs | Boots; synchronous tests pass; deferred execution begins; see qualification below |
 
 The KVM-only virtio-net runtime path could not be executed on this host. The
@@ -67,9 +67,9 @@ evidence, and unverified platform paths.
 
 The Raft findings were compared with
 `../../gautelis/raft/graft-rust` at commit `1a818d4`. All three are artifacts of
-the CharlotteOS no-std adaptation, not defects copied from the source project.
+the Knytos no-std adaptation, not defects copied from the source project.
 The relevant safeguards were already present in upstream's initial Rust commit
-`cf9de4a` (2026-06-10), before `catten-graft` was introduced by CharlotteOS
+`cf9de4a` (2026-06-10), before `knytos-graft` was introduced by Knytos
 commit `1000cf1` (2026-07-18). Upstream's `gautelis-graft-core` tests passed
 (5/5), as did the `graft-tests` integration suite (16/16). Those tests provide a
 healthy baseline, although the current suite does not directly exercise every
@@ -78,11 +78,11 @@ specific election-response and higher-term snapshot case identified here.
 ### Raft remediation and end-to-end validation (2026-07-19)
 
 The remediation went beyond F1-F3 and completed the previously skeletal
-CharlotteOS integration:
+Knytos integration:
 
 - added bounded, versioned one-page wire encoding for votes, AppendEntries,
   snapshots, and all responses, with malformed/oversized input rejection;
-- implemented asynchronous Charlotte IPC request submission, returned-memory
+- implemented asynchronous Knytos IPC request submission, returned-memory
   response polling, completion delivery into `RaftNode`, dynamic peer lookup,
   pending-call deduplication, and stale-term cancellation;
 - completed service-side request decoding, response encoding, timer-driven
@@ -100,7 +100,7 @@ CharlotteOS integration:
 
 Validation evidence:
 
-- `catten-graft`: 7/7 host tests pass (five Raft regressions and two complete
+- `knytos-graft`: 7/7 host tests pass (five Raft regressions and two complete
   wire-format tests).
 - A clean four-LP AArch64 QEMU TCG boot reports:
   `[raft] SUCCESS: two-node cluster elected one leader (states 3/1, completions 1/1).`
@@ -122,12 +122,12 @@ entries, linearizable-read contact quorums, local snapshot creation, membership
 snapshot recovery, bounded transport deadlines, protobuf AppendEntries
 batching, and the shared `raft.proto` RPC shapes.
 
-Charlotte-specific peer discovery now follows committed membership through
+Knytos-specific peer discovery now follows committed membership through
 waitable name-service lookups. Removed peers have their pending calls and
 connection capabilities closed. The IPC adapter carries an exact protobuf
 length with each moved page; decoding no longer depends on zero padding.
 Snapshot replacement remains a single atomic object-store record update,
-preserving CharlotteOS' stronger crash behavior.
+preserving Knytos' stronger crash behavior.
 
 The parity contract and intentional differences are maintained in
 [Raft conformance](../../reference/raft-conformance.md).
@@ -136,10 +136,10 @@ The parity contract and intentional differences are maintained in
 
 ### F1 — Critical: Raft counts every configured voter after one response
 
-**Provenance:** CharlotteOS adaptation defect; not present in
+**Provenance:** Knytos adaptation defect; not present in
 `../../gautelis/raft/graft-rust`.
 
-**Resolution (2026-07-19):** fixed in `catten-graft`. Elections now retain a
+**Resolution (2026-07-19):** fixed in `knytos-graft`. Elections now retain a
 set of distinct configured voter IDs for the current term, ignore duplicate and
 unknown responses, and recognize a single-voter self-majority. Host regression
 tests cover all of those cases.
@@ -150,7 +150,7 @@ configured voter. It does not record which peers granted votes and does not
 deduplicate responses. In a five-node cluster, one granted response therefore
 looks like five grants and immediately elects the candidate.
 
-Evidence: `crates/catten-graft/src/node.rs:184-213`.
+Evidence: `../../../crates/knytos-graft`.
 
 Impact: two candidates can each become leader without receiving a majority,
 violating Raft election safety and enabling split brain.
@@ -166,16 +166,16 @@ peer IDs, includes self exactly once, rejects stale election rounds, and asks
 the membership object for a (possibly joint-consensus) majority. The runtime
 also accumulates distinct peer IDs before making the same majority check
 (`graft-runtime/src/runtime.rs:210-270`). Git blame attributes the core logic to
-the original Rust implementation commit `cf9de4a` on 2026-06-10. CharlotteOS'
+the original Rust implementation commit `cf9de4a` on 2026-06-10. Knytos'
 no-std port was introduced later in commit `1000cf1` on 2026-07-18 and replaced
 that aggregation with the erroneous configured-voter loop.
 
 ### F2 — High: Raft commit quorum omits the leader and has broken edge cases
 
-**Provenance:** CharlotteOS adaptation defect; not present in
+**Provenance:** Knytos adaptation defect; not present in
 `../../gautelis/raft/graft-rust`.
 
-**Resolution (2026-07-19):** fixed in `catten-graft`. Commit advancement now
+**Resolution (2026-07-19):** fixed in `knytos-graft`. Commit advancement now
 counts the leader explicitly, counts only configured voting followers, scans
 only current-term entries, and immediately advances single-voter commits. Tests
 cover one-node commit and leader-plus-one commit in a three-voter cluster.
@@ -197,21 +197,21 @@ derive quorum over voter IDs rather than raw map contents, and explicitly cover
 single-node and three-node majority cases in unit tests.
 
 The source implementation deliberately keeps `match_index` follower-only but
-does not make the CharlotteOS mistake of treating that map as the full voter
+does not make the Knytos mistake of treating that map as the full voter
 set. `advance_commit_index_from_majority` inserts the leader ID into a replicated
 ID set, adds only followers whose `match_index` reached the candidate index, and
 then applies the membership majority function
 (`graft-core/src/raft_node.rs:996-1028`). This logic also dates to upstream's
 initial Rust commit `cf9de4a`. It handles a single-node commit because the
-self-only set is already a majority. The CharlotteOS adaptation instead sorted
+self-only set is already a majority. The Knytos adaptation instead sorted
 the follower-only map and indexed it using a quorum calculated from all voters.
 
 ### F3 — High: snapshot handling does not adopt a higher term or step down
 
-**Provenance:** CharlotteOS adaptation defect; not present in
+**Provenance:** Knytos adaptation defect; not present in
 `../../gautelis/raft/graft-rust`.
 
-**Resolution (2026-07-19):** fixed in `catten-graft`. A higher-term snapshot now
+**Resolution (2026-07-19):** fixed in `knytos-graft`. A higher-term snapshot now
 updates and persists the term and clears the vote while stepping down. A valid
 same-term snapshot also forces Candidate/Leader to Follower without clearing
 the persisted vote for that term. The higher-term path has a regression test.
@@ -228,7 +228,7 @@ Upstream `accept_snapshot_chunk` explicitly updates and persists a higher term,
 calls `become_follower`, records the leader, and refreshes the election timeout
 before accepting data (`graft-core/src/raft_node.rs:1346-1368`). Git blame again
 shows this behavior in the original upstream Rust implementation `cf9de4a`.
-Those guards were omitted when the CharlotteOS `handle_install_snapshot` path
+Those guards were omitted when the Knytos `handle_install_snapshot` path
 was written in `1000cf1`.
 
 ### F4 — High: the smoltcp receive adapter discards the frame length
@@ -242,11 +242,11 @@ page-oversized lengths.
 
 `CharlotteEthDevice::receive` first calls `ipc_reply_poll`, discards its result
 value, and then calls `ipc_reply_poll_with_memory` for the same pending call
-(`crates/charlotte-smoltcp/src/lib.rs:132-150`). Re-polling happens to work
+(`../../../crates/knytos-smoltcp`). Re-polling happens to work
 because the kernel retains and copies an observed `ReplyValue`, but it is
 redundant and, more importantly, the code discards the reply scalar that carries
 the actual frame length. `CharlotteRx::consume` consequently always presents
-2,048 bytes to smoltcp (`charlotte-smoltcp/src/lib.rs:177-190`). Padding or stale
+2,048 bytes to smoltcp (`knytos-smoltcp/src/lib.rs:177-190`). Padding or stale
 page contents become part of the apparent Ethernet frame and the supplied size
 can exceed the adapter's advertised MTU.
 
@@ -268,7 +268,7 @@ failure. Protocol tests exercise malformed headers and oversized lengths.
 
 The reliable-message service parses an untrusted 16-bit `payload_len` and then
 copies that many bytes from offset 16 of a one-page mapping into another
-one-page mapping (`crates/catten-services/src/bin/relmsg.rs:121-190`). It does not
+one-page mapping (`../../../crates/knytos-services`). It does not
 validate `payload_len <= 4096 - 16`, does not know the actual inbound object
 length, and ignores mapping failures. A payload length up to 65,535 can walk
 well beyond both mappings. The same unbounded length is later used by
@@ -517,7 +517,7 @@ explicit emergency bypass whose possible interleaving is documented.
 
 **Resolution (2026-07-19):** the five service-lifecycle fixtures embedded by
 the kernel (`ns`, `echo`, `client`, `uart`, and `cclient`) are now rebuilt and
-refreshed as one bundle. A new `scripts/build-catten-services.sh --embed`
+refreshed as one bundle. A new `scripts/build-knytos-services.sh --embed`
 command provides a single reproducible path for doing so.
 
 **Follow-up (2026-07-28):** generated ELFs are no longer checked into the
@@ -531,7 +531,7 @@ The kernel compiles these programs with `include_bytes!`, but its ordinary
 build does not rebuild them. The checked-in name-service, echo, and service
 client happened to match one release build while UART and its console client
 were older binaries with different hashes. This mixed userspace generation was
-being tested against current `catten-rt` and `catten-syscall` code, making the
+being tested against current `knytos-rt` and `knytos-syscall` code, making the
 result look like a scheduler-dependent lifecycle failure.
 
 In a focused SMP4 boot, a coherently rebuilt bundle completed service

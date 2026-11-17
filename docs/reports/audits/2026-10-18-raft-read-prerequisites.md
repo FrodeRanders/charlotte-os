@@ -3,7 +3,7 @@
 ## Result and regression
 
 Baseline `941352f` commits the membership/parity batch. Continuing the read audit
-found that Charlotte admitted the query gate after an exact-term response from
+found that Knytos admitted the query gate after an exact-term response from
 a quorum even when its election no-op remained uncommitted. Recent contact
 alone did not establish the inherited committed prefix.
 
@@ -52,13 +52,13 @@ The reference checkout remains clean at
 progress in the inspected core read gates. The inspected Java, C++ and Rust
 core read gates do not explicitly require a current-term commit. Java has a
 separate barrier path; C++ and Rust also have runtime refresh and query logic.
-Their scheduling and state access differ from Charlotte's reactor.
+Their scheduling and state access differ from Knytos' reactor.
 
 Six source extracts and file hashes are retained in evidence, covering the
 three core gates and the C++/Rust query or refresh boundaries. This is a static
 comparison. No upstream failure is claimed from it, and no upstream tests,
-Jepsen run or mixed Charlotte/Graft cluster were executed. The change adds a
-necessary read prerequisite to Charlotte while leaving the shared message
+Jepsen run or mixed Knytos/Graft cluster were executed. The change adds a
+necessary read prerequisite to Knytos while leaving the shared message
 grammar intact. The [conformance reference](../../reference/raft-conformance.md)
 keeps that distinction explicit.
 
@@ -105,7 +105,7 @@ No fresh full-suite invocation is claimed.
   zero failed**.
 - Warning-denied Clippy passes for all host Raft targets. Workspace formatting,
   Bash syntax, local documentation targets and diff whitespace checks pass.
-- `scripts/build-catten-services.sh --embed` builds and signs the ARM bundle;
+- `scripts/build-knytos-services.sh --embed` builds and signs the ARM bundle;
   `--check` confirms the final source matches its staged signatures.
 - Fresh-storage two-node ARM DNS integration: both runners exit zero with
   **20 passed / zero failed / zero pending**, bitmap `0xfffff`. Discovery,

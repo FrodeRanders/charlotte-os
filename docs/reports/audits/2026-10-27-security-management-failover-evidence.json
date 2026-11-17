@@ -3,8 +3,8 @@
   "parent_commit": "c5a4e987abd768df8e35d0d5167f86a0fc9cf63c",
   "scope": "Public development trust. All five native campaigns failed; completed phases are limited evidence, not full failover qualification. No mutation replay. Production disabled.",
   "source_sha256": {
-    "crates/catten-graft/src/node.rs": "d17e45fc92530c0c5eab165d9e0183d25b2fb69a490007e5bca16386cba68aef",
-    "crates/catten-graft/tests/election_latency.rs": "04c035ef03d0dd812fedd2c8d8d4495eb07e0283aa44bf3039a19951844b85f7",
+    "crates/knytos-graft/src/node.rs": "d17e45fc92530c0c5eab165d9e0183d25b2fb69a490007e5bca16386cba68aef",
+    "crates/knytos-graft/tests/election_latency.rs": "04c035ef03d0dd812fedd2c8d8d4495eb07e0283aa44bf3039a19951844b85f7",
     "scripts/run-management-failover-test.py": "02230831d1d7b63c335583ef1b06caff15daf9230d6c6b604a8c4008f7e74303",
     "scripts/qemu-stream-l2-hub.py": "c964d56966179391a5fabbe7d09c80af6104556f6ec24e6e90d174b8058e2f9d",
     "scripts/tests/management_tls.py": "57d1271f82172a698f0d940a6cfda5b939324b75df4222e7ae05cd63cc73a236",
@@ -30,7 +30,7 @@
       "cli_deployment_status": 7
     },
     "strict_clippy": [
-      "catten-graft all targets",
+      "knytos-graft all targets",
       "ARM dns/httpd/deployd using service target JSON",
       "x86 dns/httpd/deployd using service target JSON"
     ],

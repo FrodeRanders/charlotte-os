@@ -44,12 +44,12 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "7f034bd8b3f8987b32fafd74055df4dee92b255320a404aea279e85406a645d4",
-    "crates/catten-services/src/bin/security_probe.rs": "de36e555be7b2e5c1efd4084d089eabae44e7f37a2c3b7cddf4ba0d77ce0749a",
-    "crates/catten-services/src/bin/tcpip.rs": "06657ca1cfb5e007ec0833532bbeeefc7bc726b5bcab9b7c17429957de82d09c",
-    "crates/catten-services/src/deployment_close.rs": "3d01f87ce7d642af5a067d78d3cbd3a7fec20a71f292a6977513ddbe30d6d7ad",
-    "crates/catten-services/src/lib.rs": "0f2f73c061f3138b4d70a1ee77f9ca9a24964c3ae8996e90894d9d819af683c5",
-    "crates/catten-services/src/socket_state.rs": "4f5a37c50fd51e93eb6920fc20e86e15cb5f05549125148fc02cda9c6259b964",
+    "crates/knytos-services/src/bin/deployd.rs": "7f034bd8b3f8987b32fafd74055df4dee92b255320a404aea279e85406a645d4",
+    "crates/knytos-services/src/bin/security_probe.rs": "de36e555be7b2e5c1efd4084d089eabae44e7f37a2c3b7cddf4ba0d77ce0749a",
+    "crates/knytos-services/src/bin/tcpip.rs": "06657ca1cfb5e007ec0833532bbeeefc7bc726b5bcab9b7c17429957de82d09c",
+    "crates/knytos-services/src/deployment_close.rs": "3d01f87ce7d642af5a067d78d3cbd3a7fec20a71f292a6977513ddbe30d6d7ad",
+    "crates/knytos-services/src/lib.rs": "0f2f73c061f3138b4d70a1ee77f9ca9a24964c3ae8996e90894d9d819af683c5",
+    "crates/knytos-services/src/socket_state.rs": "4f5a37c50fd51e93eb6920fc20e86e15cb5f05549125148fc02cda9c6259b964",
     "docs/guides/resource-ownership.md": "44736c985aa12e38148cadf76f8afd490f1d6107763ae5154c1f99e33fc8251c",
     "docs/guides/testing.md": "1a039002339f1dec61cbd56f2f85153b2b60fa50378229a7643df1f540090355",
     "docs/manual-v2/chapters/13-networking.tex": "81879848de32ae4c5980f8a324ef59515595a8c9cf72678391b358da22049103",
@@ -285,10 +285,10 @@
         "elapsed_seconds": 240.02453687484376
       },
       "selected_diagnostics": [
-        "No Charlotte kernel output; UEFI diagnostics only.",
+        "No Knytos kernel output; UEFI diagnostics only.",
         "CPU0 PC=0x000000005fdf74ac; secondary PCs=0x0,0x0,0x0."
       ],
-      "source_qualification": "Final source bundle; no Charlotte kernel output or SELFTEST. CPU0 PC=0x5fdf74ac; secondary PCs zero. Firmware message Image type X64 cannot be loaded also occurs before passing boots; no causal attribution. Passing repeat does not resolve intermittence."
+      "source_qualification": "Final source bundle; no Knytos kernel output or SELFTEST. CPU0 PC=0x5fdf74ac; secondary PCs zero. Firmware message Image type X64 cannot be loaded also occurs before passing boots; no causal attribution. Passing repeat does not resolve intermittence."
     },
     {
       "id": "final_arm_http",
@@ -594,7 +594,7 @@
   ],
   "host": {
     "additional_controls": "Nonreuse/exhaustion, exact live/foreign/unavailable/unreserved classification and Started/Unavailable decoder.",
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked (cwd /private/tmp)",
     "result": "193 passed; 0 failed",
     "capture_sha256": "ef29a1c93eba93a53a7f88edd1671698873e45316633aaf84e8b6f2c23106854",
     "qualification": "Eight close controls model held/rejected/healthy calls, fixed capacity, original budgets and retained owners at abort. Host unwind is not domain-retirement or wider destructor proof. Live malformed returned-capability/map/bind/observation faults not injected; close introduces no request memory mapping."
@@ -603,15 +603,15 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
-    "native_clippy": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe -- -D warnings",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe -- -D warnings",
     "host_clippy_sha256": "15bb8aafd6401dac03c8b3b9c95b18b51e0ec8263af908a8f44859fd7030708a",
     "native_clippy_sha256": "838f0b639f7869c9bb7f9a107dbfda935880cbff20366ec10807ae184e440ec8",
     "bundles": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ],
-    "arm_reproduction": "scripts/build-catten-services.sh --check: signatures verified and current-source signed bytes match"
+    "arm_reproduction": "scripts/build-knytos-services.sh --check: signatures verified and current-source signed bytes match"
   },
   "formal": {
     "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",

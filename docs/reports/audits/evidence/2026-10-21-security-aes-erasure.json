@@ -11,7 +11,7 @@
   "finding": {
     "selected_suite": "embedded-tls::Aes128GcmSha256 -> aes-gcm 0.10.3 -> aes 0.8.4",
     "baseline": "AES zeroize feature absent; software/hardware Drop compiles out named round-key wiping. No cross-domain read or new retained-storage probe is claimed.",
-    "correction": "Direct catten-services AES feature edge and production ZeroizeOnDrop bounds for Aes128/Aes128Enc/Aes128Dec.",
+    "correction": "Direct knytos-services AES feature edge and production ZeroizeOnDrop bounds for Aes128/Aes128Enc/Aes128Dec.",
     "lifetime": "embedded-tls connection.rs creates local AEAD owners during record encrypt/decrypt; ordinary return/error drops AES fields. Enclosing traffic-key, HKDF and authentication state remain separate.",
     "ownership": "Existing C18 transport scope; no capability/root cleanup, allocator, guard, wait, remote teardown, registry, custody, physical completion or retry authority.",
     "wire_abi_or_algorithm_changes": false
@@ -19,7 +19,7 @@
   "dependencies": {
     "versions_and_checksums_unchanged": true,
     "new_dependency_edges": [
-      "catten-services -> aes",
+      "knytos-services -> aes",
       "aes -> zeroize"
     ],
     "baseline_locked_aes": {
@@ -45,7 +45,7 @@
         "zeroize"
       ]
     },
-    "final_feature_graph": "aes v0.8.4\n\u251c\u2500\u2500 aes feature \"default\"\n\u2502   \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502       \u2514\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502               \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n\u2502               \u2502       \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502               \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502               \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502               \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502                   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502                   \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502                   \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n",
+    "final_feature_graph": "aes v0.8.4\n\u251c\u2500\u2500 aes feature \"default\"\n\u2502   \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502       \u2514\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502               \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n\u2502               \u2502       \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502               \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502               \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502               \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502                   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502                   \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502                   \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n",
     "source_sha256": {
       "aes-0.8.4/Cargo.toml": "0e3a91948ceb119a3f36209a8c5a6a7627cd7a09de903b5e606f563276376fed",
       "aes-0.8.4/src/lib.rs": "8904ed0f1da5d3c6ca6cfb61add4a957054a9f95ce573c3ab198b59ba9ab06cd",
@@ -103,14 +103,14 @@
   },
   "host_validation": {
     "debug": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests",
       "transport_exit_status": 0,
       "captured_transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
@@ -142,9 +142,9 @@
           "--offline",
           "--locked",
           "-p",
-          "charlotte-kafka",
+          "knytos-kafka",
           "-p",
-          "charlotte-s3",
+          "knytos-s3",
           "-p",
           "charlotte-transport-tests",
           "--no-run",
@@ -153,17 +153,17 @@
         "exit_status": 0,
         "targets": {
           "sasl_ownership": {
-            "path": "target/debug/build/charlotte-kafka/182e2005c0955d4a/out/sasl_ownership-182e2005c0955d4a",
+            "path": "target/debug/build/knytos-kafka/182e2005c0955d4a/out/sasl_ownership-182e2005c0955d4a",
             "sha256": "888a0e59f8071719f718750885f9e28030441cee4a84381d08b56dfe24158731",
             "registered_tests": 7
           },
-          "charlotte_s3": {
-            "path": "target/debug/build/charlotte-s3/68b08df4aa1f20dc/out/charlotte_s3-68b08df4aa1f20dc",
+          "knytos_s3": {
+            "path": "target/debug/build/knytos-s3/68b08df4aa1f20dc/out/knytos_s3-68b08df4aa1f20dc",
             "sha256": "7d6d9e7ab456b3bd00b5f83445a36199a799fb6c8e9acafc6df680a4c8624a9f",
             "registered_tests": 8
           },
-          "charlotte_kafka": {
-            "path": "target/debug/build/charlotte-kafka/04dc9fff74f9deb4/out/charlotte_kafka-04dc9fff74f9deb4",
+          "knytos_kafka": {
+            "path": "target/debug/build/knytos-kafka/04dc9fff74f9deb4/out/knytos_kafka-04dc9fff74f9deb4",
             "sha256": "cc6ded063d904e93547c9fbeab8a9fd9d5cdced0daadc152d8ace796568b3481",
             "registered_tests": 21
           },
@@ -223,14 +223,14 @@
       }
     },
     "release": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p catten-services --lib -p charlotte-kafka -p charlotte-s3",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-services --lib -p knytos-kafka -p knytos-s3",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests",
       "transport_exit_status": 0,
       "captured_transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
@@ -253,9 +253,9 @@
           "--offline",
           "--locked",
           "-p",
-          "charlotte-kafka",
+          "knytos-kafka",
           "-p",
-          "charlotte-s3",
+          "knytos-s3",
           "-p",
           "charlotte-transport-tests",
           "--no-run",
@@ -265,17 +265,17 @@
         "exit_status": 0,
         "targets": {
           "sasl_ownership": {
-            "path": "target/release/build/charlotte-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a",
+            "path": "target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a",
             "sha256": "4e39fe750994075f221a952d7e942318e1d4d88fce6e95643eaa6f5aec25ed63",
             "registered_tests": 7
           },
-          "charlotte_s3": {
-            "path": "target/release/build/charlotte-s3/033cae8f3a8ba57e/out/charlotte_s3-033cae8f3a8ba57e",
+          "knytos_s3": {
+            "path": "target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e",
             "sha256": "177dbf47d8aec15f6d3d7545fe647998c24a9f7ca7c5db98771d5bb5bb8425da",
             "registered_tests": 8
           },
-          "charlotte_kafka": {
-            "path": "target/release/build/charlotte-kafka/1f3d27bdba0b43dc/out/charlotte_kafka-1f3d27bdba0b43dc",
+          "knytos_kafka": {
+            "path": "target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc",
             "sha256": "a8f64ab9aa631cdd053ebc8bd1f246d6d747c60e761f2ef41c1f76c12e8f8a79",
             "registered_tests": 21
           },
@@ -342,7 +342,7 @@
   },
   "checks": {
     "clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
       "exit_status": 0
     },
     "format": {
@@ -354,16 +354,16 @@
       "exit_status": 0
     },
     "arm_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0
     },
     "arm_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "diagnostic": ">>> Staged AArch64 service bundle signatures verified."
     },
     "x86_build": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0
     },
     "native_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)"
@@ -626,8 +626,8 @@
   },
   "reviewed_source_sha256": {
     "Cargo.lock": "358053eaeb0f2df21345b6655ba0ab25add19375d90cabfc7b08cdb1f4472a61",
-    "crates/catten-services/Cargo.toml": "80086e179ced21578db7625c6fb66f8f980e4eaf93319d60d3828052577005e9",
-    "crates/catten-services/src/tls_client.rs": "0b4bbfd31ff8c907f13f1c39c94a8412d8e32c8d029c68fd284ec0c4b4f0f149",
+    "crates/knytos-services/Cargo.toml": "80086e179ced21578db7625c6fb66f8f980e4eaf93319d60d3828052577005e9",
+    "crates/knytos-services/src/tls_client.rs": "0b4bbfd31ff8c907f13f1c39c94a8412d8e32c8d029c68fd284ec0c4b4f0f149",
     "docs/guides/testing.md": "f79ef72c48bd87ed03e881d5603ba44ded2a6fed3de3ca14bb4588cf704b22eb",
     "docs/manual-v2/chapters/13-networking.tex": "11dd69135fe82e96b9e67769602b3004105af0e8baf90c84cf03d544b7646c08",
     "docs/reference/cleanup-recovery.md": "040a2899bb81f92bca2d03826df8b4a63f8258165630abef16feab2c32855add",

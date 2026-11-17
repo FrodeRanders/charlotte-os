@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CharlotteOS SDK command. Copied to the SDK root as `charlotte`."""
+"""Knytos SDK command. Copied to the SDK root as `charlotte`."""
 import argparse
 import hashlib
 import json
@@ -60,10 +60,10 @@ def new_project(sdk, project, lock):
         raise ValueError(f'refusing to overwrite {project}')
     (project / 'app/src').mkdir(parents=True)
     (project / 'logic/src').mkdir(parents=True)
-    sdk_dependency = json.dumps(str(sdk / 'crates/charlotte-app'))
+    sdk_dependency = json.dumps(str(sdk / 'crates/knytos-app'))
     (project / 'Cargo.toml').write_text('[workspace]\nmembers = ["app", "logic"]\nresolver = "3"\n\n[profile.release]\npanic = "abort"\nlto = true\nopt-level = 3\n')
     (project / 'rust-toolchain.toml').write_text(f'[toolchain]\nchannel = "{lock["toolchain"]}"\ncomponents = ["rust-src", "llvm-tools"]\n')
-    (project / 'app/Cargo.toml').write_text(f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2024"\n\n[[bin]]\nname = "{name}"\npath = "src/main.rs"\ntest = false\nbench = false\n\n[dependencies]\ncharlotte-app = {{ path = {sdk_dependency} }}\n{name}-logic = {{ path = "../logic" }}\n')
+    (project / 'app/Cargo.toml').write_text(f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2024"\n\n[[bin]]\nname = "{name}"\npath = "src/main.rs"\ntest = false\nbench = false\n\n[dependencies]\nknytos-app = {{ path = {sdk_dependency} }}\n{name}-logic = {{ path = "../logic" }}\n')
     (project / 'logic/Cargo.toml').write_text(f'[package]\nname = "{name}-logic"\nversion = "0.1.0"\nedition = "2024"\n')
     (project / 'logic/src/lib.rs').write_text('''#![no_std]
 /// Example business rule: quantities must be nonzero and totals must fit.
@@ -83,19 +83,19 @@ mod tests {
 ''')
     (project / 'app/src/main.rs').write_text(f'''#![no_std]
 #![no_main]
-use charlotte_app::{{AppExit, Application, Context, LaunchError}};
+use knytos_app::{{AppExit, Application, Context, LaunchError}};
 fn run(ctx: &Context) -> Result<AppExit, LaunchError> {{
     let _application = Application::from_context(ctx)?;
     let total = {name.replace('-', '_')}_logic::total(3, 25);
-    charlotte_app::logln!("total: {{:?}}", total);
+    knytos_app::logln!("total: {{:?}}", total);
     Ok(AppExit::Completed)
 }}
-charlotte_app::entry!(run);
+knytos_app::entry!(run);
 ''')
     (project / 'charlotte.json').write_text(json.dumps({'name': name, 'sdk': str(sdk), 'sdk_fingerprint': hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest(), 'stack_pages': 4, 'max_threads': 1, 'shutdown_grace_ms': 5000, 'grants': []}, indent=2) + '\n')
     (project / '.gitignore').write_text('/target/\n/.charlotte/\n')
     shutil.copyfile(sdk / 'Cargo.lock', project / 'Cargo.lock')
-    print(f'Created {project}; run {sdk / "charlotte"} test {project}')
+    print(f'Created {project}; run {sdk / "knytos"} test {project}')
 
 
 def main():

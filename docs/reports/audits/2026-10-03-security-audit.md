@@ -1,11 +1,11 @@
-# CharlotteOS security audit — 2026-10-03
+# Knytos security audit — 2026-10-03
 
 Follow-up: [implemented remediations, validation, and remaining work](2026-10-03-security-remediation.md).
 Findings below describe the reviewed revision, not the hardened working tree.
 
 ## Verdict
 
-CharlotteOS has meaningful security mechanisms, particularly kernel-derived
+Knytos has meaningful security mechanisms, particularly kernel-derived
 IPC identity, generation-aware capabilities, signed deployment admission,
 connector-only credentials, and DMA pinning. However, the current build is
 not ready to host mutually distrustful applications or to expose its management
@@ -174,7 +174,7 @@ on both architectures. Include allocation/mapping rollback and TLB behaviour.
 
 **Confirmed authorization gap; High.**
 
-[grantctl.rs:50](../../../crates/catten-services/src/bin/grantctl.rs#L50)
+[grantctl.rs:50](../../../crates/knytos-services/src/bin/grantctl.rs#L50)
 verifies the descriptor supplied in the request and compares its artifact-name
 principal with the kernel-authenticated caller principal. It then checks the
 grants in that supplied descriptor. It does not compare the descriptor with the
@@ -186,8 +186,8 @@ The launch path does install an immutable descriptor into the application
 That helps cooperative clients, but `grantctl` accepts independently constructed
 request bytes; an application is not forced to use its installed descriptor.
 The controller's revision ledger is keyed by principal, starts empty, and is
-volatile ([grantctl.rs:82](../../../crates/catten-services/src/bin/grantctl.rs#L82),
-[grantctl.rs:246](../../../crates/catten-services/src/bin/grantctl.rs#L246)).
+volatile ([grantctl.rs:82](../../../crates/knytos-services/src/bin/grantctl.rs#L82),
+[grantctl.rs:246](../../../crates/knytos-services/src/bin/grantctl.rs#L246)).
 
 A compromised version can present a valid descriptor for another version of
 the same name with broader grants. A newer approved-but-not-launched descriptor
@@ -244,7 +244,7 @@ requires explicit delegation and authenticated policy.
 
 **Confirmed default configuration; Critical if used for real authority/secrets.**
 
-The steady-state boot path invokes `launch_deployment_plane(&ns, b"charlotte")`
+The steady-state boot path invokes `launch_deployment_plane(&ns, b"knytos")`
 ([launch.rs:1056](../../../crates/catten/src/service/launch.rs#L1056)). That helper
 installs development admission trust and the embedded development recipient
 private key ([launch.rs:774](../../../crates/catten/src/service/launch.rs#L774)).
@@ -281,10 +281,10 @@ recipient while awaiting this work.
 **Confirmed service-authority gap; High.**
 
 The TCP/IP reactor obtains authenticated sender identity and uses it to own
-sockets ([tcpip.rs:893](../../../crates/catten-services/src/bin/tcpip.rs#L893)).
+sockets ([tcpip.rs:893](../../../crates/knytos-services/src/bin/tcpip.rs#L893)).
 However, its `OP_FRAME` branch accepts any valid frame attachment and pushes it
 into the shared receive device without checking that the caller is the trusted
-frame router ([tcpip.rs:1358](../../../crates/catten-services/src/bin/tcpip.rs#L1358)).
+frame router ([tcpip.rs:1358](../../../crates/knytos-services/src/bin/tcpip.rs#L1358)).
 
 A normal socket client with CALL authority can therefore impersonate the
 stack's network input. This bypasses per-socket ownership: injected traffic is
@@ -313,10 +313,10 @@ handled explicitly. Test negative VIP/port claims as well as ordinary sockets.
 The node/cluster keyhole handles one connection at a time. While awaiting the
 first request chunk it retries timeouts indefinitely. EOF calls `fail(0xe00e)`;
 other receive errors also call `fail`. `fail` terminates the service thread.
-See [httpd.rs:1468](../../../crates/catten-services/src/bin/httpd.rs#L1468) and
-[httpd.rs:225](../../../crates/catten-services/src/bin/httpd.rs#L225).
+See [httpd.rs:1468](../../../crates/knytos-services/src/bin/httpd.rs#L1468) and
+[httpd.rs:225](../../../crates/knytos-services/src/bin/httpd.rs#L225).
 The socket helper decodes a zero-length completion as EOF
-([lib.rs:1081](../../../crates/catten-services/src/lib.rs#L1081)).
+([lib.rs:1081](../../../crates/knytos-services/src/lib.rs#L1081)).
 
 An accepted idle connection can monopolize the keyhole; closing before sending
 a request can lead to thread exit rather than connection-local cleanup. The
@@ -327,8 +327,8 @@ remote failure trigger.
 
 The deployment HTTP adapter is also serial. Its bounded per-receive wait is
 restarted indefinitely, without a total header/body deadline or minimum
-progress requirement ([deployd.rs:197](../../../crates/catten-services/src/bin/deployd.rs#L197),
-[deployd.rs:513](../../../crates/catten-services/src/bin/deployd.rs#L513)). A client
+progress requirement ([deployd.rs:197](../../../crates/knytos-services/src/bin/deployd.rs#L197),
+[deployd.rs:513](../../../crates/knytos-services/src/bin/deployd.rs#L513)). A client
 can hold the admission listener with an idle or incomplete request. Request
 size caps do not prevent this, and body signatures are verified too late to
 protect listener availability.
@@ -379,12 +379,12 @@ charges reconcile after failures, transfer, abort, and generation reuse.
 **Confirmed architectural boundary; High outside that deployment assumption.**
 
 Discovery learns peers from matching cluster bytes and advertised identities,
-keyed by source MAC ([disco.rs:445](../../../crates/catten-services/src/bin/disco.rs#L445),
-[disco.rs:496](../../../crates/catten-services/src/bin/disco.rs#L496)). Raft
+keyed by source MAC ([disco.rs:445](../../../crates/knytos-services/src/bin/disco.rs#L445),
+[disco.rs:496](../../../crates/knytos-services/src/bin/disco.rs#L496)). Raft
 transport checks the asserted candidate/leader against the learned source MAC
-([relmsg_transport.rs:428](../../../crates/catten-services/src/relmsg_transport.rs#L428)).
+([relmsg_transport.rs:428](../../../crates/knytos-services/src/relmsg_transport.rs#L428)).
 DSR encapsulation checks a forwarder's source MAC against the current membership
-snapshot ([frouter.rs:326](../../../crates/catten-services/src/bin/frouter.rs#L326)).
+snapshot ([frouter.rs:326](../../../crates/knytos-services/src/bin/frouter.rs#L326)).
 These are useful consistency checks, not cryptographic peer authentication.
 
 The networking manual correctly states the trusted-L2 requirement, but the
@@ -425,14 +425,14 @@ admitted node rather than claiming ordinary Raft solves it.
 
 The time client validates SNTP version/mode, stratum, nonzero timestamps, and
 the echoed originate token, but performs no cryptographic source authentication
-([time.rs:553](../../../crates/catten-services/src/bin/time.rs#L553)). The token
+([time.rs:553](../../../crates/knytos-services/src/bin/time.rs#L553)). The token
 is derived from local time/counter data, not a cryptographically random nonce
-([time.rs:354](../../../crates/catten-services/src/bin/time.rs#L354)). An on-path
+([time.rs:354](../../../crates/knytos-services/src/bin/time.rs#L354)). An on-path
 attacker can observe and answer the request regardless of nonce quality.
 
 Accepted samples directly replace the UTC anchor; damping applies to oscillator
 drift, not an authentication or bound on the new absolute time
-([time.rs:165](../../../crates/catten-services/src/bin/time.rs#L165)). The
+([time.rs:165](../../../crates/knytos-services/src/bin/time.rs#L165)). The
 non-regression guard prevents exposed time moving backwards, but a large
 forward jump can leave time incorrect and effectively held until the true
 clock catches up.
@@ -440,10 +440,10 @@ clock catches up.
 There is a second issue independent of network spoofing: `OP_UNIX_SECONDS`
 returns any available model, including persisted holdover, without returning
 state, uncertainty, or synchronization age
-([time.rs:848](../../../crates/catten-services/src/bin/time.rs#L848)). Both
+([time.rs:848](../../../crates/knytos-services/src/bin/time.rs#L848)). Both
 `dns::trusted_unix_seconds` and the agent's similarly named helper consume that
-scalar ([dns.rs:1261](../../../crates/catten-services/src/bin/dns.rs#L1261),
-[agent.rs:480](../../../crates/catten-services/src/bin/agent.rs#L480)). Connector
+scalar ([dns.rs:1261](../../../crates/knytos-services/src/bin/dns.rs#L1261),
+[agent.rs:480](../../../crates/knytos-services/src/bin/agent.rs#L480)). Connector
 TLS startup checks synchronization state, but that state means a successful
 SNTP exchange, not authenticated UTC.
 
@@ -514,7 +514,7 @@ against the constant development `CLUSTER_PUBLIC_KEY`
 ([loader.rs:367](../../../crates/catten/src/service/loader.rs#L367),
 [loader.rs:462](../../../crates/catten/src/service/loader.rs#L462)). `grantctl`
 also verifies descriptors against that constant
-([grantctl.rs:64](../../../crates/catten-services/src/bin/grantctl.rs#L64)).
+([grantctl.rs:64](../../../crates/knytos-services/src/bin/grantctl.rs#L64)).
 
 A correctly configured independent artifact/deployment key therefore does not
 work end to end. This is principally false rejection and an obstacle to
@@ -541,7 +541,7 @@ not implicitly retained as fallback roots.
 
 The local object store dispatches read/write/delete/create-at operations by
 numeric object ID without owner, namespace, or operation-specific policy
-([objstore.rs:1267](../../../crates/catten-services/src/bin/objstore.rs#L1267)).
+([objstore.rs:1267](../../../crates/knytos-services/src/bin/objstore.rs#L1267)).
 A caller holding its connection can access objects belonging to other clients.
 Object magic strings help inspection; they are not authorization checks.
 
@@ -626,13 +626,13 @@ graph before making any “no known vulnerabilities” claim.
 **Confirmed defence-in-depth gap; Low.**
 
 The connector stores its long-lived S3 secret in `Zeroizing<Vec<u8>>`
-([s3.rs:99](../../../crates/catten-services/src/bin/s3.rs#L99)), but the SigV4
+([s3.rs:99](../../../crates/knytos-services/src/bin/s3.rs#L99)), but the SigV4
 helper creates an ordinary vector containing `AWS4 || secret` and ordinary
 arrays for the derived date/region/service/signing keys
-([sigv4.rs:143](../../../crates/charlotte-s3/src/sigv4.rs#L143)). Their release
+([sigv4.rs:143](../../../crates/knytos-s3/src/sigv4.rs#L143)). Their release
 does not guarantee erasure. TLS buffer reclamation likewise frees buffers
 without an explicit wipe
-([tls_client.rs:227](../../../crates/catten-services/src/tls_client.rs#L227)).
+([tls_client.rs:227](../../../crates/knytos-services/src/tls_client.rs#L227)).
 
 This is not a demonstrated cross-domain secret read: newly allocated
 memory-object frames are zeroed, and normal page isolation still applies.
@@ -655,11 +655,11 @@ CPU copies.
 
 After accepting a grant request, the controller synchronously waits for
 `OP_LOOKUP_FOR_GRANT`
-([grantctl.rs:207](../../../crates/catten-services/src/bin/grantctl.rs#L207)).
+([grantctl.rs:207](../../../crates/knytos-services/src/bin/grantctl.rs#L207)).
 The name service parks that request when the target service is missing
-([ns.rs:1086](../../../crates/catten-services/src/bin/ns.rs#L1086)). The controller
+([ns.rs:1086](../../../crates/knytos-services/src/bin/ns.rs#L1086)). The controller
 has a single blocking receive/handle loop and no lookup timeout
-([grantctl.rs:240](../../../crates/catten-services/src/bin/grantctl.rs#L240)).
+([grantctl.rs:240](../../../crates/knytos-services/src/bin/grantctl.rs#L240)).
 
 One application with a valid grant to an unavailable service can therefore
 prevent unrelated applications from acquiring or publishing capabilities.
@@ -709,7 +709,7 @@ corrections rather than being bypassed for convenience.
   the application the grant controller connection and a read-only descriptor.
   Acquired service connections are attenuated to the requested client rights;
   re-delegation authority stays with trusted mediation
-  ([ns.rs:396](../../../crates/catten-services/src/bin/ns.rs#L396)). SEC-02 and
+  ([ns.rs:396](../../../crates/knytos-services/src/bin/ns.rs#L396)). SEC-02 and
   SEC-16 are gaps in that mediation, not reasons to remove it.
 - **ELF and data permissions.** The untrusted ELF validator rejects writable
   executable segments, overlap, malformed file bounds, and non-executable
@@ -722,7 +722,7 @@ corrections rather than being bypassed for convenience.
   authentication profile validation. Application APIs do not return credentials.
 - **TLS fails closed on handshake/entropy failures.** The shared wrapper
   supplies a CA verifier and server name and requires usable entropy
-  ([tls_client.rs:120](../../../crates/catten-services/src/tls_client.rs#L120)).
+  ([tls_client.rs:120](../../../crates/knytos-services/src/tls_client.rs#L120)).
   Reviewed TLS-enabled connector branches return failure rather than silently
   falling back to plaintext. A caller-selected plaintext profile remains a
   separate policy issue.
@@ -771,7 +771,7 @@ hardware experiments or establish that those residual concerns were resolved.
 
 The [EL2 capability-root document](../../architecture/el2-capability-root.md)
 is a research design, not an implemented protection that can be assumed here.
-Similarly, artifact signatures inside Charlotte do not demonstrate an
+Similarly, artifact signatures inside Knytos do not demonstrate an
 authenticated firmware/bootloader/kernel chain. A hostile hypervisor can also
 observe guest memory and host-provided entropy under the present deployment
 model; virtio RNG is useful entropy provisioning, not protection from its host.

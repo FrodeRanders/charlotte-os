@@ -1,7 +1,7 @@
 \chapter{Networking}
 \label{chap:networking}
 
-CharlotteOS treats networking as an extension of its message-passing and
+Knytos treats networking as an extension of its message-passing and
 capability model. TCP/IP is available for interoperability, while native
 communication remains capability-based.
 
@@ -14,29 +14,29 @@ The guiding principle is:
 \section{Sockets as a compatibility interface}
 
 The Berkeley socket API (\texttt{socket()}, \texttt{connect()}, \texttt{send()},
-\texttt{recv()}) remains useful for compatibility. CharlotteOS places it in a
+\texttt{recv()}) remains useful for compatibility. Knytos places it in a
 TCP/IP service, while native service interfaces use capabilities:
 
 \begin{itemize}
-    \item Network addresses do not define Charlotte service identity:
+    \item Network addresses do not define Knytos service identity:
         \texttt{10.2.3.17:443} locates an endpoint. DNS or another directory can
         associate that address with a service, while the association remains
         outside the socket handle.
 
     \item TCP sockets expose byte streams: an application protocol must add its
-        own message boundaries. Charlotte's native IPC preserves them.
+        own message boundaries. Knytos' native IPC preserves them.
 
     \item Socket authority usually comes from process and network policy:
         sandboxes, firewalls, and namespaces restrict reachability, while the
         socket API does not require a delegated capability naming the target
-        service. Charlotte's native path does.
+        service. Knytos' native path does.
 
     \item TCP-specific code needs an adapter to use shared memory for local
-        communication or RDMA for a high-performance interconnect. Charlotte's
+        communication or RDMA for a high-performance interconnect. Knytos'
         service API keeps that choice below the application protocol.
 \end{itemize}
 
-CharlotteOS therefore separates the stack into layers with distinct
+Knytos therefore separates the stack into layers with distinct
 responsibilities.
 
 The stack below describes the target architecture. The repository already
@@ -88,7 +88,7 @@ endpoint protocol has two operations:
 \end{itemize}
 
 Ethernet is a generic frame transport. It can carry IP, ARP, LLDP, custom
-protocols, or CharlotteOS native messages, and higher layers interpret the frames.
+protocols, or Knytos native messages, and higher layers interpret the frames.
 
 \subsection{Reliable message layer}
 
@@ -521,7 +521,7 @@ workloads and result reporting, but they do not enable the runtime services.
 \section{Cluster-wide TCP ingress and direct server return}
 \label{sec:distributed-l2-ingress}
 
-Charlotte can expose a bounded table of launch-authorized IPv4 TCP services as
+Knytos can expose a bounded table of launch-authorized IPv4 TCP services as
 cluster \texttt{VIP:port} identities. This gives clients two complementary
 addressing modes. A node's DHCP or static address names that machine and suits
 intentionally node-specific traffic. A VIP names a service in the cluster, so
@@ -529,7 +529,7 @@ the client need not know which node admits the packet or owns the connection.
 Those roles can change without changing the service address.
 
 Direct Server Return is often introduced as a load-balancing technique, and
-Charlotte uses it to distribute five-tuples across eligible execution nodes.
+Knytos uses it to distribute five-tuples across eligible execution nodes.
 It also provides a cluster facade: the stable external identity belongs to the
 service, while node addresses and MAC routes remain internal placement and
 delivery details. The VIP thus lets clients address the cluster as a whole.
@@ -544,7 +544,7 @@ The frame router does not proxy the TCP stream. It parses the external frame's
 five-tuple and uses deterministic rendezvous hashing to select an execution
 node. A local winner follows the ordinary
 \texttt{OP\_FRAME} path into smoltcp. For a remote winner, the router changes
-the Ethernet delivery into a compact one-hop Charlotte envelope and moves the
+the Ethernet delivery into a compact one-hop Knytos envelope and moves the
 same memory object back through \texttt{net::OP\_SEND}. The envelope carries
 the original source MAC and EtherType, and the selected backend validates the
 outer source against its committed member routes and removes the envelope in
@@ -694,7 +694,7 @@ required. The detailed wire contract and security limitations are recorded in
 \section{Capability-scoped external data services}
 \label{sec:external-data-services}
 
-CharlotteOS provides narrow S3 and Kafka compatibility services on top of the
+Knytos provides narrow S3 and Kafka compatibility services on top of the
 userspace TCP/IP stack. They preserve the capability model at the application
 boundary while communicating with conventional external systems:
 
@@ -759,10 +759,10 @@ profiles, but ECS interoperability has not yet been runtime-qualified in this
 repository.
 
 The transport-independent Signature V4 and HTTP code lives in
-\repodir|crates/charlotte-s3|, the application protocol in
-\repodir|crates/charlotte-protocol-s3|, the owned client in
-\repofile|crates/charlotte-app/src/s3_client.rs|, and the service adapter in
-\repofile|crates/catten-services/src/bin/s3.rs|.
+\repodir|crates/knytos-s3|, the application protocol in
+\repodir|crates/knytos-protocol-s3|, the owned client in
+\repofile|crates/knytos-app/src/s3_client.rs|, and the service adapter in
+\repofile|crates/knytos-services/src/bin/s3.rs|.
 
 \subsection{Kafka client service}
 \label{sec:kafka-service}
@@ -1016,10 +1016,10 @@ second connector capability nor either connector's credentials are delegated
 to the probe.
 
 The bounded Kafka wire implementation is in
-\repodir|crates/charlotte-kafka|, the application protocol in
-\repodir|crates/charlotte-protocol-kafka|, the linear client owners in
-\repofile|crates/charlotte-app/src/kafka_client.rs|, and the broker adapter in
-\repofile|crates/catten-services/src/bin/kafka.rs|.
+\repodir|crates/knytos-kafka|, the application protocol in
+\repodir|crates/knytos-protocol-kafka|, the linear client owners in
+\repofile|crates/knytos-app/src/kafka_client.rs|, and the broker adapter in
+\repofile|crates/knytos-services/src/bin/kafka.rs|.
 
 \section{Transport independence}
 

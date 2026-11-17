@@ -87,7 +87,7 @@ fn test_preparation(kind: Kind) {
     assert!(
         PreparingUserBacking::new(&mut space, kind)
             .unwrap()
-            .map_with(VAddr::from(charlotte_launch::HEAP_VADDR), PageType::UserData, |_, _| false,)
+            .map_with(VAddr::from(knytos_launch::HEAP_VADDR), PageType::UserData, |_, _| false,)
             .is_err()
     );
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), with_root);
@@ -101,7 +101,7 @@ fn test_preparation(kind: Kind) {
     });
     let frame = preparation
         .map_with(
-            VAddr::from(charlotte_launch::HEAP_VADDR),
+            VAddr::from(knytos_launch::HEAP_VADDR),
             PageType::UserData,
             |space, mapping| space.map_existing_page(mapping).is_ok(),
         )
@@ -148,7 +148,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
         assert_eq!(attempts, 1);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before - 1);
         assert_eq!(account(space, kind).pages(), 1);
-        assert!(!space.is_mapped(VAddr::from(charlotte_launch::HEAP_VADDR)).unwrap());
+        assert!(!space.is_mapped(VAddr::from(knytos_launch::HEAP_VADDR)).unwrap());
         assert!(matches!(
             PreparingUserBacking::new(space, kind),
             Err(BackingPreparationError::Admission)
@@ -158,7 +158,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
         PreparingUserBacking::new(space, kind)
             .unwrap()
             .map_with(
-                VAddr::from(charlotte_launch::HEAP_VADDR),
+                VAddr::from(knytos_launch::HEAP_VADDR),
                 PageType::UserData,
                 |space, mapping| space.map_existing_page(mapping).is_ok(),
             )
@@ -187,7 +187,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
         let frame = PreparingUserBacking::new(space, kind)
             .unwrap()
             .map_with(
-                VAddr::from(charlotte_launch::HEAP_VADDR),
+                VAddr::from(knytos_launch::HEAP_VADDR),
                 PageType::UserData,
                 |space, mapping| space.map_existing_page(mapping).is_ok(),
             )
@@ -214,7 +214,7 @@ fn test_unconfirmed_publication(kind: Kind, phase: usize) {
         preparation
             .space
             .map_existing_page(MemoryMapping {
-                vaddr: VAddr::from(charlotte_launch::HEAP_VADDR),
+                vaddr: VAddr::from(knytos_launch::HEAP_VADDR),
                 paddr: frame,
                 page_type: PageType::UserData,
             })
@@ -235,7 +235,7 @@ fn test_unconfirmed_publication(kind: Kind, phase: usize) {
         assert_eq!(allocator.free_frames(), mapped);
         drop(allocator);
         assert_eq!(
-            space.translate_address(VAddr::from(charlotte_launch::HEAP_VADDR)).unwrap(),
+            space.translate_address(VAddr::from(knytos_launch::HEAP_VADDR)).unwrap(),
             frame
         );
         assert_eq!(account(space, kind).pages(), 1);

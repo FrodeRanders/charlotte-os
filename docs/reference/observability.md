@@ -1,6 +1,6 @@
 # Observability
 
-CharlotteOS now has a small, capability-preserving foundation for runtime
+Knytos now has a small, capability-preserving foundation for runtime
 statistics. It is intentionally split into three layers:
 
 1. The kernel records integer statistics at scheduler context switches.
@@ -83,7 +83,7 @@ folded from retired threads, live and high-water thread counts, and — when the
 domain publishes it — heap capacity, currently allocated bytes, the peak
 high-water mark, cumulative successful allocations and allocated bytes, and the
 cumulative arena-lock spin count. Heap facts come from the standard
-`charlotte_launch::heap_status` record that `catten-rt` maintains in the
+`knytos_launch::heap_status` record that `knytos-rt` maintains in the
 domain's own status page; the kernel only reads that page and never inspects
 allocator internals. A caller without the system-observer capability sees only
 its own domain; the system-observer capability widens both sections to the
@@ -165,12 +165,12 @@ Consumers can therefore derive CPU time, mean and variance of execution slices,
 and interval utilization by comparing two snapshots. The active slice is
 reported separately and is not included in the completed-slice accumulator.
 All wire fields are little-endian `u64` values; 128-bit values are encoded low
-word first. The constants in `catten-syscall` are the authoritative ABI.
+word first. The constants in `knytos-syscall` are the authoritative ABI.
 
 ## Security and aggregation
 
 Observability does not imply ambient inspection authority. A normal service can
-inspect only its own protection domain. This is consistent with CharlotteOS'
+inspect only its own protection domain. This is consistent with Knytos'
 capability model and prevents an arbitrary process from learning the activity
 of unrelated services.
 

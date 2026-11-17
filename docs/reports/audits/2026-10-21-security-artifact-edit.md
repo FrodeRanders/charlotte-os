@@ -36,7 +36,7 @@ File modes continue through ordinary OS semantics; no chmod policy is added.
 Commit consumes the owner on success or error. A write/set-length error may
 leave partial or uncertain content; it supplies no retry owner or rollback.
 Default field Drop closes the host descriptor and releases the public image.
-This is local host ownership, without Charlotte capability/root cleanup,
+This is local host ownership, without Knytos capability/root cleanup,
 guards, waits, remote teardown, a new registry/custody boundary or physical
 completion proof. The existing [C18 row](../../reference/cleanup-recovery.md)
 records the complete owner and remaining limits. Living Markdown and manual

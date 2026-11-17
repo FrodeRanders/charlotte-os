@@ -26,7 +26,7 @@ der = { version = "0.8", features = ["derive", "oid", "heapless"] }
 # Logging alternatives
 log = { version = "0.4", optional = true }
 
-# Charlotte validates this source through the production service interop suite
+# Knytos validates this source through the production service interop suite
 # and the isolated parser controls. Upstream's all-driver test dependencies
 # would override the workspace's erasing crypto registrations.
 [lib]

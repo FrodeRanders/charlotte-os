@@ -91,7 +91,7 @@ dependency to upgrade.
 Inspect the retained service-build report with:
 
 ```sh
-CARGO_TARGET_DIR=crates/catten-services/target \
+CARGO_TARGET_DIR=crates/knytos-services/target \
   cargo report future-incompatibilities --id 1
 ```
 

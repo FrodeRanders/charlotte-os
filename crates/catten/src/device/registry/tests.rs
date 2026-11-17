@@ -204,7 +204,7 @@ pub(in crate::device) fn principal_root(
     name: &[u8],
     trusted: bool,
 ) -> (crate::memory::AddressSpaceHandle, u64) {
-    let principal = charlotte_launch::artifact_principal_id(name);
+    let principal = knytos_launch::artifact_principal_id(name);
     let root = crate::memory::AddressSpace::try_new_principal_user(
         trusted,
         crate::memory::prepare_principal_backing(principal, trusted).unwrap(),

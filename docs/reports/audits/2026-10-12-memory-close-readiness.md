@@ -132,8 +132,8 @@ failed guests.
 ## Final validation and artifacts
 
 Both bundled services were rebuilt before guests with
-`scripts/build-catten-services.sh --embed` and
-`scripts/build-catten-services-x86_64.sh`. Host suite:
+`scripts/build-knytos-services.sh --embed` and
+`scripts/build-knytos-services-x86_64.sh`. Host suite:
 **384 passed, 0 failed, 3 ignored**. Formatting and diff checks passed.
 Strict `-D warnings` Clippy passed for bundled services, ARM
 security/HTTP/DHCP kernel and x86 HTTP/DHCP kernel.

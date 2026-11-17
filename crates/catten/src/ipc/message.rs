@@ -66,8 +66,8 @@ pub(super) fn enqueue_message(
             (
                 1,
                 1,
-                catten_syscall::domain_roles::POLICY_ADMIN
-                    | catten_syscall::domain_roles::SERVICE_MANAGER,
+                knytos_syscall::domain_roles::POLICY_ADMIN
+                    | knytos_syscall::domain_roles::SERVICE_MANAGER,
             )
         } else if let Some(authority) = crate::memory::domain_authority(sender) {
             (authority.address_space.generation() as u64, authority.principal, authority.roles)

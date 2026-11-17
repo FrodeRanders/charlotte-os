@@ -40,7 +40,7 @@ impl PreparingRecord {
     ) -> Result<ObjectCapability, AllocationError> {
         assert!(self.0.node.is_some() && self.0.charge.is_none());
         self.0.charge = Some(budget::reserve(&table.budget, platform)?);
-        let (cap, next) = charlotte_lifecycle::claim_generation(table.next_serial)
+        let (cap, next) = knytos_lifecycle::claim_generation(table.next_serial)
             .ok_or(AllocationError::IdentityExhausted)?;
         table.next_serial = next;
         table.objects.insert(

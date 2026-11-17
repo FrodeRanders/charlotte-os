@@ -1,10 +1,10 @@
-# CharlotteOS contributor instructions
+# Knytos contributor instructions
 
 These instructions apply to the entire repository.
 
 ## Preserve the capability model
 
-CharlotteOS uses linear capability ownership. In userspace services and
+Knytos uses linear capability ownership. In userspace services and
 applications, do not store an owning capability as a bare integer and do not
 build manual cleanup ladders around early returns.
 
@@ -31,7 +31,7 @@ build manual cleanup ladders around early returns.
 - Borrow launch-owned capabilities through `Context` (for example,
   `bootstrap_connection()`); do not adopt them as owned capabilities.
 
-Direct resource-owning calls from `catten_syscall` belong in `catten-rt`, the
+Direct resource-owning calls from `knytos_syscall` belong in `knytos-rt`, the
 kernel/runtime boundary, or hardware/protocol adapter code that cannot yet be
 expressed by the owned API. New exceptions require a comment explaining the
 missing abstraction. CQ operations, status/config access, logging, and terminal
@@ -45,7 +45,7 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 - Use `cargo fmt` rather than hand-adjusting rustfmt output. Prefer raw strings,
   named constants, or `concat!` for long protocol/HTML literals that otherwise
   depend on line-continuation whitespace.
-- Build bundled AArch64 services with `scripts/build-catten-services.sh`.
+- Build bundled AArch64 services with `scripts/build-knytos-services.sh`.
 - Scope `global_asm!` sections with `.pushsection`/`.popsection`; blocks share
   assembler state within a codegen unit. Native kernel trampolines must remain
   in executable, read-only ELF sections and load segments. Boot runners enforce

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify or restore the exact Limine binary release used by CharlotteOS.
+# Verify or restore the exact Limine binary release used by Knytos.
 
 set -euo pipefail
 
@@ -102,7 +102,7 @@ UPSTREAM_DIR="${VERIFY_TMP_DIR}/unpack/limine-binary"
 [ -d "$UPSTREAM_DIR" ] || { echo "error: archive has no limine-binary directory" >&2; exit 1; }
 
 # The checksum manifest must enumerate every payload file in the official
-# archive. VERSION and SHA256SUMS are CharlotteOS metadata and intentionally do
+# archive. VERSION and SHA256SUMS are Knytos metadata and intentionally do
 # not occur in the upstream file list.
 find "$UPSTREAM_DIR" -type f -print \
     | sed "s|^${VERIFY_TMP_DIR}/unpack/||" \

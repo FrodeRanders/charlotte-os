@@ -201,8 +201,8 @@ Kernel side: \texttt{write(cap, result)}. Consumer side:
 
 \subsection{The launch contract}
 
-A CharlotteOS userspace program is a \texttt{no\_std} ELF binary. It uses
-the \texttt{catten-rt} crate (the CRT, or C runtime) and the \texttt{entry!}
+A Knytos userspace program is a \texttt{no\_std} ELF binary. It uses
+the \texttt{knytos-rt} crate (the CRT, or C runtime) and the \texttt{entry!}
 macro:
 
 \begin{lstlisting}[style=rustCode]
@@ -217,7 +217,7 @@ fn main(ctx: Context) -> ! {
         .unwrap_or_else(|| catten_rt::domain_abort());
     // A deployed application also borrows ctx.profile_memory().
     // See the complete client in Section 5's discovery discussion.
-    unsafe { catten_syscall::thread_exit() }
+    unsafe { knytos_syscall::thread_exit() }
 }
 
 catten_rt::entry!(main);
@@ -228,7 +228,7 @@ signed-grant acquisition, an owned session connection, business progress outside
 that session, bounded reconnection and explicit accepted-call cancellation.
 
 The program does not define \texttt{\_start}, a panic handler, or an allocator.
-These are provided by \texttt{catten-rt}. The \texttt{entry!} macro wires them
+These are provided by \texttt{knytos-rt}. The \texttt{entry!} macro wires them
 together, validates the launch ABI version, sets up the heap, and calls
 \texttt{main(ctx)}. A panic invokes the domain-abort syscall: every thread in
 the address space is retired, so no sibling can continue after shared Rust
@@ -277,7 +277,7 @@ integers. Application code should use the linear wrappers in
         so a replacement thread cannot satisfy a delayed join.
 \end{itemize}
 
-The raw \texttt{catten-syscall} interface remains available to runtimes and
+The raw \texttt{knytos-syscall} interface remains available to runtimes and
 drivers. Coherent \texttt{dma\_map} is explicitly unsafe because the driver
 must synchronize CPU references and device access itself. Mixing raw
 operations with an adopted ownership wrapper violates the wrapper's safety
@@ -285,7 +285,7 @@ contract.
 
 These wrappers have host-side failure injection for unmap, DMA/MMIO release,
 completion cancellation, IPC move rollback, vector descriptor rollback, and
-loan cancellation. The no-std \texttt{charlotte-lifecycle} crate supplies the
+loan cancellation. The no-std \texttt{knytos-lifecycle} crate supplies the
 pure generation classifiers used by both the kernel and runtime and exercises
 their bounded input spaces in host tests.
 
@@ -348,10 +348,10 @@ an unbounded queue.
 
 \subsection{Sitas integration}
 
-When writing code that uses Sitas on CharlotteOS:
+When writing code that uses Sitas on Knytos:
 
 \begin{itemize}
-    \item A Sitas shard is an LP-affine CharlotteOS user thread.
+    \item A Sitas shard is an LP-affine Knytos user thread.
     \item \texttt{CharlotteReactor::new(lp\_id)} binds a reactor to the calling
         shard's LP.
     \item Async operations return kernel-owned completion handles. A completion
@@ -420,7 +420,7 @@ pending call's terminal cleanup. The complete example in
 \autoref{sec:reconnecting-client} uses these APIs.
 
 The raw register ABI lives in the
-\repofiletext|crates/catten-syscall/src/lib.rs|{syscall SDK} and
+\repofiletext|crates/knytos-syscall/src/lib.rs|{syscall SDK} and
 \repofiletext|crates/catten/src/syscall/mod.rs|{kernel dispatcher}. The
 \repofiletext|docs/reference/ipc-receive.md|{receive contract} and
 \repofiletext|docs/reference/cq-wait.md|{checked CQ wait contract} describe their
@@ -457,7 +457,7 @@ the broader design history.
 
 \section{Application helpers}
 
-The \texttt{charlotte-app} library packages launch-grant borrowing, named
+The \texttt{knytos-app} library packages launch-grant borrowing, named
 acquisition, publication and typed socket, Kafka and S3 clients separately
 from the platform service implementations. Optional client features keep the
 application dependency boundary explicit. Its returning \texttt{entry!}
@@ -471,7 +471,7 @@ owner on deadline or rejected wait admission. The explicit
 \texttt{cancel\_on\_failure} convenience policy uses the existing fail-closed
 cleanup. Observation deadlines do not promise bounded teardown latency.
 
-\texttt{charlotte-app-sitas} wraps the existing Sitas reactor and supplies owned
+\texttt{knytos-app-sitas} wraps the existing Sitas reactor and supplies owned
 call futures. IPC readiness can be a CQ wake without a cookie entry, so the
 wrapper rechecks a bounded, fallibly prepared set of task interests after
 backend wakes. The backend remains the only ring consumer, so results still come

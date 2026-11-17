@@ -351,7 +351,7 @@
     "formatting": "cargo fmt --all -- --check",
     "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings",
     "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-    "x86_service_staging": "CARGO_BUILD_RUSTFLAGS=\"-D warnings\" bash scripts/build-catten-services-x86_64.sh",
+    "x86_service_staging": "CARGO_BUILD_RUSTFLAGS=\"-D warnings\" bash scripts/build-knytos-services-x86_64.sh",
     "whitespace": "git diff --check"
   },
   "report_sha256": "6893a396db2df35eeeea76dc2a23be5fa9acdd4e2fde96dc7bda1f40556a88f5"

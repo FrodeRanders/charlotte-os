@@ -2,7 +2,7 @@
 
 ## Review scope and method
 
-This synchronization revisits the formal suite after CharlotteOS gained
+This synchronization revisits the formal suite after Knytos gained
 replica-set placement, exact-generation readiness, distributed L2 ingress,
 cluster-wide TCP load sharing, operationally separated connector launch, and
 cluster drain and shutdown. The review began from implementation `11d5c3f`; a

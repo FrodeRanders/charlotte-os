@@ -46,7 +46,7 @@ claim. Sampling is not atomic with all subsequent service work or read admission
 ## Delayed reply: a stale read is still possible
 
 The version-controlled host witness
-[`audit_receive_lease.rs`](../../../crates/catten-graft/examples/audit_receive_lease.rs)
+[`audit_receive_lease.rs`](../../../crates/knytos-graft/examples/audit_receive_lease.rs)
 drives three actual consensus nodes and two queryable application histories:
 
 1. n1 wins term one with n2 and commits value 1. n2 acknowledges the committed
@@ -67,7 +67,7 @@ old leader n1 at 5000ms: expired contact rejects read
 COUNTEREXAMPLE: n1 at 5001ms, term=1, committed=2, returned=1 after value=2 committed
 ```
 
-Run `cargo run --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml
+Run `cargo run --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml
 --example audit_receive_lease` from outside the root Cargo configuration.
 Exit zero means the counterexample was reproduced; this is an audit witness,
 not a passing safety regression or application skeleton. It uses actual vote,
@@ -110,7 +110,7 @@ No fresh full-suite run is claimed.
   zero failed**. The separate counterexample executable reproduces the gap.
 - Warning-denied host Raft Clippy, workspace formatting, shell syntax, local
   documentation targets and diff whitespace checks pass.
-- The ARM service bundle builds/signs with `scripts/build-catten-services.sh
+- The ARM service bundle builds/signs with `scripts/build-knytos-services.sh
   --embed`; `--check` verifies staged signatures against the final source.
 - Fresh-storage two-node ARM DNS integration: both runners exit zero with
   **20 passed / zero failed / zero pending**, bitmap `0xfffff`. Discovery,
@@ -126,7 +126,7 @@ No fresh full-suite run is claimed.
 The clean Graft checkout remains at
 `1a818d416a40330bea2055e03f61580679baa9f6`, without modification. Previous source
 extracts document its differing core/runtime read paths. This batch reproduces
-Charlotte behavior only. It provides no new Graft Jepsen result, upstream failure
+Knytos behavior only. It provides no new Graft Jepsen result, upstream failure
 reproduction or mixed-implementation cluster evidence.
 
 ## Next read-safety boundary

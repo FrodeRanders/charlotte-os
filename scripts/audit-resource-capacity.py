@@ -16,7 +16,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "crates/catten/src/resource_policy.rs"
 DEFAULT = POLICY.parent / "resource_policy/defaults.rs"
-SDK = ROOT / "crates/catten-syscall/src/lib.rs"
+SDK = ROOT / "crates/knytos-syscall/src/lib.rs"
 MIB = 1024 * 1024
 
 HARNESS = r'''
@@ -33,7 +33,7 @@ macro_rules! emit_pools {
 }
 fn main() {
     println!("target\t{}", usize::BITS);
-    catten_syscall::metadata_pool_catalog!(emit_pools);
+    knytos_syscall::metadata_pool_catalog!(emit_pools);
     println!("queue\tmailbox_queues\t{}\t{}", P.mailbox_queues.pool.total[1], P.mailbox_queues.pool.ordinary[1]);
     println!("queue\tcompletion_queues\t{}\t{}", P.completion_queues.pool.total[1], P.completion_queues.pool.ordinary[1]);
     println!("heap\t{}\t{}\t{}\t{}", P.kernel_heap.initial_bytes,
@@ -59,16 +59,16 @@ def sha(path):
 def capture(policy, usable_mib):
     channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     env = dict(os.environ, CATTEN_RESOURCE_POLICY_FILE=str(policy))
-    with tempfile.TemporaryDirectory(prefix="charlotte-capacity-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-capacity-") as temporary:
         directory = Path(temporary)
-        library = directory / "libcatten_syscall.rlib"
+        library = directory / "libknytos_syscall.rlib"
         harness = directory / "capacity.rs"
         harness.write_text(HARNESS.replace("POLICY_PATH", json.dumps(str(POLICY))))
         common = ["rustc", "+" + channel, "--edition=2024", "-D", "warnings"]
-        subprocess.run(common + ["--crate-name=catten_syscall", "--crate-type=rlib", str(SDK), "-o", str(library)],
+        subprocess.run(common + ["--crate-name=knytos_syscall", "--crate-type=rlib", str(SDK), "-o", str(library)],
                        cwd=ROOT, env=env, check=True, capture_output=True, text=True)
         binary = directory / "capacity"
-        subprocess.run(common + [str(harness), "--extern", f"catten_syscall={library}", "-o", str(binary)],
+        subprocess.run(common + [str(harness), "--extern", f"knytos_syscall={library}", "-o", str(binary)],
                        cwd=ROOT, env=env, check=True, capture_output=True, text=True)
         result = subprocess.run([str(binary)] + [str(value * MIB) for value in usable_mib],
                                 check=True, capture_output=True, text=True)
@@ -105,7 +105,7 @@ def capture(policy, usable_mib):
     sources.update(SDK.parent.rglob("*.rs"))
     def identity(path):
         return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
-    return dict(schema="charlotte.resource-capacity.v2", rust_toolchain=channel, host_pointer_bits=pointer_bits,
+    return dict(schema="knytos.resource-capacity.v2", rust_toolchain=channel, host_pointer_bits=pointer_bits,
                 selected_policy=identity(policy), source_sha256={identity(p): sha(p) for p in sorted(sources)},
                 metadata_pools=pools, byte_pool_count=len(byte_pools),
                 byte_ceiling_sums=dict(total=sum(p["total"][0] for p in byte_pools),

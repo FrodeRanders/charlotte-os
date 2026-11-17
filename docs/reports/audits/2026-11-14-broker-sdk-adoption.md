@@ -1,13 +1,13 @@
 # Broker SDK adoption and manual client review
 
 14 November 2026. This follows the [consumer review](2026-11-14-broker-sdk-review.md).
-The broker demo is adapted to CharlotteOS's existing ownership/reactor model.
+The broker demo is adapted to Knytos's existing ownership/reactor model.
 Kafka wire behavior, pure partition state and dispatch remain application code.
 This checkpoint does not expand the broker's production or Kafka feature claims.
 
 ## Changes and current limits
 
-The EL0 adapter uses `charlotte-app::Application`, its returning entry wrapper,
+The EL0 adapter uses `knytos-app::Application`, its returning entry wrapper,
 owned socket operations and one CQ-zero network loop. At most eight sessions
 retain their accepted calls, original request deadlines, sockets, input frames
 and confirmed output prefixes. Sockets borrow one enclosing connection; no
@@ -28,7 +28,7 @@ The demo consumes a single exported source SDK through relative workspace
 paths. Its resolver checks the pinned revision/schema/toolchain and exact file
 hashes, including paths containing spaces, and stages mutable signer build inputs
 outside the SDK. It keeps its existing workspace and uses the public
-manifest/binary builder. The OS exporter adds `charlotte-kafka` and `sitas-unix`
+manifest/binary builder. The OS exporter adds `knytos-kafka` and `sitas-unix`
 for host conformance, accepts an explicit read-only Sitas source, and pins the
 hardened Sitas backend at `6d63266eb52492c1958c45f3ed71c8c7a451489a`. That backend
 captures spawn generations, handles rejected mandatory startup terminally and
@@ -163,7 +163,7 @@ the tested dependency versions while removing unused SDK workspace members.
 ## Manual example
 
 “A client with explicit recovery scopes” includes the actual
-`charlotte-app/examples/reconnecting_client.rs` source. The review replaced the
+`knytos-app/examples/reconnecting_client.rs` source. The review replaced the
 misleading `ServiceRestarted` name with `EndpointLost`, separated unstarted
 `DeadlineExpired` from `SessionLimit`, retained rejected-wait details and used
 shared lifecycle-aware admission with the original operation deadline. Accepted

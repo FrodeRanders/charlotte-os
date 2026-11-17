@@ -47,10 +47,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APPLIANCE_PARENT="${ROOT_DIR}/os-images/vmware"
-APPLIANCE_DIR="${APPLIANCE_PARENT}/CharlotteOS-AArch64.vmwarevm"
+APPLIANCE_DIR="${APPLIANCE_PARENT}/Knytos-AArch64.vmwarevm"
 INSTANCE="vmware-aarch64"
 if [ "$BOOT_MODE" = "minimal" ]; then
-    APPLIANCE_DIR="${APPLIANCE_PARENT}/CharlotteOS-AArch64-Minimal.vmwarevm"
+    APPLIANCE_DIR="${APPLIANCE_PARENT}/Knytos-AArch64-Minimal.vmwarevm"
     INSTANCE="${INSTANCE}-minimal"
 fi
 
@@ -95,7 +95,7 @@ qemu-img convert -f raw -O vmdk -o "$VMDK_OPTIONS" \
     "$RAW_BOOT" "${STAGING}/charlotte-boot.vmdk"
 qemu-img create -f vmdk -o "$VMDK_OPTIONS" \
     "${STAGING}/charlotte-data.vmdk" "${DATA_SIZE_MIB}M"
-cp "${ROOT_DIR}/vmware/charlotte-os-aarch64.vmx" "${STAGING}/CharlotteOS.vmx"
+cp "${ROOT_DIR}/vmware/charlotte-os-aarch64.vmx" "${STAGING}/Knytos.vmx"
 if [ -d "${RAW_BOOT}.management" ]; then
     cp -R "${RAW_BOOT}.management" "${STAGING}/management"
 fi
@@ -108,7 +108,7 @@ fi
 mv "$STAGING" "$APPLIANCE_DIR"
 trap - EXIT
 
-echo ">>> AArch64 VMware appliance built: ${APPLIANCE_DIR}/CharlotteOS.vmx"
+echo ">>> AArch64 VMware appliance built: ${APPLIANCE_DIR}/Knytos.vmx"
 echo ">>> Open the VMX in VMware Fusion on Apple silicon."
 echo ">>> Experimental platform: Fusion ARM boot, UART and protected DMA are unqualified."
 echo ">>> Networking is disabled until a Fusion ARM NIC driver is supported."

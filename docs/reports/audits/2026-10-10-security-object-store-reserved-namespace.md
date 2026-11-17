@@ -20,11 +20,11 @@ availability attack on the deployment chain, not code execution.
 
 ## Correction
 
-- Protocol: `charlotte_protocol_objstore::ERR_DENIED` (7).
+- Protocol: `knytos_protocol_objstore::ERR_DENIED` (7).
 - Scope rules:
-  [`objstore::is_reserved_object`](../../../crates/catten-services/src/lib.rs#L1342),
-  [`reserved_mutator`](../../../crates/catten-services/src/lib.rs#L1349) and
-  [`mutation_allowed`](../../../crates/catten-services/src/lib.rs#L1357). The
+  [`objstore::is_reserved_object`](../../../crates/knytos-services/src/lib.rs#L1342),
+  [`reserved_mutator`](../../../crates/knytos-services/src/lib.rs#L1349) and
+  [`mutation_allowed`](../../../crates/knytos-services/src/lib.rs#L1357). The
   reserved namespaces are the artifact tag `0xfffe…` and the executable tag
   `0xffff…`; mutation is allowed only to the kernel principal (`1`) or the
   signed deployment administration service (`clusterctl`).
@@ -32,7 +32,7 @@ availability attack on the deployment chain, not code execution.
   `Endpoint::try_receive_authenticated`; `OP_CREATE_AT`, `OP_DELETE`,
   `OP_SET_SIZE` and `OP_WRITE` reject a reserved object from any other
   principal with `ERR_DENIED`
-  ([objstore.rs:1267](../../../crates/catten-services/src/bin/objstore.rs#L1269)).
+  ([objstore.rs:1267](../../../crates/knytos-services/src/bin/objstore.rs#L1269)).
   The sender principal is filled by the kernel envelope and is never a
   caller-supplied field.
 - Kernel: the persistent echo executable is staged by the kernel with its own
@@ -40,7 +40,7 @@ availability attack on the deployment chain, not code execution.
   called from [el0_nvme.rs:299](../../../crates/catten/src/self_test/el0_nvme.rs#L301)).
   The EL0 object client no longer writes reserved IDs; it now asserts that a
   reserved delete from an ordinary domain returns `ERR_DENIED`
-  ([objstore_client.rs:102](../../../crates/catten-services/src/bin/objstore_client.rs#L101)).
+  ([objstore_client.rs:102](../../../crates/knytos-services/src/bin/objstore_client.rs#L101)).
 - Architecture: [persistent storage](../../architecture/persistent-storage.md)
   documents the boundary.
 

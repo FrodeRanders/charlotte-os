@@ -105,7 +105,7 @@ power-loss, physical-platform or every-receipt recovery evidence.
 
 | Check | Result |
 | --- | --- |
-| AArch64 bundled services | `scripts/build-catten-services.sh --embed`: rebuilt and signed. |
+| AArch64 bundled services | `scripts/build-knytos-services.sh --embed`: rebuilt and signed. |
 | x86 bundled services | Normal `scripts/run-x86_64.sh` rebuilt and signed the missing staged bundle. |
 | Kernel Clippy | Both custom targets, `--locked`, `-D warnings`: passed. |
 | Host regression suite | Passed, including **29 slot-owner tests**, signer/trust and remaining workspace checks. |

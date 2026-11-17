@@ -1,4 +1,4 @@
-# CharlotteOS Scheduler State Machines
+# Knytos Scheduler State Machines
 
 This document defines the interacting state machines that govern thread
 scheduling, completion-queue (CQ) wait semantics, and the idle-load
@@ -497,7 +497,7 @@ only explicitly certified compute-only work after a sustained imbalance.
 
 Affinity is a locality policy, not a NUMA allocation policy. Data and page-table
 placement are separate: moving execution can leave translation walks accessing
-remote memory on NUMA hardware. Charlotte's frame allocator is not NUMA-aware;
+remote memory on NUMA hardware. Knytos' frame allocator is not NUMA-aware;
 x86-64 also has no PCID policy and CR3 reloads flush non-global translations.
 Do not assume affinity preserves all TLB state across context switches. The
 [page-table investigation](../reports/investigations/2026-10-05-page-tables-locality-and-admission.md)

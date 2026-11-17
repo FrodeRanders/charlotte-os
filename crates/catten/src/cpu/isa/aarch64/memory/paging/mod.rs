@@ -71,11 +71,7 @@ static HW_ASID_BITS: LazyLock<u8> = LazyLock::new(|| {
     unsafe {
         asm!("mrs {tcr}, tcr_el1", tcr = out(reg) tcr, options(nomem, nostack, preserves_flags));
     }
-    assert_eq!(
-        tcr & (1 << 22),
-        0,
-        "CharlotteOS requires TCR_EL1.A1=0 so TTBR0 selects the user ASID"
-    );
+    assert_eq!(tcr & (1 << 22), 0, "Knytos requires TCR_EL1.A1=0 so TTBR0 selects the user ASID");
     if tcr & (1 << 36) != 0 {
         16
     } else {
@@ -124,7 +120,7 @@ fn hw_asid_allocator() -> &'static Mutex<HwAsidAllocator> {
 /// switch and read by synchronous EL0 exception paths (e.g. the SVC handler) to
 /// attribute the caller's syscalls.
 ///
-/// This holds CharlotteOS' *logical* address-space id, an index into
+/// This holds Knytos' *logical* address-space id, an index into
 /// [`ADDRESS_SPACE_TABLE`](crate::memory::ADDRESS_SPACE_TABLE). The hardware
 /// [`HwAsid`](crate::cpu::isa::aarch64::memory::paging::walker::HwAsid) is a
 /// separate tag in TTBR0. The caller ASID must not be reconstructed from
@@ -418,7 +414,7 @@ impl AddressSpaceInterface for AddressSpace {
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
         if mapping.page_type.is_user_accessible()
-            && !charlotte_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
+            && !knytos_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
         {
             return Err(super::Error::PermissionDenied);
         }
@@ -437,7 +433,7 @@ impl AddressSpaceInterface for AddressSpace {
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
         if mapping.page_type.is_user_accessible()
-            && !charlotte_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
+            && !knytos_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
         {
             return Err(super::Error::PermissionDenied);
         }

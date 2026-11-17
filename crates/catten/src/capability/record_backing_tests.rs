@@ -25,7 +25,7 @@ pub(super) fn run() {
     let before = record_budget::snapshot();
     let capabilities = budget::node_used();
     let retained_principal =
-        charlotte_launch::artifact_principal_id(b"authority-node-retained-principal");
+        knytos_launch::artifact_principal_id(b"authority-node-retained-principal");
     let old = funded_root(retained_principal);
     let root_bytes = memory::kernel_buffers::test_metadata_used(retained_principal);
     let trusted = root(true);
@@ -141,8 +141,8 @@ fn principal_funding() {
         test_metadata_used as used,
     };
     let before = record_budget::snapshot();
-    let principal = charlotte_launch::artifact_principal_id(b"authority-mailbox-node-principal");
-    let other = charlotte_launch::artifact_principal_id(b"authority-mailbox-node-healthy");
+    let principal = knytos_launch::artifact_principal_id(b"authority-mailbox-node-principal");
+    let other = knytos_launch::artifact_principal_id(b"authority-mailbox-node-healthy");
     let first = funded_root(principal);
     let root_bytes = used(principal);
     assert!(root_bytes > 0);

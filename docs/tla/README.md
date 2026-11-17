@@ -1,4 +1,4 @@
-# Executable TLA+ Models of CharlotteOS
+# Executable TLA+ Models of Knytos
 
 This directory contains forty-four finite, executable specification modules:
 
@@ -838,7 +838,7 @@ temporal replication liveness remain outside this model.
 voter/learner roles, old-configuration commitment of JOINT, joint-majority
 commitment of FINALIZE, and automatic proposal after every proposed remote
 member reaches the JOINT fence. This restores the Graft Java/Rust catch-up
-policy in Charlotte. Next-only voters may campaign with both voter majorities;
+policy in Knytos. Next-only voters may campaign with both voter majorities;
 finalized learners relinquish leadership while remaining members. The finite
 three-node, two-entry instance explores 6,232 distinct states. Durable voting,
 log freshness and prefix agreement remain assumptions from the other layers.
@@ -847,7 +847,7 @@ Separate required coverage exercises a next-only election and a rejected
 finalization while a proposed member lags. Three counterexamples weaken the
 catch-up, eligible-leader and dual-quorum boundaries. The
 [source and upstream comparison](../reports/audits/2026-10-18-raft-membership-parity.md)
-records the failed Charlotte role regression and its correction. This model
+records the failed Knytos role regression and its correction. This model
 covers automatic proposal; explicit/manual FINALIZE commands are outside it.
 
 `CharlotteRaftJoin.tla` models the MAC-level admission layer that precedes

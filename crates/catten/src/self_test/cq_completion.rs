@@ -35,7 +35,7 @@ pub fn test_cq_ring_in_completion() {
     // Drain the ring entry and verify it.
     let ring_ptr = unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must exist");
     // SAFETY: this private fixture retains the ring and is its sole consumer.
-    let entry = unsafe { catten_syscall::cq_read(ring_ptr as usize, 32) }
+    let entry = unsafe { knytos_syscall::cq_read(ring_ptr as usize, 32) }
         .expect("first entry must be present");
     assert_eq!(entry.cookie, cap as u64);
     assert_eq!(entry.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(4)));
@@ -55,17 +55,17 @@ pub fn test_cq_ring_in_completion() {
 
     let ring = unsafe { completion::cq_ring_of(asid, 0).unwrap() };
     // SAFETY: the retained fixture mapping still has this sole consumer.
-    let e1 = unsafe { catten_syscall::cq_read(ring as usize, 32).unwrap() };
+    let e1 = unsafe { knytos_syscall::cq_read(ring as usize, 32).unwrap() };
     assert_eq!(e1.cookie, c1);
     assert_eq!(e1.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(1)));
 
     // SAFETY: the retained fixture mapping still has this sole consumer.
-    let e2 = unsafe { catten_syscall::cq_read(ring as usize, 32).unwrap() };
+    let e2 = unsafe { knytos_syscall::cq_read(ring as usize, 32).unwrap() };
     assert_eq!(e2.cookie, c2);
     assert_eq!(e2.result, crate::completion::cq::op_result_to_i64(OpResult::Cancelled));
 
     // SAFETY: the retained fixture mapping still has this sole consumer.
-    let e3 = unsafe { catten_syscall::cq_read(ring as usize, 32).unwrap() };
+    let e3 = unsafe { knytos_syscall::cq_read(ring as usize, 32).unwrap() };
     assert_eq!(e3.cookie, c3);
     assert_eq!(e3.result, crate::completion::cq::op_result_to_i64(OpResult::Err(2)));
 
@@ -76,7 +76,7 @@ pub fn test_cq_ring_in_completion() {
         let operation = completion::operation_id(asid, cap).unwrap();
         completion::complete(asid, cap, OpResult::Ok(value as i64)).unwrap();
         // SAFETY: fixture owns the live full-page mapping and its sole reader.
-        let entry = unsafe { catten_syscall::cq_read(ring as usize, 32) }.unwrap();
+        let entry = unsafe { knytos_syscall::cq_read(ring as usize, 32) }.unwrap();
         assert_eq!(
             (entry.operation, entry.cookie, entry.status, entry.flags, entry.result),
             (operation, cap, 0, 0, value as i64)

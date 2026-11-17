@@ -89,13 +89,13 @@ extern "C" fn verify_el0_net() {
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         let mut last_stage = u32::MAX;
         while unsafe {
-            crate::self_test::status_u32(frouter_status, charlotte_launch::frouter_status::STAGE)
+            crate::self_test::status_u32(frouter_status, knytos_launch::frouter_status::STAGE)
         } < 4
         {
             let stage = unsafe {
                 crate::self_test::status_u32(
                     frouter_status,
-                    charlotte_launch::frouter_status::STAGE,
+                    knytos_launch::frouter_status::STAGE,
                 )
             };
             if stage != last_stage {
@@ -135,26 +135,26 @@ extern "C" fn verify_el0_net() {
         #[cfg(feature = "relmsg_net_test")]
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         while unsafe {
-            crate::self_test::status_u32(client_cfg, charlotte_launch::net_client_status::SENTINEL)
+            crate::self_test::status_u32(client_cfg, knytos_launch::net_client_status::SENTINEL)
         } != CLIENT_SENTINEL
         {
             spins += 1;
             if spins.is_multiple_of(100_000) {
                 let ds = unsafe {
-                    crate::self_test::status_u32(driver_cfg, charlotte_launch::net_status::STAGE)
+                    crate::self_test::status_u32(driver_cfg, knytos_launch::net_status::STAGE)
                 };
                 #[cfg(not(feature = "relmsg_net_test"))]
                 let cs = unsafe {
                     crate::self_test::status_u32(
                         client_cfg,
-                        charlotte_launch::net_client_status::STAGE,
+                        knytos_launch::net_client_status::STAGE,
                     )
                 };
                 #[cfg(feature = "relmsg_net_test")]
                 let cs = unsafe {
                     crate::self_test::status_u32(
                         client_cfg,
-                        charlotte_launch::relmsg_client_status::STAGE,
+                        knytos_launch::relmsg_client_status::STAGE,
                     )
                 };
                 #[cfg(feature = "relmsg_net_test")]
@@ -163,91 +163,91 @@ extern "C" fn verify_el0_net() {
                     let rs = unsafe {
                         crate::self_test::status_u32(
                             relmsg_base,
-                            charlotte_launch::relmsg_status::STAGE,
+                            knytos_launch::relmsg_status::STAGE,
                         )
                     };
                     let opcode = unsafe {
                         crate::self_test::status_u32(
                             relmsg_base,
-                            charlotte_launch::relmsg_status::LAST_OPCODE,
+                            knytos_launch::relmsg_status::LAST_OPCODE,
                         )
                     };
                     let handled = unsafe {
                         crate::self_test::status_u32(
                             relmsg_base,
-                            charlotte_launch::relmsg_status::HANDLED,
+                            knytos_launch::relmsg_status::HANDLED,
                         )
                     };
                     let relmsg_send = unsafe {
                         crate::self_test::status_u32(
                             relmsg_base,
-                            charlotte_launch::relmsg_status::RECEIVER_STAGE,
+                            knytos_launch::relmsg_status::RECEIVER_STAGE,
                         )
                     };
                     let net_result = unsafe {
                         crate::self_test::status_i64(
                             relmsg_base,
-                            charlotte_launch::relmsg_status::LAST_SEND_RESULT,
+                            knytos_launch::relmsg_status::LAST_SEND_RESULT,
                         )
                     };
                     let receiver_base: *mut u8 = frouter_config.into();
                     let receiver_stage = unsafe {
                         crate::self_test::status_u32(
                             receiver_base,
-                            charlotte_launch::frouter_status::STAGE,
+                            knytos_launch::frouter_status::STAGE,
                         )
                     };
                     let forwarded = unsafe {
                         crate::self_test::status_u32(
                             receiver_base,
-                            charlotte_launch::frouter_status::FORWARDED,
+                            knytos_launch::frouter_status::FORWARDED,
                         )
                     };
                     let rx_seen = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_USED_SEEN,
+                            knytos_launch::net_status::RX_USED_SEEN,
                         )
                     };
                     let tx_seen = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_USED_SEEN,
+                            knytos_launch::net_status::TX_USED_SEEN,
                         )
                     };
                     let device_status = unsafe {
                         core::ptr::read_volatile(
-                            driver_cfg.add(charlotte_launch::net_status::DEVICE_STATUS),
+                            driver_cfg.add(knytos_launch::net_status::DEVICE_STATUS),
                         )
                     };
                     let tx_avail = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_AVAILABLE,
+                            knytos_launch::net_status::TX_AVAILABLE,
                         )
                     };
                     let rx_unrecycled = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_UNRECYCLED,
+                            knytos_launch::net_status::RX_UNRECYCLED,
                         )
                     };
                     let rx_qsz = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_QUEUE_SIZE,
+                            knytos_launch::net_status::RX_QUEUE_SIZE,
                         )
                     };
                     let rx_pfn = unsafe {
                         crate::self_test::status_u32(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_RING_PFN,
+                            knytos_launch::net_status::RX_RING_PFN,
                         )
                     };
                     let tx_pfn = unsafe {
                         crate::self_test::status_u32(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_RING_PFN,
+                            knytos_launch::net_status::TX_RING_PFN,
                         )
                     };
                     let dma_faults = crate::device::fault_count();
@@ -255,37 +255,37 @@ extern "C" fn verify_el0_net() {
                     let driver_send = unsafe {
                         crate::self_test::status_u32(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_PROGRESS,
+                            knytos_launch::net_status::TX_PROGRESS,
                         )
                     };
                     let rx_notify = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_NOTIFY,
+                            knytos_launch::net_status::RX_NOTIFY,
                         )
                     };
                     let tx_notify = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_NOTIFY,
+                            knytos_launch::net_status::TX_NOTIFY,
                         )
                     };
                     let rx_enabled = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_QUEUE_ENABLED,
+                            knytos_launch::net_status::RX_QUEUE_ENABLED,
                         )
                     };
                     let tx_enabled = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_QUEUE_ENABLED,
+                            knytos_launch::net_status::TX_QUEUE_ENABLED,
                         )
                     };
                     let client_error = unsafe {
                         crate::self_test::status_i64(
                             client_cfg,
-                            charlotte_launch::relmsg_client_status::SEND_RESULT,
+                            knytos_launch::relmsg_client_status::SEND_RESULT,
                         )
                     };
                     logln!(
@@ -325,31 +325,31 @@ extern "C" fn verify_el0_net() {
                     let rx_completed = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_USED_SEEN,
+                            knytos_launch::net_status::RX_USED_SEEN,
                         )
                     };
                     let tx_completed = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_USED_SEEN,
+                            knytos_launch::net_status::TX_USED_SEEN,
                         )
                     };
                     let driver_error = unsafe {
                         crate::self_test::status_u32(
                             driver_cfg,
-                            charlotte_launch::net_status::TX_PROGRESS,
+                            knytos_launch::net_status::TX_PROGRESS,
                         )
                     };
                     let rx_unrecycled = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_UNRECYCLED,
+                            knytos_launch::net_status::RX_UNRECYCLED,
                         )
                     };
                     let rx_qsz = unsafe {
                         crate::self_test::status_u16(
                             driver_cfg,
-                            charlotte_launch::net_status::RX_QUEUE_SIZE,
+                            knytos_launch::net_status::RX_QUEUE_SIZE,
                         )
                     };
                     logln!(
@@ -372,12 +372,12 @@ extern "C" fn verify_el0_net() {
 
     let driver_bytes: *const u8 = driver_config.into();
     let link =
-        unsafe { crate::self_test::status_u16(driver_bytes, charlotte_launch::net_status::LINK) }
+        unsafe { crate::self_test::status_u16(driver_bytes, knytos_launch::net_status::LINK) }
             as u64;
     let mut mac = [0; 6];
     for (index, octet) in mac.iter_mut().enumerate() {
         *octet = unsafe {
-            core::ptr::read_volatile(driver_bytes.add(charlotte_launch::net_status::MAC + index))
+            core::ptr::read_volatile(driver_bytes.add(knytos_launch::net_status::MAC + index))
         };
     }
     let [m0, m1, m2, m3, m4, m5] = mac;
@@ -398,7 +398,7 @@ extern "C" fn verify_el0_net() {
         let deadline = crate::self_test::results::Deadline::after_millis(2_000);
         loop {
             let completed = unsafe {
-                crate::self_test::status_u16(driver_cfg, charlotte_launch::net_status::TX_USED_SEEN)
+                crate::self_test::status_u16(driver_cfg, knytos_launch::net_status::TX_USED_SEEN)
             };
             if completed != 0 {
                 break completed;
@@ -409,7 +409,7 @@ extern "C" fn verify_el0_net() {
     };
 
     let ds =
-        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::net_status::STAGE) };
+        unsafe { crate::self_test::status_u32(driver_cfg, knytos_launch::net_status::STAGE) };
     assert!(ds >= 6, "[net] driver must reach serving stage (got {})", ds);
 
     #[cfg(feature = "relmsg_net_test")]

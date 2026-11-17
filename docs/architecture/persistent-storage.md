@@ -1,7 +1,7 @@
-# CharlotteOS Persistent Storage Architecture
+# Knytos Persistent Storage Architecture
 
 **Status:** Implemented prototype; power-loss atomicity remains unvalidated\
-**Audience:** CharlotteOS contributors\
+**Audience:** Knytos contributors\
 **Purpose:** Define the persistent storage subsystem: block device protocol,
 NVMe driver, and integration with Raft consensus.
 
@@ -9,7 +9,7 @@ NVMe driver, and integration with Raft consensus.
 
 ## 1. Executive Summary
 
-CharlotteOS now has a userspace NVMe driver, block protocol, object-store
+Knytos now has a userspace NVMe driver, block protocol, object-store
 prototype, and disk-backed implementations of Raft's `PersistentStateStore`
 and `LogStore`. A QEMU boot test starts a single-voter Raft process, stops and
 tears it down, then starts the same node identity again and verifies that its
@@ -223,7 +223,7 @@ scopes, and AMD-Vi MSI fault delivery are not yet supported.
 
 ## 4. Disk-Backed Raft Persistent State
 
-### 4.1 Existing interface (catten-graft)
+### 4.1 Existing interface (knytos-graft)
 
 The existring crate defines two traits:
 
@@ -411,11 +411,11 @@ image whose contents may be replaced.
 
 ### Phase 1 — Protocol and skeleton (complete)
 
-1. Create `charlotte-protocol-block` crate with the interface constants,
+1. Create `knytos-protocol-block` crate with the interface constants,
    opcodes, error codes, and helper functions.
-2. Add `block` module to `catten-services/src/lib.rs` with protocol
+2. Add `block` module to `knytos-services/src/lib.rs` with protocol
    constants.
-3. Create NVMe driver binary `catten-services/src/bin/nvme.rs` as a
+3. Create NVMe driver binary `knytos-services/src/bin/nvme.rs` as a
    skeleton that registers with the name service and enters the unified
    shard wait — no NVMe hardware interaction yet.
 4. Add the NVMe PCI device class matching and topology lookup to the

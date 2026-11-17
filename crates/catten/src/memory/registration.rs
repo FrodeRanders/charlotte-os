@@ -194,7 +194,7 @@ fn register_with_ipc(
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_abandonment() {
     let accounts = crate::klib::namespace_account_budget::snapshot();
-    let principal = charlotte_launch::artifact_principal_id(b"account-registration-retained");
+    let principal = knytos_launch::artifact_principal_id(b"account-registration-retained");
     let root = AddressSpace::try_new_principal_user(
         false,
         prepare_principal_backing(principal, false).unwrap(),

@@ -3,7 +3,7 @@
 ## Result
 
 Baseline `65eff0f6` commits the preceding response-fencing batch. This follow-up
-restores Graft's automatic membership catch-up policy and corrects a Charlotte
+restores Graft's automatic membership catch-up policy and corrects a Knytos
 leader that retained leadership after becoming a learner. It also compares the
 port with the Java, C++ and Rust implementations and the upstream Jepsen scenario
 definitions. The [evidence manifest](evidence/2026-10-18-raft-membership-parity.json)
@@ -13,7 +13,7 @@ upstream checkout.
 
 ## Automatic finalization
 
-Charlotte previously proposed FINALIZE immediately after applying committed
+Knytos previously proposed FINALIZE immediately after applying committed
 JOINT. That deliberate divergence was introduced in `4d2856df`; the historical
 source and full revision are captured in evidence. Java and Rust Graft instead
 wait for the committed JOINT fence and every proposed member to reach it. The
@@ -81,13 +81,13 @@ The preceding response-fencing correction also has an upstream comparison:
 C++ checks the exact response term and preserves monotonic successful progress.
 The inspected Java/Rust handlers differ. Static handler differences alone do
 not reproduce an upstream failure; the unsafe commit was dynamically reproduced
-in Charlotte. The [conformance reference](../../reference/raft-conformance.md)
+in Knytos. The [conformance reference](../../reference/raft-conformance.md)
 records these boundaries.
 
 No wire grammar changes are made here. Shared protobuf shapes do not establish
-mixed-cluster interoperability: Charlotte uses capability IPC/relmsg and a DNS
+mixed-cluster interoperability: Knytos uses capability IPC/relmsg and a DNS
 application, while Graft's TCP and Jepsen application paths have different
-integration boundaries. No Charlotte/Graft gateway or mixed-runtime history
+integration boundaries. No Knytos/Graft gateway or mixed-runtime history
 was tested in this batch.
 
 ## Membership model
@@ -125,7 +125,7 @@ counterexamples**, with **168 model/config/harness hashes** retained in evidence
   zero failed**.
 - Warning-denied Clippy passes for all host Raft targets. Workspace formatting,
   Bash syntax and diff whitespace checks pass.
-- `scripts/build-catten-services.sh --embed` builds and signs the ARM bundle;
+- `scripts/build-knytos-services.sh --embed` builds and signs the ARM bundle;
   `--check` confirms its staged signatures match the final source.
 - The final two-node ARM DNS run exits zero on both nodes: **20 passed / zero
   failed / zero pending each**, bitmap `0xfffff`. Both report discovery success,

@@ -71,7 +71,7 @@ build-std configuration (or use the existing host-test runner):
 
 ```sh
 cargo +nightly-2026-07-27 test --locked \
-  --manifest-path /path/to/charlotte-os/crates/charlotte-lifecycle/Cargo.toml \
+  --manifest-path /path/to/charlotte-os/crates/knytos-lifecycle/Cargo.toml \
   --test charged_allocator
 ```
 

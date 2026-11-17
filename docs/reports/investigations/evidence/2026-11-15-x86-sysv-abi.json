@@ -499,7 +499,7 @@
     }
   },
   "source_sha256": {
-    "crates/catten-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656",
+    "crates/knytos-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656",
     "crates/catten/src/cpu/isa/x86_64/interrupts/dynamic/dyn_isrs.asm": "f79ce2690dde496c80ee70a81f2f19cd969a92591f4260f31d6c12b8992f9fae",
     "crates/catten/src/cpu/isa/x86_64/interrupts/dynamic/mod.rs": "365eca59479b58b93f0dcf960ddbcd27b027b9277d9b769128ff6f6a79ded0c9",
     "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/exceptions/exceptions.asm": "7262b5b0e59dc7686750f24af5bf1e8e0a40c00445bf99ccbff5c768001b6873",
@@ -513,8 +513,8 @@
     "crates/catten/src/self_test/mod.rs": "9e80f8255631ae141e85950912fa60bb8a52806630e3ce14cc4fb4161cc69e9a",
     "crates/catten/src/self_test/user_entry_x86_64.asm": "7839757cf78c3e1ab9042792cc9b62114ab66be96a5f656e338be6710f9a5bc6",
     "crates/catten/src/self_test/user_isolation.rs": "ce0f788640805188d342c3f7ec62cad31e8d3ea5d0326483b68505383e46d515",
-    "crates/charlotte-launch/src/execution_target.rs": "83def014b58185cebd0fb8d40ac4f999126a2494a634e1db9e78fae5ef69b784",
-    "crates/charlotte-management-tls/src/crypto.rs": "9bb1d4d454c85a7d2cb097b8d244a8146d7cb3d7c45e492677243724101b6a8e",
+    "crates/knytos-launch/src/execution_target.rs": "83def014b58185cebd0fb8d40ac4f999126a2494a634e1db9e78fae5ef69b784",
+    "crates/knytos-management-tls/src/crypto.rs": "9bb1d4d454c85a7d2cb097b8d244a8146d7cb3d7c45e492677243724101b6a8e",
     "scripts/prepare-local-deployment-fixture.sh": "2a05669be7614f41a642ee257100fd8fa47be78952a7eeb48d36bc83295e4028",
     "scripts/run-aarch64.sh": "9046ca047b79c6b70497a51fb4b2d30c54b1285cac46eb9c097d099ac288a20a",
     "scripts/run-host-tests.sh": "4df927386b1ed90eb4f7c6d163205ad0ff66a71e55a98379a7c0f5466ed76bca",
@@ -526,7 +526,7 @@
     "rust-toolchain.toml": "a0665391d1aa1a019bb02e2af6b9e19dde456912abdd252b9d8ca5afc8cd82d4",
     ".cargo/config.toml": "ee5add326b9194e024f9eae1ca22a7f0e3941889a22049f3f77dd04677e96def",
     "target_specs/x86_64-unknown-none-catten.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
-    "crates/catten-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc"
+    "crates/knytos-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc"
   },
   "host_validation": {
     "launch": {

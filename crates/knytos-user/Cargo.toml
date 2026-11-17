@@ -1,0 +1,17 @@
+[package]
+name = "knytos-user"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "knytos-user"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+knytos-app-sitas = { path = "../knytos-app-sitas" }
+knytos-rt = { path = "../knytos-rt" }
+knytos-syscall = { path = "../knytos-syscall" }
+sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }
+sitas-charlotte = { path = "../../../../gautelis/sitas/crates/sitas-charlotte" }

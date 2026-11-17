@@ -19,14 +19,14 @@ worktree. SEC-36, SEC-37 and SEC-38 are not addressed here and remain open.
 ## SEC-31: reassembly admission before state and allocation
 
 The reassembly struct, the admission predicate and the assembler now live in
-the host-tested [`relmsg_reassembly`](../../../crates/catten-services/src/lib.rs#L1422)
-module. [`fragment_within_ceiling`](../../../crates/catten-services/src/lib.rs#L1451)
+the host-tested [`relmsg_reassembly`](../../../crates/knytos-services/src/lib.rs#L1422)
+module. [`fragment_within_ceiling`](../../../crates/knytos-services/src/lib.rs#L1451)
 requires `total <= MAX_MSG` and `offset + payload_len <= total`, and
-[`assemble`](../../../crates/catten-services/src/lib.rs#L1463) rejects any
+[`assemble`](../../../crates/knytos-services/src/lib.rs#L1463) rejects any
 total above the ceiling before reserving its output with `try_reserve_exact`.
 
 The service
-([relmsg.rs:364](../../../crates/catten-services/src/bin/relmsg.rs#L359))
+([relmsg.rs:364](../../../crates/knytos-services/src/bin/relmsg.rs#L359))
 computes the predicate first; only an admitted fragment creates or updates
 reassembly state, and the assembler is reached only under that gate. An
 over-ceiling fragment is ignored without touching existing state, so a
@@ -39,7 +39,7 @@ assembly, a missing fragment and an over-ceiling state.
 
 ## SEC-32: fail-safe transmit reservation
 
-[`CharlotteEthDevice`](../../../crates/charlotte-smoltcp/src/lib.rs#L99) now
+[`CharlotteEthDevice`](../../../crates/knytos-smoltcp/src/lib.rs#L99) now
 reserves one persistent mapped page at first transmit/receive use. `transmit`
 and `receive` return `None` when the reservation is unavailable, so smoltcp
 drops the packet instead of receiving a zero-length buffer; a queued receive
@@ -52,7 +52,7 @@ The consume path no longer allocates before invoking the smoltcp closure. It
 builds the frame in the persistent scratch, then tries a fresh moved object
 for the driver; allocation or mapping failure drops that frame and leaves the
 service running
-([lib.rs:288](../../../crates/charlotte-smoltcp/src/lib.rs#L300)).
+([lib.rs:288](../../../crates/knytos-smoltcp/src/lib.rs#L300)).
 
 Tests: `missing_tx_scratch_applies_backpressure_without_a_token` verifies no
 token is handed out without backing, the queued frame survives and is
@@ -84,7 +84,7 @@ new signature.
 ## SEC-34: AArch64 syscall emitter coverage
 
 The `svc3` table now emits
-[`svc #77`](../../../crates/catten-syscall/src/lib.rs#L445). A new host check,
+[`svc #77`](../../../crates/knytos-syscall/src/lib.rs#L445). A new host check,
 [test-syscall-emitters.py](../../../scripts/tests/test-syscall-emitters.py),
 parses the declared syscall list, each AArch64 `svcN` table and every
 `svcN(SyscallNumber::Variant, ...)` call site, and fails when a wrapper has no
@@ -120,9 +120,9 @@ query. The live-upgrade and scoped-launch guest paths continue to pass.
 
 ## Validation
 
-- `scripts/build-catten-services.sh --embed`: passed; the AArch64 bundle was
+- `scripts/build-knytos-services.sh --embed`: passed; the AArch64 bundle was
   staged and signed with the fixed `relmsg`, `tcpip`, `agent` and
-  `catten-syscall` code.
+  `knytos-syscall` code.
 - `scripts/run-host-tests.sh`: passed, **340 tests, zero failures** (was 336;
   the new reassembly/backpressure/MTU tests and the emitter check are
   included). The emitter check reports 68 call sites across four arities.

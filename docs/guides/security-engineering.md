@@ -1,6 +1,6 @@
 # Security engineering lessons
 
-This guide captures reusable knowledge from CharlotteOS' security work. Read it
+This guide captures reusable knowledge from Knytos' security work. Read it
 when designing or reviewing a resource operation, a service reactor or a trust
 boundary. The [subsystem contributor contracts](../reference/contributor-contracts.md)
 carry the detailed implementation requirements. The
@@ -306,7 +306,7 @@ readers. Kernel bounds remain private, because writable user mirrors cannot auth
 kernel accesses.
 
 Read [entropy](../reference/entropy.md) and the current
-[CQ ring definitions](../../crates/catten-syscall/src/lib.rs). The focused
+[CQ ring definitions](../../crates/knytos-syscall/src/lib.rs). The focused
 [RNG](../reports/audits/2026-10-28-security-rng-ring-access.md) and
 [CQ](../reports/audits/2026-10-29-cq-ring-ordering.md) reports retain the examples.
 

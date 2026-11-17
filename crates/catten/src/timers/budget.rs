@@ -7,7 +7,7 @@
 #[cfg(any(test, feature = "kernel_tests"))]
 use alloc::sync::Arc;
 
-use charlotte_lifecycle::resources::CountBudget;
+use knytos_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;

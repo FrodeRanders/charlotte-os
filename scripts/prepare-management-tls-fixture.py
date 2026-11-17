@@ -19,7 +19,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def prepare_credentials(directory, addresses=(), *, authority_name="Charlotte disposable management CA", validity_controls=False, chain_controls=False):
+def prepare_credentials(directory, addresses=(), *, authority_name="Knytos disposable management CA", validity_controls=False, chain_controls=False):
     directory.mkdir(parents=True, exist_ok=True)
     directory.chmod(0o700)
     def openssl(*arguments):
@@ -157,7 +157,7 @@ def prepare(directory, addresses=(), retain_server_key=False, *, validity_contro
     def tool(*arguments):
         subprocess.run(command + list(arguments), cwd=directory, check=True)
     tool("management-limits-default", "limits.txt")
-    tool("management-policy-development", "policy.bin", "charlotte")
+    tool("management-policy-development", "policy.bin", "knytos")
     operators = ["reader=reader.der", "administrator=administrator.der"]
     if validity_controls:
         operators.extend(f"{role}={category}-{role}.der" for category in ("expired", "future") for role in ("reader", "administrator"))

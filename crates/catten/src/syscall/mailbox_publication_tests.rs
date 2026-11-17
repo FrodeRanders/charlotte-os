@@ -186,7 +186,7 @@ fn staged_close(root: memory::AddressSpaceHandle, captured: MailboxIdentity) {
 fn abandoned() {
     let backing = mailbox_node_budget::snapshot();
     let preparing_principal =
-        charlotte_launch::artifact_principal_id(b"mailbox-preparing-node-retained");
+        knytos_launch::artifact_principal_id(b"mailbox-preparing-node-retained");
     let space = memory::AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(preparing_principal, false).unwrap(),
@@ -205,7 +205,7 @@ fn abandoned() {
             Some(preparing.0.authority.as_mut().unwrap().reserve_in_lifecycle(&lifecycle).unwrap());
     }
     let retired_principal =
-        charlotte_launch::artifact_principal_id(b"mailbox-retired-node-retained");
+        knytos_launch::artifact_principal_id(b"mailbox-retired-node-retained");
     let space = memory::AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(retired_principal, false).unwrap(),

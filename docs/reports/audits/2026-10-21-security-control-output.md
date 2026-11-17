@@ -22,7 +22,7 @@ Public output mode uses the shared 0644 request, subject to the host's umask.
 ELF signing keeps its separate captured-file rewrite contract.
 
 Creation rejection releases the existing prepared byte owners without an output
-descriptor. Ordinary success closes the local file. No new Charlotte capability,
+descriptor. Ordinary success closes the local file. No new Knytos capability,
 root operation, wait, registry or recovery custody enters these host paths.
 The existing [C18 row](../../reference/cleanup-recovery.md) records this scope.
 

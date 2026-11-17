@@ -1,6 +1,6 @@
 //! Fixed boot worklist: every in-range bus identity is accepted at most once.
 //!
-//! Range/revisit rules adapted from upstream CharlotteOS 72cc1417b8ddf09013caab1d80dfc389ccfbdf18.
+//! Range/revisit rules adapted from upstream Knytos 72cc1417b8ddf09013caab1d80dfc389ccfbdf18.
 pub(crate) const MAX_FUNCTIONS: usize = 16_384;
 pub(crate) const MAX_REGIONS: usize = 32;
 pub(crate) const ECAM_BYTES: usize = 256 * 1024 * 1024;

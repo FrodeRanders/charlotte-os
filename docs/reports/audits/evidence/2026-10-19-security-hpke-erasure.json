@@ -144,7 +144,7 @@
       "elliptic-curve-0.13.8/src/secret_key.rs": "a08c354ea59da20e20628ce66da790822f3f90ee5820ab449ed64229d9270783",
       "ecdsa-0.16.9/src/signing.rs": "11842af046b43fe53add72a7fdc78a9555a1dbc37fe6bb0d1139e8b25491538f"
     },
-    "selected_feature_tree": "x25519-dalek v3.0.0\n\u251c\u2500\u2500 x25519-dalek feature \"static_secrets\"\n\u2502   \u251c\u2500\u2500 charlotte-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch)\n\u2502   \u2502   \u2514\u2500\u2500 charlotte-launch feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 hpke v0.14.0\n\u2502       \u251c\u2500\u2500 hpke feature \"chacha\"\n\u2502       \u2502   \u2514\u2500\u2500 charlotte-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch) (*)\n\u2502       \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n\u2502       \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n\u2502       \u2502       \u2514\u2500\u2500 charlotte-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch) (*)\n\u2502       \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n\u2514\u2500\u2500 x25519-dalek feature \"zeroize\"\n    \u2514\u2500\u2500 charlotte-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch) (*)\n",
+    "selected_feature_tree": "x25519-dalek v3.0.0\n\u251c\u2500\u2500 x25519-dalek feature \"static_secrets\"\n\u2502   \u251c\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch)\n\u2502   \u2502   \u2514\u2500\u2500 knytos-launch feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 hpke v0.14.0\n\u2502       \u251c\u2500\u2500 hpke feature \"chacha\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n\u2502       \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n\u2502       \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n\u2502       \u2502       \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n\u2502       \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n\u2514\u2500\u2500 x25519-dalek feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n",
     "selected_feature_tree_log_sha256": "eeaec34249adac2533d22325382bce46bbf80dd5e7d2cf2027229deca971f96b",
     "observations": [
       "hpke 0.14.0 disables x25519-dalek defaults and requests static_secrets only.",
@@ -155,8 +155,8 @@
   },
   "compile_controls": {
     "moved_key_owner": {
-      "manifest": "[package]\nname = \"hpke-key-owner-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\" }\nrand_core = { version = \"0.10.0\", default-features = false }\n",
-      "source": "pub fn reuse_after_move(rng: &mut impl rand_core::CryptoRng) {\n    let (private, _) = charlotte_launch::operations::generate_recipient_keypair(rng);\n    let transferred = private;\n    drop(transferred);\n    let _ = charlotte_launch::operations::recipient_public_key(&private);\n}\n",
+      "manifest": "[package]\nname = \"hpke-key-owner-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\" }\nrand_core = { version = \"0.10.0\", default-features = false }\n",
+      "source": "pub fn reuse_after_move(rng: &mut impl rand_core::CryptoRng) {\n    let (private, _) = knytos_launch::operations::generate_recipient_keypair(rng);\n    let transferred = private;\n    drop(transferred);\n    let _ = knytos_launch::operations::recipient_public_key(&private);\n}\n",
       "lockfile_sha256": "bbc71d8286fb1a4cd2ab22e6cabb0692fe94b222f044ffda3f3b4f112ccb1f07",
       "baseline": {
         "command": "cargo check --offline --manifest-path <fixture>/Cargo.toml",
@@ -168,18 +168,18 @@
         "command": "cargo check --offline --manifest-path <fixture>/Cargo.toml",
         "exit_status": 101,
         "log_sha256": "317f9d169a2ba3c67663bba084156ca1d60dfd843aa232e4fac653457445ce0f",
-        "diagnostics": "error[E0382]: borrow of moved value: `private`\n   --> src/lib.rs:5:64\n    |\n  2 |     let (private, _) = charlotte_launch::operations::generate_recipient_keypair(rng);\n    |          ------- move occurs because `private` has type `zeroize::Zeroizing<[u8; 32]>`, which does not implement the `Copy` trait\n  3 |     let transferred = private;\n    |                       ------- value moved here\n  4 |     drop(transferred);\n  5 |     let _ = charlotte_launch::operations::recipient_public_key(&private);\n    |                                                                ^^^^^^^^ value borrowed here after move\n    |\n    = note: borrow occurs due to deref coercion to `[u8; 32]`\nnote: deref defined here\n   --> /Users/froran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/lib.rs:645:5\n    |\n645 |     type Target = Z;\n    |     ^^^^^^^^^^^\nhelp: consider cloning the value if the performance cost is acceptable\n    |\n  3 |     let transferred = private.clone();\n    |                              ++++++++\n\nFor more information about this error, try `rustc --explain E0382`.\nerror: could not compile `hpke-key-owner-control` (lib) due to 1 previous error\n"
+        "diagnostics": "error[E0382]: borrow of moved value: `private`\n   --> src/lib.rs:5:64\n    |\n  2 |     let (private, _) = knytos_launch::operations::generate_recipient_keypair(rng);\n    |          ------- move occurs because `private` has type `zeroize::Zeroizing<[u8; 32]>`, which does not implement the `Copy` trait\n  3 |     let transferred = private;\n    |                       ------- value moved here\n  4 |     drop(transferred);\n  5 |     let _ = knytos_launch::operations::recipient_public_key(&private);\n    |                                                                ^^^^^^^^ value borrowed here after move\n    |\n    = note: borrow occurs due to deref coercion to `[u8; 32]`\nnote: deref defined here\n   --> /Users/froran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/lib.rs:645:5\n    |\n645 |     type Target = Z;\n    |     ^^^^^^^^^^^\nhelp: consider cloning the value if the performance cost is acceptable\n    |\n  3 |     let transferred = private.clone();\n    |                              ++++++++\n\nFor more information about this error, try `rustc --explain E0382`.\nerror: could not compile `hpke-key-owner-control` (lib) due to 1 previous error\n"
       },
       "scope": "Root lockfile seeded the fixture to retain hpke 0.14.0, x25519-dalek 3.0.0 and zeroize 1.9.0. Implicit Copy reuse is removed; explicit copies/clones are still possible."
     },
     "removed_erasure_feature": {
-      "manifest": "[package]\nname = \"charlotte-launch\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Shared fixed-width CharlotteOS userspace launch ABI\"\n\n[lib]\nname = \"charlotte_launch\"\npath = \"src/lib.rs\"\nbench = false\n\n[dependencies]\ncurve25519-dalek = { version = \"5.0.0\", default-features = false }\ned25519-compact = { version = \"2.3.1\", default-features = false }\nhpke = { version = \"0.14.0\", default-features = false, features = [\"chacha\", \"x25519\"] }\nrand_core = { version = \"0.10.0\", default-features = false }\n# HPKE disables X25519 defaults. Require erasure for its private/shared owners.\nx25519-dalek = { version = \"3.0.0\", default-features = false, features = [\"static_secrets\"] }\nzeroize = { version = \"1.9\", default-features = false }\n\n[dev-dependencies]\ngetrandom = { version = \"0.4\", features = [\"sys_rng\"] }\n\n[workspace]\n",
+      "manifest": "[package]\nname = \"knytos-launch\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Shared fixed-width Knytos userspace launch ABI\"\n\n[lib]\nname = \"knytos_launch\"\npath = \"src/lib.rs\"\nbench = false\n\n[dependencies]\ncurve25519-dalek = { version = \"5.0.0\", default-features = false }\ned25519-compact = { version = \"2.3.1\", default-features = false }\nhpke = { version = \"0.14.0\", default-features = false, features = [\"chacha\", \"x25519\"] }\nrand_core = { version = \"0.10.0\", default-features = false }\n# HPKE disables X25519 defaults. Require erasure for its private/shared owners.\nx25519-dalek = { version = \"3.0.0\", default-features = false, features = [\"static_secrets\"] }\nzeroize = { version = \"1.9\", default-features = false }\n\n[dev-dependencies]\ngetrandom = { version = \"0.4\", features = [\"sys_rng\"] }\n\n[workspace]\n",
       "operations_source_sha256": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
       "lockfile_sha256": "cc2d291276b5e2451dafa2cba6de6b42fe86f5b7d7ab2f30d195238d86eb8406",
       "command": "cargo check --offline --lib --manifest-path <isolated-launch-fixture>/Cargo.toml",
       "exit_status": 101,
       "log_sha256": "9313e1f2762a1a1cd9ea0d0f3fb0b682189667954ebe4d9edbbaff90fd96669e",
-      "diagnostics": "error[E0277]: the trait bound `StaticSecret: ZeroizeOnDrop` is not satisfied\n  --> src/operations.rs:45:28\n   |\n45 |     require_erasing_drop::<x25519_dalek::StaticSecret>();\n   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `StaticSecret`\n   |\n   = help: the following other types implement trait `ZeroizeOnDrop`:\n             ()\n             (A,)\n             (A, B)\n             (A, B, C)\n             (A, B, C, D)\n             (A, B, C, D, E)\n             (A, B, C, D, E, F)\n             (A, B, C, D, E, F, G)\n           and 9 others\nnote: required by a bound in `require_erasing_drop`\n  --> src/operations.rs:44:38\n   |\n44 |     const fn require_erasing_drop<T: ZeroizeOnDrop>() {}\n   |                                      ^^^^^^^^^^^^^ required by this bound in `require_erasing_drop`\n\nerror[E0277]: the trait bound `SharedSecret: ZeroizeOnDrop` is not satisfied\n  --> src/operations.rs:46:28\n   |\n46 |     require_erasing_drop::<x25519_dalek::SharedSecret>();\n   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `SharedSecret`\n   |\n   = help: the following other types implement trait `ZeroizeOnDrop`:\n             ()\n             (A,)\n             (A, B)\n             (A, B, C)\n             (A, B, C, D)\n             (A, B, C, D, E)\n             (A, B, C, D, E, F)\n             (A, B, C, D, E, F, G)\n           and 9 others\nnote: required by a bound in `require_erasing_drop`\n  --> src/operations.rs:44:38\n   |\n44 |     const fn require_erasing_drop<T: ZeroizeOnDrop>() {}\n   |                                      ^^^^^^^^^^^^^ required by this bound in `require_erasing_drop`\n\nFor more information about this error, try `rustc --explain E0277`.\nerror: could not compile `charlotte-launch` (lib) due to 2 previous errors\n",
+      "diagnostics": "error[E0277]: the trait bound `StaticSecret: ZeroizeOnDrop` is not satisfied\n  --> src/operations.rs:45:28\n   |\n45 |     require_erasing_drop::<x25519_dalek::StaticSecret>();\n   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `StaticSecret`\n   |\n   = help: the following other types implement trait `ZeroizeOnDrop`:\n             ()\n             (A,)\n             (A, B)\n             (A, B, C)\n             (A, B, C, D)\n             (A, B, C, D, E)\n             (A, B, C, D, E, F)\n             (A, B, C, D, E, F, G)\n           and 9 others\nnote: required by a bound in `require_erasing_drop`\n  --> src/operations.rs:44:38\n   |\n44 |     const fn require_erasing_drop<T: ZeroizeOnDrop>() {}\n   |                                      ^^^^^^^^^^^^^ required by this bound in `require_erasing_drop`\n\nerror[E0277]: the trait bound `SharedSecret: ZeroizeOnDrop` is not satisfied\n  --> src/operations.rs:46:28\n   |\n46 |     require_erasing_drop::<x25519_dalek::SharedSecret>();\n   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `SharedSecret`\n   |\n   = help: the following other types implement trait `ZeroizeOnDrop`:\n             ()\n             (A,)\n             (A, B)\n             (A, B, C)\n             (A, B, C, D)\n             (A, B, C, D, E)\n             (A, B, C, D, E, F)\n             (A, B, C, D, E, F, G)\n           and 9 others\nnote: required by a bound in `require_erasing_drop`\n  --> src/operations.rs:44:38\n   |\n44 |     const fn require_erasing_drop<T: ZeroizeOnDrop>() {}\n   |                                      ^^^^^^^^^^^^^ required by this bound in `require_erasing_drop`\n\nFor more information about this error, try `rustc --explain E0277`.\nerror: could not compile `knytos-launch` (lib) due to 2 previous errors\n",
       "expected_errors": [
         "E0277: StaticSecret: ZeroizeOnDrop is not satisfied",
         "E0277: SharedSecret: ZeroizeOnDrop is not satisfied"
@@ -189,14 +189,14 @@
   },
   "host_validation": {
     "debug_launch": {
-      "command": "cargo test --offline --manifest-path <repository>/crates/charlotte-launch/Cargo.toml",
+      "command": "cargo test --offline --manifest-path <repository>/crates/knytos-launch/Cargo.toml",
       "exit_status": 0,
       "log_sha256": "3568835839688d4dce68342875965b171eb99c2e03150bd54c1e953b6b4c446b",
       "runtime_tests_passed": 62,
       "compile_fail_doctests_passed": 1
     },
     "optimized_initial": {
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-launch -p charlotte-s3 -p charlotte-kafka -p cluster-sign",
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-launch -p knytos-s3 -p knytos-kafka -p cluster-sign",
       "exit_status": 0,
       "log_sha256": "c51221c6ded77877deec47b141daadbaede96de6a886be7cca07870539a3d613",
       "runtime_tests_passed": 102,
@@ -210,7 +210,7 @@
       "runtime_tests_passed": 19
     },
     "strict_clippy_final": {
-      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-launch -p cluster-sign --all-targets -- -D warnings",
+      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-launch -p cluster-sign --all-targets -- -D warnings",
       "exit_status": 0,
       "log_sha256": "79d2c95ae7c3a5833abfc3aa7a99d5010ba303c8191dade0b60358dfb50a6d98"
     },
@@ -228,13 +228,13 @@
     "project_pinned_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)",
     "final_drop_probes": {
       "debug": {
-        "command": "cargo test --offline --locked --manifest-path <repository>/crates/charlotte-launch/Cargo.toml --test hpke_erasure",
+        "command": "cargo test --offline --locked --manifest-path <repository>/crates/knytos-launch/Cargo.toml --test hpke_erasure",
         "exit_status": 0,
         "log_sha256": "3a0b03ff32be14b34ae3f511add1e247405c06235d6e24070e05a606bf58a0bf",
         "tests_passed": 2
       },
       "release": {
-        "command": "cargo test --release --offline --locked --manifest-path <repository>/crates/charlotte-launch/Cargo.toml --test hpke_erasure",
+        "command": "cargo test --release --offline --locked --manifest-path <repository>/crates/knytos-launch/Cargo.toml --test hpke_erasure",
         "exit_status": 0,
         "log_sha256": "9b1763b49463004c2497a43405f8e4755b14c6514091ba037edb9ff9b6a5eabd",
         "tests_passed": 2
@@ -244,17 +244,17 @@
   },
   "builds": {
     "arm_services": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "697e329ce759e3c8cf376a1ca118d730cd477cbe5ba7c49cd38a11b718343a69"
     },
     "x86_services": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0,
       "log_sha256": "e805a79c870120658ca0ea611d3ac01d41ebf2be3939b018e7e505f208a26d92"
     },
     "arm_source_signature_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "85c8dbac64ed6a362d668bf3988686e26e947620bb15cfdbe2e999a0ff8261b2"
     }
@@ -570,22 +570,22 @@
     "revision": "44bb3b18",
     "original_manifest_sha256": "34a4d48a82a59d633b146a4b3633bcacf11c4f9efdb2ca592a1a5cc421a6ccfb",
     "original_lockfile_sha256": "6a09ea7454ebe0b229bdf6433231a8efc0bfd5bd7df1652e19acc9cfcb9165e4",
-    "feature_tree": "x25519-dalek v3.0.0\n\u2514\u2500\u2500 x25519-dalek feature \"static_secrets\"\n    \u2514\u2500\u2500 hpke v0.14.0\n        \u251c\u2500\u2500 hpke feature \"chacha\"\n        \u2502   \u2514\u2500\u2500 charlotte-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch)\n        \u2502       \u2514\u2500\u2500 charlotte-launch feature \"default\" (command-line)\n        \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n        \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n        \u2502       \u2514\u2500\u2500 charlotte-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch) (*)\n        \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n",
+    "feature_tree": "x25519-dalek v3.0.0\n\u2514\u2500\u2500 x25519-dalek feature \"static_secrets\"\n    \u2514\u2500\u2500 hpke v0.14.0\n        \u251c\u2500\u2500 hpke feature \"chacha\"\n        \u2502   \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch)\n        \u2502       \u2514\u2500\u2500 knytos-launch feature \"default\" (command-line)\n        \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n        \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n        \u2502       \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n        \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n",
     "feature_tree_log_sha256": "2ed05d168aaee7bf64b4099731bb5dfdadbad2388b0c027d0191bcc371b0e262",
     "test_source": "//! Public fixture bytes exercise the exact X25519 owners used by HPKE.\n\nuse core::{\n    mem::MaybeUninit,\n    ptr,\n};\n\nuse x25519_dalek::{\n    PublicKey,\n    StaticSecret,\n};\n\nfn assert_drop_erases(value: impl AsRef<[u8]>) {\n    let mut storage = MaybeUninit::new(value);\n    let owner = storage.as_mut_ptr();\n    // Keep storage allocated after destroying its one initialized owner.\n    // Read only the initialized 32-byte field exposed by AsRef: no padding,\n    // freed-memory inspection or second adoption of the dropped value.\n    unsafe {\n        let bytes = (*owner).as_ref();\n        assert_eq!(bytes.len(), 32);\n        assert!(bytes.iter().any(|byte| *byte != 0));\n        let data = bytes.as_ptr();\n        ptr::drop_in_place(owner);\n        for index in 0..32 {\n            assert_eq!(ptr::read_volatile(data.add(index)), 0, \"retained byte {index}\");\n        }\n    }\n}\n\n#[test]\nfn x25519_private_owner_erases_on_drop() {\n    assert_drop_erases(StaticSecret::from([0x5a; 32]));\n}\n\n#[test]\nfn x25519_shared_owner_erases_on_drop() {\n    let private = StaticSecret::from([0x5a; 32]);\n    let peer = PublicKey::from(&StaticSecret::from([0x6b; 32]));\n    assert_drop_erases(private.diffie_hellman(&peer));\n}\n",
     "test_source_sha256": "8c5ed33cffd3cbb1ecf6dd892cf01afbc4b8edf34d54dd5580910a323f2a0f41",
     "temporary_test_dependency": "x25519-dalek = { version = \"3.0.0\", default-features = false, features = [\"static_secrets\"] }",
     "scope": "Direct test access to the same selected owners, with the unchanged baseline erasure feature selection. Public fixed fixture bytes only; retained allocated storage, no padding/freed-memory inspection or second adoption.",
-    "command": "cargo test --offline --manifest-path <repository>/crates/charlotte-launch/Cargo.toml --test hpke_erasure",
+    "command": "cargo test --offline --manifest-path <repository>/crates/knytos-launch/Cargo.toml --test hpke_erasure",
     "exit_status": 101,
     "log_sha256": "4b9d68dde5535a1ef5cd1c69d6ce92559fac4f6af66ede899ea12f4013890540",
-    "diagnostics": "running 2 tests\ntest x25519_private_owner_erases_on_drop ... FAILED\ntest x25519_shared_owner_erases_on_drop ... FAILED\n\nfailures:\n\n---- x25519_private_owner_erases_on_drop stdout ----\n\nthread 'x25519_private_owner_erases_on_drop' (19990328) panicked at crates/charlotte-launch/tests/hpke_erasure.rs:26:13:\nassertion `left == right` failed: retained byte 0\n  left: 90\n right: 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- x25519_shared_owner_erases_on_drop stdout ----\n\nthread 'x25519_shared_owner_erases_on_drop' (19990329) panicked at crates/charlotte-launch/tests/hpke_erasure.rs:26:13:\nassertion `left == right` failed: retained byte 0\n  left: 188\n right: 0\n\n\nfailures:\n    x25519_private_owner_erases_on_drop\n    x25519_shared_owner_erases_on_drop\n\ntest result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test hpke_erasure`\n",
+    "diagnostics": "running 2 tests\ntest x25519_private_owner_erases_on_drop ... FAILED\ntest x25519_shared_owner_erases_on_drop ... FAILED\n\nfailures:\n\n---- x25519_private_owner_erases_on_drop stdout ----\n\nthread 'x25519_private_owner_erases_on_drop' (19990328) panicked at crates/knytos-launch/tests/hpke_erasure.rs:26:13:\nassertion `left == right` failed: retained byte 0\n  left: 90\n right: 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- x25519_shared_owner_erases_on_drop stdout ----\n\nthread 'x25519_shared_owner_erases_on_drop' (19990329) panicked at crates/knytos-launch/tests/hpke_erasure.rs:26:13:\nassertion `left == right` failed: retained byte 0\n  left: 188\n right: 0\n\n\nfailures:\n    x25519_private_owner_erases_on_drop\n    x25519_shared_owner_erases_on_drop\n\ntest result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test hpke_erasure`\n",
     "tests_failed": 2,
     "verification_limit": "The first harness retained a pointer derived from an AsRef shared borrow across destruction. Superseded by the final storage-pointer probes below; this exploratory run alone is not relied on as erasure evidence."
   },
   "baseline_reproduction": {
     "revision": "44bb3b18",
-    "manifest": "[package]\nname = \"charlotte-launch\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Shared fixed-width CharlotteOS userspace launch ABI\"\n\n[lib]\nname = \"charlotte_launch\"\npath = \"src/lib.rs\"\nbench = false\n\n[dependencies]\ncurve25519-dalek = { version = \"5.0.0\", default-features = false }\ned25519-compact = { version = \"2.3.1\", default-features = false }\nhpke = { version = \"0.14.0\", default-features = false, features = [\"chacha\", \"x25519\"] }\nrand_core = { version = \"0.10.0\", default-features = false }\nx25519-dalek = { version = \"3.0.0\", default-features = false, features = [\"static_secrets\"] }\nzeroize = { version = \"1.9\", default-features = false }\n\n[dev-dependencies]\ngetrandom = { version = \"0.4\", features = [\"sys_rng\"] }\n\n[workspace]\n",
+    "manifest": "[package]\nname = \"knytos-launch\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Shared fixed-width Knytos userspace launch ABI\"\n\n[lib]\nname = \"knytos_launch\"\npath = \"src/lib.rs\"\nbench = false\n\n[dependencies]\ncurve25519-dalek = { version = \"5.0.0\", default-features = false }\ned25519-compact = { version = \"2.3.1\", default-features = false }\nhpke = { version = \"0.14.0\", default-features = false, features = [\"chacha\", \"x25519\"] }\nrand_core = { version = \"0.10.0\", default-features = false }\nx25519-dalek = { version = \"3.0.0\", default-features = false, features = [\"static_secrets\"] }\nzeroize = { version = \"1.9\", default-features = false }\n\n[dev-dependencies]\ngetrandom = { version = \"0.4\", features = [\"sys_rng\"] }\n\n[workspace]\n",
     "lockfile_sha256": "cc2d291276b5e2451dafa2cba6de6b42fe86f5b7d7ab2f30d195238d86eb8406",
     "operations_source_sha256": "897a5e0022f89788cee9c505e4b465f540a1703f781f98f5d236bbc9925efa3d",
     "test_source": "//! Public fixture bytes exercise the exact X25519 owners used by HPKE.\n\nuse core::{\n    mem::MaybeUninit,\n    ptr,\n};\n\nuse x25519_dalek::{\n    PublicKey,\n    StaticSecret,\n};\n\nfn assert_drop_erases(value: impl AsRef<[u8]>) {\n    let mut storage = MaybeUninit::new(value);\n    let owner = storage.as_mut_ptr();\n    // Keep storage allocated after destroying its one initialized owner.\n    // Locate the initialized 32-byte field with AsRef, then end that borrow.\n    // Post-Drop reads derive from the storage pointer, avoiding reuse of a\n    // pointer from the shared borrow. No padding, freed memory or second owner.\n    unsafe {\n        let bytes = (*owner).as_ref();\n        assert_eq!(bytes.len(), 32);\n        assert!(bytes.iter().any(|byte| *byte != 0));\n        let offset = bytes.as_ptr().addr().checked_sub(owner.addr()).unwrap();\n        assert!(offset + 32 <= core::mem::size_of_val(&*owner));\n        ptr::drop_in_place(owner);\n        let data = owner.cast::<u8>().add(offset);\n        for index in 0..32 {\n            assert_eq!(ptr::read_volatile(data.add(index)), 0, \"retained byte {index}\");\n        }\n    }\n}\n\n#[test]\nfn x25519_private_owner_erases_on_drop() {\n    assert_drop_erases(StaticSecret::from([0x5a; 32]));\n}\n\n#[test]\nfn x25519_shared_owner_erases_on_drop() {\n    let private = StaticSecret::from([0x5a; 32]);\n    let peer = PublicKey::from(&StaticSecret::from([0x6b; 32]));\n    assert_drop_erases(private.diffie_hellman(&peer));\n}\n",
@@ -940,10 +940,10 @@
   },
   "reviewed_source_sha256": {
     "Cargo.lock": "4e57ea294b772b58ed3e61cdc9a779ff2d5eb6759558cd182430b77ee27a3ca0",
-    "crates/charlotte-launch/Cargo.toml": "b954fb2c56256fa40e7b91c912dd96984818e2672814f0f9e3bbb7bc14b85389",
-    "crates/charlotte-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
-    "crates/charlotte-launch/tests/hpke_erasure.rs": "df5af395f39dca755134fefe9757cdfbc744f2a034fd8acee9dd2b113a920769",
-    "crates/charlotte-launch/tests/operations.rs": "22d126583c560105bdab0171647fa792a60409f9b35a9ab755e5263e81989f01",
+    "crates/knytos-launch/Cargo.toml": "b954fb2c56256fa40e7b91c912dd96984818e2672814f0f9e3bbb7bc14b85389",
+    "crates/knytos-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
+    "crates/knytos-launch/tests/hpke_erasure.rs": "df5af395f39dca755134fefe9757cdfbc744f2a034fd8acee9dd2b113a920769",
+    "crates/knytos-launch/tests/operations.rs": "22d126583c560105bdab0171647fa792a60409f9b35a9ab755e5263e81989f01",
     "docs/guides/signing-and-trust.md": "2d556ac6cab3c66555d8fd8f2f330c47b84ab1d541a719786bce80b87fe44557",
     "docs/reference/api-simplification.md": "190e7c75fcd7f18e24af555afd6179a3e81a0030a852baa703141ebcc667519b",
     "docs/reference/cleanup-recovery.md": "594a02e5a32d30e2bfeee36c94372c43413e257cc1cc9243d965453d4c5ea3b2",
@@ -956,8 +956,8 @@
   "validation_harness_sha256": {
     "scripts/run-secure-boot-test.py": "31c4379313b4c89b39ee2f62a2e7f339b3e4190274becc6ed80195df0aac01be",
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "scripts/check-kernel-asm-sections.py": "21943e564c4be97a474f53e97c1db79e43f8507ee92a1f7a3b9f5027a0a85ac4"
   },
   "final_checks": {

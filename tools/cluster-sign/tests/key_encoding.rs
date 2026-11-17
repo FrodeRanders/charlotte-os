@@ -91,7 +91,7 @@ fn key_generation_commands_preserve_files_modes_and_private_output() {
             fs::remove_dir_all(&self.0).unwrap();
         }
     }
-    let path = std::env::temp_dir().join(format!("charlotte-key-encoding-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("knytos-key-encoding-{}", std::process::id()));
     fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
     let directory = Directory(path);
     for (command, private_len) in [

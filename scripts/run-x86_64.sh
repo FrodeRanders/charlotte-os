@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build a bootable UEFI disk image for CharlotteOS / Catten (x86_64) and run it
+# Build a bootable UEFI disk image for Knytos / Catten (x86_64) and run it
 # under QEMU. This is the x86_64 counterpart of scripts/run-aarch64.sh.
 #
 # Requirements: qemu, mtools.  On macOS install via Homebrew:
@@ -433,7 +433,7 @@ if [ "$S3_TEST" = "1" ]; then
         -out "$CATTEN_RUSTFS_CERT_DIR/ca.key"
     openssl req -x509 -new -sha256 -days 2 \
         -key "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
-        -subj "/CN=CharlotteOS RustFS test CA" \
+        -subj "/CN=Knytos RustFS test CA" \
         -addext "basicConstraints=critical,CA:TRUE" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
         -out "$CATTEN_RUSTFS_CERT_DIR/ca.crt"
@@ -469,7 +469,7 @@ SERVICE_BUNDLE="$BUNDLE"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged x86_64 service bundle."
 else
-    "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh" --mode "$BOOT_MODE"
+    "${ROOT_DIR}/scripts/build-knytos-services-x86_64.sh" --mode "$BOOT_MODE"
 fi
 catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
@@ -537,11 +537,11 @@ fi
 
 if [ "$EL0_SMOKE" = "1" ]; then
     echo ">>> Building and signing the x86_64 smoke service ELF..."
-    cargo build --locked --manifest-path crates/catten-services/Cargo.toml \
-        --target crates/catten-services/x86_64-unknown-none.json \
-        --target-dir crates/catten-services/target \
+    cargo build --locked --manifest-path crates/knytos-services/Cargo.toml \
+        --target crates/knytos-services/x86_64-unknown-none.json \
+        --target-dir crates/knytos-services/target \
         --release -Z build-std=core,alloc --bin smoke
-    cp crates/catten-services/target/x86_64-unknown-none/release/smoke \
+    cp crates/knytos-services/target/x86_64-unknown-none/release/smoke \
         "$SERVICE_BUNDLE/smoke.elf"
     "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
     export CATTEN_X86_64_SMOKE_ELF="$SERVICE_BUNDLE/smoke.elf"
@@ -776,7 +776,7 @@ if [ -n "$TIMEOUT" ]; then
                 if [ "$DEPLOY_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
-                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
+                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "knytos.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
                     HTTP_PROBE_OK=1
                     break
                 fi

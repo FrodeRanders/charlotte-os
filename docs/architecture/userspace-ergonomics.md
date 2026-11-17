@@ -1,7 +1,7 @@
 # Userspace development ergonomics
 
 **Status:** Application foundation implemented following the 14 November 2026
-source review of CharlotteOS `327a50a7`. Current interfaces and commands are in
+source review of Knytos `327a50a7`. Current interfaces and commands are in
 [the application SDK guide](../guides/application-sdk.md). Validation limits and
 remaining extensions are listed below. The
 [broker consumer review](../reports/audits/2026-11-14-broker-sdk-review.md)
@@ -20,26 +20,26 @@ DMA and quiescence obligations.
 
 | Layer | Responsibility |
 | --- | --- |
-| [`catten-syscall`](../../crates/catten-syscall) | Register ABI; integers at the native boundary. |
-| [`catten-rt`](../../crates/catten-rt) | Existing capability/mapping owners, launch context and crt0; shared monotonic deadlines, bounded admission, owner-preserving call observations, length-bearing payload preparation and native worker groups. |
-| [`charlotte-protocol-grant`](../../crates/charlotte-protocol-grant) and other protocol crates | Wire data and codecs; no live capability ownership. |
-| [`charlotte-app`](../../crates/charlotte-app) | Borrowed application context, returning entry wrapper, synchronous serving scope and scalar test seam. Optional socket, Kafka and S3 clients are extracted implementations, independent of platform service code. |
-| [`charlotte-app-sitas`](../../crates/charlotte-app-sitas) | Bounded task registration and owned call futures on the existing Sitas reactor/executor. |
-| [`catten-services`](../../crates/catten-services) | Platform services, catalog policy, broker-facing transports, hardware adapters and reexports of the shared application clients. |
+| [`knytos-syscall`](../../crates/knytos-syscall) | Register ABI; integers at the native boundary. |
+| [`knytos-rt`](../../crates/knytos-rt) | Existing capability/mapping owners, launch context and crt0; shared monotonic deadlines, bounded admission, owner-preserving call observations, length-bearing payload preparation and native worker groups. |
+| [`knytos-protocol-grant`](../../crates/knytos-protocol-grant) and other protocol crates | Wire data and codecs; no live capability ownership. |
+| [`knytos-app`](../../crates/knytos-app) | Borrowed application context, returning entry wrapper, synchronous serving scope and scalar test seam. Optional socket, Kafka and S3 clients are extracted implementations, independent of platform service code. |
+| [`knytos-app-sitas`](../../crates/knytos-app-sitas) | Bounded task registration and owned call futures on the existing Sitas reactor/executor. |
+| [`knytos-services`](../../crates/knytos-services) | Platform services, catalog policy, broker-facing transports, hardware adapters and reexports of the shared application clients. |
 | [SDK exporter](../../scripts/export-app-sdk.sh) and [CLI](../../scripts/app-sdk.py) | Exact input snapshot, target/build tools, starter workspace, host business tests and explicit artifact signing. |
 
 ```mermaid
 flowchart TD
-    App[Application business code] --> Clients[charlotte-app: launch and typed clients]
+    App[Application business code] --> Clients[knytos-app: launch and typed clients]
     Services[Platform service implementations] --> Clients
-    Clients --> Runtime[catten-rt: owners and launch ABI]
+    Clients --> Runtime[knytos-rt: owners and launch ABI]
     Clients --> Wire[Protocol crates: wire data and codecs]
-    Runtime --> Syscalls[catten-syscall: register ABI]
-    Async[charlotte-app-sitas: owned call futures] --> Runtime
+    Runtime --> Syscalls[knytos-syscall: register ABI]
+    Async[knytos-app-sitas: owned call futures] --> Runtime
     Async --> Sitas[Existing Sitas executor and backend]
 ```
 
-No application/client implementation depends back on `catten-services`.
+No application/client implementation depends back on `knytos-services`.
 Extraction removes its unconditional network/catalog/TLS implementation
 package from an application's dependency graph. Binary size, build latency and
 runtime overhead still need measurement; shorter source and dependency
@@ -73,7 +73,7 @@ request's local timeout no longer looks like confirmed remote unavailability.
 `CallObservation` retains memory loans until actual completion or confirmed
 cancellation. `cancel_on_failure` explicitly selects the existing fail-closed
 policy. A deadline bounds result observation, not destruction latency or remote
-rollback. The [reconnecting example](../../crates/charlotte-app/examples/reconnecting_client.rs)
+rollback. The [reconnecting example](../../crates/knytos-app/examples/reconnecting_client.rs)
 keeps business progress and replay policy separate from these shared mechanics.
 
 ## Launch, serving and workers

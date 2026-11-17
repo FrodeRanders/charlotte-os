@@ -47,7 +47,7 @@ host_rustdoc="$(rustup which --toolchain "$toolchain" rustdoc)"
 host_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-host-tests.XXXXXX")"
 trap 'rmdir "$host_work_dir"' EXIT
 
-# Cargo discovers .cargo/config.toml from the invocation directory. CharlotteOS'
+# Cargo discovers .cargo/config.toml from the invocation directory. Knytos'
 # root config builds core for freestanding targets, so invoke host tests from a
 # temporary directory while retaining absolute manifest paths.
 cd "$host_work_dir"
@@ -111,12 +111,12 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
-#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+#[path = "$repo_root/crates/knytos-lifecycle/src/resources.rs"]
 pub mod resources;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;
@@ -150,12 +150,12 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
-#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+#[path = "$repo_root/crates/knytos-lifecycle/src/resources.rs"]
 pub mod resources;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;
@@ -189,12 +189,12 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
-#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+#[path = "$repo_root/crates/knytos-lifecycle/src/resources.rs"]
 pub mod resources;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;
@@ -234,12 +234,12 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
-#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+#[path = "$repo_root/crates/knytos-lifecycle/src/resources.rs"]
 pub mod resources;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;
@@ -269,12 +269,12 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
-#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+#[path = "$repo_root/crates/knytos-lifecycle/src/resources.rs"]
 pub mod resources;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;
@@ -304,12 +304,12 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
-#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+#[path = "$repo_root/crates/knytos-lifecycle/src/resources.rs"]
 pub mod resources;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;
@@ -411,7 +411,7 @@ for manifest in "${manifests[@]}"; do
     # binary targets while retaining host unit tests in its library. Cargo
     # applies `test = false` per target, so let it select the enabled targets.
     features=()
-    if [ "$manifest" = "crates/charlotte-app/Cargo.toml" ]; then features=(--all-features); fi
+    if [ "$manifest" = "crates/knytos-app/Cargo.toml" ]; then features=(--all-features); fi
     RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \
         --manifest-path "$repo_root/$manifest" "${features[@]}"
 done

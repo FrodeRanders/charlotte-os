@@ -61,7 +61,7 @@ CQ interests. The sequential keyhole waits on its CQ and lifecycle. TLS local
 progress rotates with other deployment sources; an idle client does not cause a
 blocking deployment handshake or timer-driven receive polling.
 
-`charlotte-launch/src/management/limits.rs` is the common TLS policy definition.
+`knytos-launch/src/management/limits.rs` is the common TLS policy definition.
 The complete limits file rejects missing/duplicate/unknown/nondecimal settings
 and inconsistent dimensions before private input/output. Counts, certificates,
 wire buffers, fragmentation, original deadlines and local work co-vary; see the

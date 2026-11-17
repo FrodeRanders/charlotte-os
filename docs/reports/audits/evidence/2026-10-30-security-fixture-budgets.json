@@ -2,9 +2,9 @@
   "date": "2026-10-30",
   "scope": "Separate hardware entropy rollover from serial timeout controls in the opt-in security fixture. No runtime or production deadline change; the combined fixture allowance increases.",
   "source_sha256": {
-    "crates/catten-services/src/bin/security_probe.rs": "3f3d52e5e076d990fb4e571dae27825ab7dbbcc1c34086954005f6470c916b4d",
+    "crates/knytos-services/src/bin/security_probe.rs": "3f3d52e5e076d990fb4e571dae27825ab7dbbcc1c34086954005f6470c916b4d",
     "crates/catten/src/self_test/el0_security.rs": "abbd8190142342262c85e613dd77eaf93dc1c836499fa397a532776dffb95b5e",
-    "crates/charlotte-launch/src/lib.rs": "ea544389fab03abd44c4257598fc7faf7a561784d74867258654febc3fb5077f"
+    "crates/knytos-launch/src/lib.rs": "ea544389fab03abd44c4257598fc7faf7a561784d74867258654febc3fb5077f"
   },
   "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
   "fixed_matrix": {

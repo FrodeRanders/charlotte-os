@@ -1,4 +1,4 @@
-# CharlotteOS synchronization primitives and lock ordering
+# Knytos synchronization primitives and lock ordering
 
 This document enumerates the synchronization primitives actually used by the
 kernel, their semantics, and the ordering rules that keep them from

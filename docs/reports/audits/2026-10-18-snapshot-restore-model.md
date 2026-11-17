@@ -17,27 +17,27 @@ The Raft host suite passes **32 tests** and the services host suite passes
 
 ## Source comparison
 
-- [`StateMachine::restore`](../../../crates/catten-graft/src/state_machine.rs)
+- [`StateMachine::restore`](../../../crates/knytos-graft/src/state_machine.rs)
   requires rejection without changing state. Its default accepts only empty
   application bytes; the catalog requires its complete current format.
-- [`NameCatalog::restore_bytes`](../../../crates/catten-services/src/name_catalog/snapshot.rs)
+- [`NameCatalog::restore_bytes`](../../../crates/knytos-services/src/name_catalog/snapshot.rs)
   builds every section in temporary collections. Unsupported magic, malformed
   fields, missing sections or trailing bytes return before live replacement.
   Publication uses separate section locks after all validation.
-- [`RaftNode::new` and `handle_install_snapshot`](../../../crates/catten-graft/src/node.rs)
+- [`RaftNode::new` and `handle_install_snapshot`](../../../crates/knytos-graft/src/node.rs)
   propagate application rejection before exposing a constructed node or changing
   snapshot/log progress, live membership or durable join admission. Rejected
   network installation discards its pending stream and returns failure/not-done
   at offset zero. Normal term/vote and leader-contact processing may already have
   occurred; these are deliberately outside the preserved-state tuple.
-- [`DiskLogStore`](../../../crates/catten-services/src/disk_raft.rs) persists after
+- [`DiskLogStore`](../../../crates/knytos-services/src/disk_raft.rs) persists after
   application restore. Write/flush rejection calls `persist_fail_stop`, which
   logs and calls `thread_exit`. The calling Raft operation cannot continue to
   publish progress. This is not evidence that sibling threads stop or endpoints
   are withdrawn.
-- [`DNS startup`](../../../crates/catten-services/src/bin/dns.rs) stops startup
+- [`DNS startup`](../../../crates/knytos-services/src/bin/dns.rs) stops startup
   on rejected persistent-store open or fallible node construction. Its
-  [`CatalogMachine`](../../../crates/catten-services/src/bin/dns/catalog.rs)
+  [`CatalogMachine`](../../../crates/knytos-services/src/bin/dns/catalog.rs)
   forwards the catalog's restore result.
 
 ## Finite contract
@@ -92,7 +92,7 @@ not a fresh single full-suite invocation. The configured inventory is now
 the evidence records all **159 model/config/harness hashes**.
 
 Host validation ran `cargo test --locked --manifest-path
-<repo>/crates/{catten-graft,catten-services}/Cargo.toml --lib` from outside the
+<repo>/crates/{knytos-graft,knytos-services}/Cargo.toml --lib` from outside the
 repository Cargo-config directory. Relevant passing tests include:
 
 - rejected restart preserves durable join admission, term/vote and snapshot;

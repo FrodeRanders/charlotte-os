@@ -3,7 +3,7 @@
   "base_revision": "94326e3c618e12ad850ea05a697ab04f95f85072",
   "scope": "Correct x86 acknowledgement/deadline observation on the same owned shootdown epoch. Preserve the 500 ms admission and 100 ms acknowledgement budgets, IRQ policy, send count and typed cleanup ownership. No finding disposition changes.",
   "source_sha256": {
-    "crates/charlotte-lifecycle/src/shootdown.rs": "fa30c25adfd41531dd3b90b7ecc107a6aea4dceb4abc778928f6615ec782ac1f",
+    "crates/knytos-lifecycle/src/shootdown.rs": "fa30c25adfd41531dd3b90b7ecc107a6aea4dceb4abc778928f6615ec782ac1f",
     "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs": "36426f7ddaef8d0e05a7ab7d1273af1625ee25db2411c13caf610461dbad7f0b",
     "crates/catten/src/memory/object/mapping/tests.rs": "baf596b608addfddc04dc6ce0473e73c7b8baae858150bd164480b905858c5d1"
   },

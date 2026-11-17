@@ -149,7 +149,7 @@ def prepare_firmware_authority(private, output, vars_template, openssl, fwvars, 
     for role in ("pk", "kek", "db", "foreign"):
         key, cert = private / f"{role}.key", output / f"{role}.crt"
         run([openssl, "req", "-new", "-x509", "-newkey", "rsa:2048", "-nodes",
-             "-sha256", "-days", "2", "-subj", f"/CN=Disposable CharlotteOS QEMU {role}/",
+             "-sha256", "-days", "2", "-subj", f"/CN=Disposable Knytos QEMU {role}/",
              "-keyout", key, "-out", cert], preparation)
         key.chmod(0o600)
         certificates[role] = (key, cert)

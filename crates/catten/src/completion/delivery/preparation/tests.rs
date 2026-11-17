@@ -146,7 +146,7 @@ fn physical_publication() {
     let base = used(principal);
     let mut prepared = Prepared::new(Target::capture(asid).unwrap(), 8, Some(frame)).unwrap();
     let node = PreparedEntry::<(CqId, CqState)>::allocation_bytes() as u64;
-    let slots = charlotte_lifecycle::resources::queue_backing_slots(8).unwrap();
+    let slots = knytos_lifecycle::resources::queue_backing_slots(8).unwrap();
     let backlog = (slots * core::mem::size_of::<BacklogEntry>()) as u64;
     assert_eq!(used(principal), base + node + backlog);
     assert!(unsafe { core::slice::from_raw_parts(page, 4096) }.iter().all(|byte| *byte == 0xa5));

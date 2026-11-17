@@ -465,7 +465,7 @@
     "Minimal AArch64 framebuffer/virtio_gpu image --build-only; assembly-section and boot-profile checks passed",
     "cargo fmt --all -- --check",
     "6 boot-profile, 3 pinned batch-signing, 9 management runner-gate, 14 boot-diagnostic, 5 complete-result, 4 CI input, 2 boot-image and 7 management-startup observation host tests",
-    "charlotte-lifecycle: 37 logic and 15 charged-allocator host tests passed",
+    "knytos-lifecycle: 37 logic and 15 charged-allocator host tests passed",
     "LOC Rust fragment totals reconcile with the original cloc count for every split file",
     "CI YAML parsed; four native boot jobs cover both architectures and modes",
     "git diff --check"

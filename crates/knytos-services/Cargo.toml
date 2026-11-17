@@ -1,0 +1,333 @@
+[package]
+name = "knytos-services"
+version = "0.1.0"
+edition = "2024"
+description = "Reference EL0 service programs: name service, echo service, client"
+autobins = false
+
+[features]
+default = ["service-heartbeats"]
+# Periodic console diagnostics; independent of protocol/liveness heartbeats.
+service-heartbeats = []
+
+[lib]
+name = "catten_services"
+path = "src/lib.rs"
+bench = false
+
+[[bin]]
+name = "otlp"
+path = "src/bin/otlp.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "ns"
+path = "src/bin/ns.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "echo"
+path = "src/bin/echo.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "uart"
+path = "src/bin/uart.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "cclient"
+path = "src/bin/cclient.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "net"
+path = "src/bin/net.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "e1000e"
+path = "src/bin/e1000e.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "nclient"
+path = "src/bin/nclient.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "tcpip"
+path = "src/bin/tcpip.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "tcpclient"
+path = "src/bin/tcpclient.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "httpd"
+path = "src/bin/httpd.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "raft"
+path = "src/bin/raft.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "relmsg"
+path = "src/bin/relmsg.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "rclient"
+path = "src/bin/rclient.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "observe"
+path = "src/bin/observe.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "smoke"
+path = "src/bin/smoke.rs"
+test = false
+bench = false
+
+[dependencies]
+knytos-app = { path = "../knytos-app", features = ["kafka", "s3", "socket"] }
+knytos-protocol-grant = { path = "../knytos-protocol-grant" }
+knytos-management-tls = { path = "../knytos-management-tls" }
+knytos-authorization = { path = "../knytos-authorization" }
+knytos-rt = { path = "../knytos-rt" }
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-net = { path = "../knytos-protocol-net" }
+knytos-protocol-msg = { path = "../knytos-protocol-msg" }
+knytos-smoltcp = { path = "../knytos-smoltcp" }
+smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6", "proto-dhcpv4", "socket-raw", "socket-udp", "socket-tcp", "socket-dhcpv4"] }
+knytos-syscall = { path = "../knytos-syscall" }
+knytos-graft = { path = "../knytos-graft" }
+spin = ">=0.10.0"
+knytos-protocol-block = { path = "../knytos-protocol-block" }
+knytos-protocol-objstore = { path = "../knytos-protocol-objstore" }
+knytos-protocol-kafka = { path = "../knytos-protocol-kafka" }
+knytos-protocol-disco = { path = "../knytos-protocol-disco" }
+knytos-protocol-dns = { path = "../knytos-protocol-dns" }
+knytos-protocol-ns = { path = "../knytos-protocol-ns" }
+knytos-protocol-time = { path = "../knytos-protocol-time" }
+knytos-protocol-s3 = { path = "../knytos-protocol-s3" }
+knytos-s3 = { path = "../knytos-s3" }
+knytos-kafka = { path = "../knytos-kafka" }
+knytos-kafka-step = { path = "../knytos-kafka-step" }
+embedded-io = { version = "0.7", default-features = false }
+# Reviewed upstream source plus the local signature-offer parser fix.
+embedded-tls = { path = "../embedded-tls", default-features = false, features = ["rustpki", "p256", "p384", "ed25519"] }
+embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
+# Register only required operations. Knytos supplies RNG, erasing GCM and
+# shared SHA-256/HMAC drivers; stock registrations would duplicate their symbols.
+embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1", default-features = false, features = ["embassy-crypto-sha384", "embassy-crypto-sha512", "embassy-crypto-hmac-sha384", "embassy-crypto-p256-ecdh", "embassy-crypto-p256-ecdsa", "embassy-crypto-p384-ecdsa", "embassy-crypto-ed25519"] }
+# Retain the qualified record-cipher owners behind the Embassy driver API.
+aes = { version = "0.8.4", default-features = false, features = ["zeroize"] }
+# Authentication-key scratch erasure is separately gated in each dependency.
+# POLYVAL's selected software backend also wipes state; hardware gaps remain.
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "zeroize"] }
+ghash = { version = "0.5.1", default-features = false, features = ["zeroize"] }
+polyval = { version = "0.6.2", default-features = false, features = ["zeroize"] }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
+p256 = { version = "0.14", default-features = false, features = ["pkcs8"] }
+
+[target.'cfg(not(target_os = "none"))'.dev-dependencies]
+ed25519-compact = "2.3.1"
+getrandom = { version = "0.4", features = ["sys_rng"] }
+rand_core_10 = { package = "rand_core", version = "0.10" }
+
+[[bin]]
+name = "time"
+path = "src/bin/time.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "s3"
+path = "src/bin/s3.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "s3_smoke"
+path = "src/bin/s3_smoke.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "rng"
+path = "src/bin/rng.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka"
+path = "src/bin/kafka.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_smoke"
+path = "src/bin/kafka_smoke.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_fence_smoke"
+path = "src/bin/kafka_fence_smoke.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_step"
+path = "src/bin/kafka_step.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_step_proc"
+path = "src/bin/kafka_step_proc.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_step_input"
+path = "src/bin/kafka_step_input.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "nvme"
+path = "src/bin/nvme.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "ahci"
+path = "src/bin/ahci.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "virtio_blk"
+path = "src/bin/virtio_blk.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "objstore"
+path = "src/bin/objstore.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "objstore_client"
+path = "src/bin/objstore_client.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "fs"
+path = "src/bin/fs.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "nvme_client"
+path = "src/bin/nvme_client.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "servicemgr"
+path = "src/bin/servicemgr.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "disco"
+path = "src/bin/disco.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "frouter"
+path = "src/bin/frouter.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "dns"
+path = "src/bin/dns.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "agent"
+path = "src/bin/agent.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "deployd"
+path = "src/bin/deployd.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "clusterctl"
+path = "src/bin/clusterctl.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "grantctl"
+path = "src/bin/grantctl.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "greet"
+path = "src/bin/greet.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "shutdown_probe"
+path = "src/bin/shutdown_probe.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "security_probe"
+path = "src/bin/security_probe.rs"
+test = false
+bench = false

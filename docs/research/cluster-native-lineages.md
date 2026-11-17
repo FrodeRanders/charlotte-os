@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This note reconnects the current CharlotteOS cluster implementation to prior
+This note reconnects the current Knytos cluster implementation to prior
 and current operating-systems, distributed-systems, cluster-management,
 networking, software-supply-chain, and workload-identity research. It
 complements the broader historical survey in
@@ -11,8 +11,8 @@ complements the broader historical survey in
 The comparison follows four questions:
 
 1. Which earlier mechanism or research claim is relevant?
-2. What correspondence now exists in CharlotteOS code and tests?
-3. Where does CharlotteOS deliberately take a different path?
+2. What correspondence now exists in Knytos code and tests?
+3. Where does Knytos deliberately take a different path?
 4. Which experiment would distinguish a contribution from a relocation of
    existing complexity?
 
@@ -22,7 +22,7 @@ hardware qualification, or operational support.
 
 ## Research thesis after the cluster work
 
-CharlotteOS now supports a more precise thesis than the earlier proposal of a
+Knytos now supports a more precise thesis than the earlier proposal of a
 distributed capability system:
 
 > Cluster orchestration can act directly on signed,
@@ -48,7 +48,7 @@ their composition into one authority and lifecycle model.
 
 ## Current mechanism map
 
-| CharlotteOS mechanism | Closest lineages | Present distinction | Remaining evidence |
+| Knytos mechanism | Closest lineages | Present distinction | Remaining evidence |
 |---|---|---|---|
 | Cluster as administrative unit | Amoeba, Solaris MC, LegoOS, Borg/Kubernetes | Native signed execution objects replace per-node application installation | Larger deployments, resource accounting, automated recovery |
 | Desired state and placement | Raft, Borg, Omega, Kubernetes controllers, CRUSH | The same committed state governs replica ownership, generation, readiness, and grants | Capacity, trust, health and failure-domain constraints; rolling policy |
@@ -57,7 +57,7 @@ their composition into one authority and lifecycle model.
 | Role-separated release trust | TUF, Uptane, in-toto, Sigstore/SLSA | Development authorises behavior; operations separately authorises one environment binding | Key rotation, revocation, audit, recovery and hardware-rooted custody |
 | Connector-confined managed services | Object-capability proxies, SPIFFE/SPIRE, service brokers | Applications receive attenuated operation endpoints while credentials remain in Kafka/S3 connectors | Readiness-driven connector rotation and wider managed-service integration |
 | Lifecycle and shutdown | MINIX recovery, Erlang/OTP, leases/fencing, Kubernetes reconciliation | Generation, grants, ingress drain and a signed shutdown grace share one retirement path | Full platform parity, failure injection and stateful cross-node recovery |
-| Generated non-POSIX applications | Model-driven engineering, interface generation, AI-assisted migration | Durga retains process intent while generating Charlotte adapters and deployment contracts | Semantic preservation, provenance, maintainability and measured migration cost |
+| Generated non-POSIX applications | Model-driven engineering, interface generation, AI-assisted migration | Durga retains process intent while generating Knytos adapters and deployment contracts | Semantic preservation, provenance, maintainability and measured migration cost |
 
 ## 1. From distributed operating systems to a cluster operating system
 
@@ -79,9 +79,9 @@ deployment target above commodity host operating systems. The
 describes admission control, placement, availability, naming, monitoring, and
 declarative job specifications at production scale.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
-CharlotteOS combines the processor-pool and cluster-manager views. A release is
+Knytos combines the processor-pool and cluster-manager views. A release is
 assigned to a cluster. Nodes join replicated membership, provide resources,
 receive concrete assignments, fetch immutable artifacts, and create protected
 domains. Clients use logical names or a cluster VIP rather than the identity of
@@ -89,7 +89,7 @@ the machine that currently executes a component.
 
 ### Deliberate departure
 
-CharlotteOS does not provide a failure-transparent single-system image and does
+Knytos does not provide a failure-transparent single-system image and does
 not preserve the Linux ABI. Remote calls retain deadlines, retries,
 generations, and uncertain outcomes. Stateful movement requires an explicit
 ownership-transfer protocol. This accepts the central warning from Waldo et
@@ -100,7 +100,7 @@ Computing](https://waldo.scholars.harvard.edu/publications/note-distributed-comp
 
 The test is whether removing the machine-shaped application environment makes
 cluster policy easier to inspect without merely moving comparable complexity
-into Charlotte-specific services and tooling.
+into Knytos-specific services and tooling.
 
 ## 2. Desired state, reconciliation, placement, and readiness
 
@@ -120,7 +120,7 @@ is another useful influence. It turns a compact cluster map and placement rules
 into deterministic object locations, with failure-domain structure and limited
 movement after topology changes.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
 The DNS-owned Raft catalog now commits releases, replica policy, concrete node
 sets, generations, operational bindings, shutdown intent, and per-node
@@ -136,7 +136,7 @@ backend set.
 
 ### Deliberate departure
 
-CharlotteOS currently uses one authoritative controller path instead of Omega's
+Knytos currently uses one authoritative controller path instead of Omega's
 parallel optimistic schedulers. Deterministic placement and bounded records are
 more important at the present scale than scheduling throughput.
 
@@ -158,13 +158,13 @@ is a production-scale example of consistent connection mapping across a
 distributed software load-balancer fleet. CRUSH is a related precedent for
 deriving placement from a stable map without storing one decision per object.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
-CharlotteOS exposes a `VIP:port` as a cluster service identity. The frame
+Knytos exposes a `VIP:port` as a cluster service identity. The frame
 router takes an immutable projection of Raft membership, committed application
 placement, exact-generation readiness, and drain intent. Rendezvous hashing
 selects a ready backend for each five-tuple. A remote packet crosses one
-cluster L2 hop unchanged inside a Charlotte envelope. The backend owns the TCP
+cluster L2 hop unchanged inside a Knytos envelope. The backend owns the TCP
 state and returns traffic directly to the client.
 
 Ingress leadership, execution placement, and the public service identity are
@@ -198,7 +198,7 @@ API](https://spiffe.io/docs/latest/spiffe-specs/spiffe_workload_api/) identifies
 the caller through its platform context and supplies the identity documents
 selected for that workload.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
 Applications start with no ambient network or name-service authority. Signed
 deployment grants let `grantctl` mint only the named connections admitted for
@@ -214,7 +214,7 @@ deployed business procedure.
 
 ### Deliberate departure
 
-SPIFFE normally delivers identity material to a workload. CharlotteOS often
+SPIFFE normally delivers identity material to a workload. Knytos often
 keeps the external identity in a connector and gives the application an
 operation endpoint instead. The two models can complement each other: a future
 connector could use a SPIFFE identity while still hiding its private material
@@ -240,9 +240,9 @@ workflows. [RFC 9180](https://www.rfc-editor.org/info/rfc9180/) supplies the
 HPKE construction used to encrypt an operational profile to its destination
 cluster.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
-CharlotteOS assigns distinct meanings to its trust roles:
+Knytos assigns distinct meanings to its trust roles:
 
 - an artifact signature identifies approved executable bytes and policy;
 - a release signature binds components and their deployment descriptors;
@@ -260,7 +260,7 @@ nor Raft receives plaintext credentials.
 
 ### Deliberate departure
 
-TUF and in-toto primarily protect distribution and provenance. CharlotteOS
+TUF and in-toto primarily protect distribution and provenance. Knytos
 uses those ideas as inputs to runtime authority construction. Development can
 approve behavior without selecting production credentials. Operations can
 bind infrastructure without replacing the application artifact.
@@ -282,9 +282,9 @@ ordinary application structure. Cluster controllers add readiness, desired
 replica counts, drain, and replacement. Lease and fencing research supplies
 the rule that an old owner must be unable to act after authority moves.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
-CharlotteOS uses generation fencing from local endpoints through distributed
+Knytos uses generation fencing from local endpoints through distributed
 naming and placement. Exact-generation readiness gates grants and new DSR
 flows. A signed shutdown grace travels with the deployment. Retirement first
 stops admission, then requests cooperative teardown, and finally forces the
@@ -293,7 +293,7 @@ from new placement and ingress before local services and drivers stop.
 
 ### Deliberate departure
 
-CharlotteOS promises a bounded and observable failure boundary rather than
+Knytos promises a bounded and observable failure boundary rather than
 transparent restart. A delivered external effect may require an idempotency
 key, durable log, transaction, compensation, or an explicit uncertain result.
 
@@ -325,13 +325,13 @@ failure rates even for package-version migration. The
 emphasises semantic preservation and high test coverage rather than accepting
 textually plausible changes.
 
-### CharlotteOS correspondence
+### Knytos correspondence
 
 Durga provides a more constrained path than free-form source translation. A
 BPMN process model and developer-owned business procedure can generate a
-Charlotte adapter, capability requirements, resource declarations, build
+Knytos adapter, capability requirements, resource declarations, build
 inputs, replica and affinity policy, and deployment metadata. The generated
-layer owns Charlotte-specific IPC and lifecycle mechanics while the business
+layer owns Knytos-specific IPC and lifecycle mechanics while the business
 rule remains testable on an ordinary development host.
 
 ### Research question
@@ -344,14 +344,14 @@ The relevant experiment should compare:
 - provenance and reproducibility of generated artifacts;
 - review effort for generated capability and resource requirements;
 - defect rate across failure, cancellation, retry, and shutdown paths; and
-- long-term maintenance as both the model and Charlotte ABI evolve.
+- long-term maintenance as both the model and Knytos ABI evolve.
 
 This makes POSIX compatibility a measured engineering cost for source-available
 applications rather than an automatic architectural requirement.
 
 ## 8. The proposed contribution
 
-CharlotteOS does not claim a new consensus algorithm, capability theory,
+Knytos does not claim a new consensus algorithm, capability theory,
 software-supply-chain primitive, scheduler, or load-balancing hash. Its
 proposed contribution is an end-to-end composition in which:
 
@@ -386,7 +386,7 @@ functionality grows. We need to measure that complexity as we build the system.
 7. Does agent-assisted or model-driven generation reduce adaptation cost while
    preserving semantics and reviewable authority?
 8. Which control and compatibility mechanisms genuinely disappear, and which
-   reappear in Charlotte-specific form?
+   reappear in Knytos-specific form?
 
 These questions reconnect implementation work to research by making every
 architectural claim answerable through code, models, experiments, or operational

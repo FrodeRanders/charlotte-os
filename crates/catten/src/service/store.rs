@@ -36,7 +36,7 @@ const OBJ_OP_SET_SIZE: u32 = 9;
 const OBJ_OP_APPLY_SCOPE: u32 = 11;
 const OBJ_ERR_OK: i64 = 0;
 const OBJ_ERR_EXISTS: i64 = 5;
-/// Mirrors `charlotte_protocol_objstore::EXECUTABLE_ECHO_ID`.
+/// Mirrors `knytos_protocol_objstore::EXECUTABLE_ECHO_ID`.
 #[cfg(feature = "kernel_tests")]
 const OBJ_EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 
@@ -283,8 +283,8 @@ fn verified_for_name(name: &[u8], image: &[u8]) -> bool {
     let Some(key) = super::admission::platform_artifact_key() else {
         return false;
     };
-    charlotte_launch::signature_note::verify_elf_for_name(image, &key, name)
-        == charlotte_launch::signature_note::VerifyOutcome::Valid
+    knytos_launch::signature_note::verify_elf_for_name(image, &key, name)
+        == knytos_launch::signature_note::VerifyOutcome::Valid
 }
 
 /// Outcome of an idempotent embedded-service seed pass.
@@ -348,7 +348,7 @@ fn connect_objstore() -> Option<KernelIpcCap> {
         .ok()?,
     );
     let lookup = KernelIpcCap(
-        ipc::scalar_call(KERNEL_ASID, kernel_ns.raw(), 2, charlotte_launch::OBJSTORE_NAME).ok()?,
+        ipc::scalar_call(KERNEL_ASID, kernel_ns.raw(), 2, knytos_launch::OBJSTORE_NAME).ok()?,
     );
     ipc::wait_reply(KERNEL_ASID, lookup.raw()).ok()?;
     let reply = ipc::poll_reply(KERNEL_ASID, lookup.raw()).ok().flatten()?;
@@ -399,7 +399,7 @@ fn write_store_object(connection: u64, object_id: u64, image: &[u8]) -> Result<(
 }
 
 fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<(), &'static str> {
-    write_store_object(connection, charlotte_launch::artifact_object_id(name), image)
+    write_store_object(connection, knytos_launch::artifact_object_id(name), image)
 }
 
 /// Test/administrative staging of the persistent echo executable. The public
@@ -458,7 +458,7 @@ fn read_from_store(name: &'static [u8]) -> Result<Option<Image>, ReadError> {
 }
 
 fn read_from_store_connection(connection: u64, name: &[u8]) -> Result<Option<Image>, ReadError> {
-    let object_id = charlotte_launch::artifact_object_id(name);
+    let object_id = knytos_launch::artifact_object_id(name);
     let read = KernelIpcCap(
         ipc::scalar_call(KERNEL_ASID, connection, OBJ_OP_READ, object_id)
             .map_err(|_| ReadError::Unavailable)?,

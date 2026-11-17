@@ -90,7 +90,7 @@ completion proof is introduced.
 
 ## Regressions and model
 
-The [former stale-read witness](../../../crates/catten-graft/examples/audit_receive_lease.rs)
+The [former stale-read witness](../../../crates/knytos-graft/examples/audit_receive_lease.rs)
 uses the same three-node vote/append/application history. n2 commits value 2;
 n1 then admits a new read and receives n2's delayed term-one acknowledgement of
 the old prefix. The new fence remains uncommitted and the query returns
@@ -143,7 +143,7 @@ fingerprints**. No fresh full-suite run is claimed.
 - Warning-denied Clippy passes for all host Raft targets and the ARM DNS target.
   Workspace formatting, shell syntax, local documentation targets and diff
   whitespace checks pass.
-- The ARM service bundle builds/signs with `scripts/build-catten-services.sh
+- The ARM service bundle builds/signs with `scripts/build-knytos-services.sh
   --embed`; `--check` verifies the staged signatures against final source.
 - Fresh-storage two-node ARM DNS integration checks catalog lookup, invocation
   routing and generation-fenced endpoint-death retirement. The final fixture

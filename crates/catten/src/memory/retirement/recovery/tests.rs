@@ -14,7 +14,7 @@ use crate::{
 
 fn root() -> RetiredAddressSpace {
     let handle = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     super::super::tests::stage(handle)
 }
 fn release(frame: PAddr) -> Result<(), physical::Error> {
@@ -53,9 +53,9 @@ fn test_namespace_metadata() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let nodes_before = mailbox_node_budget::snapshot();
     let scratch_before = memory::object::scratch_admission_snapshot();
-    let principal = charlotte_launch::artifact_principal_id(b"root-metadata-recovery-principal");
+    let principal = knytos_launch::artifact_principal_id(b"root-metadata-recovery-principal");
     let handle = principal_root(principal);
-    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
     let nodes_retained = mailbox_node_budget::snapshot();
     let node_bytes = nodes_retained.0[0] - nodes_before.0[0];
@@ -146,7 +146,7 @@ fn test_namespace_metadata() {
     assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
     let other_principal =
-        charlotte_launch::artifact_principal_id(b"root-metadata-recovery-successor");
+        knytos_launch::artifact_principal_id(b"root-metadata-recovery-successor");
     let successor = principal_root(other_principal);
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);
@@ -186,9 +186,9 @@ fn test_namespace_metadata() {
     // Actual bounded custody attempt abandonment retains the complete root,
     // both payloads and all original charges below every relevant local guard.
     let abandoned_principal =
-        charlotte_launch::artifact_principal_id(b"root-metadata-recovery-abandoned");
+        knytos_launch::artifact_principal_id(b"root-metadata-recovery-abandoned");
     let handle = principal_root(abandoned_principal);
-    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
     let queue_used = mailbox::captured_queue_used(handle);
     assert_eq!(queue_used(), mailbox::queue_amount());
@@ -411,7 +411,7 @@ fn test_physical_rejection() {
     let registry = Registry::new();
     let before = backing_budget::test_used_pages(Kind::Heap);
     let handle = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     let family_used = crate::syscall::mailbox_retirement::tests::populate(handle);
     let queue_used = crate::syscall::mailbox_retirement::tests::captured_queue_used(handle);
     let authority_used = crate::capability::record_tests::captured_account_used(handle);

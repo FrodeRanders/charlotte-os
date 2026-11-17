@@ -3,7 +3,7 @@
   "parent_commit": "9008c95b8172bfe23d641a109df8eda95723da88",
   "scope": "Public development trust; native ARM. Full corrected campaign failed; independent direct-only repeat passed. No finding closes, production disabled.",
   "source_sha256": {
-    "crates/catten-services/src/bin/frouter.rs": "93bac73f366ce7c93ffa64d1b2b8e8e2b6d13cc7870900f626bb5694d7148f8d",
+    "crates/knytos-services/src/bin/frouter.rs": "93bac73f366ce7c93ffa64d1b2b8e8e2b6d13cc7870900f626bb5694d7148f8d",
     "scripts/qemu-stream-l2-hub.py": "2f86053a14d6870ec508f5e6cfe8e71ffe53c65a4db55d1280f3be245e39c66d",
     "scripts/run-management-failover-test.py": "12548456327a824c4be7dea98296a1ad679750422cac75d494b1b3c56408589e"
   },

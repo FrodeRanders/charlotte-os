@@ -1,4 +1,4 @@
-# CharlotteOS License Clarification: Closed Binary Driver Linking for Private Use
+# Knytos License Clarification: Closed Binary Driver Linking for Private Use
 
 This note documents the interpretation of the **GNU General Public License, version 3 (or any later version)**, as agreed upon by all copyright
 holders of this project with respect to linking closed-source binary drivers.

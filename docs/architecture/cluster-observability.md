@@ -1,6 +1,6 @@
 # Cluster observability keyhole
 
-CharlotteOS has traditionally exposed a node keyhole: `httpd` collects
+Knytos has traditionally exposed a node keyhole: `httpd` collects
 voluntarily published service status and a capability-authorized scheduler
 snapshot, then serves `/metrics`. The cluster keyhole complements it with the
 questions an operator asks of the cluster rather than of one machine:

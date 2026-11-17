@@ -15,7 +15,7 @@ def run():
     actual = ROOT / "crates/catten/src/cpu/isa/interface/timers/bootstrap.rs"
     actual_calibration = ROOT / "crates/catten/src/cpu/isa/x86_64/timers/apic_timer/calibration.rs"
     actual_hw = ROOT / "crates/catten/src/cpu/isa/aarch64/memory/paging/hw_asid.rs"
-    with tempfile.TemporaryDirectory(prefix="charlotte-bootstrap-storage-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-bootstrap-storage-") as temporary:
         directory = Path(temporary)
         harness, binary = directory / "controls.rs", directory / "controls"
 

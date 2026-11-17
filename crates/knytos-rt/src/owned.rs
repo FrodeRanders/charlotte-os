@@ -1,0 +1,2149 @@
+//! Ownership-aware wrappers for memory and asynchronous kernel operations.
+//!
+//! The raw syscall crate intentionally mirrors the register ABI and therefore
+//! uses copyable integers and addresses. This module is the safe application
+//! layer: capability ownership is linear, mappings own their capability, DMA
+//! consumes a CPU mapping, and an asynchronous read retains its mutable borrow
+//! until the kernel has reached a terminal state.
+
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::{
+    marker::PhantomData,
+    slice,
+};
+
+use knytos_syscall::{
+    self,
+    DmaDirection,
+    IpcRights,
+    OpCode,
+};
+use knytos_lifecycle::ThreadIdentity;
+
+mod completion;
+mod device;
+mod ipc;
+mod memory;
+mod payload;
+
+pub use completion::*;
+pub use device::*;
+pub use ipc::*;
+pub use memory::*;
+pub use payload::*;
+
+#[cfg(not(test))]
+pub(crate) mod kernel {
+    use knytos_syscall::{
+        self,
+        DmaDirection,
+        IpcRights,
+        OpCode,
+    };
+
+    pub fn abort_unjoined_workers() -> ! {
+        crate::logln!("[app] unjoined worker group retained through abort");
+        knytos_syscall::domain_abort()
+    }
+    pub unsafe fn spawn_thread(entry: usize, lp: u32) -> (u64, u64) {
+        unsafe { knytos_syscall::spawn_thread_with_generation(entry, lp) }
+    }
+    pub fn observe_thread_exit(tid: u64, generation: u64) -> u64 {
+        knytos_syscall::observe_thread_exit_generation(tid, generation)
+    }
+    pub fn monotonic_clock() -> (u64, u64) {
+        knytos_syscall::monotonic_clock()
+    }
+
+    pub fn memory_alloc(pages: usize) -> u64 {
+        knytos_syscall::memory_alloc(pages)
+    }
+
+    pub fn memory_size(cap: u64) -> usize {
+        knytos_syscall::memory_size(cap)
+    }
+
+    pub fn memory_map_any(cap: u64, writable: bool) -> (u64, usize) {
+        knytos_syscall::memory_map_any(cap, writable)
+    }
+
+    pub fn memory_unmap(cap: u64) -> u64 {
+        knytos_syscall::memory_unmap(cap)
+    }
+
+    pub fn memory_close(cap: u64) -> u64 {
+        knytos_syscall::memory_close(cap)
+    }
+
+    pub fn dma_map_exclusive(
+        domain: u64,
+        memory: u64,
+        direction: DmaDirection,
+    ) -> Result<u64, knytos_syscall::DmaMapError> {
+        knytos_syscall::dma_map_exclusive(domain, memory, direction)
+    }
+
+    pub fn dma_map(
+        domain: u64,
+        memory: u64,
+        direction: DmaDirection,
+    ) -> Result<u64, knytos_syscall::DmaMapError> {
+        // SAFETY: the owning caller keeps both capabilities live and pairs a
+        // successful mapping with `dma_unmap` before releasing either one.
+        unsafe { knytos_syscall::dma_map(domain, memory, direction) }
+    }
+
+    pub fn dma_unmap(domain: u64, iova: u64) -> u64 {
+        knytos_syscall::dma_unmap(domain, iova)
+    }
+
+    pub fn device_mmio_map_any(cap: u64, writable: bool) -> (u64, usize) {
+        knytos_syscall::device_mmio_map_any(cap, writable)
+    }
+
+    pub fn device_mmio_unmap(cap: u64) -> u64 {
+        knytos_syscall::device_mmio_unmap(cap)
+    }
+
+    pub fn device_irq_bind_cq(cap: u64, cq: u32) -> u64 {
+        knytos_syscall::device_irq_bind_cq(cap, cq)
+    }
+
+    pub fn device_irq_ack(cap: u64) -> (u64, u64) {
+        knytos_syscall::device_irq_ack(cap)
+    }
+
+    pub fn device_close(cap: u64) -> u64 {
+        knytos_syscall::device_close(cap)
+    }
+
+    pub fn submit(op: OpCode) -> u64 {
+        knytos_syscall::submit(op)
+    }
+
+    pub fn submit_timer(timeout_ms: u64) -> u64 {
+        knytos_syscall::submit_timer(timeout_ms)
+    }
+
+    pub unsafe fn submit_read(buf_ptr: usize, buf_len: usize) -> u64 {
+        unsafe { knytos_syscall::submit_read(buf_ptr, buf_len) }
+    }
+
+    pub fn poll(cap: u64) -> (u64, u64) {
+        knytos_syscall::poll(cap)
+    }
+
+    pub fn wait(cap: u64) {
+        knytos_syscall::wait(cap);
+    }
+
+    pub fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
+        knytos_syscall::wait_timeout(cap, timeout_ms)
+    }
+
+    pub fn cancel(cap: u64) {
+        knytos_syscall::cancel(cap);
+    }
+
+    pub fn close(cap: u64) {
+        knytos_syscall::close(cap);
+    }
+
+    pub fn ipc_scalar_send(connection: u64, opcode: u32, arg0: u64) -> u64 {
+        knytos_syscall::ipc_scalar_send(connection, opcode, arg0)
+    }
+
+    pub fn ipc_endpoint_create(interface: u64, version: u32, capacity: usize) -> u64 {
+        knytos_syscall::ipc_endpoint_create(interface, version, capacity)
+    }
+
+    pub fn ipc_connect(endpoint: u64, rights: IpcRights) -> u64 {
+        knytos_syscall::ipc_connect(endpoint, rights)
+    }
+
+    pub fn ipc_endpoint_bind_cq(endpoint: u64, cq: u32) -> u64 {
+        knytos_syscall::ipc_endpoint_bind_cq(endpoint, cq)
+    }
+
+    pub fn ipc_endpoint_resize(endpoint: u64, capacity: usize) -> u64 {
+        knytos_syscall::ipc_endpoint_resize(endpoint, capacity)
+    }
+
+    pub fn ipc_endpoint_status(endpoint: u64) -> (u64, u64, u64) {
+        knytos_syscall::ipc_endpoint_status(endpoint)
+    }
+
+    pub fn ipc_recv(endpoint: u64) -> knytos_syscall::IpcMessage {
+        knytos_syscall::ipc_recv(endpoint)
+    }
+
+    pub fn ipc_recv_block(endpoint: u64) -> knytos_syscall::IpcMessage {
+        knytos_syscall::ipc_recv_block(endpoint)
+    }
+
+    pub fn ipc_scalar_call_checked(connection: u64, opcode: u32, arg0: u64) -> (u64, u64) {
+        knytos_syscall::ipc_scalar_call_checked(connection, opcode, arg0)
+    }
+
+    pub fn ipc_scalar_send_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
+        knytos_syscall::ipc_scalar_send_move(connection, opcode, arg0, memory)
+    }
+
+    pub fn ipc_scalar_call_move_checked(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        memory: u64,
+    ) -> (u64, u64) {
+        knytos_syscall::ipc_scalar_call_move_checked(connection, opcode, arg0, memory)
+    }
+
+    pub fn ipc_scalar_call_borrow_read(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        memory: u64,
+    ) -> u64 {
+        knytos_syscall::ipc_scalar_call_borrow_read(connection, opcode, arg0, memory)
+    }
+
+    pub fn ipc_scalar_call_borrow_write(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        memory: u64,
+    ) -> u64 {
+        knytos_syscall::ipc_scalar_call_borrow_write(connection, opcode, arg0, memory)
+    }
+
+    pub fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
+        knytos_syscall::ipc_scalar_call_copy(connection, opcode, arg0, memory)
+    }
+
+    pub fn ipc_scalar_call_connection_checked(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        endpoint: u64,
+        rights: IpcRights,
+    ) -> (u64, u64) {
+        knytos_syscall::ipc_scalar_call_connection_checked(
+            connection, opcode, arg0, endpoint, rights,
+        )
+    }
+
+    pub fn ipc_scalar_call_connection_copy(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        endpoint: u64,
+        rights: IpcRights,
+        memory: u64,
+    ) -> u64 {
+        knytos_syscall::ipc_scalar_call_connection_copy(
+            connection, opcode, arg0, endpoint, rights, memory,
+        )
+    }
+
+    pub fn ipc_vector_send(connection: u64, opcode: u32, arg0: u64, descriptor: u64) -> u64 {
+        knytos_syscall::ipc_vector_send(connection, opcode, arg0, descriptor)
+    }
+
+    pub fn ipc_vector_call(connection: u64, opcode: u32, arg0: u64, descriptor: u64) -> u64 {
+        knytos_syscall::ipc_vector_call(connection, opcode, arg0, descriptor)
+    }
+
+    pub fn ipc_connection_watch_closed(connection: u64) -> u64 {
+        knytos_syscall::ipc_connection_watch_closed(connection)
+    }
+
+    pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
+        knytos_syscall::ipc_reply_bind_cq(call, cq)
+    }
+
+    pub fn ipc_reply_poll_with_memory(call: u64) -> (u64, u64, u64, u64) {
+        knytos_syscall::ipc_reply_poll_with_memory(call)
+    }
+
+    pub fn ipc_reply_wait_with_memory(call: u64) -> (u64, u64, u64, u64) {
+        knytos_syscall::ipc_reply_wait_with_memory(call)
+    }
+
+    pub fn ipc_reply_wait_timeout_with_memory(call: u64, timeout_ms: u64) -> (u64, u64, u64, u64) {
+        knytos_syscall::ipc_reply_wait_timeout_with_memory(call, timeout_ms)
+    }
+
+    pub fn ipc_reply(reply: u64, result: i64) -> u64 {
+        knytos_syscall::ipc_reply(reply, result)
+    }
+
+    pub fn ipc_reply_move(reply: u64, memory: u64, result: i64) -> u64 {
+        knytos_syscall::ipc_reply_move(reply, memory, result)
+    }
+
+    pub fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights, result: i64) -> u64 {
+        knytos_syscall::ipc_reply_connection(reply, endpoint, rights, result)
+    }
+
+    pub fn ipc_close(cap: u64) -> u64 {
+        knytos_syscall::ipc_close(cap)
+    }
+
+    pub fn abort_failed_ipc_close() -> ! {
+        knytos_syscall::domain_abort()
+    }
+
+    pub fn spawn_artifact_scoped(
+        artifact: u64,
+        artifact_len: usize,
+        descriptor: u64,
+        descriptor_len: usize,
+    ) -> (u64, u64) {
+        knytos_syscall::spawn_artifact_scoped(artifact, artifact_len, descriptor, descriptor_len)
+    }
+
+    pub fn spawn_operational_connector(package: u64, package_len: usize, principal: u64) -> u64 {
+        knytos_syscall::spawn_operational_connector(package, package_len, principal)
+    }
+
+    pub fn retire_artifact_named(principal: u64) -> u64 {
+        knytos_syscall::retire_artifact_named(principal)
+    }
+
+    pub fn retire_artifact_for_node_shutdown(principal: u64, deadline_ms: u64) -> u64 {
+        knytos_syscall::retire_artifact_for_node_shutdown(principal, deadline_ms)
+    }
+
+    pub fn force_retire_artifact_named(principal: u64) -> u64 {
+        knytos_syscall::force_retire_artifact_named(principal)
+    }
+
+    pub fn request_node_shutdown(envelope: u64, envelope_len: usize) -> u64 {
+        knytos_syscall::request_node_shutdown(envelope, envelope_len)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod kernel {
+    extern crate std;
+
+    use std::{
+        collections::VecDeque,
+        sync::{
+            Mutex,
+            MutexGuard,
+        },
+        vec::Vec,
+    };
+
+    use knytos_syscall::{
+        self,
+        DmaDirection,
+        IpcRights,
+        OpCode,
+    };
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum Event {
+        AbortUnjoinedWorkers,
+        ObserveThread(u64, u64),
+        MemoryClose(u64),
+        MemoryUnmap(u64),
+        DmaUnmap(u64, u64),
+        DeviceUnmap(u64),
+        DeviceClose(u64),
+        CompletionCancel(u64),
+        CompletionWait(u64),
+        CompletionClose(u64),
+        IpcClose(u64),
+        IpcWaitTimeout(u64, u64),
+        IpcReplyBindCq(u64, u32),
+        AbortFailedIpcClose,
+        RetireArtifact(u64),
+        RetireArtifactForNodeShutdown(u64, u64),
+        ForceRetireArtifact(u64),
+        RequestNodeShutdown(u64, usize),
+        ScopedLaunch(u64, usize, u64, usize),
+    }
+
+    pub struct State {
+        pub thread: (u64, u64),
+        pub thread_observer: u64,
+        pub clock: (u64, u64),
+        pub clocks: VecDeque<(u64, u64)>,
+        pub memory_alloc: u64,
+        pub memory_size: usize,
+        pub memory_map_any: (u64, usize),
+        pub memory_unmap: VecDeque<u64>,
+        pub memory_close: VecDeque<u64>,
+        pub dma_map: Result<u64, knytos_syscall::DmaMapError>,
+        pub dma_unmap: VecDeque<u64>,
+        pub dma_unmap_panic: bool,
+        pub device_map: (u64, usize),
+        pub device_unmap: VecDeque<u64>,
+        pub device_bind: u64,
+        pub device_ack: (u64, u64),
+        pub submit: u64,
+        pub poll: VecDeque<(u64, u64)>,
+        pub wait_timeout: VecDeque<(u64, u64)>,
+        pub ipc_send: u64,
+        pub ipc_call: u64,
+        pub ipc_call_status: u64,
+        pub ipc_endpoint: u64,
+        pub ipc_connection: u64,
+        pub ipc_bind: u64,
+        pub ipc_receive: VecDeque<knytos_syscall::IpcMessage>,
+        pub ipc_send_move: u64,
+        pub ipc_call_move: u64,
+        pub ipc_vector_send: u64,
+        pub ipc_vector_call: u64,
+        pub ipc_reply: VecDeque<(u64, u64, u64, u64)>,
+        pub ipc_reply_status: u64,
+        pub ipc_close: VecDeque<u64>,
+        pub connection_watch: u64,
+        pub scoped_spawn: u64,
+        pub scoped_principal: u64,
+        pub retire_result: u64,
+        pub node_shutdown_result: u64,
+        pub events: Vec<Event>,
+    }
+
+    impl Default for State {
+        fn default() -> Self {
+            Self {
+                thread: (7, 3),
+                thread_observer: 20,
+                clock: (0, 1000),
+                clocks: VecDeque::new(),
+                memory_alloc: 10,
+                memory_size: 4096,
+                memory_map_any: (knytos_syscall::memory_status::OK, 0x1000),
+                memory_unmap: VecDeque::new(),
+                memory_close: VecDeque::new(),
+                dma_map: Ok(0x2000),
+                dma_unmap: VecDeque::new(),
+                dma_unmap_panic: false,
+                device_map: (knytos_syscall::device_status::OK, 0x3000),
+                device_unmap: VecDeque::new(),
+                device_bind: knytos_syscall::device_status::OK,
+                device_ack: (knytos_syscall::device_status::OK, 0),
+                submit: 20,
+                poll: VecDeque::new(),
+                wait_timeout: VecDeque::new(),
+                ipc_send: knytos_syscall::ipc_status::OK,
+                ipc_call: 30,
+                ipc_call_status: knytos_syscall::ipc_status::OK,
+                ipc_endpoint: 40,
+                ipc_connection: 41,
+                ipc_bind: knytos_syscall::ipc_status::OK,
+                ipc_receive: VecDeque::new(),
+                ipc_send_move: knytos_syscall::ipc_status::OK,
+                ipc_call_move: 30,
+                ipc_vector_send: knytos_syscall::ipc_status::OK,
+                ipc_vector_call: 30,
+                ipc_reply: VecDeque::new(),
+                ipc_reply_status: knytos_syscall::ipc_status::OK,
+                ipc_close: VecDeque::new(),
+                connection_watch: 20,
+                scoped_spawn: 2,
+                scoped_principal: 0x8000_1234,
+                retire_result: 0,
+                node_shutdown_result: 0,
+                events: Vec::new(),
+            }
+        }
+    }
+
+    static SERIAL: Mutex<()> = Mutex::new(());
+    static STATE: Mutex<Option<State>> = Mutex::new(None);
+
+    pub fn serial() -> MutexGuard<'static, ()> {
+        SERIAL.lock().expect("test serialization mutex poisoned")
+    }
+
+    pub fn reset() {
+        *STATE.lock().expect("test kernel mutex poisoned") = Some(State::default());
+    }
+
+    pub fn update(f: impl FnOnce(&mut State)) {
+        f(STATE
+            .lock()
+            .expect("test kernel mutex poisoned")
+            .as_mut()
+            .expect("test kernel is not initialized"));
+    }
+
+    pub fn events() -> Vec<Event> {
+        STATE
+            .lock()
+            .expect("test kernel mutex poisoned")
+            .as_ref()
+            .expect("test kernel is not initialized")
+            .events
+            .clone()
+    }
+
+    fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
+        f(STATE
+            .lock()
+            .expect("test kernel mutex poisoned")
+            .as_mut()
+            .expect("test kernel is not initialized"))
+    }
+
+    pub fn abort_unjoined_workers() -> ! {
+        with_state(|s| s.events.push(Event::AbortUnjoinedWorkers));
+        panic!("injected unjoined worker abort")
+    }
+    pub unsafe fn spawn_thread(_entry: usize, _lp: u32) -> (u64, u64) {
+        with_state(|s| s.thread)
+    }
+    pub fn observe_thread_exit(tid: u64, generation: u64) -> u64 {
+        with_state(|s| {
+            s.events.push(Event::ObserveThread(tid, generation));
+            s.thread_observer
+        })
+    }
+    pub fn monotonic_clock() -> (u64, u64) {
+        with_state(|state| {
+            if let Some(clock) = state.clocks.pop_front() {
+                state.clock = clock;
+            }
+            state.clock
+        })
+    }
+
+    pub fn memory_alloc(_pages: usize) -> u64 {
+        with_state(|state| state.memory_alloc)
+    }
+
+    pub fn memory_size(_cap: u64) -> usize {
+        with_state(|state| state.memory_size)
+    }
+
+    pub fn memory_map_any(_cap: u64, _writable: bool) -> (u64, usize) {
+        with_state(|state| state.memory_map_any)
+    }
+
+    pub fn memory_unmap(cap: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::MemoryUnmap(cap));
+            state.memory_unmap.pop_front().unwrap_or(knytos_syscall::memory_status::OK)
+        })
+    }
+
+    pub fn memory_close(cap: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::MemoryClose(cap));
+            state.memory_close.pop_front().unwrap_or(knytos_syscall::memory_status::OK)
+        })
+    }
+
+    pub fn dma_map_exclusive(
+        _domain: u64,
+        _memory: u64,
+        _direction: DmaDirection,
+    ) -> Result<u64, knytos_syscall::DmaMapError> {
+        with_state(|state| state.dma_map)
+    }
+
+    pub fn dma_map(
+        _domain: u64,
+        _memory: u64,
+        _direction: DmaDirection,
+    ) -> Result<u64, knytos_syscall::DmaMapError> {
+        with_state(|state| state.dma_map)
+    }
+
+    pub fn dma_unmap(domain: u64, iova: u64) -> u64 {
+        let (status, panics) = with_state(|state| {
+            state.events.push(Event::DmaUnmap(domain, iova));
+            (
+                state.dma_unmap.pop_front().unwrap_or(knytos_syscall::device_status::OK),
+                state.dma_unmap_panic,
+            )
+        });
+        assert!(!panics, "injected DMA unmap interruption");
+        status
+    }
+
+    pub fn device_mmio_map_any(_cap: u64, _writable: bool) -> (u64, usize) {
+        with_state(|state| state.device_map)
+    }
+
+    pub fn device_mmio_unmap(cap: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::DeviceUnmap(cap));
+            state.device_unmap.pop_front().unwrap_or(knytos_syscall::device_status::OK)
+        })
+    }
+
+    pub fn device_irq_bind_cq(_cap: u64, _cq: u32) -> u64 {
+        with_state(|state| state.device_bind)
+    }
+
+    pub fn device_irq_ack(_cap: u64) -> (u64, u64) {
+        with_state(|state| state.device_ack)
+    }
+
+    pub fn device_close(cap: u64) -> u64 {
+        with_state(|state| state.events.push(Event::DeviceClose(cap)));
+        knytos_syscall::device_status::OK
+    }
+
+    pub fn submit(_op: OpCode) -> u64 {
+        with_state(|state| state.submit)
+    }
+
+    pub fn submit_timer(_timeout_ms: u64) -> u64 {
+        with_state(|state| state.submit)
+    }
+
+    pub unsafe fn submit_read(_buf_ptr: usize, _buf_len: usize) -> u64 {
+        with_state(|state| state.submit)
+    }
+
+    pub fn poll(_cap: u64) -> (u64, u64) {
+        with_state(|state| {
+            state.poll.pop_front().unwrap_or((knytos_syscall::completion_status::READY, 0))
+        })
+    }
+
+    pub fn wait(cap: u64) {
+        with_state(|state| state.events.push(Event::CompletionWait(cap)));
+    }
+
+    pub fn wait_timeout(_cap: u64, _timeout_ms: u64) -> (u64, u64) {
+        with_state(|state| {
+            state
+                .wait_timeout
+                .pop_front()
+                .unwrap_or((knytos_syscall::completion_status::PENDING_OR_TIMEOUT, 0))
+        })
+    }
+
+    pub fn cancel(cap: u64) {
+        with_state(|state| state.events.push(Event::CompletionCancel(cap)));
+    }
+
+    pub fn close(cap: u64) {
+        with_state(|state| state.events.push(Event::CompletionClose(cap)));
+    }
+
+    pub fn ipc_scalar_send(_connection: u64, _opcode: u32, _arg0: u64) -> u64 {
+        with_state(|state| state.ipc_send)
+    }
+
+    pub fn ipc_endpoint_create(_interface: u64, _version: u32, _capacity: usize) -> u64 {
+        with_state(|state| state.ipc_endpoint)
+    }
+
+    pub fn ipc_connect(_endpoint: u64, _rights: IpcRights) -> u64 {
+        with_state(|state| state.ipc_connection)
+    }
+
+    pub fn ipc_endpoint_bind_cq(_endpoint: u64, _cq: u32) -> u64 {
+        with_state(|state| state.ipc_bind)
+    }
+
+    pub fn ipc_endpoint_resize(_endpoint: u64, capacity: usize) -> u64 {
+        capacity as u64
+    }
+
+    pub fn ipc_endpoint_status(_endpoint: u64) -> (u64, u64, u64) {
+        (0, 0, 0)
+    }
+
+    pub fn ipc_recv(_endpoint: u64) -> knytos_syscall::IpcMessage {
+        with_state(|state| {
+            state.ipc_receive.pop_front().unwrap_or(knytos_syscall::IpcMessage {
+                status: knytos_syscall::ipc_status::NO_MESSAGE,
+                opcode: 0,
+                arg0: 0,
+                reply: 0,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 0,
+                version: 0,
+                memory: 0,
+                connection: 0,
+            })
+        })
+    }
+
+    pub fn ipc_recv_block(endpoint: u64) -> knytos_syscall::IpcMessage {
+        ipc_recv(endpoint)
+    }
+
+    pub fn ipc_scalar_call_checked(_connection: u64, _opcode: u32, _arg0: u64) -> (u64, u64) {
+        with_state(|state| {
+            if state.ipc_call_status == knytos_syscall::ipc_status::OK {
+                (state.ipc_call, state.ipc_call_status)
+            } else {
+                (0, state.ipc_call_status)
+            }
+        })
+    }
+
+    pub fn ipc_scalar_send_move(_connection: u64, _opcode: u32, _arg0: u64, _memory: u64) -> u64 {
+        with_state(|state| state.ipc_send_move)
+    }
+
+    pub fn ipc_scalar_call_move_checked(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _memory: u64,
+    ) -> (u64, u64) {
+        with_state(|state| {
+            if state.ipc_call_status == knytos_syscall::ipc_status::OK {
+                (state.ipc_call_move, state.ipc_call_status)
+            } else {
+                (0, state.ipc_call_status)
+            }
+        })
+    }
+
+    pub fn ipc_scalar_call_borrow_read(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _memory: u64,
+    ) -> u64 {
+        with_state(|state| state.ipc_call)
+    }
+
+    pub fn ipc_scalar_call_borrow_write(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _memory: u64,
+    ) -> u64 {
+        with_state(|state| state.ipc_call)
+    }
+
+    pub fn ipc_scalar_call_copy(_connection: u64, _opcode: u32, _arg0: u64, _memory: u64) -> u64 {
+        with_state(|state| state.ipc_call)
+    }
+
+    pub fn ipc_scalar_call_connection_checked(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _endpoint: u64,
+        _rights: IpcRights,
+    ) -> (u64, u64) {
+        with_state(|state| (state.ipc_call, state.ipc_call_status))
+    }
+
+    pub fn ipc_scalar_call_connection_copy(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _endpoint: u64,
+        _rights: IpcRights,
+        _memory: u64,
+    ) -> u64 {
+        with_state(|state| state.ipc_call)
+    }
+
+    pub fn ipc_vector_send(_connection: u64, _opcode: u32, _arg0: u64, _descriptor: u64) -> u64 {
+        with_state(|state| state.ipc_vector_send)
+    }
+
+    pub fn ipc_vector_call(_connection: u64, _opcode: u32, _arg0: u64, _descriptor: u64) -> u64 {
+        with_state(|state| state.ipc_vector_call)
+    }
+
+    pub fn ipc_connection_watch_closed(_connection: u64) -> u64 {
+        with_state(|state| state.connection_watch)
+    }
+
+    pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::IpcReplyBindCq(call, cq));
+            state.ipc_bind
+        })
+    }
+
+    pub fn ipc_reply_poll_with_memory(_call: u64) -> (u64, u64, u64, u64) {
+        with_state(|state| state.ipc_reply.pop_front().unwrap_or((1, 0, 0, 0)))
+    }
+
+    pub fn ipc_reply_wait_with_memory(_call: u64) -> (u64, u64, u64, u64) {
+        with_state(|state| {
+            state.ipc_reply.pop_front().unwrap_or((knytos_syscall::ipc_status::OK, 0, 0, 0))
+        })
+    }
+
+    pub fn ipc_reply_wait_timeout_with_memory(call: u64, timeout_ms: u64) -> (u64, u64, u64, u64) {
+        with_state(|state| {
+            state.events.push(Event::IpcWaitTimeout(call, timeout_ms));
+            state.ipc_reply.pop_front().unwrap_or((1, 0, 0, 0))
+        })
+    }
+
+    pub fn ipc_reply(_reply: u64, _result: i64) -> u64 {
+        with_state(|state| state.ipc_reply_status)
+    }
+
+    pub fn ipc_reply_move(_reply: u64, _memory: u64, _result: i64) -> u64 {
+        with_state(|state| state.ipc_reply_status)
+    }
+
+    pub fn ipc_reply_connection(
+        _reply: u64,
+        _endpoint: u64,
+        _rights: IpcRights,
+        _result: i64,
+    ) -> u64 {
+        with_state(|state| state.ipc_reply_status)
+    }
+
+    pub fn ipc_close(cap: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::IpcClose(cap));
+            state.ipc_close.pop_front().unwrap_or(knytos_syscall::ipc_status::OK)
+        })
+    }
+
+    pub fn abort_failed_ipc_close() -> ! {
+        with_state(|state| state.events.push(Event::AbortFailedIpcClose));
+        // Only the fake host boundary unwinds. Production domain_abort never
+        // returns to application code or drops a live Rust borrow normally.
+        panic!("test domain abort after rejected IPC close")
+    }
+
+    pub fn spawn_artifact_scoped(
+        artifact: u64,
+        artifact_len: usize,
+        descriptor: u64,
+        descriptor_len: usize,
+    ) -> (u64, u64) {
+        with_state(|state| {
+            state.events.push(Event::ScopedLaunch(
+                artifact,
+                artifact_len,
+                descriptor,
+                descriptor_len,
+            ));
+            (state.scoped_spawn, state.scoped_principal)
+        })
+    }
+
+    pub fn spawn_operational_connector(_package: u64, _package_len: usize, _principal: u64) -> u64 {
+        with_state(|state| state.scoped_spawn)
+    }
+
+    pub fn retire_artifact_named(principal: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::RetireArtifact(principal));
+            state.retire_result
+        })
+    }
+
+    pub fn retire_artifact_for_node_shutdown(principal: u64, deadline_ms: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::RetireArtifactForNodeShutdown(principal, deadline_ms));
+            state.retire_result
+        })
+    }
+
+    pub fn force_retire_artifact_named(principal: u64) -> u64 {
+        with_state(|state| state.events.push(Event::ForceRetireArtifact(principal)));
+        0
+    }
+
+    pub fn request_node_shutdown(envelope: u64, envelope_len: usize) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::RequestNodeShutdown(envelope, envelope_len));
+            state.node_shutdown_result
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use std::collections::VecDeque;
+
+    use knytos_syscall::{
+        self,
+        DmaDirection,
+        IpcRights,
+        OpCode,
+    };
+
+    use super::{
+        ArtifactLaunchError,
+        CapabilityVector,
+        Completion,
+        Connection,
+        DeployedArtifact,
+        DmaDomain,
+        Endpoint,
+        IncomingMessage,
+        IpcError,
+        MemoryError,
+        MmioRegion,
+        NodeShutdownRequestError,
+        OwnedMemory,
+        ReadOperation,
+        ReplyToken,
+        SharedDmaMapError,
+        kernel,
+        launch_operational_connector,
+        launch_scoped_artifact,
+        request_node_shutdown,
+    };
+
+    fn setup() -> std::sync::MutexGuard<'static, ()> {
+        let guard = kernel::serial();
+        kernel::reset();
+        guard
+    }
+
+    #[test]
+    fn mapping_unmap_failure_preserves_retryable_owner() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.memory_unmap = VecDeque::from([
+                knytos_syscall::memory_status::UNMAP_FAILED,
+                knytos_syscall::memory_status::OK,
+            ]);
+        });
+
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let mapping = memory.map_writable().expect("memory mapping");
+        let (mapping, _) = mapping.unmap().expect_err("first unmap must fail");
+        let memory = mapping.unmap().expect("retry must retain the owner");
+        drop(memory);
+
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn dma_finish_busy_preserves_exclusive_transfer() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                knytos_syscall::device_status::OPERATION_IN_FLIGHT,
+                knytos_syscall::device_status::OK,
+            ]);
+        });
+
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let transfer = memory.begin_dma(&domain, DmaDirection::DeviceRead).expect("DMA transfer");
+        let (transfer, error) = transfer.finish().expect_err("first DMA unmap must reject busy");
+        assert_eq!(
+            error,
+            MemoryError::DmaStatus(knytos_syscall::device_status::OPERATION_IN_FLIGHT)
+        );
+        let memory = transfer.finish().expect("retry must retain DMA ownership");
+        drop(memory);
+
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryClose(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_dma_halfwords_check_alignment_bounds_and_little_endian_access() {
+        let _guard = setup();
+        // ABI fixture: this aligned local backing stands in for the kernel's
+        // mapped page and outlives its sole SharedDmaMemory owner.
+        let mut backing = [0u16; 2048];
+        kernel::update(|state| {
+            state.memory_map_any =
+                (knytos_syscall::memory_status::OK, backing.as_mut_ptr() as usize);
+        });
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let mut shared =
+            memory.map_shared_dma(&domain, DmaDirection::Bidirectional).expect("mapping");
+        for value in [0x00ff, 0x0100, 0xffff, 0] {
+            shared.write_volatile_u16_le(0, value).unwrap();
+            assert_eq!(shared.read_volatile_u16_le(0), Some(value));
+            let mut bytes = [0; 2];
+            shared.read_volatile_into(0, &mut bytes).unwrap();
+            assert_eq!(bytes, value.to_le_bytes());
+        }
+        shared.write_volatile_u16_le(4094, 0xabcd).unwrap();
+        assert_eq!(shared.read_volatile_u16_le(4094), Some(0xabcd));
+        for offset in [1, 4095, 4096, usize::MAX] {
+            assert_eq!(shared.read_volatile_u16_le(offset), None);
+            assert_eq!(
+                shared.write_volatile_u16_le(offset, 0x1234),
+                Err(MemoryError::InvalidCapability)
+            );
+        }
+        assert_eq!(shared.read_volatile_u16_le(4094), Some(0xabcd));
+        drop(shared);
+    }
+
+    #[test]
+    fn shared_dma_drop_unmaps_device_before_cpu_and_close() {
+        let _guard = setup();
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = memory
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .expect("shared DMA mapping");
+        drop(shared);
+
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn dma_ambiguous_failure_never_resubmits_or_returns_cpu_ownership() {
+        let _guard = setup();
+        for status in [
+            knytos_syscall::device_status::DMA_INVALID,
+            knytos_syscall::device_status::UNKNOWN_CAPABILITY,
+            u64::MAX,
+        ] {
+            kernel::reset();
+            kernel::update(|state| {
+                state.dma_unmap = VecDeque::from([status, knytos_syscall::device_status::OK])
+            });
+            let domain = unsafe { DmaDomain::from_raw(7) };
+            let transfer = OwnedMemory::allocate(1)
+                .unwrap()
+                .begin_dma(&domain, DmaDirection::DeviceWrite)
+                .unwrap();
+            let (transfer, error) = transfer.finish().unwrap_err();
+            assert_eq!(error, MemoryError::DmaStatus(status));
+            let (transfer, repeated) = transfer.finish().unwrap_err();
+            assert_eq!(repeated, error);
+            assert_eq!(kernel::events(), [kernel::Event::DmaUnmap(7, 0x2000)]);
+            drop(transfer);
+            assert_eq!(
+                kernel::events(),
+                [kernel::Event::DmaUnmap(7, 0x2000), kernel::Event::MemoryClose(10)]
+            );
+        }
+    }
+
+    #[test]
+    fn shared_dma_ambiguous_failure_never_resubmits() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                knytos_syscall::device_status::DMA_INVALID,
+                knytos_syscall::device_status::OK,
+            ])
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = OwnedMemory::allocate(1)
+            .unwrap()
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .unwrap();
+        let (shared, error) = shared.finish().unwrap_err();
+        let (shared, repeated) = shared.finish().unwrap_err();
+        assert_eq!(error, MemoryError::DmaStatus(knytos_syscall::device_status::DMA_INVALID));
+        assert_eq!(repeated, error);
+        assert_eq!(kernel::events(), [kernel::Event::DmaUnmap(7, 0x2000)]);
+        drop(shared);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn dma_drop_after_busy_rejection_attempts_unstarted_work_once() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                knytos_syscall::device_status::OPERATION_IN_FLIGHT,
+                knytos_syscall::device_status::DMA_INVALID,
+            ])
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let transfer =
+            OwnedMemory::allocate(1).unwrap().begin_dma(&domain, DmaDirection::DeviceRead).unwrap();
+        let (transfer, _) = transfer.finish().unwrap_err();
+        drop(transfer);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_dma_busy_rejection_preserves_both_mappings() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                knytos_syscall::device_status::OPERATION_IN_FLIGHT,
+                knytos_syscall::device_status::OK,
+            ])
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = OwnedMemory::allocate(1)
+            .unwrap()
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .unwrap();
+        let (shared, _) = shared.finish().unwrap_err();
+        assert_eq!(kernel::events(), [kernel::Event::DmaUnmap(7, 0x2000)]);
+        drop(shared.finish().unwrap());
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn interrupted_dma_unmap_is_armed_before_kernel_entry() {
+        let _guard = setup();
+        for shared in [false, true] {
+            kernel::reset();
+            kernel::update(|state| state.dma_unmap_panic = true);
+            let domain = unsafe { DmaDomain::from_raw(7) };
+            let memory = OwnedMemory::allocate(1).unwrap();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if shared {
+                    let _ = memory
+                        .map_shared_dma(&domain, DmaDirection::Bidirectional)
+                        .unwrap()
+                        .finish();
+                } else {
+                    let _ = memory.begin_dma(&domain, DmaDirection::DeviceRead).unwrap().finish();
+                }
+            }));
+            assert!(result.is_err());
+            let expected = if shared {
+                std::vec![
+                    kernel::Event::DmaUnmap(7, 0x2000),
+                    kernel::Event::MemoryUnmap(10),
+                    kernel::Event::MemoryClose(10)
+                ]
+            } else {
+                std::vec![kernel::Event::DmaUnmap(7, 0x2000), kernel::Event::MemoryClose(10)]
+            };
+            assert_eq!(kernel::events(), expected);
+        }
+    }
+
+    #[test]
+    fn shared_dma_mapping_failure_restores_memory_owner() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_map = Err(knytos_syscall::DmaMapError {
+                status: knytos_syscall::device_status::DMA_INVALID,
+                phase: knytos_syscall::dma_map_phase::BACKEND,
+                cause: knytos_syscall::dma_map_cause::HARDWARE_TIMEOUT,
+            })
+        });
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let error = memory
+            .map_shared_dma(&domain, DmaDirection::DeviceWrite)
+            .expect_err("DMA mapping must fail");
+        assert_eq!(
+            error.error(),
+            MemoryError::DmaMap(knytos_syscall::DmaMapError {
+                status: knytos_syscall::device_status::DMA_INVALID,
+                phase: knytos_syscall::dma_map_phase::BACKEND,
+                cause: knytos_syscall::dma_map_cause::HARDWARE_TIMEOUT
+            })
+        );
+        drop(error);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::MemoryUnmap(10), kernel::Event::MemoryClose(10)]
+        );
+    }
+
+    #[test]
+    fn failed_shared_dma_cpu_unmap_rejection_returns_restricted_owner() {
+        let _guard = setup();
+        let failure = knytos_syscall::DmaMapError {
+            status: knytos_syscall::device_status::DMA_INVALID,
+            phase: knytos_syscall::dma_map_phase::BACKEND,
+            cause: knytos_syscall::dma_map_cause::MAP_FAILED,
+        };
+        kernel::update(|state| {
+            state.dma_map = Err(failure);
+            state.memory_unmap = VecDeque::from([
+                knytos_syscall::memory_status::UNMAP_FAILED,
+                knytos_syscall::memory_status::OK,
+            ]);
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let error = OwnedMemory::allocate(1)
+            .unwrap()
+            .map_shared_dma(&domain, DmaDirection::DeviceWrite)
+            .unwrap_err();
+        assert_eq!(error.error(), MemoryError::DmaMap(failure));
+        let SharedDmaMapError::Mapped {
+            mapping,
+            ..
+        } = error
+        else {
+            panic!("must retain CPU mapping");
+        };
+        let (mapping, error) = mapping.unmap().unwrap_err();
+        assert_eq!(error, MemoryError::MemoryStatus(knytos_syscall::memory_status::UNMAP_FAILED));
+        drop(mapping.unmap().unwrap());
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn exclusive_dma_map_failure_preserves_original_diagnostic_and_memory() {
+        let _guard = setup();
+        let failure = knytos_syscall::DmaMapError {
+            status: knytos_syscall::device_status::DMA_INVALID,
+            phase: knytos_syscall::dma_map_phase::BACKEND,
+            cause: knytos_syscall::dma_map_cause::MEMORY,
+        };
+        kernel::update(|state| state.dma_map = Err(failure));
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let (memory, error) = OwnedMemory::allocate(1)
+            .unwrap()
+            .begin_dma(&domain, DmaDirection::DeviceRead)
+            .unwrap_err();
+        assert_eq!(error, MemoryError::DmaMap(failure));
+        assert_eq!(memory.raw_handle(), 10);
+        drop(memory);
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(10)]);
+    }
+
+    #[test]
+    fn shared_dma_cpu_unmap_failure_does_not_repeat_dma_unmap() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.memory_unmap = VecDeque::from([
+                knytos_syscall::memory_status::UNMAP_FAILED,
+                knytos_syscall::memory_status::OK,
+            ]);
+        });
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = memory
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .expect("shared DMA mapping");
+        let (shared, _) = shared.finish().expect_err("first CPU unmap must fail");
+        let memory = shared.finish().expect("retry must preserve ownership");
+        drop(memory);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn dropped_read_cancels_waits_then_closes() {
+        let _guard = setup();
+        let mut bytes = [0_u8; 4];
+        drop(ReadOperation::submit(&mut bytes).expect("read submission"));
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::CompletionCancel(20),
+                kernel::Event::CompletionWait(20),
+                kernel::Event::CompletionClose(20),
+            ]
+        );
+    }
+
+    #[test]
+    fn completion_timeout_keeps_capability_until_terminal() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.wait_timeout = VecDeque::from([
+                (knytos_syscall::completion_status::PENDING_OR_TIMEOUT, 0),
+                (knytos_syscall::completion_status::READY, 42),
+            ]);
+        });
+        let mut completion = Completion::submit(OpCode::Nop).expect("completion submission");
+        assert_eq!(completion.wait_timeout(1), Ok(None));
+        assert_eq!(completion.wait_timeout(1), Ok(Some(42)));
+        drop(completion);
+        assert_eq!(kernel::events(), [kernel::Event::CompletionClose(20)]);
+    }
+
+    #[test]
+    fn completion_wait_admission_failure_preserves_owner_for_retry() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.wait_timeout = VecDeque::from([
+                (knytos_syscall::completion_status::WAIT_ADMISSION_FAILED, 0),
+                (knytos_syscall::completion_status::READY, 42),
+            ]);
+        });
+        let mut completion = Completion::submit(OpCode::Nop).expect("submission");
+        assert_eq!(
+            completion.wait_timeout(1),
+            Err(super::CompletionError::Status(
+                knytos_syscall::completion_status::WAIT_ADMISSION_FAILED
+            ))
+        );
+        assert!(kernel::events().is_empty());
+        assert_eq!(completion.wait_timeout(1), Ok(Some(42)));
+        drop(completion);
+        assert_eq!(kernel::events(), [kernel::Event::CompletionClose(20)]);
+    }
+
+    #[test]
+    fn completion_wait_admission_failure_preserves_drop_cleanup() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.wait_timeout =
+                VecDeque::from([(knytos_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)]);
+        });
+        let mut completion = Completion::submit(OpCode::Nop).expect("submission");
+        assert!(completion.wait_timeout(1).is_err());
+        drop(completion);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::CompletionCancel(20),
+                kernel::Event::CompletionWait(20),
+                kernel::Event::CompletionClose(20),
+            ]
+        );
+    }
+
+    #[test]
+    fn failed_move_returns_memory_to_the_caller() {
+        let _guard = setup();
+        kernel::update(|state| state.ipc_send_move = knytos_syscall::ipc_status::QUEUE_FULL);
+        let connection = unsafe { Connection::from_raw(8) }.expect("connection");
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let (memory, _) = connection.send_move(1, 2, memory).expect_err("move must fail");
+        drop(memory);
+        drop(connection);
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(10), kernel::Event::IpcClose(8)]);
+    }
+
+    #[test]
+    fn scoped_launch_rejects_lengths_without_leaking_inputs() {
+        let _guard = setup();
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+
+        assert_eq!(
+            launch_scoped_artifact(artifact, 1, descriptor, 0).err(),
+            Some(ArtifactLaunchError::InvalidLength)
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::MemoryClose(12), kernel::Event::MemoryClose(11)]
+        );
+    }
+
+    #[test]
+    fn scoped_launch_transfers_both_inputs_and_retains_the_kernel_principal() {
+        let _guard = setup();
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+        kernel::update(|state| state.scoped_principal = 0x8000_abcd);
+        let mut domain = launch_scoped_artifact(
+            artifact,
+            1,
+            descriptor,
+            knytos_launch::deployment::HEADER_LEN,
+        )
+        .expect("scoped launch");
+        assert_eq!(domain.asid(), 2);
+        assert_eq!(domain.principal(), 0x8000_abcd);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN)]
+        );
+        assert_eq!(domain.poll_retire(), Ok(true));
+        drop(domain);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN),
+                kernel::Event::RetireArtifact(0x8000_abcd),
+            ]
+        );
+    }
+
+    #[test]
+    fn scoped_launch_drop_forces_only_the_returned_principal() {
+        let _guard = setup();
+        kernel::update(|state| state.scoped_principal = 0x8000_dcba);
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+        let domain = launch_scoped_artifact(
+            artifact,
+            1,
+            descriptor,
+            knytos_launch::deployment::HEADER_LEN,
+        )
+        .expect("scoped launch");
+        drop(domain);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN),
+                kernel::Event::ForceRetireArtifact(0x8000_dcba),
+            ]
+        );
+    }
+
+    #[test]
+    fn deployed_artifact_polls_cooperatively_then_forces_on_owner_drop() {
+        let _guard = setup();
+        kernel::update(|state| state.retire_result = 1);
+        let mut artifact = DeployedArtifact {
+            principal: 0x8000_1234,
+            asid: 7,
+            retired: false,
+        };
+
+        assert_eq!(artifact.poll_retire(), Ok(false));
+        drop(artifact);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::RetireArtifact(0x8000_1234),
+                kernel::Event::ForceRetireArtifact(0x8000_1234),
+            ]
+        );
+    }
+
+    #[test]
+    fn completed_deployment_retirement_does_not_force_again() {
+        let _guard = setup();
+        let mut artifact = DeployedArtifact {
+            principal: 0x8000_5678,
+            asid: 8,
+            retired: false,
+        };
+
+        assert_eq!(artifact.poll_retire(), Ok(true));
+        drop(artifact);
+        assert_eq!(kernel::events(), [kernel::Event::RetireArtifact(0x8000_5678)]);
+    }
+
+    #[test]
+    fn pending_call_close_rejection_returns_owner_and_retains_borrow() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(11) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(12) }.unwrap();
+        let call = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| {
+            state.ipc_close.push_back(knytos_syscall::ipc_status::RESOURCE_LIMIT)
+        });
+        let (call, error) = call.close().unwrap_err();
+        assert_eq!(error, IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT));
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(30)]);
+        call.close().unwrap();
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(30), kernel::Event::IpcClose(30)]);
+        drop(memory);
+        drop(connection);
+    }
+
+    #[test]
+    fn pending_receive_front_has_no_application_attachment_owners() {
+        let _guard = setup();
+        let endpoint = unsafe { Endpoint::from_raw(40) }.unwrap();
+        kernel::update(|state| {
+            state.ipc_receive.push_back(knytos_syscall::IpcMessage {
+                status: knytos_syscall::ipc_status::PENDING,
+                opcode: 0,
+                arg0: 0,
+                reply: 0,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 0,
+                version: 0,
+                memory: 0,
+                connection: 0,
+            })
+        });
+        assert!(endpoint.try_receive().unwrap().is_none());
+        assert!(kernel::events().is_empty());
+        drop(endpoint);
+    }
+
+    #[test]
+    fn pending_call_drop_aborts_instead_of_releasing_uncertain_borrow() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(11) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(12) }.unwrap();
+        let call = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| {
+            state.ipc_close.push_back(knytos_syscall::ipc_status::MEMORY_TRANSFER_FAILED)
+        });
+        // The fake boundary unwinds only to inspect events; production abort
+        // cannot return/unwind into application code with a released borrow.
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(call))).is_err());
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::AbortFailedIpcClose]
+        );
+        drop(memory);
+        drop(connection);
+    }
+
+    #[test]
+    fn pending_call_error_wait_cannot_ignore_rejected_close() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(11) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(12) }.unwrap();
+        let call = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| {
+            state.ipc_reply.push_back((
+                knytos_syscall::ipc_status::MEMORY_TRANSFER_FAILED,
+                0,
+                0,
+                0,
+            ));
+            state.ipc_close.push_back(knytos_syscall::ipc_status::MEMORY_TRANSFER_FAILED);
+        });
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call.wait())).is_err());
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::AbortFailedIpcClose]
+        );
+        drop(memory);
+        drop(connection);
+    }
+
+    #[test]
+    fn timed_reply_wait_preserves_loan_on_timeout_and_admission_rejection() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(40) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(41) }.unwrap();
+        kernel::update(|state| {
+            state.ipc_reply = VecDeque::from([
+                (1, 0, 0, 0),
+                (knytos_syscall::ipc_status::RESOURCE_LIMIT, 0, 0, 0),
+                (0, 42, 50, 51),
+            ]);
+        });
+        let mut pending = connection.call_borrow_read(1, 0, &memory).unwrap();
+        assert!(pending.wait_timeout(3).unwrap().is_none());
+        assert_eq!(
+            pending.wait_timeout(4).unwrap_err(),
+            IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT)
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcWaitTimeout(30, 3), kernel::Event::IpcWaitTimeout(30, 4)]
+        );
+        let reply = pending.wait_timeout(5).unwrap().unwrap();
+        assert_eq!(reply.result, 42);
+        drop(reply);
+        drop(pending);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcWaitTimeout(30, 3),
+                kernel::Event::IpcWaitTimeout(30, 4),
+                kernel::Event::IpcWaitTimeout(30, 5),
+                kernel::Event::IpcClose(30),
+                kernel::Event::IpcClose(50),
+                kernel::Event::MemoryClose(51),
+                kernel::Event::MemoryClose(41),
+                kernel::Event::IpcClose(40),
+            ]
+        );
+    }
+
+    #[test]
+    fn abandoned_timed_reply_wait_cancels_exact_pending_owner() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(40) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(41) }.unwrap();
+        let mut pending = connection.call_borrow_read(1, 0, &memory).unwrap();
+        assert!(pending.wait_timeout(7).unwrap().is_none());
+        drop(pending);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcWaitTimeout(30, 7),
+                kernel::Event::IpcClose(30),
+                kernel::Event::MemoryClose(41),
+                kernel::Event::IpcClose(40)
+            ]
+        );
+    }
+
+    #[test]
+    fn rejected_reply_cq_interest_preserves_the_pending_loan_owner() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(40) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(41) }.unwrap();
+        let mut pending = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| state.ipc_bind = knytos_syscall::ipc_status::RESOURCE_LIMIT);
+        assert_eq!(
+            pending.bind_cq(0),
+            Err(IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT))
+        );
+        assert_eq!(kernel::events(), [kernel::Event::IpcReplyBindCq(30, 0)]);
+        kernel::update(|state| state.ipc_bind = knytos_syscall::ipc_status::OK);
+        pending.bind_cq(1).unwrap();
+        assert!(pending.poll().unwrap().is_none());
+        drop(pending);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcReplyBindCq(30, 0),
+                kernel::Event::IpcReplyBindCq(30, 1),
+                kernel::Event::IpcClose(30),
+                kernel::Event::MemoryClose(41),
+                kernel::Event::IpcClose(40)
+            ]
+        );
+    }
+
+    #[test]
+    fn node_shutdown_retirement_carries_the_enclosing_deadline() {
+        let _guard = setup();
+        kernel::update(|state| state.retire_result = 1);
+        let mut artifact = DeployedArtifact {
+            principal: 0x8000_9abc,
+            asid: 9,
+            retired: false,
+        };
+
+        assert_eq!(artifact.poll_node_shutdown(12_345), Ok(false));
+        drop(artifact);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::RetireArtifactForNodeShutdown(0x8000_9abc, 12_345),
+                kernel::Event::ForceRetireArtifact(0x8000_9abc),
+            ]
+        );
+    }
+
+    #[test]
+    fn node_shutdown_request_transfers_the_signed_envelope() {
+        let _guard = setup();
+        let envelope = unsafe { OwnedMemory::from_raw(15) }.expect("shutdown envelope");
+
+        assert_eq!(
+            request_node_shutdown(envelope, knytos_launch::shutdown::ENCODED_LEN),
+            Ok(())
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::RequestNodeShutdown(15, knytos_launch::shutdown::ENCODED_LEN,)]
+        );
+    }
+
+    #[test]
+    fn invalid_node_shutdown_request_retains_then_drops_the_envelope() {
+        let _guard = setup();
+        let envelope = unsafe { OwnedMemory::from_raw(16) }.expect("shutdown envelope");
+
+        assert_eq!(
+            request_node_shutdown(envelope, knytos_launch::shutdown::ENCODED_LEN - 1),
+            Err(NodeShutdownRequestError::InvalidEnvelope)
+        );
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(16)]);
+    }
+
+    #[test]
+    fn scoped_launch_kernel_rejection_still_consumes_both_inputs() {
+        let _guard = setup();
+        kernel::update(|state| state.scoped_spawn = 0);
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+
+        assert_eq!(
+            launch_scoped_artifact(
+                artifact,
+                1,
+                descriptor,
+                knytos_launch::deployment::HEADER_LEN,
+            )
+            .err(),
+            Some(ArtifactLaunchError::Rejected)
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::ScopedLaunch(11, 1, 12, knytos_launch::deployment::HEADER_LEN)]
+        );
+    }
+
+    #[test]
+    fn operational_launch_rejects_lengths_without_leaking_package() {
+        let _guard = setup();
+        let package = unsafe { OwnedMemory::from_raw(11) }.expect("pickup memory");
+
+        assert!(matches!(
+            launch_operational_connector(package, 1, b"kafka"),
+            Err(ArtifactLaunchError::InvalidLength)
+        ));
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(11)]);
+    }
+
+    #[test]
+    fn operational_launch_kernel_rejection_consumes_package() {
+        let _guard = setup();
+        kernel::update(|state| state.scoped_spawn = 0);
+        let package = unsafe { OwnedMemory::from_raw(11) }.expect("pickup memory");
+
+        assert!(matches!(
+            launch_operational_connector(
+                package,
+                knytos_launch::operations_pickup::PICKUP_HEADER_LEN,
+                b"kafka",
+            ),
+            Err(ArtifactLaunchError::Rejected)
+        ));
+        assert!(kernel::events().is_empty());
+    }
+
+    #[test]
+    fn pending_borrow_is_revoked_when_call_is_dropped() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(8) }.expect("connection");
+        let mut memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let call = connection.call_borrow_write(1, 2, &mut memory).expect("borrowed call");
+        drop(call);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcClose(30),
+                kernel::Event::MemoryClose(10),
+                kernel::Event::IpcClose(8),
+            ]
+        );
+    }
+
+    #[test]
+    fn mmio_unmap_failure_preserves_retryable_mapping() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.device_unmap = VecDeque::from([
+                knytos_syscall::device_status::MAP_FAILED,
+                knytos_syscall::device_status::OK,
+            ]);
+        });
+        let mmio = unsafe { MmioRegion::from_raw(50) };
+        let mapping = mmio.map(true).expect("MMIO mapping");
+        let (mapping, _) = mapping.unmap().expect_err("first MMIO unmap must fail");
+        let mmio = mapping.unmap().expect("retry must retain MMIO ownership");
+        drop(mmio);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DeviceUnmap(50),
+                kernel::Event::DeviceUnmap(50),
+                kernel::Event::DeviceClose(50),
+            ]
+        );
+    }
+
+    #[test]
+    fn endpoint_and_connection_close_exactly_once() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let connection = endpoint.connect(IpcRights::CALL).expect("connection creation");
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn moved_admission_rejection_returns_exact_page_without_cleanup() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).unwrap();
+        let connection = endpoint.connect(IpcRights::CALL).unwrap();
+        let mut memory = OwnedMemory::allocate(1).unwrap();
+        for status in [
+            knytos_syscall::ipc_status::QUEUE_FULL,
+            knytos_syscall::ipc_status::ENDPOINT_CLOSED,
+            knytos_syscall::ipc_status::RESOURCE_LIMIT,
+        ] {
+            kernel::update(|state| state.ipc_call_status = status);
+            let (returned, error) = connection.call_move(1, 2, memory).unwrap_err();
+            assert_eq!((returned.cap, error), (Some(10), IpcError::Status(status)));
+            let (returned, error) = connection.as_ref().call_move(1, 2, returned).unwrap_err();
+            assert_eq!((returned.cap, error), (Some(10), IpcError::Status(status)));
+            memory = returned;
+            assert!(kernel::events().is_empty());
+        }
+        kernel::update(|state| state.ipc_call_status = knytos_syscall::ipc_status::OK);
+        drop(connection.as_ref().call_move(1, 2, memory).unwrap());
+        drop(connection);
+        drop(endpoint);
+        // Accepted transfer consumes the local page owner. Cancellation owns
+        // its remote cleanup; the local wrapper must not close it again.
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]
+        );
+    }
+
+    #[test]
+    fn rejected_moved_page_drop_releases_original_once() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(41) }.unwrap();
+        let memory = OwnedMemory::allocate(1).unwrap();
+        kernel::update(|state| state.ipc_call_status = knytos_syscall::ipc_status::QUEUE_FULL);
+        let (memory, error) = connection.call_move(1, 2, memory).unwrap_err();
+        assert_eq!(error, IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL));
+        drop(memory);
+        drop(connection);
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(10), kernel::Event::IpcClose(41)]);
+    }
+
+    #[test]
+    fn delegated_admission_rejection_preserves_both_sources() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).unwrap();
+        let connection = endpoint.connect(IpcRights::CALL).unwrap();
+        for status in [
+            knytos_syscall::ipc_status::QUEUE_FULL,
+            knytos_syscall::ipc_status::ENDPOINT_CLOSED,
+            knytos_syscall::ipc_status::RESOURCE_LIMIT,
+        ] {
+            kernel::update(|state| {
+                state.ipc_call = 0;
+                state.ipc_call_status = status;
+            });
+            assert_eq!(
+                connection.call_connection(1, 2, &endpoint, IpcRights::CALL).unwrap_err(),
+                IpcError::Status(status)
+            );
+            assert_eq!(
+                connection.as_ref().call_connection(1, 2, &endpoint, IpcRights::CALL).unwrap_err(),
+                IpcError::Status(status)
+            );
+            assert!(kernel::events().is_empty());
+        }
+        kernel::update(|state| {
+            state.ipc_call = 30;
+            state.ipc_call_status = knytos_syscall::ipc_status::OK;
+        });
+        drop(connection.as_ref().call_connection(1, 2, &endpoint, IpcRights::CALL).unwrap());
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]
+        );
+    }
+
+    #[test]
+    fn explicit_endpoint_close_retains_rejected_owner() {
+        // This mock rejects before cleanup starts. The production NIC instead
+        // parks with every rejected/uncertain endpoint owner and never retries.
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).unwrap();
+        kernel::update(|state| {
+            state.ipc_close.push_back(knytos_syscall::ipc_status::RESOURCE_LIMIT)
+        });
+        let (endpoint, error) = endpoint.close().unwrap_err();
+        assert_eq!(error, IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT));
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(40)]);
+        endpoint.close().unwrap();
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(40), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn borrowed_connection_watch_owns_only_its_completion() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(41) }.unwrap();
+        drop(connection.as_ref().watch_closed().unwrap());
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::CompletionCancel(20),
+                kernel::Event::CompletionWait(20),
+                kernel::Event::CompletionClose(20),
+            ]
+        );
+        kernel::update(|state| state.connection_watch = knytos_syscall::COMPLETION_SUBMIT_FAILED);
+        assert_eq!(
+            connection.as_ref().watch_closed().unwrap_err(),
+            crate::owned::CompletionError::SubmissionFailed
+        );
+        drop(connection);
+        assert_eq!(kernel::events().last(), Some(&kernel::Event::IpcClose(41)));
+    }
+
+    #[test]
+    fn completion_cq_hint_preserves_owner_until_terminal_observation() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(41) }.unwrap();
+        let mut watch = connection.watch_closed().unwrap();
+        let mut hint = knytos_syscall::CqEntry {
+            operation: 1,
+            cookie: 21,
+            status: 0,
+            flags: 0,
+            result: knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED,
+        };
+        assert!(!watch.matches_cq(&hint));
+        assert!(kernel::events().is_empty());
+        hint.cookie = 20;
+        assert!(watch.matches_cq(&hint));
+        kernel::update(|state| {
+            state.poll.push_back((knytos_syscall::completion_status::PENDING_OR_TIMEOUT, 0));
+            state.poll.push_back((
+                knytos_syscall::completion_status::READY,
+                knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED as u64,
+            ));
+        });
+        assert_eq!(watch.poll().unwrap(), None);
+        assert!(watch.matches_cq(&hint));
+        assert_eq!(watch.poll().unwrap(), Some(knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED));
+        assert!(!watch.matches_cq(&hint));
+        drop(watch);
+        assert_eq!(kernel::events(), [kernel::Event::CompletionClose(20)]);
+        drop(connection);
+        assert_eq!(kernel::events().last(), Some(&kernel::Event::IpcClose(41)));
+    }
+
+    #[test]
+    fn scalar_admission_rejection_keeps_connection_without_a_pending_owner() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let connection = endpoint.connect(IpcRights::CALL).expect("connection creation");
+        for status in [
+            knytos_syscall::ipc_status::QUEUE_FULL,
+            knytos_syscall::ipc_status::ENDPOINT_CLOSED,
+            knytos_syscall::ipc_status::RESOURCE_LIMIT,
+        ] {
+            kernel::update(|state| state.ipc_call_status = status);
+            assert_eq!(connection.as_ref().call(5, 17).unwrap_err(), IpcError::Status(status));
+            assert_eq!(connection.call(5, 17).unwrap_err(), IpcError::Status(status));
+            assert!(kernel::events().is_empty());
+        }
+        kernel::update(|state| state.ipc_call_status = knytos_syscall::ipc_status::OK);
+        drop(connection.call(5, 17).expect("same connection admits after pressure"));
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::IpcClose(41), kernel::Event::IpcClose(40),]
+        );
+    }
+
+    #[test]
+    fn incoming_message_owns_every_attachment() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.ipc_receive.push_back(knytos_syscall::IpcMessage {
+                status: knytos_syscall::ipc_status::OK,
+                opcode: 7,
+                arg0: 9,
+                reply: 43,
+                sender: 1,
+                sender_generation: 2,
+                sender_principal: 3,
+                sender_roles: 4,
+                interface: 5,
+                version: 6,
+                memory: 10,
+                connection: 42,
+            });
+        });
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let message: IncomingMessage =
+            endpoint.try_receive().expect("receive status").expect("queued message");
+        assert_eq!(message.opcode, 7);
+        assert_eq!(message.sender_generation, 2);
+        assert_eq!(message.sender_principal, 3);
+        assert_eq!(message.sender_roles, 4);
+        drop(message);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcClose(43),
+                kernel::Event::MemoryClose(10),
+                kernel::Event::IpcClose(42),
+                kernel::Event::IpcClose(40),
+            ]
+        );
+    }
+
+    #[test]
+    fn failed_reply_move_returns_memory_owner() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.ipc_reply_status = knytos_syscall::ipc_status::QUEUE_FULL;
+            state.ipc_receive.push_back(knytos_syscall::IpcMessage {
+                status: knytos_syscall::ipc_status::OK,
+                opcode: 1,
+                arg0: 0,
+                reply: 43,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 1,
+                version: 1,
+                memory: 0,
+                connection: 0,
+            });
+        });
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let message = endpoint.try_receive().expect("receive status").expect("queued message");
+        let reply = message.reply.expect("reply token");
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let (memory, _) = reply.reply_move(memory, 4).expect_err("reply must fail");
+        drop(memory);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcClose(43),
+                kernel::Event::MemoryClose(10),
+                kernel::Event::IpcClose(40),
+            ]
+        );
+    }
+
+    #[test]
+    fn raw_reply_boundary_has_one_owner_on_drop_success_and_failure() {
+        let _guard = setup();
+        assert_eq!(
+            unsafe { ReplyToken::from_raw(0) }.expect_err("null token must fail"),
+            IpcError::CreationFailed,
+        );
+        // The mock raw receive ABI transfers these distinct tokens once.
+        drop(unsafe { ReplyToken::from_raw(43) }.expect("reply adoption"));
+        unsafe { ReplyToken::from_raw(44) }.expect("reply adoption").reply(0).expect("reply");
+        kernel::update(|state| state.ipc_reply_status = knytos_syscall::ipc_status::QUEUE_FULL);
+        assert!(unsafe { ReplyToken::from_raw(45) }.expect("reply adoption").reply(0).is_err());
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(43), kernel::Event::IpcClose(45)]);
+    }
+
+    #[test]
+    fn reply_from_connection_borrow_preserves_its_owner() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.ipc_receive.push_back(knytos_syscall::IpcMessage {
+                status: knytos_syscall::ipc_status::OK,
+                opcode: 1,
+                arg0: 0,
+                reply: 43,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 1,
+                version: 1,
+                memory: 0,
+                connection: 0,
+            });
+        });
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let message = endpoint.try_receive().expect("receive status").expect("queued message");
+        let reply = message.reply.expect("reply token");
+        let connection = unsafe { Connection::from_raw(42) }.expect("connection");
+        reply
+            .reply_connection_ref(connection.as_ref(), IpcRights::CALL, 7)
+            .expect("reply delegation");
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(42), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn record_limited_reply_cancels_token_but_preserves_grant_source() {
+        let _guard = setup();
+        kernel::update(|state| state.ipc_reply_status = knytos_syscall::ipc_status::RESOURCE_LIMIT);
+        // Mock raw ABI transfers these two distinct capabilities exactly once.
+        let reply = unsafe { ReplyToken::from_raw(43) }.expect("reply adoption");
+        let connection = unsafe { Connection::from_raw(42) }.expect("connection adoption");
+        assert_eq!(
+            reply.reply_connection_ref(connection.as_ref(), IpcRights::CALL, 7),
+            Err(IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT)),
+        );
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(43)]);
+        drop(connection);
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(43), kernel::Event::IpcClose(42)]);
+    }
+
+    #[test]
+    fn failed_vector_call_rolls_descriptor_back_and_returns_moves() {
+        let _guard = setup();
+        let mut descriptor_page = [0_u8; 4096];
+        kernel::update(|state| {
+            state.memory_map_any =
+                (knytos_syscall::memory_status::OK, descriptor_page.as_mut_ptr() as usize);
+            state.ipc_vector_call = 0;
+        });
+        let connection = unsafe { Connection::from_raw(8) }.expect("connection");
+        let memory = unsafe { OwnedMemory::from_raw(11) }.expect("memory");
+        let mut vector = CapabilityVector::new();
+        vector.push_move(memory).expect("vector entry");
+        let (vector, _) = connection.call_vector(1, 2, vector).expect_err("vector call must fail");
+        drop(vector);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10),
+                kernel::Event::MemoryClose(11),
+                kernel::Event::IpcClose(8),
+            ]
+        );
+    }
+}

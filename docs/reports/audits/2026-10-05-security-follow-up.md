@@ -86,7 +86,7 @@ All three corrections are implemented. Final checks:
 | Check | Result |
 | --- | --- |
 | `scripts/run-host-tests.sh` | Passed; the production adapter tests cover frame count/byte saturation, 4,096 sustained refill cycles, drain/reuse and delayed/frequent actual-clock samples. Existing runtime, services, protocol, authorization and signing suites passed. |
-| `scripts/build-catten-services.sh --embed` | Passed; staged and signed AArch64 services include the new pressure-client mode and bounded TCP/IP reactor. |
+| `scripts/build-knytos-services.sh --embed` | Passed; staged and signed AArch64 services include the new pressure-client mode and bounded TCP/IP reactor. |
 | x86 service bundle | Rebuilt and signed through the x86 runner. |
 | Kernel Clippy | `-D warnings` passed for both custom x86 and AArch64 targets. |
 | AArch64 service Clippy | `--bins --lib -- -D warnings` passed, including the adapter dependency. |

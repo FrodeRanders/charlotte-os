@@ -1,28 +1,28 @@
-# OpenShift and CharlotteOS clusters
+# OpenShift and Knytos clusters
 
 Bullet outline for an IT organisation that already operates or is adopting
 OpenShift. The comparison treats OpenShift as a mature production platform and
-CharlotteOS as a research alternative at the operating-system boundary.
+Knytos as a research alternative at the operating-system boundary.
 
-## Slide 1: OpenShift and CharlotteOS clusters
+## Slide 1: OpenShift and Knytos clusters
 
 **Two operating models for production services**
 
 - OpenShift industrialises Linux application operation at cluster scale.
-- CharlotteOS explores a cluster-native operating system with explicit
+- Knytos explores a cluster-native operating system with explicit
   capabilities and signed execution objects.
 
 ## Slide 2: Scope of the comparison
 
 - OpenShift combines Kubernetes with an integrated Linux, security, networking,
   identity, build, registry, and operations environment.
-- CharlotteOS is a research operating system for purpose-built services across
+- Knytos is a research operating system for purpose-built services across
   replaceable nodes.
 - Both approaches depend on desired state, reconciliation, scheduling,
   replicated control state, and readiness.
 - They differ most in the execution substrate and in how authority reaches an
   application.
-- The comparison concerns architecture and operational reasoning. CharlotteOS
+- The comparison concerns architecture and operational reasoning. Knytos
   does not claim OpenShift's feature breadth, ecosystem, qualification, or
   support model.
 
@@ -36,7 +36,7 @@ CharlotteOS as a research alternative at the operating-system boundary.
   Linux capabilities, and SELinux constrain the process environment.
 - Kubernetes and OpenShift coordinate those units across machines.
 
-**CharlotteOS starts with purpose-built execution objects**
+**Knytos starts with purpose-built execution objects**
 
 - A component enters a separate address space as a signed, self-contained
   artifact.
@@ -56,16 +56,16 @@ CharlotteOS as a research alternative at the operating-system boundary.
 - Namespace, cgroup, seccomp, SELinux, and network setup
 - Linux processes on a host operating system
 
-**The CharlotteOS path under investigation**
+**The Knytos path under investigation**
 
 - Signed release and deployment descriptor
 - Cluster placement decision
 - Verified execution object
 - Capability-constrained address space
-- Charlotte kernel and delegated userspace services
+- Knytos kernel and delegated userspace services
 
 OpenShift's path preserves compatibility with a vast software ecosystem.
-CharlotteOS gives up that compatibility to shorten the path from admitted
+Knytos gives up that compatibility to shorten the path from admitted
 policy to kernel-enforced execution.
 
 *Suggested visual: [System layering](../manual-v2/figures/system-layering.svg).*
@@ -80,7 +80,7 @@ policy to kernel-enforced execution.
 - Secret creation, custody, delegation, expiry, and rotation
 - Monitoring, logging, tracing, accounting, and audit
 
-CharlotteOS changes where these responsibilities live and how they connect.
+Knytos changes where these responsibilities live and how they connect.
 It cannot remove the intrinsic complexity of distributed operation.
 
 ## Slide 6: Complexity created by the Linux compatibility contract
@@ -95,7 +95,7 @@ movable workload. This requires mature machinery for:
 - CNI network setup and CSI storage integration
 - Host operating-system lifecycle and per-node platform components
 
-CharlotteOS investigates how much of this machinery changes when isolation,
+Knytos investigates how much of this machinery changes when isolation,
 resource ownership, deployment identity, and cluster placement are native OS
 concepts. Memory protection, accounting, policy enforcement, networking, and
 storage remain necessary.
@@ -110,7 +110,7 @@ storage remain necessary.
 - Image digests, rollout revisions, labels, selectors, and owner references
   connect the operational objects.
 
-**CharlotteOS**
+**Knytos**
 
 - Signed immutable ELF artifacts grouped into one signed release
 - Deployment descriptors bind artifact digests, resource limits, replica
@@ -118,7 +118,7 @@ storage remain necessary.
 - Raft commits desired placement, exact generations, and readiness records.
 - Node agents fetch the artifacts and reconcile their local protected domains.
 
-The Charlotte form aims to make executable identity and runtime authority part
+The Knytos form aims to make executable identity and runtime authority part
 of the same admitted contract.
 
 ## Slide 8: Authority and isolation
@@ -132,7 +132,7 @@ of the same admitted contract.
 - The model supports broad application compatibility and mature multi-tenant
   administration.
 
-**CharlotteOS**
+**Knytos**
 
 - Possession of a capability authorises one operation on one kernel object or
   service endpoint.
@@ -141,7 +141,7 @@ of the same admitted contract.
 - Linear Rust owners represent allocation, transfer, cancellation, and release
   in normal program structure.
 
-CharlotteOS tests whether fewer authority mechanisms can make the enforcement
+Knytos tests whether fewer authority mechanisms can make the enforcement
 chain easier to inspect end to end.
 
 *Suggested visual: [Capability-safe IPC](../manual-v2/figures/capability-safe-ipc.svg).*
@@ -157,7 +157,7 @@ chain easier to inspect end to end.
 - The boundary is workable and mature, although ownership often overlaps in
   YAML, templates, CI/CD systems, and application environment variables.
 
-**The CharlotteOS model**
+**The Knytos model**
 
 - Development signs executable behavior and declares logical requirements.
 - Operations independently signs the production binding and encrypts connector
@@ -179,13 +179,13 @@ only a repository convention or pipeline role.
 - Credentials and certificates through Secrets or mounted volumes
 - SDKs, sidecars, service meshes, or Operators that implement connection policy
 
-**CharlotteOS applications consume**
+**Knytos applications consume**
 
 - Business configuration and logical dependency names
 - An attenuated S3, Kafka, clock, or procedure endpoint capability
 - Small route or operation identifiers already constrained by connector policy
 
-The Charlotte connector receives addresses, credentials, TLS roots, client
+The Knytos connector receives addresses, credentials, TLS roots, client
 identity, topic or prefix limits, and broker lifecycle responsibility. Changing
 an infrastructure endpoint or credential can become a connector rollout while
 the application artifact remains unchanged.
@@ -201,7 +201,7 @@ the application artifact remains unchanged.
 - The platform supports broad ingress policy, network isolation, observability,
   and integration choices.
 
-**CharlotteOS**
+**Knytos**
 
 - Distributed naming maps a logical service to an active generation and owner.
 - Committed placement plus exact-generation readiness determines which replicas
@@ -210,7 +210,7 @@ the application artifact remains unchanged.
 - Direct Server Return selects a backend without terminating TCP in an
   intermediate proxy.
 
-The present Charlotte implementation supports a much narrower ingress model.
+The present Knytos implementation supports a much narrower ingress model.
 Its significance is the direct connection between cluster placement,
 readiness, capability policy, and packet eligibility.
 
@@ -225,7 +225,7 @@ readiness, capability policy, and packet eligibility.
 - Controllers and ecosystem tooling cover many application and infrastructure
   failure modes.
 
-**CharlotteOS**
+**Knytos**
 
 - Artifact digest and generation identify the exact running component.
 - Readiness gates grants, publication, and new ingress flows.
@@ -233,7 +233,7 @@ readiness, capability policy, and packet eligibility.
 - A signed shutdown grace follows the deployment through drain and retirement.
 - The kernel enforces a final deadline after cooperative teardown.
 
-CharlotteOS has implemented the main AArch64 lifecycle path. Health-driven
+Knytos has implemented the main AArch64 lifecycle path. Health-driven
 replacement, rich rolling policy, full platform parity, and production
 controllers remain open work.
 
@@ -249,7 +249,7 @@ controllers remain open work.
 - Retains a Linux host identity even when direct administration is tightly
   controlled.
 
-**The CharlotteOS target node**
+**The Knytos target node**
 
 - Boots an appliance-like image, establishes identity, and joins cluster state.
 - Advertises resources and failure-domain properties.
@@ -264,21 +264,21 @@ become replaceable resource providers for the cluster.
 ## Slide 14: How incident reasoning differs
 
 - **Why is this workload running?** OpenShift answers through workload objects,
-  controllers, scheduler decisions, and events. Charlotte answers through a
+  controllers, scheduler decisions, and events. Knytos answers through a
   signed release and committed assignment.
 - **Which code is active?** OpenShift uses image identity and rollout state.
-  Charlotte uses the admitted artifact digest and exact generation.
+  Knytos uses the admitted artifact digest and exact generation.
 - **What may it access?** OpenShift combines identity, RBAC, Secrets, network
-  policy, and host controls. Charlotte inspects the granted capability set and
+  policy, and host controls. Knytos inspects the granted capability set and
   connector attenuation.
 - **Why did it receive traffic?** OpenShift inspects Service selection,
-  endpoints, readiness, ingress, and network state. Charlotte inspects
+  endpoints, readiness, ingress, and network state. Knytos inspects
   placement, exact-generation readiness, and the DSR eligibility epoch.
 - **Where are external credentials?** OpenShift commonly projects a Secret to
-  the Pod or delegates through another platform component. Charlotte confines
+  the Pod or delegates through another platform component. Knytos confines
   them to a separately launched connector.
 
-CharlotteOS seeks a shorter causal chain. Operational evidence must determine
+Knytos seeks a shorter causal chain. Operational evidence must determine
 whether that chain remains understandable as the platform grows.
 
 ## Slide 15: AI changes the compatibility economics
@@ -291,7 +291,7 @@ whether that chain remains understandable as the platform grows.
   and for applications whose source and business behavior the organisation
   controls.
 - Durga demonstrates the direction: BPMN process intent and business procedures
-  can produce Charlotte adapters, capability requests, resource declarations,
+  can produce Knytos adapters, capability requests, resource declarations,
   build inputs, and deployment metadata.
 - Reproducible generation, review, provenance, security analysis, and runtime
   verification remain mandatory. AI-generated code does not become trusted by
@@ -303,7 +303,7 @@ AI therefore changes the cost boundary rather than removing it. An IT
 department can assess the cost of verified adaptation alongside the cost of
 carrying the general-purpose compatibility stack.
 
-*Suggested visual: [Durga to Charlotte generation](../manual-v2/figures/durga-charlotte-generation.svg).*
+*Suggested visual: [Durga to Knytos generation](../manual-v2/figures/durga-charlotte-generation.svg).*
 
 ## Slide 16: Maturity and organisational risk
 
@@ -315,7 +315,7 @@ carrying the general-purpose compatibility stack.
 - Rich administration, identity, observability, storage, networking, backup,
   and disaster-recovery options
 
-**CharlotteOS today**
+**Knytos today**
 
 - Research implementation with working capability, consensus, placement,
   connector, ingress, and lifecycle foundations
@@ -325,7 +325,7 @@ carrying the general-purpose compatibility stack.
   authorization, automated failure convergence, rolling policy, platform
   observability, backup, and physical qualification
 
-Existing production estates remain natural OpenShift workloads. CharlotteOS is
+Existing production estates remain natural OpenShift workloads. Knytos is
 appropriate for controlled evaluation and architectural research at this
 stage.
 
@@ -336,7 +336,7 @@ OpenShift addresses this practical question:
 - How can an organisation operate today's Linux applications safely and
   consistently across a cluster?
 
-CharlotteOS investigates a different question:
+Knytos investigates a different question:
 
 - What should an operating system look like when the cluster, signed workload,
   placement decision, and explicit authority are native from the beginning?

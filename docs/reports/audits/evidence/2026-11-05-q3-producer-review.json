@@ -622,13 +622,13 @@
     "crates/catten/src/timers/waiter_tests.rs": "5581fc212abe420146705271c032717e10521c27cec46b97243e4448018a8225"
   },
   "dependency_source_sha256": {
-    "crates/charlotte-protocol-kafka/src/lib.rs": "f4b4c19f3a3e6a9b3ab2a6a8bcaeaf9e5f53e9ba2e88d5095ec4daea3b70dd74",
-    "crates/charlotte-protocol-s3/src/lib.rs": "f33c2475e8847fc1a408262adb76b5295c2bcc2987726c0d62a1b624bede1526",
-    "crates/charlotte-kafka-step/src/lib.rs": "e0055cbc59c1aebe67475112b9fc3bd8f20824a0ef268805d40edfa3105cb8ac",
-    "crates/charlotte-launch/src/ingress.rs": "e929ad9906786d2cee4b0cb0efb847b5ebf99c4dcb22f1985b894e430b66da25",
-    "crates/charlotte-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
-    "crates/charlotte-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30",
-    "crates/charlotte-launch/src/signature_note.rs": "804783e4034f5d8c4af76dd126236a0d98ffbec64ec918c1f7bac17c12a319f1"
+    "crates/knytos-protocol-kafka/src/lib.rs": "f4b4c19f3a3e6a9b3ab2a6a8bcaeaf9e5f53e9ba2e88d5095ec4daea3b70dd74",
+    "crates/knytos-protocol-s3/src/lib.rs": "f33c2475e8847fc1a408262adb76b5295c2bcc2987726c0d62a1b624bede1526",
+    "crates/knytos-kafka-step/src/lib.rs": "e0055cbc59c1aebe67475112b9fc3bd8f20824a0ef268805d40edfa3105cb8ac",
+    "crates/knytos-launch/src/ingress.rs": "e929ad9906786d2cee4b0cb0efb847b5ebf99c4dcb22f1985b894e430b66da25",
+    "crates/knytos-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
+    "crates/knytos-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30",
+    "crates/knytos-launch/src/signature_note.rs": "804783e4034f5d8c4af76dd126236a0d98ffbec64ec918c1f7bac17c12a319f1"
   },
   "capture_inputs_sha256": {
     "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
@@ -638,13 +638,13 @@
     "crates/catten/Cargo.toml": "6c5803556b781f2aa0bd572aa0a38f532ff9bc790c45bf000bdee9077fe65876",
     "target_specs/aarch64-unknown-none-catten.json": "8295350cd7123630e381fea157c2ee783c003033b2fb38f61335fab4323e3c69",
     "target_specs/x86_64-unknown-none-catten.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
-    "crates/charlotte-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
-    "crates/charlotte-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
-    "crates/charlotte-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
-    "crates/charlotte-launch/src/operations_pickup.rs": "707cc735894520eed1ee7a2eea432f98bab6607a110f261bb9884e0bd5b8e144",
-    "crates/charlotte-launch/src/operations_bundle.rs": "36e6b4ca928bfb51027dd1d94e103905d95ab618b0a83c0182795845a178fd3c",
-    "crates/charlotte-launch/src/release.rs": "56ec61085e336e20f018d45859823a05b7b63568a035f2e1346760b11a8d95d8",
-    "crates/charlotte-launch/src/shutdown.rs": "ccdbbb2a1216fc52b3d87a38dca0493d28965bc7b30d7f59ac0db2e704925160"
+    "crates/knytos-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
+    "crates/knytos-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
+    "crates/knytos-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
+    "crates/knytos-launch/src/operations_pickup.rs": "707cc735894520eed1ee7a2eea432f98bab6607a110f261bb9884e0bd5b8e144",
+    "crates/knytos-launch/src/operations_bundle.rs": "36e6b4ca928bfb51027dd1d94e103905d95ab618b0a83c0182795845a178fd3c",
+    "crates/knytos-launch/src/release.rs": "56ec61085e336e20f018d45859823a05b7b63568a035f2e1346760b11a8d95d8",
+    "crates/knytos-launch/src/shutdown.rs": "ccdbbb2a1216fc52b3d87a38dca0493d28965bc7b30d7f59ac0db2e704925160"
   },
   "profiles": {
     "arm-acpi-minimal": {
@@ -5260,7 +5260,7 @@
         19
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::new",
-      "value_type": "spin::once::Once<alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>>",
+      "value_type": "spin::once::Once<alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>>",
       "id": "3cdf84023c326260",
       "profiles": [
         "x86-acpi-minimal"
@@ -5283,7 +5283,7 @@
         32
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::call_once::<{closure@crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs:50:25: 50:27}>",
-      "value_type": "&alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>",
+      "value_type": "&alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>",
       "id": "2389c908292031a5",
       "profiles": [
         "x86-acpi-minimal"
@@ -5306,7 +5306,7 @@
         27
       ],
       "callee": "alloc::vec::Vec::<Acknowledgement>::new",
-      "value_type": "alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>",
+      "value_type": "alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>",
       "id": "23447a6ee8252d6b",
       "profiles": [
         "x86-acpi-minimal"
@@ -5375,7 +5375,7 @@
         39
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::get",
-      "value_type": "core::option::Option<&alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>>",
+      "value_type": "core::option::Option<&alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>>",
       "id": "05ef8ef8d8cf2cfb",
       "profiles": [
         "x86-acpi-minimal"
@@ -5398,7 +5398,7 @@
         53
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::get",
-      "value_type": "core::option::Option<&alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>>",
+      "value_type": "core::option::Option<&alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>>",
       "id": "070649d68d908e6f",
       "profiles": [
         "x86-acpi-minimal"
@@ -12651,7 +12651,7 @@
         6
       ],
       "callee": "ipc::buffer::<CapVectorEntry>",
-      "value_type": "alloc::vec::Vec<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::Vec<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "d5c9538d482de182",
       "profiles": [
         "arm-acpi-minimal",
@@ -16055,7 +16055,7 @@
         67
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, ClusterTcpService>, {closure@crates/catten/src/service/launch.rs:183:14: 183:23}> as Iterator>::collect::<alloc::vec::Vec<ServiceBinding<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_launch::ingress::ServiceBinding<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_launch::ingress::ServiceBinding<'_>>",
       "id": "e81958ae7f67fd3b",
       "profiles": [
         "arm-acpi-minimal",
@@ -16150,7 +16150,7 @@
         873,
         78
       ],
-      "callee": "charlotte_protocol_s3::Profile::<'_>::encode",
+      "callee": "knytos_protocol_s3::Profile::<'_>::encode",
       "value_type": "core::option::Option<zeroize::Zeroizing<alloc::vec::Vec<u8>>>",
       "id": "76611a87e570f9d3",
       "profiles": [
@@ -16199,7 +16199,7 @@
         84
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, KafkaProduceRoute<'_>>, {closure@crates/catten/src/service/launch.rs:911:14: 911:21}> as Iterator>::collect::<alloc::vec::Vec<ProduceRoute<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_protocol_kafka::ProduceRoute<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_protocol_kafka::ProduceRoute<'_>>",
       "id": "84c280848256e78e",
       "profiles": [
         "arm-acpi-minimal",
@@ -16223,7 +16223,7 @@
         84
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, KafkaBrokerEndpoint<'_>>, {closure@crates/catten/src/service/launch.rs:919:14: 919:22}> as Iterator>::collect::<alloc::vec::Vec<BrokerEndpoint<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_protocol_kafka::BrokerEndpoint<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_protocol_kafka::BrokerEndpoint<'_>>",
       "id": "c0c912d48d2d3a7b",
       "profiles": [
         "arm-acpi-minimal",
@@ -16247,7 +16247,7 @@
         84
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, KafkaAuthorityEndpoint<'_>>, {closure@crates/catten/src/service/launch.rs:929:18: 929:28}> as Iterator>::collect::<alloc::vec::Vec<AuthorityEndpoint<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_protocol_kafka::AuthorityEndpoint<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_protocol_kafka::AuthorityEndpoint<'_>>",
       "id": "eb62e309982dcc38",
       "profiles": [
         "arm-acpi-minimal",
@@ -16270,8 +16270,8 @@
         907,
         84
       ],
-      "callee": "charlotte_protocol_kafka::Profile::<'_>::encode",
-      "value_type": "core::result::Result<zeroize::Zeroizing<alloc::vec::Vec<u8>>, charlotte_protocol_kafka::ProfileError>",
+      "callee": "knytos_protocol_kafka::Profile::<'_>::encode",
+      "value_type": "core::result::Result<zeroize::Zeroizing<alloc::vec::Vec<u8>>, knytos_protocol_kafka::ProfileError>",
       "id": "2cf528fbcf61c462",
       "profiles": [
         "arm-acpi-minimal",
@@ -16294,7 +16294,7 @@
         907,
         84
       ],
-      "callee": "Result::<Zeroizing<alloc::vec::Vec<u8>>, charlotte_protocol_kafka::ProfileError>::expect",
+      "callee": "Result::<Zeroizing<alloc::vec::Vec<u8>>, knytos_protocol_kafka::ProfileError>::expect",
       "value_type": "zeroize::Zeroizing<alloc::vec::Vec<u8>>",
       "id": "333dbd804fef06fd",
       "profiles": [
@@ -16342,8 +16342,8 @@
         993,
         85
       ],
-      "callee": "charlotte_kafka_step::Profile::<'_>::encode",
-      "value_type": "core::result::Result<alloc::vec::Vec<u8>, charlotte_kafka_step::ProfileError>",
+      "callee": "knytos_kafka_step::Profile::<'_>::encode",
+      "value_type": "core::result::Result<alloc::vec::Vec<u8>, knytos_kafka_step::ProfileError>",
       "id": "88b08972785634a9",
       "profiles": [
         "arm-acpi-minimal",
@@ -16366,7 +16366,7 @@
         993,
         85
       ],
-      "callee": "Result::<alloc::vec::Vec<u8>, charlotte_kafka_step::ProfileError>::expect",
+      "callee": "Result::<alloc::vec::Vec<u8>, knytos_kafka_step::ProfileError>::expect",
       "value_type": "alloc::vec::Vec<u8>",
       "id": "91e6b411b1bd2b85",
       "profiles": [
@@ -18425,7 +18425,7 @@
       "disposition": "Borrowed fields and bounded encoded frame, no metadata vectors. Encoded plaintext/input remains in the accepted Q1 owner."
     },
     {
-      "edge": "charlotte-launch decode/signature/operations open",
+      "edge": "knytos-launch decode/signature/operations open",
       "disposition": "Current parsers borrow bounded input or use caller-provided output; digest and signature/AEAD work use fixed storage. Input/plaintext owners remain Q1/Q2. This does not establish secret erasure under forced abort or authenticated security time."
     },
     {

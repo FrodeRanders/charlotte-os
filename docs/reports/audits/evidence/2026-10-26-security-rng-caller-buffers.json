@@ -20,28 +20,28 @@
     ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
     ".cargo/audit.toml": "6dedf4733a1def7aab3bb002f58c005b1d0d05d7a54dea7308847b90e60d3fdd",
     ".cargo/audit-version": "76dff43b6331e7f1a4f0d1b14bbc1c3e001190af5a7ed008ab165bbc3c815e12",
-    "crates/catten-services/Cargo.toml": "3ca9d0b32ccecfeca2745454b98c4632b280f558d1695387315cd7b0ea9b6bb8",
-    "crates/catten-services/src/lib.rs": "72ca511ba8981145eb71281b936b3b84d344b6133fe16a02850d045b0c4fccbe",
-    "crates/catten-services/src/entropy_service.rs": "f81a517193286b429e176c07e89c7b11648c965ad025101707d35eb60d84cedb",
-    "crates/catten-services/src/tls_client.rs": "82377698386036af836a7bce0eddfeb84b63a328badcc0ac508a8c31a5505d0b",
-    "crates/catten-services/src/tls_client/entropy_client.rs": "e11ce22c39792592c1fca91b6e8b4c4eebb9d876c608812482d76e0b2e987e25",
-    "crates/catten-services/src/tls_client/entropy_contract.rs": "c50166e1f7ac1e32b8d8f0e284bc9517156de31fb1275d335b3a3136cc86453e",
-    "crates/catten-services/src/tls_client/runtime.rs": "657f715ed85a16c86cdf9a428ed307b998d02d5dcac9104c6626d83a831be7ce",
-    "crates/catten-services/src/tls_client/crypto.rs": "e93748db23fde582261b5c042492adbf7f485b659a0089f7e971ad1b18440cb2",
-    "crates/catten-services/src/tls_client/interop.rs": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
-    "crates/catten-services/src/bin/rng.rs": "eade4b5a726f3caa13044b317a9d3d30182c387845244db470078cdec0f47f9d",
-    "crates/catten-services/src/bin/dns.rs": "e0e47094a0f08dac2c82f396d22bba6912b0ed1ae0083ff05abfc2fb3816d3c3",
-    "crates/catten-services/src/bin/tcpip.rs": "2a4e940ae6f2b35b3a5dd80dd539cd708af915c22708005aee798e0652c97351",
-    "crates/catten-services/src/bin/s3.rs": "63fc692f8beab8ae643a7d51438c919796be2332258450f54591d4377a312863",
-    "crates/catten-services/src/bin/kafka.rs": "69430620ff0c91761c222c9890213fa254b901d3c83a03c6ef7e5cc4dc798518",
-    "crates/catten-services/src/bin/security_probe.rs": "e91844c6c8a942264f508d20157fba4b8c80a3f8a59567f480ca33c7433b3e57",
-    "crates/catten-services/src/deadline.rs": "4fe91d47a40524b52c062496d9b27f9a1e47d54ce04a8f9945b6b4875e0817f6",
-    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
-    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/knytos-services/Cargo.toml": "3ca9d0b32ccecfeca2745454b98c4632b280f558d1695387315cd7b0ea9b6bb8",
+    "crates/knytos-services/src/lib.rs": "72ca511ba8981145eb71281b936b3b84d344b6133fe16a02850d045b0c4fccbe",
+    "crates/knytos-services/src/entropy_service.rs": "f81a517193286b429e176c07e89c7b11648c965ad025101707d35eb60d84cedb",
+    "crates/knytos-services/src/tls_client.rs": "82377698386036af836a7bce0eddfeb84b63a328badcc0ac508a8c31a5505d0b",
+    "crates/knytos-services/src/tls_client/entropy_client.rs": "e11ce22c39792592c1fca91b6e8b4c4eebb9d876c608812482d76e0b2e987e25",
+    "crates/knytos-services/src/tls_client/entropy_contract.rs": "c50166e1f7ac1e32b8d8f0e284bc9517156de31fb1275d335b3a3136cc86453e",
+    "crates/knytos-services/src/tls_client/runtime.rs": "657f715ed85a16c86cdf9a428ed307b998d02d5dcac9104c6626d83a831be7ce",
+    "crates/knytos-services/src/tls_client/crypto.rs": "e93748db23fde582261b5c042492adbf7f485b659a0089f7e971ad1b18440cb2",
+    "crates/knytos-services/src/tls_client/interop.rs": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
+    "crates/knytos-services/src/bin/rng.rs": "eade4b5a726f3caa13044b317a9d3d30182c387845244db470078cdec0f47f9d",
+    "crates/knytos-services/src/bin/dns.rs": "e0e47094a0f08dac2c82f396d22bba6912b0ed1ae0083ff05abfc2fb3816d3c3",
+    "crates/knytos-services/src/bin/tcpip.rs": "2a4e940ae6f2b35b3a5dd80dd539cd708af915c22708005aee798e0652c97351",
+    "crates/knytos-services/src/bin/s3.rs": "63fc692f8beab8ae643a7d51438c919796be2332258450f54591d4377a312863",
+    "crates/knytos-services/src/bin/kafka.rs": "69430620ff0c91761c222c9890213fa254b901d3c83a03c6ef7e5cc4dc798518",
+    "crates/knytos-services/src/bin/security_probe.rs": "e91844c6c8a942264f508d20157fba4b8c80a3f8a59567f480ca33c7433b3e57",
+    "crates/knytos-services/src/deadline.rs": "4fe91d47a40524b52c062496d9b27f9a1e47d54ce04a8f9945b6b4875e0817f6",
+    "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "crates/catten/src/self_test/el0_security.rs": "23a5d2bb1c06d92ddefa4325d6460f4286b790066dd2b59a1de1a317129082f3",
     "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "scripts/check-dependency-advisories.py": "f0d601732ebf1beef98c10742121c224d38d026d2df41df06e90463a7e8bb379"
   },
   "lockfile_unchanged": true,
@@ -68,7 +68,7 @@
   "host": [
     {
       "mode": "debug",
-      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p catten-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 374,
@@ -195,7 +195,7 @@
     },
     {
       "mode": "release",
-      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p catten-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 374,
@@ -333,12 +333,12 @@
     {
       "target": "aarch64-unknown-none",
       "exit_code": 0,
-      "command": "cargo clippy -p catten-services --lib --bins --target crates/catten-services/aarch64-unknown-none.json --target-dir target/entropy-caller-check --locked --offline -- -D warnings"
+      "command": "cargo clippy -p knytos-services --lib --bins --target crates/knytos-services/aarch64-unknown-none.json --target-dir target/entropy-caller-check --locked --offline -- -D warnings"
     },
     {
       "target": "x86_64-unknown-none",
       "exit_code": 0,
-      "command": "cargo clippy -p catten-services --lib --bins --target crates/catten-services/x86_64-unknown-none.json --target-dir target/entropy-caller-check --locked --offline -- -D warnings"
+      "command": "cargo clippy -p knytos-services --lib --bins --target crates/knytos-services/x86_64-unknown-none.json --target-dir target/entropy-caller-check --locked --offline -- -D warnings"
     }
   ],
   "format_check": {
@@ -380,13 +380,13 @@
   },
   "build_commands": [
     {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_code": 0,
       "rebuilt_service_images": 40,
       "reused_unchanged_sitas": true
     },
     {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_code": 0,
       "rebuilt_service_images": 37
     }

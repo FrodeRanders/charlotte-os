@@ -32,8 +32,8 @@ fn budget(root: AddressSpaceHandle) -> Budget<SnapshotAllocator> {
 }
 
 pub(crate) fn run() {
-    let principal = charlotte_launch::artifact_principal_id(b"diagnostic-buffer-principal");
-    let other = charlotte_launch::artifact_principal_id(b"diagnostic-buffer-other");
+    let principal = knytos_launch::artifact_principal_id(b"diagnostic-buffer-principal");
+    let other = knytos_launch::artifact_principal_id(b"diagnostic-buffer-other");
     let first = domain(principal);
     let second = domain(principal);
     let healthy = domain(other);

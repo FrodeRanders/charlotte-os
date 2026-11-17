@@ -4,7 +4,7 @@
 
 use core::mem::ManuallyDrop;
 
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     Amount,
     Budget,
 };
@@ -18,7 +18,7 @@ use super::{
 
 const _: () = assert!(
     crate::resource_policy::POLICY.memory.heap_domain_pages
-        <= (charlotte_launch::HEAP_VA_LIMIT / 4096) as u64
+        <= (knytos_launch::HEAP_VA_LIMIT / 4096) as u64
 );
 
 pub(crate) const IMAGE_DOMAIN_PAGES: u64 = crate::resource_policy::POLICY.memory.image_domain_pages; // 64 MiB, including runtime pages.

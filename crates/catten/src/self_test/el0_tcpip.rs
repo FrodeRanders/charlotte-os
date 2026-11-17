@@ -70,7 +70,7 @@ mod inner {
         // Wait for the tcpip service to enter its serving stage (6).
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe {
-            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
         } < 6
         {
             deadline.assert_pending("EL0 tcpip service startup");
@@ -94,7 +94,7 @@ mod inner {
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(90_000);
         while unsafe {
-            crate::self_test::status_u32(client_cfg, charlotte_launch::tcpclient_status::STAGE)
+            crate::self_test::status_u32(client_cfg, knytos_launch::tcpclient_status::STAGE)
         } != CLIENT_SENTINEL
         {
             spins += 1;
@@ -102,32 +102,32 @@ mod inner {
                 let stage = unsafe {
                     crate::self_test::status_u32(
                         client_cfg,
-                        charlotte_launch::tcpclient_status::STAGE,
+                        knytos_launch::tcpclient_status::STAGE,
                     )
                 };
                 let local_ip = unsafe {
                     crate::self_test::status_u32(
                         client_cfg,
-                        charlotte_launch::tcpclient_status::LOCAL_IP,
+                        knytos_launch::tcpclient_status::LOCAL_IP,
                     )
                 };
                 let error = unsafe {
                     crate::self_test::status_u32(
                         client_cfg,
-                        charlotte_launch::tcpclient_status::ERROR,
+                        knytos_launch::tcpclient_status::ERROR,
                     )
                 };
                 let rx_total = unsafe {
                     crate::self_test::status_u32(
                         tcpip_cfg,
-                        charlotte_launch::tcpip_status::RX_TOTAL,
+                        knytos_launch::tcpip_status::RX_TOTAL,
                     )
                 };
                 let tx_ok = unsafe {
-                    crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::TX_OK)
+                    crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::TX_OK)
                 };
                 let sock_count = unsafe {
-                    crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::SOCKETS)
+                    crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::SOCKETS)
                 };
                 let frouter_base = crate::self_test::FROUTER_STATUS_FRAME
                     .load(core::sync::atomic::Ordering::Acquire)
@@ -138,7 +138,7 @@ mod inner {
                     unsafe {
                         crate::self_test::status_u32(
                             frouter_base,
-                            charlotte_launch::frouter_status::RX_TOTAL,
+                            knytos_launch::frouter_status::RX_TOTAL,
                         )
                     }
                 };
@@ -148,7 +148,7 @@ mod inner {
                     unsafe {
                         crate::self_test::status_u32(
                             frouter_base,
-                            charlotte_launch::frouter_status::FORWARDED,
+                            knytos_launch::frouter_status::FORWARDED,
                         )
                     }
                 };
@@ -170,13 +170,13 @@ mod inner {
         }
 
         let local_ip = unsafe {
-            crate::self_test::status_u32(client_cfg, charlotte_launch::tcpclient_status::LOCAL_IP)
+            crate::self_test::status_u32(client_cfg, knytos_launch::tcpclient_status::LOCAL_IP)
         };
         let rx_total = unsafe {
-            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::RX_TOTAL)
+            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::RX_TOTAL)
         };
         let tx_ok = unsafe {
-            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::TX_OK)
+            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::TX_OK)
         };
         logln!(
             "[tcpip] client succeeded (local ip {}.{}.{}.{}) tcpip rx={} tx={}",

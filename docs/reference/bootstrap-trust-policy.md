@@ -1,6 +1,6 @@
 # Signed bootstrap trust policy
 
-`charlotte_launch::trust::signed_policy` authenticates a fixed public admission
+`knytos_launch::trust::signed_policy` authenticates a fixed public admission
 policy relative to an explicitly supplied bootstrap key, cluster and acceptance
 state. Host signing and verification use the same allocation-free parser and
 verifier intended for a future protected provisioning adapter.
@@ -29,7 +29,7 @@ lengths/version values must match exactly; trailing or truncated data rejects.
 The signature is ordinary Ed25519 over:
 
 ```text
-SHA256("CharlotteOS bootstrap trust policy v1\0" || bytes[0..264])
+SHA256("Knytos bootstrap trust policy v1\0" || bytes[0..264])
 ```
 
 That digest is also the **accepted policy digest**. It binds the header, key
@@ -161,6 +161,37 @@ platform bundle signed by its selected public test artifact root. Images signed
 by the development key reject at the name-service/NVMe loader gate. It is not a
 production boot selector,
 persistent-state adapter or custody provider.
+
+## Regenerating public test policies
+
+The four `crates/catten/src/service/admission/test-policy*.bin` records use
+publicly known test seeds. Changing the cluster identity hash context or policy
+signing context requires regenerating all four records, including the successor's
+predecessor digest. A source-only project rename leaves these binary fixtures
+stale and can panic the native admission test with `InvalidPolicy(ClusterMismatch)`.
+
+From the repository root, run the host generator outside the freestanding Cargo
+configuration, then verify the records against the independent host test:
+
+```sh
+repo_root="$PWD"
+host_cargo="$(rustup which cargo)"
+host_rustc="$(rustup which rustc)"
+host_rustdoc="$(rustup which rustdoc)"
+(
+    cd "${TMPDIR:-/tmp}"
+    export RUSTC="$host_rustc" RUSTDOC="$host_rustdoc"
+    export CARGO_TARGET_DIR="$repo_root/target/boot-trust-host"
+    "$host_cargo" run --locked --manifest-path "$repo_root/crates/knytos-launch/Cargo.toml" \
+        --example generate_boot_trust_fixtures
+    "$host_cargo" test --locked --manifest-path "$repo_root/crates/knytos-launch/Cargo.toml" \
+        --test signed_policy
+)
+```
+
+Rebuild kernel images and Secure Boot fixture bundles after regeneration.
+This command updates only public test records; it does not rotate signing keys
+or migrate installed cluster state.
 
 ## Protected integration still required
 

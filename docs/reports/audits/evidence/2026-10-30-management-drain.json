@@ -3,9 +3,9 @@
   "base_revision": "816137bde16c3a6c22e3f6ceb69c0af33349259a",
   "scope": "Keep deployment ingress inside its CQ reactor until every input/control/output/setup/close owner has completed its defined handoff. Finish accepted controller/output work under original budgets; cancel incomplete input into consuming logical close. No new physical cleanup proof or finding closure.",
   "source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "c00b5a333dd608d69fefad1fbefe398fb8558f70123f7cf033212a24e09bf306",
-    "crates/catten-services/src/bin/httpd.rs": "732aedb1208ac7399c4a76f60401341e37b18a68fc5b0ff541242b1b04c1fda5",
-    "crates/catten-services/src/deployment_input.rs": "0aca5a9357675a52fb888a70ecd45b2e7879b3558a76cbb13a45f0cc1ab554a7",
+    "crates/knytos-services/src/bin/deployd.rs": "c00b5a333dd608d69fefad1fbefe398fb8558f70123f7cf033212a24e09bf306",
+    "crates/knytos-services/src/bin/httpd.rs": "732aedb1208ac7399c4a76f60401341e37b18a68fc5b0ff541242b1b04c1fda5",
+    "crates/knytos-services/src/deployment_input.rs": "0aca5a9357675a52fb888a70ecd45b2e7879b3558a76cbb13a45f0cc1ab554a7",
     "scripts/run-aarch64.sh": "9d25fd1abe93b983b95a167a5c6369b6dab3d76abc94032a255e350e8ea0e2f3",
     "scripts/tests/test-management-drain.py": "7ab117293137ce96a0f31429710778bbb7bbed3a9c86ca12161dcdcd2eef1b3a",
     "scripts/tests/test-management-drain-observations.py": "9d9a85d3e075a72bec894389124b00892e75f1ec078c0efd576e973f3ddd7f1b",
@@ -139,9 +139,9 @@
     "runner_exit": 1
   },
   "negative_control_source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "eba5e3cbb1b86c7e2b959159d270b58fd1d18592fd3b8d30a9673c910ad9bf68",
-    "crates/catten-services/src/bin/httpd.rs": "732aedb1208ac7399c4a76f60401341e37b18a68fc5b0ff541242b1b04c1fda5",
-    "crates/catten-services/src/deployment_input.rs": "7c8a892c301a288520a0ba4a318bcb4d3ab1ec281def8fc9ab7ceeb0b6af7d14"
+    "crates/knytos-services/src/bin/deployd.rs": "eba5e3cbb1b86c7e2b959159d270b58fd1d18592fd3b8d30a9673c910ad9bf68",
+    "crates/knytos-services/src/bin/httpd.rs": "732aedb1208ac7399c4a76f60401341e37b18a68fc5b0ff541242b1b04c1fda5",
+    "crates/knytos-services/src/deployment_input.rs": "7c8a892c301a288520a0ba4a318bcb4d3ab1ec281def8fc9ab7ceeb0b6af7d14"
   },
   "qualification": {
     "instance": "management-drain-after-20261030-v",

@@ -920,10 +920,10 @@
     "source_sha256": {
       "crates/catten/src/resource_policy/defaults.rs": "43f1905225cf16f19cef585206c4fa3f594eefb1af4c5c80d4ebd55ccdf3a514",
       "crates/catten/src/resource_policy.rs": "d0a06c111d6efffb53d111563e8825d273478ad22b75619f8dd9fbad6e049a9c",
-      "crates/catten-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
-      "crates/catten-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
-      "crates/catten-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
-      "crates/catten-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
+      "crates/knytos-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
+      "crates/knytos-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
+      "crates/knytos-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
+      "crates/knytos-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
       "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
       "scripts/audit-resource-capacity.py": "b90ce8e08b51a7876e0f81725bd1dd429d8f1e1a4ccdcd3b3cd9f1ea8f181265"
     },

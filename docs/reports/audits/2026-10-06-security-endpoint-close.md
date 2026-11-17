@@ -64,7 +64,7 @@ hardware-walk or failed-recipient injection campaign.
 | Check | Result |
 | --- | --- |
 | `scripts/run-host-tests.sh` | Passed, including direct slot/scratch ownership and existing runtime, services, protocol, authorization and signing suites. |
-| `scripts/build-catten-services.sh --embed` | Passed; rebuilt/staged/signed the AArch64 service bundle. |
+| `scripts/build-knytos-services.sh --embed` | Passed; rebuilt/staged/signed the AArch64 service bundle. |
 | x86 and AArch64 kernel Clippy | Both custom targets, `--locked`, `-D warnings`: passed. |
 | Formatting/whitespace | `cargo fmt --all -- --check` and `git diff --check`: passed. |
 | Isolated four-LP x86 guest | **15 passed, 0 failed, 0 pending**. New boot ownership/failure fixtures passed; the deferred mapped-loan test completed with secondary LPs online and actual synchronous shootdowns. Existing fault/register, lifecycle and storage tests also passed. |

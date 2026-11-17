@@ -1,7 +1,7 @@
-//! Self-test: load the Rust-compiled Sitas-based catten-user binary at EL0.
+//! Self-test: load the Rust-compiled Sitas-based knytos-user binary at EL0.
 //!
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
-//! ELF produced by the repository's pinned toolchain for the catten-user target
+//! ELF produced by the repository's pinned toolchain for the knytos-user target
 //! (which links against sitas-core and sitas-charlotte).  The kernel maps
 //! PT_LOAD segments at their linked virtual addresses with page permissions
 //! derived from ELF flags.
@@ -44,23 +44,23 @@ const SITAS_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 #[cfg(target_arch = "aarch64")]
-const SITAS_HEAP_VADDR: usize = charlotte_launch::HEAP_VADDR;
+const SITAS_HEAP_VADDR: usize = knytos_launch::HEAP_VADDR;
 #[cfg(target_arch = "aarch64")]
-const SITAS_HEAP_PAGES: usize = charlotte_launch::HEAP_SIZE / 4096;
+const SITAS_HEAP_PAGES: usize = knytos_launch::HEAP_SIZE / 4096;
 #[cfg(target_arch = "aarch64")]
-const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
+const SITAS_STATUS_VADDR: usize = knytos_launch::STATUS_VADDR;
 /// Verified record count `mailbox_index::mailbox_index_test` writes on success
 /// (mirrors `sitas_core::mailbox_index::RECORD_COUNT`).
 #[cfg(target_arch = "aarch64")]
 const SITAS_MAILBOX_INDEX_COUNT: u32 = 1024;
-/// Sum of the joined shard values the `catten-user` join probe writes on
+/// Sum of the joined shard values the `knytos-user` join probe writes on
 /// success (closures return 40 and 41).
 #[cfg(target_arch = "aarch64")]
 const SITAS_JOIN_PROBE_SUM: u32 = 81;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
-/// The Rust-compiled Sitas-based catten-user ELF.
+/// The Rust-compiled Sitas-based knytos-user ELF.
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
@@ -257,11 +257,11 @@ fn load_user_elf(asid: usize, image: &[u8]) -> usize {
     // path must enforce the same gate so a tampered `sitas-user` ELF is never
     // mapped, keeping every EL0 image behind the cluster signature boundary.
     if !matches!(
-        charlotte_launch::signature_note::verify_elf(
+        knytos_launch::signature_note::verify_elf(
             image,
             &crate::service::admission::platform_artifact_key().expect("boot artifact authority"),
         ),
-        charlotte_launch::signature_note::VerifyOutcome::Valid,
+        knytos_launch::signature_note::VerifyOutcome::Valid,
     ) {
         panic!("[sitas] refusing to load an ELF that is not validly signed by the cluster");
     }
@@ -294,7 +294,7 @@ fn load_user_elf(asid: usize, image: &[u8]) -> usize {
 pub fn test_el0_sitas() {
     #[cfg(target_arch = "aarch64")]
     {
-        logln!("Testing EL0 sitas (Rust-compiled catten-user binary)...");
+        logln!("Testing EL0 sitas (Rust-compiled knytos-user binary)...");
 
         // The sitas binary lives in the object store, which comes up during
         // the NVMe test. The sitas test is registered after it, and the
@@ -315,7 +315,7 @@ pub fn test_el0_sitas() {
             crate::service::store::service_elf(b"sitas-user").expect("[el0_sitas] sitas-user.elf"),
         );
 
-        // --- map config page (catten-rt reads ASID from offset 16) ---
+        // --- map config page (knytos-rt reads ASID from offset 16) ---
         let config_frame = PHYSICAL_FRAME_ALLOCATOR
             .lock()
             .allocate_frame()
@@ -408,7 +408,7 @@ pub fn test_el0_sitas() {
 
         // `basic_kv` receives an empty launch Context; crt0 therefore enters main
         // without consuming a launch input stream. ASID stays kernel-private.
-        crate::service::bootstrap::write_launch_header(config_frame, charlotte_launch::HEAP_SIZE);
+        crate::service::bootstrap::write_launch_header(config_frame, knytos_launch::HEAP_SIZE);
         crate::service::bootstrap::write_manifest(config_frame, &[]);
 
         // Spawn the EL0 thread at the ELF entry point.

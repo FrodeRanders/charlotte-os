@@ -1,13 +1,13 @@
 # Signed deployment notification
 
-CharlotteOS has a bounded off-cluster notification path for software already
+Knytos has a bounded off-cluster notification path for software already
 placed in a centrally managed S3-compatible object store. The management
 request carries a signed deployment descriptor, not the ELF and not object
 store credentials.
 
 ## Operational flow
 
-1. Build a self-contained CharlotteOS ELF and sign its CLS2 note with the
+1. Build a self-contained Knytos ELF and sign its CLS2 note with the
    offline artifact signing key. Pass its restricted file path to the signer,
    never its bytes; see [Signing and development trust](../guides/signing-and-trust.md).
 2. Retain each final signed ELF for descriptor signing; tooling derives its architecture and SHA-256.
@@ -516,7 +516,7 @@ fixture signs the descriptor, not the binary. `CATTEN_APP_HOST_PORT` and
 `CATTEN_APP_GUEST_PORT` add a SLIRP forward so a host client can reach the
 deployed service; `CATTEN_APP_HOLD_SECONDS` keeps the guest alive after
 readiness so that client can run before the runner exits. Out-of-tree projects
-drive this through `charlotte-kafka-broker/tools/qemu-smoke.sh`, which packages
+drive this through `knytos-kafka-broker/tools/qemu-smoke.sh`, which packages
 the artifact, deploys it, and runs the host smoke client end to end.
 
 Mixed clusters select a committed variant per replica. Unknown profiles and

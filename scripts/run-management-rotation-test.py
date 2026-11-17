@@ -43,7 +43,7 @@ def policy_digest(path):
     data = path.read_bytes()
     if len(data) != 328 or data[:8] != b"CBTRUST1":
         raise ValueError("expected complete current signed fixture policy")
-    return hashlib.sha256(b"CharlotteOS bootstrap trust policy v1\0" + data[:264]).hexdigest()
+    return hashlib.sha256(b"Knytos bootstrap trust policy v1\0" + data[:264]).hexdigest()
 
 
 def commit_fixture_snapshot(path, candidate):
@@ -175,7 +175,7 @@ def main():
                                stdout=log, stderr=log, check=True)
         run(ROOT / "scripts/verify-limine.sh")
         for generation in ("old", "new"):
-            fixture.prepare_credentials(private / generation, authority_name="Charlotte rotation " + generation + " CA")
+            fixture.prepare_credentials(private / generation, authority_name="Knytos rotation " + generation + " CA")
         evidence["credentials_sha256"] = {
             generation: {name: sha(private / generation / (name + ".der"))
                          for name in ("ca", "server", "reader", "administrator")}

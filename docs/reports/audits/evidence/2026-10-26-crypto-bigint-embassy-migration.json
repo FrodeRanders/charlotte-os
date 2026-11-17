@@ -23,8 +23,8 @@
   "unchanged_runtime_input_sha256": {
     "Cargo.lock": "99e604ecca353001e0968d79dea0cd0ee9f5e052852b69ad96bf1b911aee3474",
     "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
-    "crates/catten-services/Cargo.toml": "db38bceaf61ecadedbd5e51c7b0d71a9aab5423264620f0d01c9fc8ecd965695",
-    "crates/catten-services/src/tls_client.rs": "f8895d56ef9bea49a36c9dcebcbf8682cd4a6f6712f071b368a47d2cb882e619",
+    "crates/knytos-services/Cargo.toml": "db38bceaf61ecadedbd5e51c7b0d71a9aab5423264620f0d01c9fc8ecd965695",
+    "crates/knytos-services/src/tls_client.rs": "f8895d56ef9bea49a36c9dcebcbf8682cd4a6f6712f071b368a47d2cb882e619",
     ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243"
   },
@@ -134,7 +134,7 @@
     {
       "name": "aarch64 freestanding library compile",
       "exit_code": 0,
-      "command": "cargo check --manifest-path target/crypto-migration/embassy-probe/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build --locked --offline",
+      "command": "cargo check --manifest-path target/crypto-migration/embassy-probe/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build --locked --offline",
       "cwd": "repository root",
       "result": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.52s",
       "scope": "library check only; no target executable link, guest execution or production RNG driver"
@@ -142,7 +142,7 @@
     {
       "name": "x86_64 freestanding library compile",
       "exit_code": 0,
-      "command": "cargo check --manifest-path target/crypto-migration/embassy-probe/Cargo.toml --target crates/catten-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build --locked --offline",
+      "command": "cargo check --manifest-path target/crypto-migration/embassy-probe/Cargo.toml --target crates/knytos-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build --locked --offline",
       "cwd": "repository root",
       "result": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.48s",
       "scope": "library check only; no target executable link, guest execution or production RNG driver"
@@ -163,7 +163,7 @@
         "tests::p256_signs_and_rejects_changed_digest",
         "tests::p384_signs_and_rejects_changed_digest"
       ],
-      "test_executable": "target/crypto-migration/host-build/debug/deps/charlotte_embassy_migration_probe-429703fe43d788a1",
+      "test_executable": "target/crypto-migration/host-build/debug/deps/knytos_embassy_migration_probe-429703fe43d788a1",
       "test_executable_sha256": "1eb6875c10febdbb7c555ea85ff9b434510177300f9aed9b4f6f0b4c28885697",
       "scope": "host links registered crypto drivers using dev-only host RNG; no TLS server interop"
     },
@@ -183,7 +183,7 @@
         "tests::p256_ecdh_agrees_and_rejects_invalid_peer",
         "tests::p384_signs_and_rejects_changed_digest"
       ],
-      "test_executable": "target/crypto-migration/host-build/release/deps/charlotte_embassy_migration_probe-3982ebb3418f880b",
+      "test_executable": "target/crypto-migration/host-build/release/deps/knytos_embassy_migration_probe-3982ebb3418f880b",
       "test_executable_sha256": "d3fd7b081c6675b4cb126e9a40944ed963d57bce344d0937c46e7c28fac68fb1",
       "scope": "host links registered crypto drivers using dev-only host RNG; no TLS server interop"
     }

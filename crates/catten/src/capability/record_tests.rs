@@ -262,7 +262,7 @@ fn cancellations() {
     memory::close_user_address_space_handle(successor).unwrap();
 }
 fn abandonment(before: (usize, usize)) {
-    let principal = charlotte_launch::artifact_principal_id(b"authority-record-retained");
+    let principal = knytos_launch::artifact_principal_id(b"authority-record-retained");
     let space = memory::AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),

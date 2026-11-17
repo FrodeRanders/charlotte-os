@@ -16,7 +16,7 @@ pub fn test_el0_ingress() {
 }
 
 extern "C" fn verify_el0_ingress() {
-    use charlotte_launch::frouter_status as status;
+    use knytos_launch::frouter_status as status;
 
     use crate::cpu::scheduler::yield_lp;
 

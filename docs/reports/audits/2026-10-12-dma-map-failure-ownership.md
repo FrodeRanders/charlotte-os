@@ -92,7 +92,7 @@ Host assertions cover exclusive failure diagnostics and exact memory ownership,
 shared failure Drop without DMA work, rejected CPU unmap returning the restricted
 owner and subsequent explicit CPU completion. A compile-fail doctest rejects
 slice access through the restricted owner. The SDK's host harness is enabled
-for register-result decoding; it does not execute native CharlotteOS syscalls.
+for register-result decoding; it does not execute native Knytos syscalls.
 AArch64 emitter coverage includes both three-result map forms.
 
 Synthetic dispatcher probes exercise validation, unknown capability, backend

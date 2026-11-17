@@ -71,7 +71,7 @@ the campaign to surviving node endpoints and leaves VIP reconnection
 unqualified. Both scopes failed in this batch.
 
 ```sh
-scripts/build-catten-services.sh --embed
+scripts/build-knytos-services.sh --embed
 python3 scripts/run-management-failover-test.py --firmware /path/to/ARM-UEFI.fd
 # Separate scope after retaining any full-campaign failure:
 python3 scripts/run-management-failover-test.py --firmware /path/to/ARM-UEFI.fd --direct-only

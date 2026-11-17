@@ -64,7 +64,7 @@ unsafe impl GlobalAlloc for Tracer {
 }
 
 '''
-    with tempfile.TemporaryDirectory(prefix="charlotte-selective-ports-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-selective-ports-") as temporary:
         directory = Path(temporary)
         path = directory / "controls.rs"
         path.write_text(source.replace("@ROOT@", str(ROOT)).replace("@MAP@", str(ROOT / "crates/catten/src/memory/linear/address_map.rs")))

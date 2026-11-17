@@ -35,7 +35,7 @@ The caller borrows accepted bytes through envelope sizing and encryption.
 CLI arguments, COPSENC1 bytes, cryptography, exclusive output creation and
 plaintext-output mode 0600 are unchanged. No dependency, runtime API, wire or
 persistent-format change is introduced. The existing [C18 row](../../reference/cleanup-recovery.md)
-records this host byte owner. Ordinary byte Drop adds no Charlotte capability
+records this host byte owner. Ordinary byte Drop adds no Knytos capability
 release, guards, waits, remote teardown, recovery registry/custody, physical
 completion or replay authority. Manual LaTeX and tooling/signing references
 are updated; the PDF is untouched.

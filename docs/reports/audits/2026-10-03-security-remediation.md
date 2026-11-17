@@ -3,7 +3,7 @@
 This records implementation passes following the
 [security audit](2026-10-03-security-audit.md) of revision
 `42183c57ce4c0b32a6010246f6eee1b6262ebb4e`. It is not a declaration that the
-audit is closed or that CharlotteOS is ready for hostile production workloads.
+audit is closed or that Knytos is ready for hostile production workloads.
 Implementation and validation span 2026-10-03–05 local time.
 
 Evidence was consolidated into these reports on 2026-10-09. Relevant results,
@@ -114,7 +114,7 @@ separate work.
 
 ### User virtual addresses
 
-`charlotte_launch::user_address` defines the current shared ABI: non-null
+`knytos_launch::user_address` defines the current shared ABI: non-null
 addresses in the lower 47-bit window, with page-aligned explicit mapping bases
 and checked, nonzero lengths. The entire range must fit; validating only the
 first page is insufficient.
@@ -576,7 +576,7 @@ Validation:
 
 - The host runner passed, including three new boundary tests for checked
   event-count admission, saturating deadlines and nonzero representable
-  hardware checkpoints. `charlotte-lifecycle` now runs 14 tests.
+  hardware checkpoints. `knytos-lifecycle` now runs 14 tests.
 - Synchronous guest tests passed for per-namespace rejection, ordinary node
   pool saturation with reserved platform admission, exact charge reconciliation,
   64 hour-long cancellation/close cycles, mixed capability/detached admission,
@@ -639,7 +639,7 @@ growth reject retirement before publication or allocation.
 Validation:
 
 - The host runner passed, including atomic multidimensional rejection,
-  overflow, underflow and reuse. `charlotte-lifecycle` now runs 15 tests.
+  overflow, underflow and reuse. `knytos-lifecycle` now runs 15 tests.
 - Synchronous guest tests passed for record and queue ceilings, metadata-charge
   rollback when queue admission fails, failed growth preserving queued data,
   successful growth and retained charges after shrink, delegated closed
@@ -2296,7 +2296,7 @@ ran. The deployment restrictions and other open audit findings are unchanged.
 
 ELF/runtime admission was committed as `fe455867`. The requested page-table
 article and its primary Mitosis/Hydra references reinforce existing accounting
-and locality directions; they do not require changing Charlotte's capability
+and locality directions; they do not require changing Knytos' capability
 domains or LP-affinity architecture. The investigation distinguishes shared
 backing from per-address-space translation cost, dense from sparse mappings,
 LP affinity from NUMA placement, and measurement from speculative replication.
@@ -3284,7 +3284,7 @@ Final validation:
   `ba5c791d2be7f7619b5b34bd308e5911be5ecae803da503a0cf975bb5ed22f94`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy,
   `cargo fmt --all -- --check`, and `git diff --check` pass. Bundled AArch64
-  services were rebuilt by `scripts/build-catten-services.sh` through the runner.
+  services were rebuilt by `scripts/build-knytos-services.sh` through the runner.
   x86 guest execution remains pending.
 
 Scope remains partial: replies returning memory/connection capabilities and
@@ -3345,7 +3345,7 @@ Validation:
 - Kernel SHA-256:
   `5478e97f37d1829cec20e48a0d1c9000bab0fc69cb399b8e15db26b284d68064`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass.
-  Bundled AArch64 services were rebuilt through `scripts/build-catten-services.sh`.
+  Bundled AArch64 services were rebuilt through `scripts/build-knytos-services.sh`.
   Formatting and diff checks pass; x86 guest execution remains pending.
 
 SEC-18 remains partial. Returned-memory source escrow/backing and cancellation's
@@ -3417,7 +3417,7 @@ Validation:
   `a920f42025b8ae8dac02718f6640acd5bd8e89bd86c61cf5a89790a2b83e2e75`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass,
   as do `cargo fmt --all -- --check` and `git diff --check`. Bundled AArch64
-  services were rebuilt through `scripts/build-catten-services.sh` by the runner.
+  services were rebuilt through `scripts/build-knytos-services.sh` by the runner.
   No x86 guest execution is claimed.
 
 SEC-18 remains partial. Cancellation's own revocation and its best-effort failed
@@ -3496,7 +3496,7 @@ Validation:
 - The first guest exposed a fixture-only double close of the vector descriptor,
   which the vector-call ABI already consumes. The fixture now respects that
   ownership boundary. Final guests pass without that erroneous second close.
-- Full `scripts/run-host-tests.sh` passes, including **33 catten-rt tests**, four
+- Full `scripts/run-host-tests.sh` passes, including **33 knytos-rt tests**, four
   new close/receive owner probes, the 18 slot-owner tests, six scratch tests and
   the existing protocol/signing suites.
 - Scoped security checks remain `0x7fff`; the existing concurrent cancellation
@@ -3504,7 +3504,7 @@ Validation:
   new claim/readiness/physical-failure race under real multi-LP concurrency.
 - Kernel SHA-256:
   `c3e715515eeea6ec9b9329e0accb57ee82f1b5c98d2ba3b1c3cb4961129d6b44`.
-- Bundled AArch64 services are rebuilt through `scripts/build-catten-services.sh`.
+- Bundled AArch64 services are rebuilt through `scripts/build-knytos-services.sh`.
   Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy, formatting
   and diff checks pass. No x86 guest, real fatal-domain execution, independent CQ
   edge stress, real failed IPI delivery or CPU/DMA quiescence proof is claimed.

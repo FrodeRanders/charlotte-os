@@ -92,7 +92,7 @@ pub fn test_el0_shutdown() {
             domain: cooperative,
             shutdown_grace_ms: 2_000,
             retirement_deadline_ms: None,
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            retirement_reason: knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
             teardown: supervisor::DeploymentTeardown::NotStarted,
             retirement_acknowledged: false,
@@ -102,7 +102,7 @@ pub fn test_el0_shutdown() {
             domain: stubborn,
             shutdown_grace_ms: 100,
             retirement_deadline_ms: None,
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            retirement_reason: knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
             teardown: supervisor::DeploymentTeardown::NotStarted,
             retirement_acknowledged: false,
@@ -140,13 +140,13 @@ fn lifecycle_request(domain: &ServiceDomain) -> (u32, u32, u64) {
     let base: *const u8 = domain.config_frame.into();
     unsafe {
         let state = core::ptr::read_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET) as *const u32,
+            base.add(knytos_launch::lifecycle::CONTROL_STATE_OFFSET) as *const u32,
         );
         let reason = core::ptr::read_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) as *const u32,
+            base.add(knytos_launch::lifecycle::CONTROL_REASON_OFFSET) as *const u32,
         );
         let deadline = core::ptr::read_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *const u64,
+            base.add(knytos_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *const u64,
         );
         (state, reason, deadline)
     }
@@ -169,7 +169,7 @@ extern "C" fn verify_el0_shutdown() {
         crate::syscall::retire_deployed_artifact(
             COOPERATIVE_PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline,
         ),
         1,
@@ -178,8 +178,8 @@ extern "C" fn verify_el0_shutdown() {
     assert_eq!(
         lifecycle_request(&cooperative),
         (
-            charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline,
         ),
         "enclosing node deadline did not cap the child's signed grace"
@@ -190,14 +190,14 @@ extern "C" fn verify_el0_shutdown() {
             .unwrap();
     assert_eq!(
         bootstrap::with_service_pages(&cooperative, |pages| pages.lifecycle_status()).unwrap(),
-        charlotte_launch::lifecycle::STATUS_READY,
+        knytos_launch::lifecycle::STATUS_READY,
         "cooperative probe exited without acknowledging cleanup"
     );
     assert_eq!(
         crate::syscall::retire_deployed_artifact(
             COOPERATIVE_PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline
         ),
         1,
@@ -217,7 +217,7 @@ extern "C" fn verify_el0_shutdown() {
         crate::syscall::retire_deployed_artifact(
             COOPERATIVE_PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline,
         ),
         0,
@@ -232,7 +232,7 @@ extern "C" fn verify_el0_shutdown() {
         crate::syscall::retire_deployed_artifact(
             STUBBORN_PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline,
         ),
         1,
@@ -240,8 +240,8 @@ extern "C" fn verify_el0_shutdown() {
     );
     let (state, reason, child_deadline) = lifecycle_request(&stubborn);
     let child_grace_observed = monotonic_millis();
-    assert_eq!(state, charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED);
-    assert_eq!(reason, charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN);
+    assert_eq!(state, knytos_launch::lifecycle::STATE_DRAIN_REQUESTED);
+    assert_eq!(reason, knytos_launch::lifecycle::REASON_NODE_SHUTDOWN);
     assert!(
         child_deadline >= child_grace_started
             && child_deadline <= child_grace_observed.saturating_add(100)
@@ -257,7 +257,7 @@ extern "C" fn verify_el0_shutdown() {
         crate::syscall::retire_deployed_artifact(
             STUBBORN_PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline,
         ),
         1,
@@ -268,7 +268,7 @@ extern "C" fn verify_el0_shutdown() {
         crate::syscall::retire_deployed_artifact(
             STUBBORN_PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
             node_deadline,
         ),
         0,
@@ -309,10 +309,10 @@ extern "C" fn verify_el0_shutdown() {
             remaining_domains: 1,
         }
     );
-    assert_eq!(lifecycle_request(&phased[0]).0, charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED);
+    assert_eq!(lifecycle_request(&phased[0]).0, knytos_launch::lifecycle::STATE_DRAIN_REQUESTED);
     assert_eq!(
         lifecycle_request(&phased[1]).0,
-        charlotte_launch::lifecycle::STATE_RUNNING,
+        knytos_launch::lifecycle::STATE_RUNNING,
         "a dependent shutdown phase started before ingress drained"
     );
 
@@ -327,7 +327,7 @@ extern "C" fn verify_el0_shutdown() {
         }
     );
     assert_eq!(coordinator.phase_outcome(ShutdownPhase::HttpIngress).acknowledged, 0);
-    assert_eq!(lifecycle_request(&phased[1]).0, charlotte_launch::lifecycle::STATE_RUNNING);
+    assert_eq!(lifecycle_request(&phased[1]).0, knytos_launch::lifecycle::STATE_RUNNING);
     phase_lease.release().unwrap();
     assert_eq!(
         coordinator.poll(),
@@ -338,7 +338,7 @@ extern "C" fn verify_el0_shutdown() {
     );
     assert_eq!(
         lifecycle_request(&phased[2]).0,
-        charlotte_launch::lifecycle::STATE_RUNNING,
+        knytos_launch::lifecycle::STATE_RUNNING,
         "storage shutdown started before its consumer drained"
     );
 
@@ -382,13 +382,13 @@ extern "C" fn verify_el0_shutdown() {
     );
     assert_eq!(
         lifecycle_request(&device).0,
-        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+        knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
         "device quiescence request was not published"
     );
     supervisor::wait_domain_exit(&device, 10_000);
     assert_eq!(
         bootstrap::with_service_pages(&device, |pages| pages.lifecycle_status()).unwrap(),
-        charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED,
+        knytos_launch::lifecycle::STATUS_DEVICE_QUIESCED,
         "device probe used the ordinary service acknowledgement"
     );
     let device_lease =

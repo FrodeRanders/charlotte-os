@@ -13,7 +13,7 @@ pub use embedded_tls::{
     TlsConfig,
 };
 
-/// Preserve Charlotte's P-256 SEC1 validation before constructing an Embassy key.
+/// Preserve Knytos' P-256 SEC1 validation before constructing an Embassy key.
 pub fn load_client_key(der: &[u8]) -> Result<embedded_tls::PrivateKey, embedded_tls::TlsError> {
     let typed = p256::SecretKey::from_sec1_der(der)
         .map_err(|_| embedded_tls::TlsError::InvalidPrivateKey)?;

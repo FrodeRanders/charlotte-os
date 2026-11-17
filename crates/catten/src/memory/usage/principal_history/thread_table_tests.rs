@@ -34,8 +34,8 @@ extern "C" fn unused() {}
 
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
-    let principal = charlotte_launch::artifact_principal_id(b"master-table-sponsor");
-    let other = charlotte_launch::artifact_principal_id(b"master-table-other");
+    let principal = knytos_launch::artifact_principal_id(b"master-table-sponsor");
+    let other = knytos_launch::artifact_principal_id(b"master-table-other");
     let first = domain(principal);
     let sibling = domain(principal);
     let healthy = domain(other);

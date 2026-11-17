@@ -9,7 +9,7 @@ model, and separates it from the remaining cluster vision in manual Chapter
 Cluster nodes do not build software or resolve package dependencies. A host
 build produces self-contained, architecture-native ELFs in separate AArch64
 and x86-64 bundles. Every staged name must occur exactly once in
-[`artifact-policy.tsv`](../../crates/catten-services/artifact-policy.tsv), then
+[`artifact-policy.tsv`](../../crates/knytos-services/artifact-policy.tsv), then
 `tools/cluster-sign` writes a CLS2 `SHT_NOTE` record and signs the resulting
 ELF with the off-cluster Ed25519 private key.
 
@@ -93,9 +93,9 @@ cluster-sign deployment-notify orders.cdep 127.0.0.1:8081
 Several generated components can be operated as one readiness wait without
 giving the generator or application object-store credentials:
 
-![Durga-to-Charlotte generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
+![Durga-to-Knytos generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
 
-Durga's Charlotte target retains execution limits, replica count,
+Durga's Knytos target retains execution limits, replica count,
 every-eligible-node selection, spread, affinity, and anti-affinity in the
 developer-owned `charlotte/resources.yaml`. It derives matching `CDEPLOY6`
 signing options and declares the CLS2 parallel-instance requirement whenever
@@ -311,7 +311,7 @@ content addressing.
 
 ## Placement contract
 
-`charlotte_launch::placement::PlacementPolicy` represents:
+`knytos_launch::placement::PlacementPolicy` represents:
 
 - desired replicas (or every eligible node);
 - maximum instances of the component on one node;

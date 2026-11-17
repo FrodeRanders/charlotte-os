@@ -35,7 +35,7 @@ The diagnostic establishes completion-timer submission rejection at the delibera
 
 ## Final validation
 
-Both complete signed bundles were rebuilt before the final executions, using `scripts/build-catten-services.sh --embed` and `scripts/build-catten-services-x86_64.sh`. Every final run below exits 0; failed runs remain separate:
+Both complete signed bundles were rebuilt before the final executions, using `scripts/build-knytos-services.sh --embed` and `scripts/build-knytos-services-x86_64.sh`. Every final run below exits 0; failed runs remain separate:
 
 | Configuration | Passed / failed / pending | Passed bitmap | Guest completion |
 | --- | --- | --- | --- |

@@ -1,8 +1,8 @@
 # Broker as an application SDK consumer
 
-14 November 2026. Reviewed `charlotte-kafka-broker` revision
+14 November 2026. Reviewed `knytos-kafka-broker` revision
 `09798d276cc2ce8617cbc716aac487e9e56ec866`, with a clean working tree. Its
-platform pins are CharlotteOS `9f3d5203e4604c3113afb07e25b28ef6cd0db48c` and
+platform pins are Knytos `9f3d5203e4604c3113afb07e25b28ef6cd0db48c` and
 Sitas `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`; Rust is
 `nightly-2026-07-27`. The OS application foundation being evaluated is based on
 `327a50a74127229ec9d1dc6e41ac6c5aaebd7de7` plus uncommitted SDK changes.
@@ -10,8 +10,8 @@ Sitas `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`; Rust is
 The broker is an appropriate application acceptance case. Its pure core, wire,
 engine and shard-runtime layers already support an independent host loop.
 Build/sign tooling consumes platform inputs without staging the broker into an
-OS bundle. The EL0 adapter still uses the older `catten-services` client surface
-and local platform scripts; it has not adopted `charlotte-app` or the new CLI.
+OS bundle. The EL0 adapter still uses the older `knytos-services` client surface
+and local platform scripts; it has not adopted `knytos-app` or the new CLI.
 The foundation needs the concrete extensions below before this concurrent TCP
 server becomes a complete example of the new SDK.
 
@@ -30,7 +30,7 @@ transferable. This compile-only check against the new application library fails:
 
 ```rust
 use std::sync::Arc;
-use charlotte_app::{owned::Connection, socket::{self, OwnedSocket}};
+use knytos_app::{owned::Connection, socket::{self, OwnedSocket}};
 pub fn handoff(tcp: Arc<Connection>) {
     let socket = OwnedSocket::open(tcp.as_ref().as_ref(), socket::DOMAIN_TCP).unwrap();
     let _worker: Box<dyn FnOnce() + Send + 'static> = Box::new(move || {
@@ -111,7 +111,7 @@ Add explicit manifest/binary/test-package selection and an existing-project
 adoption path while retaining source/fingerprint checks. Exported platform
 crates and Git dependencies must resolve to one selected platform/Sitas source
 graph; mixing identical crate names from Git and path sources can create
-incompatible types. The host conformance suite uses `charlotte-kafka` and
+incompatible types. The host conformance suite uses `knytos-kafka` and
 `sitas-unix`, which are not currently exported. Their deliberate Git pins may
 remain, or an optional test source profile can include them with the same graph.
 

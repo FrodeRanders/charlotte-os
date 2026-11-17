@@ -6,14 +6,14 @@ we have implemented. For current behavior, check the
 [manual status appendix](../manual-v2/charlotte.pdf) and
 [`reference/`](../reference/README.md).
 
-![CharlotteOS system layering](../manual-v2/figures/system-layering.svg)
+![Knytos system layering](../manual-v2/figures/system-layering.svg)
 
 The system keeps kernel mechanism, isolated services, generated application
 logic, and external managed infrastructure at explicit boundaries.
 
 ## Core architecture
 
-![Steady-state CharlotteOS service composition](../manual-v2/figures/service-composition.svg)
+![Steady-state Knytos service composition](../manual-v2/figures/service-composition.svg)
 
 - [Sitas and Xous co-design](sitas-xous.md) — capabilities, endpoints, memory
   objects, completion queues, isolated services, and shard-local execution.

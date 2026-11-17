@@ -707,10 +707,10 @@ fn qualify_exit_watch(
         return Err(system_scheduler::Error::PermissionDenied);
     }
     if let Some(expected) = expected_generation {
-        let captured = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, expected);
-        let current = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, thread.generation);
-        if charlotte_lifecycle::classify_join(captured, Some(current))
-            != charlotte_lifecycle::JoinDisposition::ObserveCurrent
+        let captured = knytos_lifecycle::ThreadIdentity::new(thread_id as u64, expected);
+        let current = knytos_lifecycle::ThreadIdentity::new(thread_id as u64, thread.generation);
+        if knytos_lifecycle::classify_join(captured, Some(current))
+            != knytos_lifecycle::JoinDisposition::ObserveCurrent
         {
             return Err(system_scheduler::Error::InvalidThread);
         }

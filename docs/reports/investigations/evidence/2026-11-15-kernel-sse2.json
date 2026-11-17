@@ -143,7 +143,7 @@
     "crates/catten/src/main.rs": "b7112cf1598bf70101066bafcc859749ad3b98cfa1604fca3f59b855631196c7",
     "crates/catten/src/self_test/mod.rs": "7c53ffad18bbb0e98cc2e30d945dc17be726bb509f381bd7a3cbe0c87ecd4c2b",
     "crates/catten/src/self_test/user_isolation.rs": "a579e1442b4d6130e2fd10927924f98a5890a9e1e881798756011a6a2102e3d1",
-    "crates/charlotte-management-tls/src/crypto.rs": "1da361bbfb314358f283f7f3c61fc865cafa7c0bb8ba8f583bd9da04efc8a4ff",
+    "crates/knytos-management-tls/src/crypto.rs": "1da361bbfb314358f283f7f3c61fc865cafa7c0bb8ba8f583bd9da04efc8a4ff",
     "scripts/check-kernel-asm-sections.py": "8d956e3405cd408e2bfe1f9fca3e21e489e58059778405ccc8754bd61e5b0df3",
     "scripts/tests/fixtures/boot-allocation-edges.rs": "5df9447ee3b7ac58009fddc51acdaafde3211939000325cf1718641cfda44eed",
     "scripts/tests/test-x86-userspace-abi.py": "1d98999d8f106e0586dc8e28210a8be82000696f757a21a081fda374f596fdec",
@@ -152,7 +152,7 @@
     ".cargo/config.toml": "ee5add326b9194e024f9eae1ca22a7f0e3941889a22049f3f77dd04677e96def",
     "Cargo.lock": "c516b44bd41c5aa77f4df60e3e6249f2019df65ae19675e83911b2a85f08524a",
     "rust-toolchain.toml": "a0665391d1aa1a019bb02e2af6b9e19dde456912abdd252b9d8ca5afc8cd82d4",
-    "crates/catten-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656"
+    "crates/knytos-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656"
   },
   "capture_scope": "Selected receipts, compiler/target/source identities and native outcomes. Complete temporary raw captures are not published.",
   "controls": {

@@ -1,4 +1,4 @@
-# CharlotteOS development operational-signing key.
+# Knytos development operational-signing key.
 #
 # This private Ed25519 key matches DEVELOPMENT_OPERATIONS_PUBLIC_KEY and exists
 # only so the QEMU development cluster can exercise the independently signed

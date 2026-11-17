@@ -17,15 +17,15 @@ LARGER = POLICY.parent / "resource_policy/larger.rs"
 class ResourcePolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-resource-policy-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-resource-policy-")
         cls.directory = Path(cls.temporary.name)
         cls.harness = cls.directory / "harness.rs"
         cls.harness.write_text(f'#[path = {json.dumps(str(POLICY), ensure_ascii=False)}]\nmod resource_policy;\n')
-        # The real build script uses charlotte-launch. Match the tooling probe's
+        # The real build script uses knytos-launch. Match the tooling probe's
         # host Cargo harness so new build-script dependencies remain available.
         manifest = cls.directory / "Cargo.toml"
         manifest.write_text('[package]\nname="resource-policy-selector"\nversion="0.0.0"\nedition="2024"\n'
-                            '[workspace]\n[dependencies]\ncharlotte-launch={path=' + json.dumps(str(ROOT / "crates/charlotte-launch")) + '}\n'
+                            '[workspace]\n[dependencies]\nknytos-launch={path=' + json.dumps(str(ROOT / "crates/knytos-launch")) + '}\n'
                             '[[bin]]\nname="resource-policy-selector"\npath=' + json.dumps(str(ROOT / "crates/catten/build.rs")) + '\n')
         shutil.copyfile(ROOT / "Cargo.lock", cls.directory / "Cargo.lock")
         channel = next(line.split('"')[1] for line in (ROOT / "rust-toolchain.toml").read_text().splitlines()

@@ -5,7 +5,7 @@
   "scope": "Physical-address catalog capacity for private and published memory objects uses byte-only admission from memory_capability_nodes. The complete catalog retains its original backing-source class and allocation through moves, consumed release identities and uncertain physical cleanup. Numeric limits, node counts, physical completion rules and the statistics/SDK ABI are unchanged.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/knytos-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
     "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
     "crates/catten/src/memory/budget.rs": "a067cbfa4c68a5bdeeb8f9b73b47fb0b819cee4c96142f724b351bad2d0c39d8",
     "crates/catten/src/memory/object.rs": "679ebe9e6572accf9ef5919b2c0efba810fe7d9f2053c25fa9ede2992d6d1c31",

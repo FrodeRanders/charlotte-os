@@ -355,7 +355,7 @@ impl NodeShutdownCoordinator {
                     let outcome = &mut self.phase_outcomes[current.phase as usize];
                     if retirement.force_requested {
                         outcome.forced += 1;
-                    } else if lifecycle_status == charlotte_launch::lifecycle::STATUS_READY {
+                    } else if lifecycle_status == knytos_launch::lifecycle::STATUS_READY {
                         outcome.acknowledged += 1;
                     } else {
                         outcome.unacknowledged += 1;
@@ -374,8 +374,8 @@ impl NodeShutdownCoordinator {
                 if !retirement.request_published {
                     if let Err(error) = bootstrap::with_service_pages(&retirement.domain, |pages| {
                         pages.write_request(
-                            charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                            knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
                             phase_deadline,
                         )
                     }) {
@@ -397,8 +397,8 @@ impl NodeShutdownCoordinator {
                                 crate::cpu::scheduler::system_scheduler::Error::ThreadTerminated
                             })?;
                             pages.write_request(
-                                charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                                charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                                knytos_launch::lifecycle::STATE_FORCE_TERMINATING,
+                                knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
                                 phase_deadline,
                             );
                             Ok(())
@@ -493,7 +493,7 @@ impl DeviceShutdownCoordinator {
                             };
                         }
                     };
-                    if status != charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED {
+                    if status != knytos_launch::lifecycle::STATUS_DEVICE_QUIESCED {
                         return DeviceShutdownProgress::UnverifiedExit {
                             kind: device.kind,
                         };
@@ -519,8 +519,8 @@ impl DeviceShutdownCoordinator {
             if !device.request_published {
                 if let Err(error) = bootstrap::with_service_pages(&device.domain, |pages| {
                     pages.write_request(
-                        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                        knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                        knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
                         self.deadline_ms,
                     )
                 }) {

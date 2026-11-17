@@ -14,8 +14,8 @@ pub(crate) use preparation::PreparingAccount;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
-pub use charlotte_lifecycle::resources::Amount;
-use charlotte_lifecycle::resources::Budget;
+pub use knytos_lifecycle::resources::Amount;
+use knytos_lifecycle::resources::Budget;
 
 use super::{
     AddressSpaceHandle,

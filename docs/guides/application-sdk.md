@@ -1,20 +1,20 @@
 # Application SDK and owned service operations
 
-Use `charlotte-app` for ordinary application setup and service clients.
-`catten-rt` remains the resource-owning runtime, while protocol crates own wire data.
-Platform service code can use the same clients through `catten-services`, which
+Use `knytos-app` for ordinary application setup and service clients.
+`knytos-rt` remains the resource-owning runtime, while protocol crates own wire data.
+Platform service code can use the same clients through `knytos-services`, which
 reexports their single implementation. The application package has no dependency
 on the platform service implementations.
 
 ## Application structure
 
-The [reconnecting example](../../crates/charlotte-app/examples/reconnecting_client.rs)
+The [reconnecting example](../../crates/knytos-app/examples/reconnecting_client.rs)
 is a complete, compiling client with explicit business recovery policy. It uses:
 
 - `Application::from_context(&ctx)` to borrow the launch-owned controller and
   signed descriptor, and `acquire` returns an owned connection after controller
   authorization. `publish` borrows an endpoint and a caller-owned deadline.
-- `charlotte_app::entry!` with `fn(&Context) -> Result<AppExit, E>`. The returning
+- `knytos_app::entry!` with `fn(&Context) -> Result<AppExit, E>`. The returning
   scope drops its owners before the wrapper exits, acknowledges an authenticated
   shutdown request, or aborts on an application error. Join workers before
   returning, because exiting one thread does not drain a domain.
@@ -41,7 +41,7 @@ and exact length for `call_move`, while `memory()` supports copying. An empty pa
 still has an owned attachment. Errors identify allocation, mapping, encoding or
 unmapping, and private owners follow their existing release policy.
 
-Optional `charlotte-app` features are `socket`, `kafka`, `s3` and `test-support`.
+Optional `knytos-app` features are `socket`, `kafka`, `s3` and `test-support`.
 Connector credentials and broker-facing transports remain in platform services.
 The synchronous connector methods retain their documented blocking/remote-close
 behavior, because extraction alone does not turn them into futures or impose one budget
@@ -56,7 +56,7 @@ attachments and one-shot reply authority. Publication is explicit after startup,
 the scope permits one publication attempt, preventing accidental replay after an
 uncertain registration. Handler and wait errors leave the endpoint in the server.
 This is a synchronous request/reply helper, not a general multiplexing executor.
-The [echo-service example](../../crates/charlotte-app/examples/echo_service.rs)
+The [echo-service example](../../crates/knytos-app/examples/echo_service.rs)
 shows signed publication and resource release before shutdown acknowledgement.
 
 `service::Workers` reserves a bounded vector before accepting native
@@ -77,7 +77,7 @@ the [broker review](../reports/audits/2026-11-14-broker-sdk-review.md).
 
 ## Sitas call futures
 
-`charlotte-app-sitas` uses the existing Sitas `ShardExecutor` and reactor backend.
+`knytos-app-sitas` uses the existing Sitas `ShardExecutor` and reactor backend.
 Construct `WakeReactor::new(backend, cq, capacity)` before the executor and retain
 its `handle()`. The selected `cq` must be the queue actually waited by `backend`, and
 for a default `CharlotteReactor::new(lp)` use queue zero. The backend is the sole
@@ -108,14 +108,14 @@ explicitly coordinate shutdown across their other queues.
 ## Export and create a project
 
 ```sh
-scripts/export-app-sdk.sh --output /tmp/charlotte-app-sdk.tar.gz
+scripts/export-app-sdk.sh --output /tmp/knytos-app-sdk.tar.gz
 mkdir -p /tmp/charlotte-sdk
 # Extract into an application-owned directory.
-tar -xzf /tmp/charlotte-app-sdk.tar.gz -C /tmp/charlotte-sdk
-/tmp/charlotte-sdk/charlotte-app-sdk/charlotte doctor
-/tmp/charlotte-sdk/charlotte-app-sdk/charlotte new /tmp/orders
-/tmp/charlotte-sdk/charlotte-app-sdk/charlotte test /tmp/orders
-/tmp/charlotte-sdk/charlotte-app-sdk/charlotte build /tmp/orders \
+tar -xzf /tmp/knytos-app-sdk.tar.gz -C /tmp/charlotte-sdk
+/tmp/charlotte-sdk/knytos-app-sdk/charlotte doctor
+/tmp/charlotte-sdk/knytos-app-sdk/charlotte new /tmp/orders
+/tmp/charlotte-sdk/knytos-app-sdk/charlotte test /tmp/orders
+/tmp/charlotte-sdk/knytos-app-sdk/charlotte build /tmp/orders \
   --arch aarch64 --output /tmp/orders.elf
 ```
 
@@ -132,7 +132,7 @@ interface with explicitly reviewed Cargo pins, and the builder itself does not
 replace that dependency review.
 
 The SDK contains runtime/client source, the owned async adapter, CI-pinned
-`sitas-core`, `sitas-charlotte` and `sitas-unix`, the `charlotte-kafka` client
+`sitas-core`, `sitas-charlotte` and `sitas-unix`, the `knytos-kafka` client
 codec for host conformance tests, platform definitions, a standalone signer and
 public development keys. `sdk.json` records runtime ABI, toolchain, OS and Sitas
 revisions, source dirty state and hashes of the exact distributed files. The CLI
@@ -148,7 +148,7 @@ still require the existing reviewed, signed `CDEPLOY6` descriptor.
 To sign a built ELF, pass an explicit restricted key file:
 
 ```sh
-/tmp/charlotte-sdk/charlotte-app-sdk/charlotte package /tmp/orders \
+/tmp/charlotte-sdk/knytos-app-sdk/charlotte package /tmp/orders \
   --elf /tmp/orders.elf --key-file /path/to/private-key \
   --version 1 --rollback 1
 ```
@@ -173,7 +173,7 @@ Run package tests from outside the repository's freestanding Cargo configuration
 ```sh
 cd /tmp
 cargo +nightly-2026-11-14 test --manifest-path /path/to/charlotte-os/Cargo.toml \
-  -p catten-rt -p charlotte-app -p charlotte-app-sitas --all-features --lib
+  -p knytos-rt -p knytos-app -p knytos-app-sitas --all-features --lib
 ```
 
 The repository host suite also selects the application's optional-feature tests.

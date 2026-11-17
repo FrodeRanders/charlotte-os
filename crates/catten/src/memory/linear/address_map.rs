@@ -8,7 +8,7 @@ use crate::{
     klib::size::*,
 };
 
-// Range invariants adapted from upstream CharlotteOS aec5f68df26e5eeb932f6431a477260d354468fd.
+// Range invariants adapted from upstream Knytos aec5f68df26e5eeb932f6431a477260d354468fd.
 // Keep this fork's active stack/MMIO/heap bases and ARM's raw TTBR1 addresses.
 pub static LA_MAP: LazyLock<LinearAddressMap> =
     LazyLock::new(|| LinearAddressMap::for_width(*VADDR_SIG_BITS, cfg!(target_arch = "aarch64")));

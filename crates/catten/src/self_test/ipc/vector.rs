@@ -104,14 +104,14 @@ impl Round {
         // vector, including its hidden move/copy and reply-bound loans.
         let rejected =
             crate::self_test::syscall::test_ipc_receive(self.server, self.endpoint, Some(u64::MAX));
-        assert_eq!(rejected.regs[0], catten_syscall::ipc_status::MEMORY_TRANSFER_FAILED);
+        assert_eq!(rejected.regs[0], knytos_syscall::ipc_status::MEMORY_TRANSFER_FAILED);
         assert_eq!(&rejected.regs[1..=11], &[0; 11]);
         let frame = crate::self_test::syscall::test_ipc_receive(
             self.server,
             self.endpoint,
             Some(self.result),
         );
-        assert_eq!(frame.regs[0], catten_syscall::ipc_status::OK);
+        assert_eq!(frame.regs[0], knytos_syscall::ipc_status::OK);
         assert_eq!(frame.regs[4], self.client as u64);
         assert_eq!(frame.regs[9], self.handle.generation() as u64);
         assert_eq!(&frame.regs[10..=11], &[0, 0]);

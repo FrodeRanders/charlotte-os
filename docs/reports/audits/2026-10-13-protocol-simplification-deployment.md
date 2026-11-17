@@ -59,7 +59,7 @@ Validated on 2026-10-13 from base commit `ef071236` plus this batch:
   acceptance tests were replaced with two current/rejection tests and one HTTP
   test, accounting for the net change from 393 to 392.
 - Strict Clippy passed for bundled AArch64 services and both native kernels.
-  Signed service bundles rebuilt through `scripts/build-catten-services.sh`
+  Signed service bundles rebuilt through `scripts/build-knytos-services.sh`
   for both architectures. `cargo fmt --all -- --check` and `git diff --check`
   passed; all 146 local links in changed Markdown resolved.
 - The tracked manual rebuilt successfully with `pdflatex`; its final two

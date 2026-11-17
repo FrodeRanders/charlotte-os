@@ -273,7 +273,7 @@ pub(crate) fn test_scheduled_cleanup() {
             crate::syscall::call_no::COMPLETION_WAIT_TIMEOUT,
         );
     }
-    assert_eq!(frame.regs[0], catten_syscall::completion_status::WAIT_ADMISSION_FAILED);
+    assert_eq!(frame.regs[0], knytos_syscall::completion_status::WAIT_ADMISSION_FAILED);
     assert!(crate::completion::poll(asid, cap).unwrap().is_none());
     assert_eq!(
         crate::completion::wait_on_cq_checked(asid, 0, Some(60_000)),

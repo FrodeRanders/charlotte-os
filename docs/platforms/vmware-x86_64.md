@@ -1,6 +1,6 @@
 # VMware x86-64 appliance
 
-CharlotteOS can be built as a two-disk VMware appliance. It has been qualified
+Knytos can be built as a two-disk VMware appliance. It has been qualified
 with VMware Fusion on an Intel macOS host using UEFI, four virtual CPUs, a
 virtual NVMe controller, an E1000E adapter, and VMware's guest-visible VT-d
 implementation.
@@ -24,7 +24,7 @@ scripts/build-vmware-x86_64.sh release --data-size-mib 64
 Open the generated file in Fusion or Workstation:
 
 ```text
-os-images/vmware/CharlotteOS.vmwarevm/CharlotteOS.vmx
+os-images/vmware/Knytos.vmwarevm/Knytos.vmx
 ```
 
 The builder refuses to overwrite an existing appliance because its data VMDK
@@ -38,7 +38,7 @@ The appliance deliberately has two disks:
 - `charlotte-boot.vmdk` is a small FAT boot image on a virtual SATA controller.
   It contains `BOOTX64.EFI`, Limine configuration, and the kernel. VMware opens
   it in independent nonpersistent mode.
-- `charlotte-data.vmdk` is a blank persistent virtual NVMe disk. CharlotteOS
+- `charlotte-data.vmdk` is a blank persistent virtual NVMe disk. Knytos
   owns it from LBA zero; it is not partitioned or FAT-formatted by the host.
 
 On first boot, the object-store service recognizes an unformatted data disk,
@@ -84,7 +84,7 @@ The supplied VMX configures the qualified combination:
 
 The appliance kernel uses the ordinary service configuration rather than the
 DHCP test feature. On boot, hardware discovery finds the E1000E adapter and
-Charlotte automatically starts DHCP, discovery and cluster services, TCP/IP,
+Knytos automatically starts DHCP, discovery and cluster services, TCP/IP,
 HTTP, and NTP-backed time synchronization. Test features are reserved for QEMU
 validation runs and are not required in an appliance intended for use.
 
@@ -99,7 +99,7 @@ and caller-managed client files. See [management TLS](../reference/management-tl
 
 Do not replace the NVMe data controller with SCSI or SATA: the current VMware
 appliance path starts the userspace NVMe driver. Do not disable virtual VT-d:
-CharlotteOS refuses to delegate unrestricted DMA when no usable IOMMU exists.
+Knytos refuses to delegate unrestricted DMA when no usable IOMMU exists.
 
 The VMDKs use VMware's sparse monolithic format. Fusion and Workstation can
 open the generated VMX directly. For ESXi, upload/import the disks with the
@@ -109,21 +109,21 @@ has not yet been qualified by this repository.
 ## Networking
 
 The supplied VMX attaches VMware's emulated Intel 82574L (`e1000e`) adapter to
-NAT. CharlotteOS discovers controllers behind every function of VMware's
+NAT. Knytos discovers controllers behind every function of VMware's
 multifunction PCIe root ports, delegates the adapter's BAR, MSI-X interrupt,
 and requester-specific VT-d domain to the userspace E1000E driver, waits for
 link negotiation without busy waiting, and then publishes the hardware-neutral
 `net0` service.
 
 NAT is convenient for first-boot qualification, but it is not required by
-CharlotteOS. For a node that should participate in the surrounding network,
+Knytos. For a node that should participate in the surrounding network,
 select a bridged adapter (or a host-only network with a DHCP service) in
 Fusion/Workstation. The guest's normal DHCP client then obtains its node
 address from that network, and clients can connect directly to the advertised
 service ports. No host-port forwarding is needed in this mode; forwarding is a
-property of QEMU's user-mode network rather than of the CharlotteOS node.
+property of QEMU's user-mode network rather than of the Knytos node.
 
-Serial output makes that sequence visible even though CharlotteOS does not
+Serial output makes that sequence visible even though Knytos does not
 need console input:
 
 ```text

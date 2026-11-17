@@ -64,7 +64,7 @@ class RunnerGates(unittest.TestCase):
             self.assertEqual(source.count('&& catten_boot_http_probe_ready; then'), 1)
             source = source.replace('&& catten_boot_http_probe_ready; then',
                                     '&& grep -Fq "httpd is listening" "$LOG"; then')
-        with tempfile.TemporaryDirectory(prefix="charlotte-management-gate-") as directory:
+        with tempfile.TemporaryDirectory(prefix="knytos-management-gate-") as directory:
             log = Path(directory) / "serial"
             log.write_text(serial if serial is not None else
                            "httpd is listening\n[time] synchronized unix_s=1793177170 utc=fixture\n")
@@ -89,7 +89,7 @@ python3() {
 }
 curl() {
     case "${@: -1}" in
-        */cluster/metrics) echo '{"schema":"charlotte.cluster.v2","fresh_committed":true,"raft":{"served_by":"fixture"},"deployments":[]}' ;;
+        */cluster/metrics) echo '{"schema":"knytos.cluster.v2","fresh_committed":true,"raft":{"served_by":"fixture"},"deployments":[]}' ;;
         *) echo '{"http":{"requests":1}}' ;;
     esac
 }

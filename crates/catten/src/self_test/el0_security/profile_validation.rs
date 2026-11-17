@@ -1,7 +1,7 @@
 //! Run the kernel's actual profile validator on a scheduled verifier stack.
 use alloc::vec::Vec;
 
-use charlotte_protocol_kafka::{
+use knytos_protocol_kafka::{
     ALL_RIGHTS,
     Authentication,
     AuthorityEndpoint,
@@ -70,7 +70,7 @@ pub(super) fn run() {
     encoded[MAX_PROFILE_BYTES - 1] ^= 1;
     encoded[72..74].copy_from_slice(&((MAX_PRODUCE_ROUTES + 1) as u16).to_le_bytes());
     encoded[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN].fill(0);
-    let digest = charlotte_launch::sha256::digest(&encoded);
+    let digest = knytos_launch::sha256::digest(&encoded);
     encoded[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
         .copy_from_slice(&digest);
     assert_eq!(Profile::validate_encoded(&encoded), Err(ProfileError::TooManyRoutes));

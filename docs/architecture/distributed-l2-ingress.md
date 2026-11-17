@@ -1,10 +1,10 @@
 # Distributed L2 ingress and cluster-wide TCP services
 
-Charlotte can expose independently placed TCP services as stable IPv4
+Knytos can expose independently placed TCP services as stable IPv4
 `VIP:port` identities while letting admitted cluster members own different
 connections. The ingress path does not
 terminate TCP. It selects a backend and, when that backend is remote, wraps the
-unchanged IP packet in a compact one-hop Charlotte Ethernet envelope before
+unchanged IP packet in a compact one-hop Knytos Ethernet envelope before
 returning the same moved memory object to the NIC driver. The selected
 backend's `smoltcp` instance therefore owns the sole TCP state and replies
 directly to the client.
@@ -16,16 +16,16 @@ client <----------------------- direct VIP reply -------- backend tcpip
 
 ## A shared address for the cluster
 
-Charlotte supports two complementary network identities. A node's DHCP or
+Knytos supports two complementary network identities. A node's DHCP or
 static address deliberately identifies that node and remains useful for
 node-specific client/server protocols, diagnostics, and infrastructure
 integration. A cluster service VIP instead identifies a service placed within
-Charlotte without revealing which node admits a packet or owns the resulting
+Knytos without revealing which node admits a packet or owns the resulting
 connection.
 
 Direct Server Return is commonly described as a load-balancing technique, and
 this implementation does distribute five-tuples across eligible nodes. The
-main reason we use it in Charlotte is indirection: the external
+main reason we use it in Knytos is indirection: the external
 contract is `VIP:port`, while ingress ownership and execution placement may
 move independently behind it. Individual node addresses remain mechanisms of
 the cluster. They stay outside the cluster-addressed application's public identity.

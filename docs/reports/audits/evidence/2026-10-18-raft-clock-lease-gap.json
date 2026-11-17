@@ -204,15 +204,15 @@
     "docs/tla/check.sh": "25c915b3a925649448f716eb00cd1675f0405c9e9dd96873a6ecdb3b921d6d36"
   },
   "reviewed_source_sha256": {
-    "crates/catten-graft/src/clock.rs": "be0bce9844acab69d8a9aec71a6a2e75d98007b3b731d84f3feb47ada1b2615d",
-    "crates/catten-graft/src/lib.rs": "e8677681479871256d5a3ec63400309878521f571b7a22eedd8f649b1efeacff",
-    "crates/catten-graft/src/node.rs": "4a875e1e046f48c10d3f5c4230ebcbca34255cb6791c5f7276e08f67643b067f",
-    "crates/catten-graft/examples/audit_receive_lease.rs": "50f9f48ec8a63f6b1cccbb84d81d9b2f63f9a3547164e8be5202905306fe2e85",
-    "crates/catten-services/src/raft_clock.rs": "c559e0f87675be284a9cbe347adb898a74b09d79b9858bc8a983b2ab169c5099",
-    "crates/catten-services/src/bin/dns/reactor.rs": "b9a7c0f4001547f7eae1928821142b1e8a02bdec1ac698a30845b3bce150a1a2",
-    "crates/catten-services/src/bin/dns.rs": "1d8283e71f7550e8b93e56f8df7988defa1a51d900918bb4a7167823b30c460d",
-    "crates/catten-services/src/bin/raft.rs": "b705bdf0f700838cec9c6fee1f68878b2fe2328f8afc3b3862aee3c527b5d288",
-    "crates/catten-services/src/lib.rs": "0b9d5eb6aae42d62aa4f549a67b53b5738836e39ed78c8fed8f474e48ee8cf77"
+    "crates/knytos-graft/src/clock.rs": "be0bce9844acab69d8a9aec71a6a2e75d98007b3b731d84f3feb47ada1b2615d",
+    "crates/knytos-graft/src/lib.rs": "e8677681479871256d5a3ec63400309878521f571b7a22eedd8f649b1efeacff",
+    "crates/knytos-graft/src/node.rs": "4a875e1e046f48c10d3f5c4230ebcbca34255cb6791c5f7276e08f67643b067f",
+    "crates/knytos-graft/examples/audit_receive_lease.rs": "50f9f48ec8a63f6b1cccbb84d81d9b2f63f9a3547164e8be5202905306fe2e85",
+    "crates/knytos-services/src/raft_clock.rs": "c559e0f87675be284a9cbe347adb898a74b09d79b9858bc8a983b2ab169c5099",
+    "crates/knytos-services/src/bin/dns/reactor.rs": "b9a7c0f4001547f7eae1928821142b1e8a02bdec1ac698a30845b3bce150a1a2",
+    "crates/knytos-services/src/bin/dns.rs": "1d8283e71f7550e8b93e56f8df7988defa1a51d900918bb4a7167823b30c460d",
+    "crates/knytos-services/src/bin/raft.rs": "b705bdf0f700838cec9c6fee1f68878b2fe2328f8afc3b3862aee3c527b5d288",
+    "crates/knytos-services/src/lib.rs": "0b9d5eb6aae42d62aa4f549a67b53b5738836e39ed78c8fed8f474e48ee8cf77"
   },
   "cases": [
     {
@@ -816,7 +816,7 @@
         "",
         "---- node::tests::reactor_pause_expires_old_quorum_contact stdout ----",
         "",
-        "thread 'node::tests::reactor_pause_expires_old_quorum_contact' (19369842) panicked at crates/catten-graft/src/node.rs:1675:9:",
+        "thread 'node::tests::reactor_pause_expires_old_quorum_contact' (19369842) panicked at crates/knytos-graft/src/node.rs:1675:9:",
         "assertion failed: !node.can_serve_linearizable_read()",
         "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
         "",
@@ -852,14 +852,14 @@
   ],
   "host_validation": [
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 47,
       "failed": 0,
       "log_sha256": "b437f6ec5e273413c2b965c6ab3aca35a63f5639b90e20b0f72507ae863d75f2"
     },
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-services/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 145,
       "failed": 0,
@@ -868,17 +868,17 @@
   ],
   "checks": {
     "clippy": {
-      "command": "cargo clippy --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
+      "command": "cargo clippy --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
       "exit_status": 0,
       "log_sha256": "04259e5f5c5e29e78d5a0d72c72a05c25106ad691a29a729db9f9fd0d5210554"
     },
     "bundle_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "6353fcc49cddd05eecc69c5aa176be26561adea4adf3ae34b0db9b1860629ccb"
     },
     "bundle_check": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "527d476e5d5ebd7b81b16edb548a352e340c7ecb50e028cf33ddeae644186eb2",
       "result": "Staged AArch64 service bundle signatures verified after final source comments; release artifacts match the native run."
@@ -902,14 +902,14 @@
   "pre_fix_node_with_new_clock_test_sha256": "70bb40f506c0ffba4475b65dd0fb239db7ad3f143dc22999ef6ea636c87ee5a0",
   "pre_fix_callsite_excerpts": [
     {
-      "path": "crates/catten-services/src/bin/dns/reactor.rs",
+      "path": "crates/knytos-services/src/bin/dns/reactor.rs",
       "source_sha256": "7f07260de119f1bc6ba3204187e2fe5e2e49aa69ddf534c4a6c0a5560cd43b71",
       "first_line": 174,
       "last_line": 198,
       "excerpt": "/// Advance the logical Raft clock and maintain its detached wake-up timer.\npub(super) fn advance_raft_clock(\n    node: &mut RaftNode,\n    tick_due: bool,\n    heartbeat_interval_ms: u64,\n    last_heartbeat_broadcast: &mut u64,\n    timer_armed: &mut bool,\n) {\n    if !tick_due {\n        return;\n    }\n    node.set_millis(node.millis() + LOOP_TICK_MS);\n    if node.check_timeout() {\n        node.start_election(node.millis());\n    }\n    if node.state == NodeState::Leader\n        && node.millis().saturating_sub(*last_heartbeat_broadcast) >= heartbeat_interval_ms\n    {\n        node.broadcast_heartbeat(node.millis());\n        *last_heartbeat_broadcast = node.millis();\n    }\n    if !*timer_armed {\n        *timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;\n    }\n}"
     },
     {
-      "path": "crates/catten-services/src/bin/raft.rs",
+      "path": "crates/knytos-services/src/bin/raft.rs",
       "source_sha256": "7bf44c274b36f45e383dd82f5e8a54dae5fbddd0000f06b48db2d107fd04ea4d",
       "first_line": 1132,
       "last_line": 1157,
@@ -917,7 +917,7 @@
     }
   ],
   "known_stale_read": {
-    "command": "cargo run --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --example audit_receive_lease (outside root Cargo configuration)",
+    "command": "cargo run --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --example audit_receive_lease (outside root Cargo configuration)",
     "exit_status": 0,
     "exit_meaning": "Zero only when the counterexample is reproduced; this is not a passing safety regression.",
     "fixture_sha256": "50f9f48ec8a63f6b1cccbb84d81d9b2f63f9a3547164e8be5202905306fe2e85",

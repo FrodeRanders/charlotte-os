@@ -1,15 +1,18 @@
-# The Charlotte Operating System (CharlotteOS)
+# The Knytos Operating System
 
-This repository is a development fork of the
+This repository was initially forked from the
 [CharlotteOS project](https://github.com/charlotte-os/charlotte-os). CharlotteOS,
 its original architecture, and the substantial foundation on which this work
-builds were created by the upstream project and its contributors.
+builds were created by the upstream project and its contributors. 
 
-The purpose of this fork is to explore and implement additional operating-system
-mechanisms while retaining CharlotteOS' Rust, capability-oriented, and
-service-based direction. It is not a replacement for upstream, and features
-described below should not be assumed to be present or supported in the
-upstream repository.
+The purpose of this fork began as an exploration of additional operating-system
+mechanisms while retaining CharlotteOS' core functionality. Over time, this project
+has diverged substantially from upstream and it is no longer possible to merge
+in changes from CharlotteOS without great care and lots of work.
+
+See [Why Knytos?](docs/research/why-knytos.md) for an explanation of why renaming
+this fork was reasonable.
+
 
 ## Research direction: the cluster as a capability machine
 
@@ -32,7 +35,7 @@ express.
 This opens several connected research directions: capability-safe distributed
 deployment, content-addressed and provenance-aware software delivery,
 replicated naming and lifecycle state, bounded asynchronous execution,
-failure-domain-aware placement, and generation of Charlotte applications from
+failure-domain-aware placement, and generation of Knytos applications from
 higher-level process models such as
 [Durga](https://github.com/FrodeRanders/durga/tree/feature/charlotte-target). The
 aspiration is an understandable substrate for long-lived service systems whose
@@ -110,7 +113,7 @@ The main additions and extensions currently maintained here are:
   invocation, duplicate suppression, two-phase publication, and
   owner-and-generation-fenced retraction over the reliable-message layer.
 - **Generic Raft service:** a transport-independent Raft core and one durable,
-  network-enabled EL0 member per CharlotteOS node. Discovery supplies peer
+  network-enabled EL0 member per Knytos node. Discovery supplies peer
   routes and the service performs restart-safe dynamic admission between
   machines. The distributed name service currently uses a separate instance
   of the same [Graft](https://github.com/FrodeRanders/raft) core to
@@ -225,7 +228,7 @@ The main additions and extensions currently maintained here are:
   safe configurations and expected-counterexample regressions.
 - **[Sitas](https://github.com/FrodeRanders/sitas) shard runtime at EL0:**
   the `Sitas` no_std shard-per-core runtime (external crates) runs as a real
-  EL0 image (`catten-user`) boot-tested by the kernel. A mailbox index demo
+  EL0 image (`knytos-user`) boot-tested by the kernel. A mailbox index demo
   shows the division of responsibility: scanner shards route entries to
   logical assemblers through typed owned messages in userspace, and the
   coordinator merges and verifies the result, while the kernel only supplies
@@ -393,14 +396,14 @@ That should make it particularly interesting for:
 
 ## Programming Languages
 
-- CharlotteOS is written primarily in the latest Edition of Rust, with architecture-specific assembly where required or advantageous.
+- Knytos is written primarily in the latest Edition of Rust, with architecture-specific assembly where required or advantageous.
 - x86-64 assembly uses Intel syntax as implemented by `rustc`/`llvm-mc`.
 
 ---
 
 ## Platform & Firmware Requirements
 
-CharlotteOS aims to support platforms that offer **standardized, documented, and interoperable hardware and firmware interfaces**. The focus is on systems where the operating system can rely on well-defined firmware and discoverability mechanisms, without requiring vendor-specific hacks or opaque initialization sequences.
+Knytos aims to support platforms that offer **standardized, documented, and interoperable hardware and firmware interfaces**. The focus is on systems where the operating system can rely on well-defined firmware and discoverability mechanisms, without requiring vendor-specific hacks or opaque initialization sequences.
 
 ### Supported Architectures and Their Requirements
 
@@ -523,9 +526,9 @@ PC and Server:
 
 ## Contributing
 
-The CharlotteOS upstream project welcomes contributions of all forms—code,
+The Knytos upstream project welcomes contributions of all forms—code,
 design proposals, documentation, and testing. Please use the upstream
-repository and the community links below when contributing to CharlotteOS
+repository and the community links below when contributing to Knytos
 itself. Issues or changes specifically concerning the experimental additions
 listed above may instead be discussed in this fork.
 
@@ -538,7 +541,7 @@ along with clean, maintainable code.
 
 ## Licensing
 
-The Charlotte Operating System is licensed under the GNU Affero General Public License version 3.0 (or any later version). By contributing, you agree that your work may be distributed under the AGPL version 3.0 or later.
+The Knytos Operating System is licensed under the GNU Affero General Public License version 3.0 (or any later version). By contributing, you agree that your work may be distributed under the AGPL version 3.0 or later.
 
 ---
 

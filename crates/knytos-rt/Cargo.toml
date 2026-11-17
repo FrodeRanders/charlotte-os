@@ -1,0 +1,17 @@
+[package]
+name = "knytos-rt"
+version = "0.1.0"
+edition = "2024"
+description = "Minimal runtime (crt0) for Knytos userspace programs"
+
+[lib]
+name = "catten_rt"
+path = "src/lib.rs"
+bench = false
+
+[dependencies]
+knytos-launch = { path = "../knytos-launch" }
+knytos-lifecycle = { path = "../knytos-lifecycle" }
+knytos-syscall = { path = "../knytos-syscall" }
+talc = { version = ">=5.0.3", default-features = false, features = ["nightly"] }
+lock_api = "0.4"

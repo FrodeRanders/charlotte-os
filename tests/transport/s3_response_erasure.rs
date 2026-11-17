@@ -1,7 +1,7 @@
 //! Allocation and release checks for public HTTP fixture bytes.
 use core::hint::black_box;
 
-use charlotte_s3::http::{
+use knytos_s3::http::{
     ChunkedDecoder,
     Error,
     MAX_RESPONSE_HEAD,

@@ -47,7 +47,7 @@ pub(crate) enum MapError {
 
 impl MapError {
     pub(crate) fn diagnostic(self) -> u64 {
-        use catten_syscall::{
+        use knytos_syscall::{
             dma_map_cause as cause,
             dma_map_phase as phase,
         };

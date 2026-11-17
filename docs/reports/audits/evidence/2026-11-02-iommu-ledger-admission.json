@@ -5,7 +5,7 @@
   "scope": "Admit IOMMU physical-extent ledger buffer capacity to the existing metadata byte pool. Capture original domain-grant/boot class; retain full old/candidate overlap, addresses and original charges through replacement and physical uncertainty; deallocate before refund. Numerical limits, node-count units, statistics grammar, register ABI and physical completion rules are unchanged.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/knytos-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
     "crates/catten/src/device/amd_vi.rs": "6247332ad9732ff3f9bc07749469b7d2633193ecfaf9ad398506d677562b80d0",
     "crates/catten/src/device/backend_registry/budget.rs": "8eb644fcb79bf601d186c6b2808c6d21520bb0cfb0649f96021e927afcc67644",
     "crates/catten/src/device/dma_tables.rs": "7f482cbdd01a7cd153d5941a3ccb5c95427f0d61f321d9e510be9f552f0b7498",
@@ -24,7 +24,7 @@
     "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
     "crates/catten/src/resource_policy.rs": "8caa3b6d05f5470eff7c0269b59d259523184c77d5704667a2f1dfce97a29bba",
     "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-host-tests.sh": "ef409c4f03a28230dee56a17dd71680000e2f9edb6dbeeed6be3bd32f868ae0b"
   },

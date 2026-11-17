@@ -88,7 +88,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 ```
 
 Run `cargo +nightly-2026-07-27 test --locked --manifest-path
-/path/to/charlotte-os/crates/charlotte-lifecycle/Cargo.toml --test
+/path/to/charlotte-os/crates/knytos-lifecycle/Cargo.toml --test
 charged_allocator` from outside the repository's kernel build-std configuration,
 or use the host-test runner. Guests rebuild kernels/check assembly sections and
 reuse validated embedded services for this kernel-only change. Arm uses the

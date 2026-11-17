@@ -5,7 +5,7 @@
 #
 # Why this exists: QEMU TCG's EL2 handling is unreliable (E2H/VHE emulation is
 # broken, and EL1 system-register writes from EL2 alias into the EL2 MMU), and
-# the CharlotteOS kernel targets EL1/EL0. Limine base revision 6 enters a
+# the Knytos kernel targets EL1/EL0. Limine base revision 6 enters a
 # kernel at EL2+VHE when the boot firmware is at EL2, so the whole boot chain
 # (TF-A -> UEFI -> Limine -> kernel) is made to run at EL1 instead.
 #
@@ -112,7 +112,7 @@ PATCHES="$ROOT_DIR/patches"
 #     unreliable and the kernel targets EL1/EL0).
 apply_patch "$WORKDIR/tf-a" \
     "$PATCHES/tf-a/0002-sbsa-bl33-entry-el1.patch" \
-    "CharlotteOS" "plat/qemu/common/qemu_bl2_setup.c" \
+    "Knytos" "plat/qemu/common/qemu_bl2_setup.c" \
     "TF-A: forcing BL33 entry at EL1"
 
 # (2) SIP_SVC_GET_CPU_TOPOLOGY (SMC 202), required by the current edk2

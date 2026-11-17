@@ -6,8 +6,8 @@
   "changed_source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
     "crates/embedded-tls/Cargo.toml": "6d9f2b5d1cceb865f0b671eae599744cff11e1a23a787df0dddb81618aa43222",
-    "crates/catten-services/Cargo.toml": "f150bef9839c33390da7e2b82b0ffbefb1d45eed590a218616543fb5fcfa128e",
-    "crates/catten-services/src/tls_client/interop.rs": "7239305b6a2d593aa2017886ece4659bd926af9c09304310ce808140d521fe2b",
+    "crates/knytos-services/Cargo.toml": "f150bef9839c33390da7e2b82b0ffbefb1d45eed590a218616543fb5fcfa128e",
+    "crates/knytos-services/src/tls_client/interop.rs": "7239305b6a2d593aa2017886ece4659bd926af9c09304310ce808140d521fe2b",
     "scripts/tests/test-tls-signature-lists.py": "03fc7c355b7cd2e1ca3c87d0505b1d85ab58f9d11ab98afd7fbf505d2e5dd90b",
     "scripts/tests/tls-signature-lists.rs": "ab21a1869aa9042bf33d144980b4b9b981560ad3588e32a39c9034d80d21a48b",
     "scripts/run-host-tests.sh": "47ac5097380ea31da432f85c481f63330353df9cae6f19f9e2ae6cc85ce56a2a",

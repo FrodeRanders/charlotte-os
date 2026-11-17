@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build a bootable UEFI disk image for CharlotteOS / Catten and run it under
+# Build a bootable UEFI disk image for Knytos / Catten and run it under
 # QEMU. Works on macOS (including Apple Silicon) and Linux.
 #
 # Requirements: qemu, mtools.  On macOS install via Homebrew:
@@ -47,7 +47,7 @@
 #               probes (single guest, user network); not needed to enable it
 #   --dhcp-test   Verify that the default DHCP client acquires a lease
 #   --s3-test     Start a TLS RustFS Docker fixture and verify S3
-#                 PUT/HEAD/GET/DELETE from a CharlotteOS application
+#                 PUT/HEAD/GET/DELETE from a Knytos application
 #   --deployment-ingress-test  Use that RustFS fixture to verify the complete
 #                 signed upload/notify/pull/launch/readiness deployment path
 #   --shutdown-ingress-test  Sign and submit a node-targeted shutdown through
@@ -467,7 +467,7 @@ if [ "$S3_TEST" = "1" ]; then
         -out "$CATTEN_RUSTFS_CERT_DIR/ca.key"
     openssl req -x509 -new -sha256 -days 2 \
         -key "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
-        -subj "/CN=CharlotteOS RustFS test CA" \
+        -subj "/CN=Knytos RustFS test CA" \
         -addext "basicConstraints=critical,CA:TRUE" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
         -out "$CATTEN_RUSTFS_CERT_DIR/ca.crt"
@@ -510,7 +510,7 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -out "$CATTEN_KAFKA_CERT_DIR/ca.key"
     openssl req -x509 -new -sha256 -days 2 \
         -key "$CATTEN_KAFKA_CERT_DIR/ca.key" \
-        -subj "/CN=CharlotteOS Kafka test CA" \
+        -subj "/CN=Knytos Kafka test CA" \
         -addext "basicConstraints=critical,CA:TRUE" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
         -out "$CATTEN_KAFKA_CERT_DIR/ca.crt"
@@ -533,7 +533,7 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -in "$CATTEN_KAFKA_CERT_DIR/kafka.crt" \
         -certfile "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
         -out "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
-        -passout pass:charlotte-kafka-test
+        -passout pass:knytos-kafka-test
     openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/ca.crt" -outform DER \
         -out "$CATTEN_KAFKA_CERT_DIR/ca.der"
     openssl ecparam -name prime256v1 -genkey -noout \
@@ -559,15 +559,15 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -file "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
         -keystore "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12" \
         -storetype PKCS12 \
-        -storepass charlotte-kafka-test
-    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
-    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
-    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/truststore-password"
+        -storepass knytos-kafka-test
+    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
+    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
+    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/truststore-password"
     printf '%s\n' \
         'KafkaServer {' \
         '  org.apache.kafka.common.security.scram.ScramLoginModule required' \
-        '  username="charlotte"' \
-        '  password="charlotte-kafka-test";' \
+        '  username="knytos"' \
+        '  password="knytos-kafka-test";' \
         '};' >"$CATTEN_KAFKA_CERT_DIR/kafka_server_jaas.conf"
     chmod 0600 "$CATTEN_KAFKA_CERT_DIR/client-key.der"
     chmod 0644 "$CATTEN_KAFKA_CERT_DIR/ca.der" \
@@ -589,7 +589,7 @@ if [ "$KAFKA_TEST" = "1" ]; then
         /opt/kafka/bin/kafka-configs.sh \
         --bootstrap-server localhost:29092 \
         --alter \
-        --add-config 'SCRAM-SHA-256=[iterations=4096,password=charlotte-kafka-test]' \
+        --add-config 'SCRAM-SHA-256=[iterations=4096,password=knytos-kafka-test]' \
         --entity-type users \
         --entity-name charlotte
     KAFKA_EVENTS_REPLICAS="1:2:3"
@@ -653,17 +653,17 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged AArch64 EL0 bundle."
 elif [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
-    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --clean --mode "$BOOT_MODE"
+    "${ROOT_DIR}/scripts/build-knytos-services.sh" --embed --clean --mode "$BOOT_MODE"
 else
     echo ">>> Rebuilding embedded EL0 service bundle..."
-    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --mode "$BOOT_MODE"
+    "${ROOT_DIR}/scripts/build-knytos-services.sh" --embed --mode "$BOOT_MODE"
 fi
 if [ "$BOOT_MODE" = "test" ] && [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
-    "${ROOT_DIR}/scripts/build-catten-user.sh" --embed
+    "${ROOT_DIR}/scripts/build-knytos-user.sh" --embed
 fi
 catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
 if [ "$BOOT_MODE" = "test" ] && [ ! -f "$BUNDLE/sitas-user.elf" ]; then
-    echo "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed" >&2
+    echo "error: test bundle requires sitas-user.elf; run scripts/build-knytos-user.sh --embed" >&2
     exit 1
 fi
 export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
@@ -1173,7 +1173,7 @@ if [ -n "$TIMEOUT" ]; then
                 if [ "$HTTP_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
-                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
+                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "knytos.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
                     HTTP_PROBE_OK=1
                     break
                 fi

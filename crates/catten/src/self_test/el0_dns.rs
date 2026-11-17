@@ -114,7 +114,7 @@ mod inner {
     }
 
     fn invoke_dns(connection: u64, name: &[u8], opcode: u32, arg: i64) -> Option<i64> {
-        let request = charlotte_protocol_dns::encode(charlotte_protocol_dns::Request {
+        let request = knytos_protocol_dns::encode(knytos_protocol_dns::Request {
             name,
             opcode,
             arg,
@@ -127,22 +127,22 @@ mod inner {
         connection: u64,
         name: &[u8],
         generation: u64,
-        action: charlotte_protocol_ns::Action,
+        action: knytos_protocol_ns::Action,
     ) -> Option<i64> {
-        let request = charlotte_protocol_ns::encode(
+        let request = knytos_protocol_ns::encode(
             action,
-            charlotte_protocol_ns::Request {
+            knytos_protocol_ns::Request {
                 name,
                 generation,
             },
         )
         .expect("NS generation fixture encoding");
         let opcode = match action {
-            charlotte_protocol_ns::Action::Observe => {
-                charlotte_protocol_ns::OP_PUBLICATION_GENERATION
+            knytos_protocol_ns::Action::Observe => {
+                knytos_protocol_ns::OP_PUBLICATION_GENERATION
             }
-            charlotte_protocol_ns::Action::Retire => {
-                charlotte_protocol_ns::OP_UNREGISTER_GENERATION
+            knytos_protocol_ns::Action::Retire => {
+                knytos_protocol_ns::OP_UNREGISTER_GENERATION
             }
         };
         call_with_memory(connection, opcode, request.len() as u64, &request)
@@ -169,7 +169,7 @@ mod inner {
         const OBJ_OP_SET_SIZE: u32 = 9;
         const OBJ_OP_WRITE: u32 = 3;
         const OBJ_OP_FLUSH: u32 = 6;
-        // charlotte-protocol-objstore v1 status values (the kernel does not
+        // knytos-protocol-objstore v1 status values (the kernel does not
         // otherwise depend on the userspace protocol crate).
         const OBJ_ERR_OK: i64 = 0;
         const OBJ_ERR_EXISTS: i64 = 5;
@@ -311,7 +311,7 @@ mod inner {
         assert_eq!(&bytes[..8], b"CDEPQR01");
         assert_eq!(u64::from_le_bytes(bytes[8..16].try_into().unwrap()), generation);
         let descriptor_len = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
-        let descriptor = charlotte_launch::deployment::decode(&bytes[20..20 + descriptor_len])
+        let descriptor = knytos_launch::deployment::decode(&bytes[20..20 + descriptor_len])
             .expect("current signed controller descriptor");
         assert_eq!(descriptor.artifact_name, b"greet");
         let replicas = &bytes[20 + descriptor_len..];
@@ -342,14 +342,14 @@ mod inner {
             let bytes = bundle.get(position..position + len).expect("complete fixture descriptor");
             position += len;
             let descriptor =
-                charlotte_launch::deployment::decode(bytes).expect("current fixture descriptor");
+                knytos_launch::deployment::decode(bytes).expect("current fixture descriptor");
             if descriptor.node_key == node && descriptor.sequence == sequence {
                 assert_eq!(
-                    charlotte_launch::deployment::verify(
+                    knytos_launch::deployment::verify(
                         bytes,
-                        &charlotte_launch::CLUSTER_PUBLIC_KEY
+                        &knytos_launch::CLUSTER_PUBLIC_KEY
                     ),
-                    charlotte_launch::deployment::VerifyOutcome::Valid
+                    knytos_launch::deployment::VerifyOutcome::Valid
                 );
                 return bytes;
             }
@@ -381,11 +381,11 @@ mod inner {
         // the cluster's public key, and a tampered copy must be refused.
         let artifact = crate::service::store::service_elf(b"greet")
             .expect("[deploy] greet artifact in object store");
-        use charlotte_launch::signature_note::VerifyOutcome;
+        use knytos_launch::signature_note::VerifyOutcome;
         assert_eq!(
-            charlotte_launch::signature_note::verify_elf_for_name(
+            knytos_launch::signature_note::verify_elf_for_name(
                 artifact,
-                &charlotte_launch::CLUSTER_PUBLIC_KEY,
+                &knytos_launch::CLUSTER_PUBLIC_KEY,
                 b"greet",
             ),
             VerifyOutcome::Valid,
@@ -395,9 +395,9 @@ mod inner {
         tampered.copy_from_slice(artifact);
         tampered[artifact.len() / 2] ^= 0x01;
         assert_eq!(
-            charlotte_launch::signature_note::verify_elf_for_name(
+            knytos_launch::signature_note::verify_elf_for_name(
                 &tampered,
-                &charlotte_launch::CLUSTER_PUBLIC_KEY,
+                &knytos_launch::CLUSTER_PUBLIC_KEY,
                 b"greet",
             ),
             VerifyOutcome::Invalid,
@@ -417,7 +417,7 @@ mod inner {
             base
         };
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while status_word(agent_cfg, charlotte_launch::agent_status::STAGE) < AGENT_STAGE_IDENTITY {
+        while status_word(agent_cfg, knytos_launch::agent_status::STAGE) < AGENT_STAGE_IDENTITY {
             deadline.assert_pending("EL0 deploy agent identity");
             yield_lp();
         }
@@ -426,7 +426,7 @@ mod inner {
                 .load(core::sync::atomic::Ordering::Relaxed);
         let forced_retirements_before = crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
             .load(core::sync::atomic::Ordering::Relaxed);
-        let my_key = status_word(agent_cfg, charlotte_launch::agent_status::NODE_KEY) as u64;
+        let my_key = status_word(agent_cfg, knytos_launch::agent_status::NODE_KEY) as u64;
         let key_a = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff;
         let key_b = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x02]) & 0xffff_ffff;
         let peer_key = if my_key == key_a {
@@ -481,11 +481,11 @@ mod inner {
         // alpha + greet on every replica.
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
         let mut gate_spins: u64 = 0;
-        while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) < 2 {
+        while status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES) < 2 {
             gate_spins += 1;
             if gate_spins.is_multiple_of(2_000_000) {
-                let stage = status_word(agent_cfg, charlotte_launch::agent_status::STAGE);
-                let catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
+                let stage = status_word(agent_cfg, knytos_launch::agent_status::STAGE);
+                let catalog = status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES);
                 logln!(
                     "[deploy] waiting for remote registration: catalog={catalog} \
                      local-agent-stage={stage}"
@@ -561,7 +561,7 @@ mod inner {
         // ACK that was lost after the application reply was already
         // delivered.
         let remote_calls_before_migration = is_leader
-            .then(|| status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALLS_SERVED));
+            .then(|| status_word(dns_cfg, knytos_launch::dns_status::REMOTE_CALLS_SERVED));
         if is_leader {
             let descriptor = fixture_descriptor(my_key, 2);
             let request = descriptor;
@@ -582,14 +582,14 @@ mod inner {
         } else {
             AGENT_STAGE_RETIRED
         };
-        while status_word(agent_cfg, charlotte_launch::agent_status::STAGE) != expected_stage {
+        while status_word(agent_cfg, knytos_launch::agent_status::STAGE) != expected_stage {
             deadline.assert_pending("EL0 deploy migration handover");
             crate::cpu::scheduler::sleep_millis(10);
             yield_lp();
         }
         logln!(
             "[deploy] local agent stage {} after migration.",
-            status_word(agent_cfg, charlotte_launch::agent_status::STAGE)
+            status_word(agent_cfg, knytos_launch::agent_status::STAGE)
         );
         if !is_leader {
             assert!(
@@ -632,7 +632,7 @@ mod inner {
             let barrier_deadline = crate::self_test::results::Deadline::after_millis(120_000);
             let calls_before = remote_calls_before_migration.expect("leader remote-call snapshot");
             let required_calls = calls_before.saturating_add(2);
-            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALLS_SERVED)
+            while status_word(dns_cfg, knytos_launch::dns_status::REMOTE_CALLS_SERVED)
                 < required_calls
             {
                 barrier_deadline.assert_pending("EL0 deploy follower causal barrier");
@@ -652,7 +652,7 @@ mod inner {
             crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
                 .load(core::sync::atomic::Ordering::Relaxed);
         if is_leader {
-            let principal = charlotte_launch::artifact_principal_id(b"greet");
+            let principal = knytos_launch::artifact_principal_id(b"greet");
             let mut deployed = crate::service::supervisor::DEPLOYED_DOMAINS.lock();
             let running = deployed
                 .iter_mut()
@@ -677,7 +677,7 @@ mod inner {
             // The agent only reports RETIRED once *every* deployment retires,
             // and unrelated deployments may exist on the host. Wait for this artifact's own domain
             // to be reaped instead of the agent's global stage.
-            let principal = charlotte_launch::artifact_principal_id(b"greet");
+            let principal = knytos_launch::artifact_principal_id(b"greet");
             while crate::service::supervisor::DEPLOYED_DOMAINS
                 .lock()
                 .iter()
@@ -694,7 +694,7 @@ mod inner {
                 "[deploy] zero-grace retirement must take the forced path"
             );
         } else {
-            while status_word(agent_cfg, charlotte_launch::agent_status::STAGE)
+            while status_word(agent_cfg, knytos_launch::agent_status::STAGE)
                 != AGENT_STAGE_SERVING
             {
                 deadline.assert_pending("EL0 deploy forced return migration");
@@ -736,17 +736,17 @@ mod inner {
             base
         };
         let bootstrap_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while status_word(dns_cfg, charlotte_launch::dns_status::STAGE) < 6 {
+        while status_word(dns_cfg, knytos_launch::dns_status::STAGE) < 6 {
             bootstrap_deadline.assert_pending("EL0 dns local bootstrap");
             yield_lp();
         }
         let discovery_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while status_word(dns_cfg, charlotte_launch::dns_status::STAGE) < 7 {
+        while status_word(dns_cfg, knytos_launch::dns_status::STAGE) < 7 {
             discovery_deadline.assert_pending("EL0 dns peer discovery");
             yield_lp();
         }
         let raft_init_deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while status_word(dns_cfg, charlotte_launch::dns_status::STAGE) < 8 {
+        while status_word(dns_cfg, knytos_launch::dns_status::STAGE) < 8 {
             raft_init_deadline.assert_pending("EL0 dns durable Raft initialisation");
             yield_lp();
         }
@@ -757,11 +757,11 @@ mod inner {
         // catalog replication; a singleton registration would not prove the
         // networked cluster path.
         let membership_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let mut peers = status_word(dns_cfg, charlotte_launch::dns_status::PEER_COUNT);
+        let mut peers = status_word(dns_cfg, knytos_launch::dns_status::PEER_COUNT);
         while peers < 2 {
             membership_deadline.assert_pending("EL0 DNS cluster membership");
             yield_lp();
-            peers = status_word(dns_cfg, charlotte_launch::dns_status::PEER_COUNT);
+            peers = status_word(dns_cfg, knytos_launch::dns_status::PEER_COUNT);
         }
         logln!("[dns] Raft membership peers = {peers}");
 
@@ -778,14 +778,14 @@ mod inner {
             if dns_conn == 0 {
                 dns_conn = lookup_service(kernel_ns, DNS_NAME).unwrap_or(0);
             }
-            state = status_word(dns_cfg, charlotte_launch::dns_status::RAFT_STATE);
-            catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
+            state = status_word(dns_cfg, knytos_launch::dns_status::RAFT_STATE);
+            catalog = status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES);
             if catalog >= 1 || state == 3 {
                 break;
             }
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
-                let stage = status_word(dns_cfg, charlotte_launch::dns_status::STAGE);
+                let stage = status_word(dns_cfg, knytos_launch::dns_status::STAGE);
                 logln!(
                     "[dns] waiting for leader or replication: stage={stage} state={state} \
                      catalog={catalog}"
@@ -812,7 +812,7 @@ mod inner {
         // Wait for the catalog to contain the entry (replicated everywhere).
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         loop {
-            catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
+            catalog = status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES);
             if catalog >= 1 {
                 logln!("[dns] catalog converged: {catalog} name(s).");
                 break;
@@ -856,7 +856,7 @@ mod inner {
         }
         let is_leader = state == 3;
         let manifest = [crate::service::bootstrap::ManifestEntry {
-            key: charlotte_launch::echo_config::CLUSTER_NAME,
+            key: knytos_launch::echo_config::CLUSTER_NAME,
             flags: 0,
             value: crate::service::bootstrap::ManifestValue::Bytes(LONG_ECHO_NAME),
         }];
@@ -884,7 +884,7 @@ mod inner {
                 base
             };
             while unsafe {
-                crate::self_test::status_u32(echo_status, charlotte_launch::echo_status::STAGE)
+                crate::self_test::status_u32(echo_status, knytos_launch::echo_status::STAGE)
             } < 6
             {
                 deadline.assert_pending("EL0 dns new echo serving stage");
@@ -923,19 +923,19 @@ mod inner {
                 kernel_ns,
                 LONG_ECHO_NAME,
                 0,
-                charlotte_protocol_ns::Action::Observe,
+                knytos_protocol_ns::Action::Observe,
             )
             .expect("long publication observation");
             assert!(local_generation >= 1);
             assert_eq!(
-                call(kernel_ns, charlotte_protocol_ns::OP_PUBLICATION_GENERATION, ECHO_NAME),
+                call(kernel_ns, knytos_protocol_ns::OP_PUBLICATION_GENERATION, ECHO_NAME),
                 Some(-2),
                 "retired scalar observation must reject"
             );
             assert_eq!(
                 call_with_memory(
                     kernel_ns,
-                    charlotte_protocol_ns::OP_UNREGISTER_GENERATION,
+                    knytos_protocol_ns::OP_UNREGISTER_GENERATION,
                     ECHO_NAME,
                     &(local_generation as u64).to_le_bytes()
                 ),
@@ -947,7 +947,7 @@ mod inner {
                     kernel_ns,
                     LONG_ECHO_NAME,
                     local_generation as u64 + 1,
-                    charlotte_protocol_ns::Action::Retire
+                    knytos_protocol_ns::Action::Retire
                 ),
                 Some(-1),
                 "stale long-name retirement must leave publication intact"
@@ -957,7 +957,7 @@ mod inner {
                     kernel_ns,
                     LONG_ECHO_NAME,
                     0,
-                    charlotte_protocol_ns::Action::Observe
+                    knytos_protocol_ns::Action::Observe
                 ),
                 Some(local_generation)
             );
@@ -970,7 +970,7 @@ mod inner {
         // Wait for the catalog to carry both names.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         loop {
-            catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
+            catalog = status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES);
             if catalog >= 3 {
                 logln!("[dns] catalog carries {catalog} name(s); invoking echo.");
                 break;
@@ -990,7 +990,7 @@ mod inner {
             call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &retired),
             Some(DNS_ERR_TOO_LARGE)
         );
-        let mut trailing = charlotte_protocol_dns::encode(charlotte_protocol_dns::Request {
+        let mut trailing = knytos_protocol_dns::encode(knytos_protocol_dns::Request {
             name: b"echo",
             opcode: ECHO_OP_ECHO,
             arg: 42,
@@ -1041,21 +1041,21 @@ mod inner {
         let mut query_barrier = 0;
         if is_leader {
             let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS) < 2 {
+            while status_word(dns_cfg, knytos_launch::dns_status::REMOTE_CALL_ACKS) < 2 {
                 deadline.assert_pending("EL0 dns follower remote invocation");
                 yield_lp();
             }
             logln!("[dns] leader served the follower's remote invocation.");
             query_barrier =
-                status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_QUERY_REPLY_ACKS);
+                status_word(dns_cfg, knytos_launch::dns_status::REMOTE_QUERY_REPLY_ACKS);
 
             assert_eq!(
-                status_word(dns_cfg, charlotte_launch::dns_status::PUBLICATION_LIFECYCLE),
+                status_word(dns_cfg, knytos_launch::dns_status::PUBLICATION_LIFECYCLE),
                 1,
                 "[dns] local endpoint-close watch must be installed before teardown"
             );
             assert_eq!(
-                status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES),
+                status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES),
                 4,
                 "[dns] catalog must contain alpha, both echo names, and the membership event"
             );
@@ -1075,24 +1075,24 @@ mod inner {
         let mut unregister_spins = 0u64;
         // The membership event is cluster history and remains after the
         // hosted echo service is removed, alongside alpha.
-        while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) != 2 {
+        while status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES) != 2 {
             unregister_spins = unregister_spins.wrapping_add(1);
             if unregister_spins.is_multiple_of(2_000_000) {
                 let lifecycle =
-                    status_word(dns_cfg, charlotte_launch::dns_status::PUBLICATION_LIFECYCLE);
-                let raft_state = status_word(dns_cfg, charlotte_launch::dns_status::RAFT_STATE);
+                    status_word(dns_cfg, knytos_launch::dns_status::PUBLICATION_LIFECYCLE);
+                let raft_state = status_word(dns_cfg, knytos_launch::dns_status::RAFT_STATE);
                 logln!(
                     "[dns] waiting for endpoint tombstone: lifecycle={} raft-state={} catalog={}",
                     lifecycle,
                     raft_state,
-                    status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES)
+                    status_word(dns_cfg, knytos_launch::dns_status::CATALOG_ENTRIES)
                 );
             }
             deadline.assert_pending("EL0 dns generation-fenced unregister replication");
             yield_lp();
         }
         if is_leader {
-            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_QUERY_REPLY_ACKS)
+            while status_word(dns_cfg, knytos_launch::dns_status::REMOTE_QUERY_REPLY_ACKS)
                 <= query_barrier
             {
                 deadline.assert_pending("EL0 dns follower tombstone acknowledgement");

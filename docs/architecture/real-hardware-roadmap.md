@@ -1,6 +1,6 @@
 # Real-Hardware Roadmap
 
-> Goal context: take CharlotteOS / Catten from its emulated bring-up targets
+> Goal context: take Knytos / Catten from its emulated bring-up targets
 > (QEMU `virt` and QEMU `sbsa-ref`) to booting on real ARM server hardware.
 > `sbsa-ref` models ARM **SystemReady SR** (server-class) platforms — UEFI +
 > TF-A firmware, ACPI, GICv3 with an ITS, an SMMU, PCIe with NVMe — the same
@@ -62,7 +62,7 @@ still needs validation:
 The whole boot chain is forced to EL1 because QEMU TCG's EL2/VHE is
 unreliable; TF-A is patched to hand BL33 off at EL1
 (`patches/tf-a/0002-sbsa-bl33-entry-el1.patch`). Real SystemReady firmware
-enters the OS at EL2. CharlotteOS has no VHE or hypervisor mode — it descends
+enters the OS at EL2. Knytos has no VHE or hypervisor mode — it descends
 to EL1 and ignores EL2.
 
 **Impact**: cannot boot on real server firmware as-is; no virtualization or
@@ -121,7 +121,7 @@ Concrete uses, strongest first:
    table / minting authority lives at EL2, even a compromised EL1 kernel
    cannot forge or mint capabilities — it can only use what it was granted.
    This gives a *compromise-resistant microkernel*: the isolation already
-   granted to EL0 drivers is extended to the kernel itself. CharlotteOS'
+   granted to EL0 drivers is extended to the kernel itself. Knytos'
    capability abstraction already provides the right primitive; EL2 is where
    its root belongs. Design sketch: `docs/architecture/el2-capability-root.md`.
 2. **Stage-2 defense-in-depth for EL0 driver domains.** A second, unforgeable

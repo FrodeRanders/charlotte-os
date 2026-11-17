@@ -18,7 +18,7 @@ copies without erasure. The existing wire decoder already validated the whole
 record, including string constraints, before these copies; no late malformed
 UTF-8 allocation leak is claimed.
 
-`charlotte_s3::profile::OwnedProfile::decode` reuses that current decoder and
+`knytos_s3::profile::OwnedProfile::decode` reuses that current decoder and
 validates the typed fields before allocating. It reserves the complete frame,
 constructs `Zeroizing<Vec<u8>>` before copying, and retains one private immutable
 snapshot. `view()` reuses the same decoder to borrow typed fields without

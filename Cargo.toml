@@ -5,30 +5,30 @@ members = ["crates/*", "tools/cluster-sign", "tests/transport"]
 # every package, but do not include them in an unqualified root build.
 default-members = [
     "crates/catten",
-    "crates/catten-graft",
-    "crates/catten-rt",
-    "crates/charlotte-app",
-    "crates/charlotte-app-sitas",
-    "crates/charlotte-protocol-grant",
-    "crates/catten-syscall",
-    "crates/charlotte-authorization",
-    "crates/charlotte-kafka",
-    "crates/charlotte-kafka-step",
-    "crates/charlotte-launch",
-    "crates/charlotte-lifecycle",
-    "crates/charlotte-protocol-block",
-    "crates/charlotte-protocol-disco",
-    "crates/charlotte-protocol-dns",
-    "crates/charlotte-protocol-ns",
-    "crates/charlotte-protocol-fs",
-    "crates/charlotte-protocol-kafka",
-    "crates/charlotte-protocol-msg",
-    "crates/charlotte-protocol-net",
-    "crates/charlotte-protocol-objstore",
-    "crates/charlotte-protocol-s3",
-    "crates/charlotte-protocol-time",
-    "crates/charlotte-s3",
-    "crates/charlotte-smoltcp",
+    "crates/knytos-graft",
+    "crates/knytos-rt",
+    "crates/knytos-app",
+    "crates/knytos-app-sitas",
+    "crates/knytos-protocol-grant",
+    "crates/knytos-syscall",
+    "crates/knytos-authorization",
+    "crates/knytos-kafka",
+    "crates/knytos-kafka-step",
+    "crates/knytos-launch",
+    "crates/knytos-lifecycle",
+    "crates/knytos-protocol-block",
+    "crates/knytos-protocol-disco",
+    "crates/knytos-protocol-dns",
+    "crates/knytos-protocol-ns",
+    "crates/knytos-protocol-fs",
+    "crates/knytos-protocol-kafka",
+    "crates/knytos-protocol-msg",
+    "crates/knytos-protocol-net",
+    "crates/knytos-protocol-objstore",
+    "crates/knytos-protocol-s3",
+    "crates/knytos-protocol-time",
+    "crates/knytos-s3",
+    "crates/knytos-smoltcp",
 ]
 resolver = "3"
 
@@ -45,10 +45,10 @@ opt-level = 3
 [profile.dev.package.ed25519-compact]
 overflow-checks = false
 
-[profile.dev.package.catten-services]
+[profile.dev.package.knytos-services]
 opt-level = "s"
 
-[profile.dev.package.catten-user]
+[profile.dev.package.knytos-user]
 opt-level = "s"
 
 [profile.release]
@@ -58,8 +58,8 @@ panic = "abort"
 lto = true
 opt-level = 3
 
-[profile.release.package.catten-services]
+[profile.release.package.knytos-services]
 opt-level = "s"
 
-[profile.release.package.catten-user]
+[profile.release.package.knytos-user]
 opt-level = "s"

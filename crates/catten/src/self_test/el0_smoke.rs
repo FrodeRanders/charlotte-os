@@ -1,13 +1,13 @@
 //! Self-test: load a real x86_64 Rust ELF (the `smoke` service) into ring 3
-//! and verify it runs the full `catten-rt` startup path.
+//! and verify it runs the full `knytos-rt` startup path.
 //!
 //! Unlike the hand-written assembly stub in [`el0`](crate::self_test::el0),
 //! this test loads a Rust-compiled service image through the shared ELF
 //! [`loader`](crate::service::loader), so it exercises the same path the
 //! service supervisor uses on AArch64: signature verification, `PT_LOAD`
-//! segment mapping, runtime-page setup, and the `catten-rt` entry trampoline.
+//! segment mapping, runtime-page setup, and the `knytos-rt` entry trampoline.
 //!
-//! The image is the `smoke` service (`crates/catten-services/src/bin/smoke.rs`),
+//! The image is the `smoke` service (`crates/knytos-services/src/bin/smoke.rs`),
 //! which writes a sentinel to the status page, emits one kernel log line
 //! through the syscall ABI, and exits. The verifier polls the status page via
 //! its HHDM alias and reports success once the sentinel appears.
@@ -45,7 +45,7 @@ pub fn test_el0_smoke() {
     let status_ptr: *mut u8 = loaded.status_frame.into();
     loop {
         let sentinel = unsafe {
-            crate::self_test::status_u32(status_ptr, charlotte_launch::smoke_status::MARKER)
+            crate::self_test::status_u32(status_ptr, knytos_launch::smoke_status::MARKER)
         };
         if sentinel == SMOKE_SENTINEL {
             logln!("[el0 smoke] SUCCESS: x86_64 Rust ELF ran at ring 3 and wrote the sentinel.");

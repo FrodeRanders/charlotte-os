@@ -1,13 +1,13 @@
 # EL2 Capability Root — Design Sketch
 
-> A possible security design for CharlotteOS: root the OS's capability
+> A possible security design for Knytos: root the OS's capability
 > authority in the EL2 layer, so that even a compromised EL1 kernel cannot
 > forge, mint, or escalate capabilities. Companion to
 > [Real-hardware roadmap](real-hardware-roadmap.md) (Phase 1 / "Why EL2").
 
 ## Goal
 
-CharlotteOS is a capability OS: every authority (memory objects, connections,
+Knytos is a capability OS: every authority (memory objects, connections,
 device MMIO, interrupts, DMA domains, name-service bindings) is a capability,
 and authority flows only by delegation. Today the capability table lives in
 the EL1 kernel. If the kernel is compromised, the whole authority model is
@@ -39,7 +39,7 @@ mint new ones.
 
 ### The interface (capability operations become EL2 calls)
 
-Because CharlotteOS already funnels authority through a small set of
+Because Knytos already funnels authority through a small set of
 operations, the EL2 interface stays tiny:
 
 - `cap_mint(parent, rights) -> cap` — create a child capability with a subset
@@ -66,7 +66,7 @@ granted subset, performs the actual MMU/GIC/device operations), but every
 operation that *changes* the authority set crosses to EL2. This preserves the
 existing architecture and syscall ABI; only the authority layer moves.
 
-## Why this fits CharlotteOS well
+## Why this fits Knytos well
 
 - The capability model already has the right abstraction — this is not a new
   security mechanism, it's relocating its root.

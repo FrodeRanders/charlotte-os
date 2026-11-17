@@ -57,7 +57,7 @@ retained claims keep their separate limits.
 
 ## Validation and reproducible evidence
 
-Both complete signed service bundles were built before guest execution using `scripts/build-catten-services.sh --embed` and `scripts/build-catten-services-x86_64.sh`. All four guest runs exit 0:
+Both complete signed service bundles were built before guest execution using `scripts/build-knytos-services.sh --embed` and `scripts/build-knytos-services-x86_64.sh`. All four guest runs exit 0:
 
 | Configuration | Passed / failed / pending | Passed bitmap | Guest completion |
 | --- | --- | --- | --- |

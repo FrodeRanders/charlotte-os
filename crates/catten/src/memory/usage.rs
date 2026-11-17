@@ -50,7 +50,7 @@ pub struct DomainUsageSnapshot {
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct DomainUsage {
     snapshot: DomainUsageSnapshot,
-    /// Physical frame of the domain's mutable status page, where `catten-rt`
+    /// Physical frame of the domain's mutable status page, where `knytos-rt`
     /// publishes standard heap accounting.
     status_frame: Option<PAddr>,
     /// Heap capacity chosen at load; faults beyond it are domain errors.
@@ -188,10 +188,10 @@ fn read_heap_status(handle: AddressSpaceHandle) -> Option<HeapStatus> {
         usage.status_frame?
     };
     let space = spaces.get_mut(handle.id()).ok()?;
-    if space.translate_address(charlotte_launch::STATUS_VADDR.into()).ok()? != frame {
+    if space.translate_address(knytos_launch::STATUS_VADDR.into()).ok()? != frame {
         return None;
     }
-    use charlotte_launch::heap_status;
+    use knytos_launch::heap_status;
     let base: *const u8 = frame.into();
     let read = |offset: usize| unsafe { (base.add(offset) as *const u64).read_volatile() };
     if read(heap_status::MAGIC_OFFSET) != heap_status::MAGIC
@@ -303,7 +303,7 @@ pub(crate) fn principal_stack_high_water(principal: u64) -> u64 {
 
 /// Kernel evidence only; this is not an external observability ABI.
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(crate) fn principal_backing_used(principal: u64) -> charlotte_lifecycle::resources::Amount {
+pub(crate) fn principal_backing_used(principal: u64) -> knytos_lifecycle::resources::Amount {
     principal_history::backing_used(principal)
 }
 

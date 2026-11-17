@@ -1,12 +1,12 @@
-# CharlotteOS, Sitas, and Xous: A Co-Designed Architecture for Isolated Asynchronous Services
+# Knytos, Sitas, and Xous: A Co-Designed Architecture for Isolated Asynchronous Services
 
 > **Status:** Architecture and implementation redirection note\
-> **Audience:** CharlotteOS and Sitas contributors; intended as direct
+> **Audience:** Knytos and Sitas contributors; intended as direct
 > input to Codex\
-> **Purpose:** Replace the earlier *Sitas on CharlotteOS* working draft
+> **Purpose:** Replace the earlier *Sitas on Knytos* working draft
 > with a unified model that combines:
 >
-> -   **CharlotteOS** as the protection, scheduling, interrupt, memory,
+> -   **Knytos** as the protection, scheduling, interrupt, memory,
 >     and completion substrate;
 > -   **Sitas** as the shard-per-core userspace execution and ownership
 >     model;
@@ -75,18 +75,18 @@ is in the repository history and earlier revisions of this document.
   cleanup/IRQ contexts; current family quotas are not a complete resource ledger.
 
 All code from Phases 1–8 and 10–11 is committed and boot-validated in
-CharlotteOS. Sitas integration changes are maintained in the companion Sitas
+Knytos. Sitas integration changes are maintained in the companion Sitas
 repository; repository history is the authority for what has been pushed.
 
 ## 1. Executive conclusion
 
-CharlotteOS, Sitas, and Xous fit together, but not by collapsing their
+Knytos, Sitas, and Xous fit together, but not by collapsing their
 abstractions into one universal "async handle."
 
 The coherent architecture is:
 
 ``` text
-CharlotteOS kernel
+Knytos kernel
     protection domains
     threads and LP scheduling
     capabilities and endpoint connections
@@ -115,7 +115,7 @@ The most important redirection is:
 > **Do not model all inter-process activity as asynchronous syscalls
 > returning completion capabilities.**
 
-Instead, CharlotteOS should provide **two complementary kernel
+Instead, Knytos should provide **two complementary kernel
 mechanisms**:
 
 1.  **Xous-inspired endpoint IPC** for communication across protection
@@ -165,7 +165,7 @@ Before discussing IPC, drivers, scheduling, or asynchronous execution,
 the architecture should be understood in terms of three orthogonal
 kernel abstractions.
 
-These are the conceptual foundation of CharlotteOS.
+These are the conceptual foundation of Knytos.
 
 ``` text
                  Kernel Objects
@@ -302,9 +302,9 @@ This gives the architecture an explicit design rule:
 The three systems approach the same design space from different
 directions.
 
-### 2.1 CharlotteOS
+### 2.1 Knytos
 
-CharlotteOS contributes the mechanisms that must be privileged:
+Knytos contributes the mechanisms that must be privileged:
 
 -   address-space isolation;
 -   kernel scheduling;
@@ -316,7 +316,7 @@ CharlotteOS contributes the mechanisms that must be privileged:
 -   syscall dispatch;
 -   asynchronous completion delivery.
 
-The CharlotteOS fork already contains substantial experimental work in
+The Knytos fork already contains substantial experimental work in
 this direction, including completion capabilities, a shared
 completion-queue ring, real AArch64 EL0/SVC execution, bounded IPI
 queues, typed kernel mailboxes, `ShardLocal<T>`, and a no-std Sitas
@@ -330,7 +330,7 @@ Sitas contributes an execution discipline:
 > interaction occurs through bounded typed messages carrying owned
 > values.
 
-Its main value for CharlotteOS is:
+Its main value for Knytos is:
 
 -   one executor per shard;
 -   cooperative task scheduling;
@@ -365,7 +365,7 @@ Its most valuable ideas are:
     opaque server identities;
 -   drivers and system services can live outside the kernel.
 
-CharlotteOS currently has strong completion machinery and an emerging
+Knytos currently has strong completion machinery and an emerging
 mailbox model. The endpoint IPC model (Phase 2) has since replaced
     mailboxes, providing a sufficiently explicit, durable
 **userspace server and memory-message IPC architecture**. That is the
@@ -406,7 +406,7 @@ It may have:
 
 ### 3.3 Logical processor
 
-An **LP** is CharlotteOS' representation of a schedulable hardware
+An **LP** is Knytos' representation of a schedulable hardware
 execution context.
 
 An LP is not a Sitas shard. A useful initial mapping is:
@@ -572,7 +572,7 @@ event arrives
     → wake relevant futures
 ```
 
-CharlotteOS' advantage is not "threads never park." Its advantage is:
+Knytos' advantage is not "threads never park." Its advantage is:
 
 > The shard parks directly on native completion and message state; no
 > helper-thread pool is required merely to convert blocking kernel
@@ -616,10 +616,10 @@ required.
 
 ## 5. Two kernel data paths
 
-The earlier CharlotteOS/Sitas draft leaned toward a universal
+The earlier Knytos/Sitas draft leaned toward a universal
 completion-capability model. Xous shows why that is insufficient.
 
-CharlotteOS needs two distinct paths.
+Knytos needs two distinct paths.
 
 ## 5.1 Endpoint IPC path
 
@@ -690,11 +690,11 @@ are not the same kernel abstraction.
 
 ------------------------------------------------------------------------
 
-## 6. Xous-inspired IPC for CharlotteOS
+## 6. Xous-inspired IPC for Knytos
 
 ## 6.1 Server and connection model
 
-CharlotteOS should add kernel objects analogous to Xous servers and
+Knytos should add kernel objects analogous to Xous servers and
 connections, but use capability terminology explicitly.
 
 Proposed conceptual API:
@@ -745,7 +745,7 @@ from the capability.
 
 ## 6.3 Message classes
 
-CharlotteOS should support at least:
+Knytos should support at least:
 
 ``` rust
 enum MessageKind {
@@ -782,7 +782,7 @@ Suitable for:
 
 ## 6.4 Memory transfer modes
 
-Adopt the strongest Xous idea and generalize it around CharlotteOS
+Adopt the strongest Xous idea and generalize it around Knytos
 memory objects:
 
 ``` rust
@@ -904,7 +904,7 @@ These are independent concerns and should evolve independently.
 
 ## 6A.1 First-class memory objects
 
-CharlotteOS should introduce a dedicated kernel object representing
+Knytos should introduce a dedicated kernel object representing
 page-backed memory with explicit ownership and capability semantics.
 
 The kernel manages:
@@ -973,7 +973,7 @@ DMA introduces a third ownership dimension:
 -   Rust/API ownership.
 
 On AArch64 systems exposing a coherent SMMUv3 through ACPI IORT,
-CharlotteOS extends capability enforcement to DMA transactions. A
+Knytos extends capability enforcement to DMA transactions. A
 `DmaDomain` capability binds one PCI requester stream to a private
 kernel-owned translation context. Mapping a memory object pins its frames
 and returns an IOVA; unmapping synchronously invalidates the IOTLB before
@@ -992,7 +992,7 @@ applications of the same primitives.
 ## 7. Request/reply and asynchronous service calls
 
 Xous is commonly synchronous at the client API even though communication
-is message based. CharlotteOS and Sitas should retain both
+is message based. Knytos and Sitas should retain both
 synchronous-looking futures and true asynchronous service execution.
 
 ## 7.1 Client call
@@ -1064,7 +1064,7 @@ The service's mutable state remains shard-owned.
 Do not copy a simplistic "one process, one blocking receive loop"
 structure from Xous.
 
-A CharlotteOS service process may own:
+A Knytos service process may own:
 
 -   several endpoints;
 -   several receiving tasks;
@@ -1212,7 +1212,7 @@ Within one protection domain, use Sitas typed mailboxes where practical:
 
 ``` text
 external cross-process boundary:
-    CharlotteOS endpoint IPC
+    Knytos endpoint IPC
 
 internal cross-shard boundary:
     Sitas typed owned messages
@@ -1265,7 +1265,7 @@ Implementation rules:
 
 ## 10. Userspace drivers
 
-Xous's userspace-driver orientation should become a central CharlotteOS
+Xous's userspace-driver orientation should become a central Knytos
 direction.
 
 ## 10.1 Driver process authority
@@ -1610,7 +1610,7 @@ continue.
 -   non-lossy kernel CQ backlog;
 -   `CQ_WAIT_CHECKED` blocking through scheduler/observer machinery;
 -   bounded queues and explicit `WouldBlock`;
--   no-std Sitas split and CharlotteOS backend;
+-   no-std Sitas split and Knytos backend;
 -   per-shard executor model;
 -   typed in-kernel `ShardMailbox<M>`;
 -   closure-based `ShardLocal<T>` with restricted use;
@@ -1788,7 +1788,7 @@ manifest values through `Context`; raw offsets are not the intended application 
 
 ### Remaining work
 
-Launch ABI 2.2 uses the shared no-std `charlotte-launch` crate. This launch-page
+Launch ABI 2.2 uses the shared no-std `knytos-launch` crate. This launch-page
 version is separate from runtime syscall ABI 3. It declares
 heap, input, and default-CQ layouts and carries a bounded typed initial
 capability vector. Both the kernel and crt0 consume the same fixed-width
@@ -1974,7 +1974,7 @@ Migrate `sitas-charlotte` to `CQ_WAIT_CHECKED` and remove busy polling.
 
 ## Phase 7 --- [done] Sitas endpoint backend
 
-Add a CharlotteOS userspace runtime layer with two event sources unified
+Add a Knytos userspace runtime layer with two event sources unified
 at the executor boundary:
 
 -   CQ completions;
@@ -2156,7 +2156,7 @@ For each phase, append:
 
 ## 19. Suggested repository-level changes
 
-## 19.1 CharlotteOS
+## 19.1 Knytos
 
 Current module boundary (the implementation is kept in one file until the
 rights and object variants justify further splitting):
@@ -2218,7 +2218,7 @@ sitas-charlotte
     protocol bindings
 ```
 
-The CharlotteOS backend should not emulate Unix `RawFd` readiness. It
+The Knytos backend should not emulate Unix `RawFd` readiness. It
 should implement native CQ and endpoint event handling.
 
 ## 19.3 Protocol crates
@@ -2229,7 +2229,7 @@ Create small versioned protocol crates:
 charlotte-protocol-log
 charlotte-protocol-console
 charlotte-protocol-device-manager
-charlotte-protocol-network
+knytos-protocol-network
 ```
 
 Each crate defines:
@@ -2387,8 +2387,8 @@ Current status:
 
 Primary project references:
 
--   CharlotteOS fork: <https://github.com/FrodeRanders/charlotte-os>
--   Upstream CharlotteOS: <https://github.com/charlotte-os/charlotte-os>
+-   Knytos fork: <https://github.com/FrodeRanders/charlotte-os>
+-   Upstream Knytos: <https://github.com/charlotte-os/charlotte-os>
 -   Sitas: <https://github.com/FrodeRanders/sitas>
 -   Xous core: <https://github.com/betrusted-io/xous-core>
 -   Xous kernel documentation: <https://xous.dev/kernel/>
@@ -2433,7 +2433,7 @@ Xous ideas:
     how server IPC works
     how memory crosses protection boundaries
 
-CharlotteOS:
+Knytos:
     how authority and isolation are enforced
     how hardware and operations complete
     how threads wait and wake

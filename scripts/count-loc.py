@@ -48,11 +48,11 @@ def component(path):
         return "Kernel demonstrations"
     if path.startswith("crates/catten/"):
         return "Kernel"
-    if path.startswith("crates/catten-user/") or path.startswith(
-        "crates/catten-services/examples/"
+    if path.startswith("crates/knytos-user/") or path.startswith(
+        "crates/knytos-services/examples/"
     ):
         return "Userspace demonstrations"
-    if path.startswith("crates/catten-services/src/bin/"):
+    if path.startswith("crates/knytos-services/src/bin/"):
         name = Path(parts[4]).stem
         if name in DEMOS:
             return "Userspace demonstrations"
@@ -70,8 +70,8 @@ def dedicated_test(path):
     p = Path(path)
     return (
         component(path) == "Userspace test applications"
-        or path in {"crates/catten-services/src/bin/raft.rs",
-                    "crates/catten-services/src/bin/servicemgr.rs"}
+        or path in {"crates/knytos-services/src/bin/raft.rs",
+                    "crates/knytos-services/src/bin/servicemgr.rs"}
         or path in VALIDATION_FILES
         or any(part in {"tests", "self_test", "test_data", "test_support", "fixtures"}
                or part.endswith("_tests") for part in p.parts)
@@ -197,7 +197,7 @@ def test_counts(files):
     counts = {path: values["code"] if dedicated_test(path) else 0
               for path, values in files.items()}
     pairs = {}
-    with tempfile.TemporaryDirectory(prefix="charlotte-loc-") as directory:
+    with tempfile.TemporaryDirectory(prefix="knytos-loc-") as directory:
         for index, (path, values) in enumerate(files.items()):
             if values["language"] != "Rust" or dedicated_test(path):
                 continue
@@ -260,7 +260,7 @@ def main():
     testing = sum(row[2] for row in groups.values())
     rust_testing = sum(tests[path] for path, row in files.items() if row["language"] == "Rust")
     assert total == source["SUM"]["code"]
-    lines = ["CharlotteOS maintained repository counts", "Generated with cloc " + str(source["header"]["cloc_version"]),
+    lines = ["Knytos maintained repository counts", "Generated with cloc " + str(source["header"]["cloc_version"]),
              "", "Scope: Git-tracked working-tree files, including current local edits.",
              "Excluded: ignored/untracked files, downloaded/build dependencies, bundled",
              "limine-binary/, dependency lockfiles and this report. Standard cloc duplicate",
@@ -280,11 +280,11 @@ def main():
                   "- Kernel includes native self-tests and adjacent subsystem fixtures; kernel",
                   "  demonstrations are listed separately. 'Other code' approximates kernel",
                   "  proper but still includes unclassified diagnostic/fixture scaffolding.",
-                  "- Userspace demonstrations: catten-user, catten-services/examples, echo, greet.",
+                  "- Userspace demonstrations: knytos-user, knytos-services/examples, echo, greet.",
                   textwrap.fill("- Userspace test applications: " + ", ".join(sorted(PROBES)) + ".",
                                 width=79, subsequent_indent="  "),
-                  "- Runtime service binaries are separate from the shared catten-services SDK,",
-                  "  catten-rt/syscall, protocol, connector, crypto and Raft libraries.",
+                  "- Runtime service binaries are separate from the shared knytos-services SDK,",
+                  "  knytos-rt/syscall, protocol, connector, crypto and Raft libraries.",
                   "  Standalone raft/servicemgr fixture servers remain in the services category",
                   "  with their code counted as test-related; production DNS owns durable Raft.",
                   "- Dedicated tests/self_test/*_tests/fixtures paths, test/check/verify and",

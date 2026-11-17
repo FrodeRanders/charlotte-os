@@ -20,7 +20,7 @@ and any production target migration are unqualified by this investigation.
 | Service x86 target SHA-256 | `2b0725bd2ac5562f68b110a420e5f780df3e3f5f407abecb02ea7f86b82f7a59` |
 | Kernel x86 target SHA-256 | `201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f` |
 
-The service target is `crates/catten-services/x86_64-unknown-none.json`;
+The service target is `../../../crates/knytos-services`;
 the independent kernel target is `target_specs/x86_64-unknown-none-catten.json`.
 Both specify `rustc-abi: softfloat` and disable baseline SIMD while enabling
 `+soft-float`. The AArch64 service target has a different ABI/feature selection.
@@ -53,7 +53,7 @@ implications also enable SSE, explaining the common diagnostic text.
 
 AES is both a direct service/management-TLS dependency and the backend of
 AES-GCM 0.10.3. ChaCha20 0.10.2 enters through
-`charlotte-launch -> hpke 0.14.0 -> chacha20poly1305 0.11.0`.
+`knytos-launch -> hpke 0.14.0 -> chacha20poly1305 0.11.0`.
 `core v0.0.0` is Rust's own library rebuilt for the custom target by
 `-Z build-std`; its source path names the host toolchain installation, not the
 guest architecture. The report is retained in the shared service target

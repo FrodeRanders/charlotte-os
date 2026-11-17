@@ -36,11 +36,11 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/dns.rs": "96b8c619f006188e9055b9397612a35fdb199af3fa31921017511f6571003548",
-    "crates/catten-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
-    "crates/catten-services/src/deployment_control.rs": "cb7e5f37b7628cb9d43499af07988682c1cf6b618e2d9ffdc30199a7e6dd5752",
-    "crates/catten-services/src/name_catalog.rs": "6e62f3302a9d27d5a611f0a596aba2d59ec3bfec202209e86db4d3a490f3e571",
-    "crates/catten-services/src/name_catalog/tests.rs": "6de808e3ea5ffd5f6fe17b7aa2f2144ce7756454f758c2964e8417a88650dce6",
+    "crates/knytos-services/src/bin/dns.rs": "96b8c619f006188e9055b9397612a35fdb199af3fa31921017511f6571003548",
+    "crates/knytos-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
+    "crates/knytos-services/src/deployment_control.rs": "cb7e5f37b7628cb9d43499af07988682c1cf6b618e2d9ffdc30199a7e6dd5752",
+    "crates/knytos-services/src/name_catalog.rs": "6e62f3302a9d27d5a611f0a596aba2d59ec3bfec202209e86db4d3a490f3e571",
+    "crates/knytos-services/src/name_catalog/tests.rs": "6de808e3ea5ffd5f6fe17b7aa2f2144ce7756454f758c2964e8417a88650dce6",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "8afc5a9c380999e754317635e1419dd34445084a340865dcb7bbba32efd9d6cd",
     "docs/reference/cleanup-recovery.md": "4cdc543c4079d1906bd88a5f3566902eae7107f6b6c785fe67f519abe0be02b7",
     "docs/reference/deployment-ingress.md": "dfb3404ae662bdbea8bdc961e7940d951635144bd1ffaacde179da944f553313",
@@ -808,7 +808,7 @@
     },
     "bundle_check": {
       "exit_status": 0,
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "capture": {
         "sha256": "467c6cb0a993aedd3e5b783b19b90b16ec3ed7b4378430193de265628b741b0b",
         "selected": [

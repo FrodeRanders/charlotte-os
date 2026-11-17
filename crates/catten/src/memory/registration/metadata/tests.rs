@@ -137,8 +137,8 @@ fn rejection() {
 fn authority_generation_reuse() {
     let first = register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
     assert_eq!(domain_authority(first.id()), None);
-    let principal = charlotte_launch::artifact_principal_id(b"authority-slot-control");
-    let roles = catten_syscall::domain_roles::SERVICE_MANAGER;
+    let principal = knytos_launch::artifact_principal_id(b"authority-slot-control");
+    let roles = knytos_syscall::domain_roles::SERVICE_MANAGER;
     let descriptor = b"authority-slot descriptor binding control";
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -150,7 +150,7 @@ fn authority_generation_reuse() {
         assert_eq!(authority.roles, roles);
         assert_eq!(
             authority.launch_descriptor_digest,
-            Some(charlotte_launch::sha256::digest(descriptor))
+            Some(knytos_launch::sha256::digest(descriptor))
         );
     }
     {

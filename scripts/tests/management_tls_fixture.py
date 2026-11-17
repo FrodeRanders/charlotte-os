@@ -14,7 +14,7 @@ import tempfile
 
 @functools.cache
 def configure_client():
-    owner = tempfile.TemporaryDirectory(prefix="charlotte-management-http-")
+    owner = tempfile.TemporaryDirectory(prefix="knytos-management-http-")
     atexit.register(owner.cleanup)
     directory = Path(owner.name)
     spec = importlib.util.spec_from_file_location(

@@ -1,7 +1,7 @@
 //! Hardware-table admission follows its owning unit/domain, never a reused ID.
 //! Published backing is released only by an explicit quiescent backend boundary.
 mod ledger;
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     Amount,
     Budget,
 };

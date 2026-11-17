@@ -115,7 +115,7 @@ fn rejected_preparation_consumes_identity() {
 }
 
 pub(super) fn run() {
-    assert_eq!(LAST_OPERATION_ID + 1, catten_syscall::COMPLETION_SUBMIT_FAILED);
+    assert_eq!(LAST_OPERATION_ID + 1, knytos_syscall::COMPLETION_SUBMIT_FAILED);
     boundary_and_replacement();
     rejected_preparation_consumes_identity();
     crate::logln!("Operation-ID exhaustion controls passed (isolated counters).");

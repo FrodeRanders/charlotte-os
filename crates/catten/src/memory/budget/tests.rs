@@ -40,7 +40,7 @@ fn generation_lifetime() {
     let baseline = node_snapshot();
     let metadata_baseline = admission::snapshot();
     let node_bytes = account_node_bytes();
-    let principal = charlotte_launch::artifact_principal_id(b"root-ledger-principal");
+    let principal = knytos_launch::artifact_principal_id(b"root-ledger-principal");
     let root = memory::AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),

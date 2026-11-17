@@ -1,7 +1,7 @@
 //! Record sponsorship survives delegation and namespace retirement. Dimensions
 //! are connection capabilities, retained calls, and outstanding reply tokens.
 
-use charlotte_lifecycle::resources::VectorBudget;
+use knytos_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;

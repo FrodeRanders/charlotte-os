@@ -33,10 +33,10 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/clusterctl.rs": "3ef6021f7697373f0bcbce37b170a3e0d8fbc8643b4a6c8f5c68103cd7c7011d",
-    "crates/catten-services/src/bin/security_probe.rs": "8e0ebe784e4a4e5ee5b595cffdad20f8229d5a4089054a2e0521d5a1f6f7d181",
-    "crates/catten-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
-    "crates/catten-services/src/lib.rs": "52213abd8c4972f029a75eff881f2c60df233837273aa8527281477d4bf1e511",
+    "crates/knytos-services/src/bin/clusterctl.rs": "3ef6021f7697373f0bcbce37b170a3e0d8fbc8643b4a6c8f5c68103cd7c7011d",
+    "crates/knytos-services/src/bin/security_probe.rs": "8e0ebe784e4a4e5ee5b595cffdad20f8229d5a4089054a2e0521d5a1f6f7d181",
+    "crates/knytos-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
+    "crates/knytos-services/src/lib.rs": "52213abd8c4972f029a75eff881f2c60df233837273aa8527281477d4bf1e511",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "d5649e61eb0e7d5d82dd3664247fd828d7039d999beb4e3e79a78302771d05bb",
     "docs/manual-v2/chapters/21-formal-safeguards.tex": "589dc5ade038783dfa2144d05d6fc134b5cde94c6b402b5e876ae2efa0ad878a",
     "docs/reference/api-simplification.md": "a549929432a18144688d8f825b2a2794515dbbc4ab63065227f64a6850bb1d14",
@@ -57,10 +57,10 @@
     "docs/tla/check.sh": "9015e802813ca02f089d04bd16ece3fd24db52b8f50621f08b5d1d936498aa45"
   },
   "initial_adapter_source_sha256": {
-    "crates/catten-services/src/bin/clusterctl.rs": "c30841cb34203106924b82c0431e925b791aa42507742f6ea61aa00d7a806f8c",
-    "crates/catten-services/src/bin/security_probe.rs": "e93856c42162c6faca6f8c0b7e413f7052184046f93a2ab8e4cc451e41c144d9",
-    "crates/catten-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
-    "crates/catten-services/src/lib.rs": "52213abd8c4972f029a75eff881f2c60df233837273aa8527281477d4bf1e511"
+    "crates/knytos-services/src/bin/clusterctl.rs": "c30841cb34203106924b82c0431e925b791aa42507742f6ea61aa00d7a806f8c",
+    "crates/knytos-services/src/bin/security_probe.rs": "e93856c42162c6faca6f8c0b7e413f7052184046f93a2ab8e4cc451e41c144d9",
+    "crates/knytos-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
+    "crates/knytos-services/src/lib.rs": "52213abd8c4972f029a75eff881f2c60df233837273aa8527281477d4bf1e511"
   },
   "native_runs": [
     {
@@ -621,7 +621,7 @@
     }
   },
   "host": {
-    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib",
+    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib",
     "passed": 223,
     "failed": 0,
     "new_relay_tests": 9,

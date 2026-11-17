@@ -33,8 +33,8 @@ const FENCER_PRODUCER_NAME: &[u8] = b"kafka/selftest/fencer/producer";
 const FENCER_CONSUMER_NAME: &[u8] = b"kafka/selftest/fencer/consumer";
 #[cfg(feature = "kafka_fencing_test")]
 const FENCER_TRANSACTION_NAME: &[u8] = b"kafka/selftest/fencer/transactional";
-const GROUP_ID: &[u8] = b"charlotte-qemu-smoke-group";
-const TRANSACTIONAL_ID: &[u8] = b"charlotte-qemu-smoke-transaction-0";
+const GROUP_ID: &[u8] = b"knytos-qemu-smoke-group";
+const TRANSACTIONAL_ID: &[u8] = b"knytos-qemu-smoke-transaction-0";
 
 pub fn test_el0_kafka() {
     logln!("Testing EL0 Kafka idempotent and transactional data plane...");
@@ -59,15 +59,15 @@ extern "C" fn verify_el0_kafka() {
             authority_endpoints: &[
                 KafkaAuthorityEndpoint {
                     service_name: PRODUCER_NAME,
-                    rights: charlotte_protocol_kafka::RIGHT_PRODUCE,
+                    rights: knytos_protocol_kafka::RIGHT_PRODUCE,
                 },
                 KafkaAuthorityEndpoint {
                     service_name: CONSUMER_NAME,
-                    rights: charlotte_protocol_kafka::RIGHT_CONSUME,
+                    rights: knytos_protocol_kafka::RIGHT_CONSUME,
                 },
                 KafkaAuthorityEndpoint {
                     service_name: TRANSACTION_NAME,
-                    rights: charlotte_protocol_kafka::ALL_RIGHTS,
+                    rights: knytos_protocol_kafka::ALL_RIGHTS,
                 },
             ],
             endpoint_ipv4: [10, 0, 2, 2],
@@ -87,22 +87,22 @@ extern "C" fn verify_el0_kafka() {
             ],
             tls: true,
             ca_certificate_der: Some(ca_der),
-            topic: b"charlotte-events",
+            topic: b"knytos-events",
             partition: 0,
             produce_routes: &[KafkaProduceRoute {
-                topic: b"charlotte-results",
+                topic: b"knytos-results",
                 partition: 0,
             }],
             max_produce_routes: 64,
             group: GROUP_ID,
             transactional_id: TRANSACTIONAL_ID,
             authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
-                username: b"charlotte",
-                password: b"charlotte-kafka-test",
+                username: b"knytos",
+                password: b"knytos-kafka-test",
                 certificate_der: client_certificate_der,
                 private_key_der: client_private_key_der,
             },
-            rights: charlotte_protocol_kafka::ALL_RIGHTS,
+            rights: knytos_protocol_kafka::ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         },
     );
@@ -115,10 +115,10 @@ extern "C" fn verify_el0_kafka() {
     let readiness_deadline = crate::self_test::results::Deadline::after_millis(180_000);
     loop {
         let stage = unsafe {
-            crate::self_test::status_u32(service_status, charlotte_launch::kafka_status::STAGE)
+            crate::self_test::status_u32(service_status, knytos_launch::kafka_status::STAGE)
         };
         let error = unsafe {
-            crate::self_test::status_u32(service_status, charlotte_launch::kafka_status::ERROR)
+            crate::self_test::status_u32(service_status, knytos_launch::kafka_status::ERROR)
         };
         if error != 0 {
             logln!("[kafka-test] FAILURE: Kafka service startup error={:#x}", error);
@@ -166,17 +166,17 @@ extern "C" fn verify_el0_kafka() {
     let deadline = crate::self_test::results::Deadline::after_millis(240_000);
     let output_offset = loop {
         let stage = unsafe {
-            crate::self_test::status_u32(status, charlotte_launch::kafka_smoke_status::STAGE)
+            crate::self_test::status_u32(status, knytos_launch::kafka_smoke_status::STAGE)
         };
         let error = unsafe {
-            crate::self_test::status_u32(status, charlotte_launch::kafka_smoke_status::ERROR)
+            crate::self_test::status_u32(status, knytos_launch::kafka_smoke_status::ERROR)
         };
         let service_error = unsafe {
-            crate::self_test::status_u32(service_status, charlotte_launch::kafka_status::ERROR)
+            crate::self_test::status_u32(service_status, knytos_launch::kafka_status::ERROR)
         };
-        if stage == charlotte_launch::kafka_smoke_status::SUCCESS {
+        if stage == knytos_launch::kafka_smoke_status::SUCCESS {
             let offset = unsafe {
-                crate::self_test::status_u32(status, charlotte_launch::kafka_smoke_status::OFFSET)
+                crate::self_test::status_u32(status, knytos_launch::kafka_smoke_status::OFFSET)
             };
             logln!(
                 "[kafka-test] low-level transaction committed at output offset {}; starting \
@@ -229,15 +229,15 @@ extern "C" fn verify_el0_kafka() {
     };
     loop {
         let stage = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::STAGE)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::STAGE)
         };
         let error = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::ERROR)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::ERROR)
         };
         let procedure_error = unsafe {
             crate::self_test::status_u32(
                 procedure_status,
-                charlotte_launch::kafka_step_procedure_status::ERROR,
+                knytos_launch::kafka_step_procedure_status::ERROR,
             )
         };
         if error != 0 || procedure_error != 0 {
@@ -270,86 +270,86 @@ extern "C" fn verify_el0_kafka() {
         let input_stage = unsafe {
             crate::self_test::status_u32(
                 input_status,
-                charlotte_launch::kafka_step_input_status::STAGE,
+                knytos_launch::kafka_step_input_status::STAGE,
             )
         };
         let input_error = unsafe {
             crate::self_test::status_u32(
                 input_status,
-                charlotte_launch::kafka_step_input_status::ERROR,
+                knytos_launch::kafka_step_input_status::ERROR,
             )
         };
         let step_error = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::ERROR)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::ERROR)
         };
         let commits = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::COMMITS)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::COMMITS)
         };
         let produced = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::PRODUCED)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::PRODUCED)
         };
         let retries = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::RETRIES)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::RETRIES)
         };
         let dlq = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::DLQ)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::DLQ)
         };
         let timeouts = unsafe {
-            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::TIMEOUTS)
+            crate::self_test::status_u32(step_status, knytos_launch::kafka_step_status::TIMEOUTS)
         };
         let group_generation = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::GROUP_GENERATION,
+                knytos_launch::kafka_status::GROUP_GENERATION,
             )
         };
         let group_heartbeats = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::GROUP_HEARTBEATS,
+                knytos_launch::kafka_status::GROUP_HEARTBEATS,
             )
         };
         let metadata_refreshes = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::METADATA_REFRESHES,
+                knytos_launch::kafka_status::METADATA_REFRESHES,
             )
         };
         let retry_attempts = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::RETRY_ATTEMPTS,
+                knytos_launch::kafka_status::RETRY_ATTEMPTS,
             )
         };
         let coordinator_refreshes = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::COORDINATOR_REFRESHES,
+                knytos_launch::kafka_status::COORDINATOR_REFRESHES,
             )
         };
         let terminal_errors = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::TERMINAL_ERRORS,
+                knytos_launch::kafka_status::TERMINAL_ERRORS,
             )
         };
         let route_count = unsafe {
             crate::self_test::status_u32(
                 service_status,
-                charlotte_launch::kafka_status::ROUTE_COUNT,
+                knytos_launch::kafka_status::ROUTE_COUNT,
             )
         };
         let output_route_produced = unsafe {
             crate::self_test::status_i64(
                 service_status,
-                charlotte_launch::kafka_status::ROUTE_PRODUCED_BASE
-                    + charlotte_launch::kafka_status::ROUTE_PRODUCED_STRIDE,
+                knytos_launch::kafka_status::ROUTE_PRODUCED_BASE
+                    + knytos_launch::kafka_status::ROUTE_PRODUCED_STRIDE,
             )
         };
         let consumer_lag = unsafe {
             crate::self_test::status_i64(
                 service_status,
-                charlotte_launch::kafka_status::CONSUMER_LAG,
+                knytos_launch::kafka_status::CONSUMER_LAG,
             )
         };
         if input_error != 0 || step_error != 0 {
@@ -366,7 +366,7 @@ extern "C" fn verify_el0_kafka() {
         } else {
             metadata_refreshes >= 2
         };
-        if input_stage == charlotte_launch::kafka_step_input_status::SUCCESS
+        if input_stage == knytos_launch::kafka_step_input_status::SUCCESS
             && commits >= 4
             && produced >= 4
             && retries >= 2
@@ -426,15 +426,15 @@ fn verify_producer_fencing(
             authority_endpoints: &[
                 KafkaAuthorityEndpoint {
                     service_name: FENCER_PRODUCER_NAME,
-                    rights: charlotte_protocol_kafka::RIGHT_PRODUCE,
+                    rights: knytos_protocol_kafka::RIGHT_PRODUCE,
                 },
                 KafkaAuthorityEndpoint {
                     service_name: FENCER_CONSUMER_NAME,
-                    rights: charlotte_protocol_kafka::RIGHT_CONSUME,
+                    rights: knytos_protocol_kafka::RIGHT_CONSUME,
                 },
                 KafkaAuthorityEndpoint {
                     service_name: FENCER_TRANSACTION_NAME,
-                    rights: charlotte_protocol_kafka::ALL_RIGHTS,
+                    rights: knytos_protocol_kafka::ALL_RIGHTS,
                 },
             ],
             endpoint_ipv4: [10, 0, 2, 2],
@@ -454,22 +454,22 @@ fn verify_producer_fencing(
             ],
             tls: true,
             ca_certificate_der: Some(ca_der),
-            topic: b"charlotte-events",
+            topic: b"knytos-events",
             partition: 0,
             produce_routes: &[KafkaProduceRoute {
-                topic: b"charlotte-results",
+                topic: b"knytos-results",
                 partition: 0,
             }],
             max_produce_routes: 64,
-            group: b"charlotte-qemu-fencer-group",
+            group: b"knytos-qemu-fencer-group",
             transactional_id: TRANSACTIONAL_ID,
             authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
-                username: b"charlotte",
-                password: b"charlotte-kafka-test",
+                username: b"knytos",
+                password: b"knytos-kafka-test",
                 certificate_der: client_certificate_der,
                 private_key_der: client_private_key_der,
             },
-            rights: charlotte_protocol_kafka::ALL_RIGHTS,
+            rights: knytos_protocol_kafka::ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         },
     );
@@ -480,10 +480,10 @@ fn verify_producer_fencing(
     let deadline = crate::self_test::results::Deadline::after_millis(180_000);
     loop {
         let stage = unsafe {
-            crate::self_test::status_u32(fencer_status, charlotte_launch::kafka_status::STAGE)
+            crate::self_test::status_u32(fencer_status, knytos_launch::kafka_status::STAGE)
         };
         let error = unsafe {
-            crate::self_test::status_u32(fencer_status, charlotte_launch::kafka_status::ERROR)
+            crate::self_test::status_u32(fencer_status, knytos_launch::kafka_status::ERROR)
         };
         if error != 0 {
             logln!("[kafka-test] FAILURE: fencing connector startup error={:#x}", error);
@@ -511,27 +511,27 @@ fn verify_producer_fencing(
         let stage = unsafe {
             crate::self_test::status_u32(
                 probe_status,
-                charlotte_launch::kafka_fence_smoke_status::STAGE,
+                knytos_launch::kafka_fence_smoke_status::STAGE,
             )
         };
         let error = unsafe {
             crate::self_test::status_u32(
                 probe_status,
-                charlotte_launch::kafka_fence_smoke_status::ERROR,
+                knytos_launch::kafka_fence_smoke_status::ERROR,
             )
         };
         let fences = unsafe {
-            crate::self_test::status_u32(primary_status, charlotte_launch::kafka_status::FENCES)
+            crate::self_test::status_u32(primary_status, knytos_launch::kafka_status::FENCES)
         };
         let connector_error = unsafe {
-            crate::self_test::status_u32(primary_status, charlotte_launch::kafka_status::ERROR)
+            crate::self_test::status_u32(primary_status, knytos_launch::kafka_status::ERROR)
         };
         if error != 0 {
             logln!("[kafka-test] FAILURE: fencing probe error={:#x}", error);
             crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
             return;
         }
-        if stage == charlotte_launch::kafka_fence_smoke_status::SUCCESS
+        if stage == knytos_launch::kafka_fence_smoke_status::SUCCESS
             && fences >= 1
             && connector_error != 0
         {

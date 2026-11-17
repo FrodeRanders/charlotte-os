@@ -2,7 +2,7 @@
 
 ## Summary
 
-A sustained EL0 load test (the CharlotteOS Kafka broker deployed through the
+A sustained EL0 load test (the Knytos Kafka broker deployed through the
 signed `CDEPLOY5` path and exercised from the host by an independent
 kafka-python client) repeatedly triggered a level-3 translation fault while
 returning from a synchronous exception. Initial captures suggested that the

@@ -74,11 +74,11 @@ Commands: [signing guide](../../guides/signing-and-trust.md#signed-trust-policy)
 
 - `scripts/run-host-tests.sh`: passed, including all discovered host crate tests,
   prior candidate tests, signing-policy/boot-result checks and signer self-test.
-- Host Clippy (`charlotte-launch`, `cluster-sign`, all targets, `--locked`,
+- Host Clippy (`knytos-launch`, `cluster-sign`, all targets, `--locked`,
   `-D warnings`): passed.
 - x86 kernel Clippy with its required bundle environment, `--locked`,
   `-D warnings`: passed.
-- `scripts/build-catten-services.sh --embed`: passed.
+- `scripts/build-knytos-services.sh --embed`: passed.
 - Arm kernel Clippy with its required bundle environment, `--locked`,
   `-D warnings`: passed.
 - Direct `CATTEN_TRUST_MODE=production` kernel check: rejected with the expected

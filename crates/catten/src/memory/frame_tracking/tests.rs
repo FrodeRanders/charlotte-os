@@ -35,7 +35,7 @@ fn install(space: &mut AddressSpace, index: usize) {
     PreparingUserBacking::new(space, Kind::Heap)
         .unwrap()
         .map_with(
-            VAddr::from(charlotte_launch::HEAP_VADDR + 4096 * index),
+            VAddr::from(knytos_launch::HEAP_VADDR + 4096 * index),
             PageType::UserData,
             |space, mapping| space.map_existing_page(mapping).is_ok(),
         )
@@ -46,8 +46,8 @@ fn pool() -> ([u64; 2], [u64; 2]) {
 }
 
 pub(crate) fn run() {
-    let principal = charlotte_launch::artifact_principal_id(b"root-frame-buffer-principal");
-    let other = charlotte_launch::artifact_principal_id(b"root-frame-buffer-other");
+    let principal = knytos_launch::artifact_principal_id(b"root-frame-buffer-principal");
+    let other = knytos_launch::artifact_principal_id(b"root-frame-buffer-other");
     let before = pool();
     let mut unpublished = root(principal);
     unpublished.prepare_user_frame().unwrap();
@@ -135,7 +135,7 @@ pub(crate) fn run() {
 }
 
 fn late_binding() {
-    let principal = charlotte_launch::artifact_principal_id(b"root-frame-buffer-late");
+    let principal = knytos_launch::artifact_principal_id(b"root-frame-buffer-late");
     drop(memory::prepare_principal_backing(principal, false).unwrap());
     let mut space = AddressSpace::try_new_user().unwrap();
     install(&mut space, 0);

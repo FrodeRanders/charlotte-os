@@ -10,16 +10,16 @@
   },
   "reviewed_source_sha256": {
     ".github/workflows/ci.yml": "5a9b54994ea72626ebab739f0b4a6ece299e5c4991a97ff78c8b5d1c572008e1",
-    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
-    "crates/catten-services/src/bin/deployd.rs": "9416da775bc9ecb466d1f69a4b5bb73d851a8f0bb2605a4e35a001deceb4f5d6",
-    "crates/catten-services/src/bin/disco.rs": "45968526c110e66a3c54dd0aa3af3906d29630bf29246b7cdd034b14bfe5bc81",
-    "crates/catten-services/src/bin/httpd.rs": "5b32a59bcaa86fe265fd4ab3b5d885b16fd34920d50c4c2296172d37d58f77a1",
-    "crates/catten-services/src/bin/ns.rs": "c0a7e67ce474483beb6108680af7cb5bc8e770e825755ff14b043c7f9131911c",
-    "crates/catten-services/src/bin/relmsg.rs": "d8981904f47f931788e0dc25aca66a4225595abf64caec7f37d1dd5c5a691dfb",
-    "crates/catten-services/src/bin/tcpip.rs": "df510e96d837cfdcdce17a4578784778d825375ceef4920bc7b3a7fc07142693",
-    "crates/catten-services/src/bin/time.rs": "8bb720fb5fa7c2aab96c9e1e73c031a076be2f544b73ceb8f56c7a9fec0ef014",
-    "crates/catten-services/src/disk_raft.rs": "82936a9fba9f5b98dc5c178350692b2760870dab9576778fa150f88483664263",
-    "crates/catten-services/src/lib.rs": "4c5c51c0b4d7cbc5ea6d100eb4cd02c37b43c2849af8f0e58fc99608efc16c6e",
+    "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/knytos-services/src/bin/deployd.rs": "9416da775bc9ecb466d1f69a4b5bb73d851a8f0bb2605a4e35a001deceb4f5d6",
+    "crates/knytos-services/src/bin/disco.rs": "45968526c110e66a3c54dd0aa3af3906d29630bf29246b7cdd034b14bfe5bc81",
+    "crates/knytos-services/src/bin/httpd.rs": "5b32a59bcaa86fe265fd4ab3b5d885b16fd34920d50c4c2296172d37d58f77a1",
+    "crates/knytos-services/src/bin/ns.rs": "c0a7e67ce474483beb6108680af7cb5bc8e770e825755ff14b043c7f9131911c",
+    "crates/knytos-services/src/bin/relmsg.rs": "d8981904f47f931788e0dc25aca66a4225595abf64caec7f37d1dd5c5a691dfb",
+    "crates/knytos-services/src/bin/tcpip.rs": "df510e96d837cfdcdce17a4578784778d825375ceef4920bc7b3a7fc07142693",
+    "crates/knytos-services/src/bin/time.rs": "8bb720fb5fa7c2aab96c9e1e73c031a076be2f544b73ceb8f56c7a9fec0ef014",
+    "crates/knytos-services/src/disk_raft.rs": "82936a9fba9f5b98dc5c178350692b2760870dab9576778fa150f88483664263",
+    "crates/knytos-services/src/lib.rs": "4c5c51c0b4d7cbc5ea6d100eb4cd02c37b43c2849af8f0e58fc99608efc16c6e",
     "crates/catten/build.rs": "1b4fc27aba6c0e53e394071c4e837ff2936577d25e9ebef74fc127331df158f2",
     "crates/catten/src/cpu/scheduler/threads/mod.rs": "8058d0ffd197ae51cf6ec64958b3db89c6f6c2be92f795e54d8d74f33afdce54",
     "crates/catten/src/klib/observer/mod.rs": "1052dcf07b67f0781585c34d9dc1359274267aa7bb8ed104799ce74efbc5505f",
@@ -40,7 +40,7 @@
     "crates/catten/src/syscall/mod.rs": "6acdd2537c16f8dc2644c071d40f81eb21af9abaa711f32902b4f88509396448",
     "crates/catten/src/timers/budget.rs": "7afb85222026f368f915bc13114bad49b56cff625e19b9f4223dd76d97b24cfe",
     "crates/catten/src/timers/mod.rs": "7c33863c6754463df527a376b0434725fe15794c501fe8174484262b05af1850",
-    "crates/charlotte-smoltcp/src/lib.rs": "d49d51e7fccff69113654875d108d807c01a5635621891f925142fdc4bcf543b"
+    "crates/knytos-smoltcp/src/lib.rs": "d49d51e7fccff69113654875d108d807c01a5635621891f925142fdc4bcf543b"
   },
   "fresh_checks": {
     "host": {

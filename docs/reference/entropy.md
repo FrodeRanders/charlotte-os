@@ -1,6 +1,6 @@
 # Cryptographic entropy
 
-CharlotteOS exposes two fallible cryptographic entropy paths:
+Knytos exposes two fallible cryptographic entropy paths:
 
 - the `RandomU64` syscall uses Arm `RNDR` or x86-64 `RDRAND` when the
   architectural instruction is available; and
@@ -86,7 +86,7 @@ selected:
 -device virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4
 ```
 
-`iommu_platform=on` is required: CharlotteOS negotiates
+`iommu_platform=on` is required: Knytos negotiates
 `VIRTIO_F_ACCESS_PLATFORM` and maps the queue only through the device's SMMU
 domain. This supplies entropy to QEMU's named `cortex-a710` model without
 pretending that the CPU implements `RNDR`.

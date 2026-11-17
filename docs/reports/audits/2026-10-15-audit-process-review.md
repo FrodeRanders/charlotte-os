@@ -126,9 +126,9 @@ have explicit stages. These mechanisms cannot reconstruct earlier missing data.
 
 Selected current source confirms two useful limits:
 
-- [Raft persistence](../../../crates/catten-services/src/disk_raft.rs) uses
+- [Raft persistence](../../../crates/knytos-services/src/disk_raft.rs) uses
   `write(...).and_then(flush).is_err()` and one fail-stop message;
-  [ObjectStore/Client](../../../crates/catten-services/src/objstore_client.rs)
+  [ObjectStore/Client](../../../crates/knytos-services/src/objstore_client.rs)
   reduces errors to `()`. A symbolized fail-stop alone cannot identify allocation,
   submission, wait, reply, device write or flush rejection. Typed per-operation
   diagnostic propagation is the next bounded investigation task here; preserve

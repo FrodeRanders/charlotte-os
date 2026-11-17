@@ -15,7 +15,7 @@ This guide matches the manual's **Configuration** chapter.
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node. See [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
 | Diagnostic telemetry archive | `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving, while `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
-| Service console heartbeats | `CATTEN_SERVICE_HEARTBEATS=0` or `1` selects the `catten-services` feature `service-heartbeats` at service build time. Runners/builders default off for minimal bundles and on for test bundles. Rebuild/restart to change it; status counters and protocol heartbeats remain active. See [boot modes](../reference/boot-modes.md#compile-time-and-bundle-selection). |
+| Service console heartbeats | `CATTEN_SERVICE_HEARTBEATS=0` or `1` selects the `knytos-services` feature `service-heartbeats` at service build time. Runners/builders default off for minimal bundles and on for test bundles. Rebuild/restart to change it; status counters and protocol heartbeats remain active. See [boot modes](../reference/boot-modes.md#compile-time-and-bundle-selection). |
 | Native telemetry export | Unset `CATTEN_OTLP_ENDPOINT` launches no exporter. An explicit HTTP/IPv4 collector plus interval/timeout selects one complete read-only outbound profile, and its hash is checked when reusing a kernel. |
 | Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time, and runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
 | Launch/grant trust | One prepared kernel boot-trust policy. Resource capacity settings grant no signing authority or platform classification. Production trust remains disabled pending protected provisioning/custody. |
@@ -77,7 +77,7 @@ override it. Re-enabling authentication acceleration requires a separately
 qualified erasing owner. See the [backend evidence](../reports/audits/2026-10-25-security-x86-gcm-owner.md).
 
 TLS record and certificate capacities are grouped compile-time constants in
-`crates/catten-services/src/tls_client.rs`, separate from kernel capacity profiles.
+`../../crates/knytos-services`, separate from kernel capacity profiles.
 The [TLS configuration reference](../reference/tls-client.md#compile-time-capacities)
 records their defaults, upstream framing/layout requirements and joint stack/heap
 qualification. Backend/source pins and erasure feature changes also require

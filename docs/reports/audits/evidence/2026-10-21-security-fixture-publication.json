@@ -58,7 +58,7 @@
     "publication": "Exclusive bundle.pending inside existing fresh0700 parts directory; close via file context before one os.replace at requested output name. Normal helper stages on same filesystem; no in-place fallback.",
     "success": "New named file replaces old entry, including symlink/hardlink; linked target and earlier open readers retain original bytes. Previous metadata not preserved; new-file creation/umask policy applies.",
     "failure": "Staging creation/write/close rejection precedes replacement; no cleanup unlink or automatic retry. Tested replacement rejection retains complete staging. Unexpected/ambiguous filesystem results remain unqualified.",
-    "ownership": "One local Python file context closes before publication; filesystem artifacts retained for inspection, not retry/physical-completion/custody owners. No Charlotte capabilities/roots/guards/waits/new registry or family.",
+    "ownership": "One local Python file context closes before publication; filesystem artifacts retained for inspection, not retry/physical-completion/custody owners. No Knytos capabilities/roots/guards/waits/new registry or family.",
     "unchanged": "Six signed descriptors, length-prefixed grammar, args, kernel cache admission and all signer source/output contracts."
   },
   "publication_validation": {
@@ -208,7 +208,7 @@
       "diagnostics": [
         ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
       ],
-      "command": "scripts/build-catten-services.sh --embed"
+      "command": "scripts/build-knytos-services.sh --embed"
     },
     "arm_freshness": {
       "exit_status": 0,
@@ -216,7 +216,7 @@
       "diagnostics": [
         ">>> Staged AArch64 service bundle signatures verified."
       ],
-      "command": "scripts/build-catten-services.sh --check"
+      "command": "scripts/build-knytos-services.sh --check"
     }
   },
   "bundles": {
@@ -536,7 +536,7 @@
     "Cargo.lock": "1e425c4211e2059e3da207d53e2c06b360ba69899a3644ab65609373f58323d6",
     ".cargo/config.toml": "0a45a5f5ba64d678118b745947c36b9580f9815315c5856577e01f4f68091fe4",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
     "scripts/sign-service-elfs.sh": "eda741bca1321a069831e1ca051478bd77bee5067507bd1e44f7a503bed0515f",
     "scripts/run-aarch64.sh": "d3a1e6123786ac9e880f79f577520d5f59378d98e909de647ba9260b6829d901",
     "scripts/run-x86_64.sh": "aadaf04b63519e457dcbf23ab91e2087483398076f4705900c4ad6f6f395612e",

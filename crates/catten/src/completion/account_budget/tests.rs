@@ -171,7 +171,7 @@ fn pressure() {
 
 fn retained_generation() {
     let before = snapshot();
-    let principal = charlotte_launch::artifact_principal_id(b"reactor-lifetime-completion");
+    let principal = knytos_launch::artifact_principal_id(b"reactor-lifetime-completion");
     let space = AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(principal, false).unwrap(),

@@ -972,7 +972,7 @@
         "error[E0599]: no method named `map_existing_page` found for mutable reference `&mut cpu::isa::aarch64::memory::paging::AddressSpace` in the current scope",
         "39 |             |space, mapping| space.map_existing_page(mapping).is_ok(),",
         "help: trait `AddressSpaceInterface` which provides `map_existing_page` is implemented but not in scope; perhaps you want to import it",
-        "error[E0599]: no method named `set_limit` found for struct `charlotte_lifecycle::resources::VectorBudget<N>` in the current scope",
+        "error[E0599]: no method named `set_limit` found for struct `knytos_lifecycle::resources::VectorBudget<N>` in the current scope",
         "97 |     HISTORY.lock().get_mut(&principal).unwrap().kernel_buffers.set_limit([bytes]).unwrap();"
       ]
     },
@@ -983,7 +983,7 @@
         "error[E0599]: no method named `map_existing_page` found for mutable reference `&mut cpu::isa::x86_64::memory::paging::AddressSpace` in the current scope",
         "39 |             |space, mapping| space.map_existing_page(mapping).is_ok(),",
         "help: trait `AddressSpaceInterface` which provides `map_existing_page` is implemented but not in scope; perhaps you want to import it",
-        "error[E0599]: no method named `set_limit` found for struct `charlotte_lifecycle::resources::VectorBudget<N>` in the current scope",
+        "error[E0599]: no method named `set_limit` found for struct `knytos_lifecycle::resources::VectorBudget<N>` in the current scope",
         "97 |     HISTORY.lock().get_mut(&principal).unwrap().kernel_buffers.set_limit([bytes]).unwrap();"
       ]
     },

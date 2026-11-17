@@ -1,5 +1,5 @@
 -------------------------- MODULE CharlotteScheduler --------------------------
-\* Finite safety model of CharlotteOS thread admission, physical execution,
+\* Finite safety model of Knytos thread admission, physical execution,
 \* blocking/wakeup, migration, cross-LP abort, owner-LP retirement, reaping,
 \* generation-safe wakeup, and address-space teardown.
 

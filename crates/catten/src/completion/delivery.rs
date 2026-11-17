@@ -79,7 +79,7 @@ pub(super) struct CqState {
     /// via `poll(cap)` and never drain the ring are not stuck in a busy-spin.
     work_generation: u64,
     /// The `work_generation` value consumed by this queue's reactor. Only new
-    /// work releases the next wait. Charlotte's per-shard model has one
+    /// work releases the next wait. Knytos' per-shard model has one
     /// blocking reactor per CQ; multiple independent waiters would require a
     /// cursor per waiter rather than this queue-wide cursor.
     last_seen_generation: u64,

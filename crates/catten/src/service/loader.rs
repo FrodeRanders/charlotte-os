@@ -3,10 +3,10 @@
 //! Generalized from the `el0_sitas` smoke-test loader so every spawned
 //! service domain shares one loading path: `PT_LOAD` segments are mapped at
 //! their linked virtual addresses with page permissions derived from ELF
-//! flags, and fixed `catten-rt` runtime pages are mapped and zeroed. The heap
+//! flags, and fixed `knytos-rt` runtime pages are mapped and zeroed. The heap
 //! is committed on demand through an independent backing account.
 
-pub use charlotte_launch::{
+pub use knytos_launch::{
     CONFIG_VADDR,
     CQ_ENTRIES,
     CQ_VADDR,
@@ -218,15 +218,15 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
         else {
             return false;
         };
-        if !charlotte_launch::user_address::valid_range(map_start, map_end - map_start) {
+        if !knytos_launch::user_address::valid_range(map_start, map_end - map_start) {
             return false;
         }
         let reserved = [
-            (charlotte_launch::user_address::STACK_BASE, charlotte_launch::user_address::STACK_END),
+            (knytos_launch::user_address::STACK_BASE, knytos_launch::user_address::STACK_END),
             (CONFIG_VADDR, CONFIG_VADDR + PAGE_SIZE),
             (CQ_VADDR, CQ_VADDR + PAGE_SIZE),
             (INPUT_VADDR, INPUT_VADDR + PAGE_SIZE),
-            (HEAP_VADDR, HEAP_VADDR + charlotte_launch::HEAP_VA_LIMIT),
+            (HEAP_VADDR, HEAP_VADDR + knytos_launch::HEAP_VA_LIMIT),
             (STATUS_VADDR, STATUS_VADDR + PAGE_SIZE),
             (SHARD_CQ_VADDR_BASE, SHARD_CQ_VADDR_BASE + SHARD_CQ_COUNT * PAGE_SIZE),
         ];
@@ -394,7 +394,7 @@ fn try_create_user_address_space_handle_with(
 /// loader gate independently protects every mapping path against unsigned or
 /// tampered bytes.
 fn verify_image_signature(image: &[u8], key: &[u8; 32]) -> Result<(), ()> {
-    use charlotte_launch::signature_note::{
+    use knytos_launch::signature_note::{
         VerifyOutcome,
         verify_elf,
     };
@@ -468,7 +468,7 @@ fn map_image_page_with_mapper(
 ) -> Result<PAddr, DomainLoadError> {
     if handle.id() == crate::memory::KERNEL_ASID
         || !vaddr.is_multiple_of(PAGE_SIZE)
-        || !charlotte_launch::user_address::valid_pages(vaddr, 1)
+        || !knytos_launch::user_address::valid_pages(vaddr, 1)
         || !page_type.is_user_accessible()
     {
         return Err(DomainLoadError::PageMapping);
@@ -498,7 +498,7 @@ fn map_image_page_with_mapper(
     Ok(frame)
 }
 
-/// Create an address space, load `image`, and map the standard `catten-rt`
+/// Create an address space, load `image`, and map the standard `knytos-rt`
 /// runtime pages (config, status, CQ rings, input), claiming an unbacked heap
 /// window for demand commitment. The default completion
 /// queue is opened kernel-side on the mapped ring frame, so the domain can
@@ -521,7 +521,7 @@ pub(in crate::service) fn load_name_service_domain(image: &[u8]) -> LoadedDomain
         image,
         &key,
         true,
-        charlotte_protocol_ns::MAX_LIVE_PUBLICATIONS + 1,
+        knytos_protocol_ns::MAX_LIVE_PUBLICATIONS + 1,
         |_| Ok(()),
     )
     .unwrap_or_else(|error| panic!("[loader] name-service load failed: {error:?}"))
@@ -580,12 +580,12 @@ fn try_load_domain_with_capacity(
         return Err(DomainLoadError::SignatureVerificationFailed);
     }
     verify_image_signature(image, key).map_err(|_| DomainLoadError::SignatureVerificationFailed)?;
-    let metadata = charlotte_launch::signature_note::artifact_metadata(image)
+    let metadata = knytos_launch::signature_note::artifact_metadata(image)
         .ok_or(DomainLoadError::SignatureVerificationFailed)?;
     if image_backing_pages(image) > crate::memory::backing_budget::IMAGE_DOMAIN_PAGES {
         return Err(DomainLoadError::BackingAdmission);
     }
-    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    let principal = knytos_launch::artifact_principal_id(metadata.name());
     let sponsor = crate::memory::prepare_principal_backing(principal, platform)
         .map_err(|_| DomainLoadError::BackingAdmission)?;
     let address_space = try_create_user_address_space_handle_with(|| {
@@ -596,9 +596,9 @@ fn try_load_domain_with_capacity(
     if platform {
         crate::memory::budget::mark_platform(address_space);
     }
-    let roles = if metadata.class == charlotte_launch::signature_note::ArtifactClass::Administration
+    let roles = if metadata.class == knytos_launch::signature_note::ArtifactClass::Administration
     {
-        catten_syscall::domain_roles::POLICY_ADMIN | catten_syscall::domain_roles::SERVICE_MANAGER
+        knytos_syscall::domain_roles::POLICY_ADMIN | knytos_syscall::domain_roles::SERVICE_MANAGER
     } else {
         0
     };
@@ -614,13 +614,13 @@ fn try_load_domain_with_capacity(
     // the historical default. Demand commitment already saves physical frames;
     // shrinking virtual capacity would only turn a workload change into an
     // avoidable allocation failure.
-    let heap_bytes = charlotte_lifecycle::adaptive_heap_bytes(
+    let heap_bytes = knytos_lifecycle::adaptive_heap_bytes(
         usage::principal_heap_peak(principal),
-        charlotte_launch::HEAP_SIZE,
-        charlotte_launch::HEAP_SIZE,
-        charlotte_launch::HEAP_VA_LIMIT,
+        knytos_launch::HEAP_SIZE,
+        knytos_launch::HEAP_SIZE,
+        knytos_launch::HEAP_VA_LIMIT,
     );
-    if heap_bytes != charlotte_launch::HEAP_SIZE {
+    if heap_bytes != knytos_launch::HEAP_SIZE {
         crate::logln!(
             "[loader] adaptive heap: principal={} capacity_bytes={}",
             principal,

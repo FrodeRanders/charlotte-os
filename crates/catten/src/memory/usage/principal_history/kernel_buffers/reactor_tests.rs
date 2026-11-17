@@ -26,8 +26,8 @@ fn pools() -> [(u64, u64); 3] {
     ]
 }
 pub(super) fn run() {
-    let principal = charlotte_launch::artifact_principal_id(b"reactor-account-principal");
-    let other = charlotte_launch::artifact_principal_id(b"reactor-account-healthy");
+    let principal = knytos_launch::artifact_principal_id(b"reactor-account-principal");
+    let other = knytos_launch::artifact_principal_id(b"reactor-account-healthy");
     let before = pools();
     let first = domain(principal);
     let mandatory = test_reactor_used(principal);

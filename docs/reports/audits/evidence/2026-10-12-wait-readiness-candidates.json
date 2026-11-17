@@ -5,259 +5,259 @@
   "expression": "spin_loop|yield_lp|yield_now|sleep_ms|\\.poll\\(|spin_reply|poll_reply|while|loop",
   "candidates": [
     {
-      "file": "crates/catten-rt/src/owned/ipc.rs",
+      "file": "crates/knytos-rt/src/owned/ipc.rs",
       "line": 1248,
       "code": "// Returning (or unwinding) would end the Rust borrow while foreign CPU",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/bin/deployd.rs",
+      "file": "crates/knytos-services/src/bin/deployd.rs",
       "line": 376,
       "code": "'connections: loop {",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/bin/deployd.rs",
+      "file": "crates/knytos-services/src/bin/deployd.rs",
       "line": 386,
       "code": "sleep_ms(ACCEPT_RETRY_MS);",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/bin/deployd.rs",
+      "file": "crates/knytos-services/src/bin/deployd.rs",
       "line": 412,
       "code": "sleep_ms(ACCEPT_RETRY_MS);",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/bin/httpd.rs",
+      "file": "crates/knytos-services/src/bin/httpd.rs",
       "line": 1515,
       "code": "// accepting traffic while its replacement waits.",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/bin/httpd.rs",
+      "file": "crates/knytos-services/src/bin/httpd.rs",
       "line": 1516,
       "code": "sleep_ms(ACCEPT_POLL_MS);",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/bin/ns.rs",
+      "file": "crates/knytos-services/src/bin/ns.rs",
       "line": 128,
       "code": "match watch.poll() {",
       "classification": "single-readiness-check",
       "reason": "One closure-watch poll qualifies one lookup; no polling wait loop."
     },
     {
-      "file": "crates/catten-services/src/bin/objstore_client.rs",
+      "file": "crates/knytos-services/src/bin/objstore_client.rs",
       "line": 152,
       "code": "// while this client's own object above stayed readable and writable.",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/bin/objstore_client.rs",
+      "file": "crates/knytos-services/src/bin/objstore_client.rs",
       "line": 168,
       "code": "// reading succeeds with the exact bytes while delete stays denied.",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/bin/objstore_client.rs",
+      "file": "crates/knytos-services/src/bin/objstore_client.rs",
       "line": 211,
       "code": "loop {",
       "classification": "fixture",
       "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
     },
     {
-      "file": "crates/catten-services/src/bin/security_probe.rs",
+      "file": "crates/knytos-services/src/bin/security_probe.rs",
       "line": 133,
       "code": "loop {",
       "classification": "fixture",
       "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
     },
     {
-      "file": "crates/catten-services/src/bin/security_probe.rs",
+      "file": "crates/knytos-services/src/bin/security_probe.rs",
       "line": 433,
       "code": "loop {",
       "classification": "fixture",
       "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
     },
     {
-      "file": "crates/catten-services/src/bin/security_probe.rs",
+      "file": "crates/knytos-services/src/bin/security_probe.rs",
       "line": 456,
       "code": "sleep_ms(5);",
       "classification": "fixture",
       "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
     },
     {
-      "file": "crates/catten-services/src/bin/tcpclient.rs",
+      "file": "crates/knytos-services/src/bin/tcpclient.rs",
       "line": 415,
       "code": "\"[tcpclient] 32 caller-sponsored TCP receive buffers retained while bidirectional traffic \\",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/clusterctl_client.rs",
+      "file": "crates/knytos-services/src/clusterctl_client.rs",
       "line": 35,
       "code": "loop {",
       "classification": "fixed-reply-wait",
       "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
     },
     {
-      "file": "crates/catten-services/src/clusterctl_client.rs",
+      "file": "crates/knytos-services/src/clusterctl_client.rs",
       "line": 41,
       "code": "if let Some(reply) = pending.poll().map_err(Error::Observation)? {",
       "classification": "fixed-reply-wait",
       "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
     },
     {
-      "file": "crates/catten-services/src/clusterctl_client.rs",
+      "file": "crates/knytos-services/src/clusterctl_client.rs",
       "line": 44,
       "code": "crate::sleep_ms(5);",
       "classification": "fixed-reply-wait",
       "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
     },
     {
-      "file": "crates/catten-services/src/deployment_http.rs",
+      "file": "crates/knytos-services/src/deployment_http.rs",
       "line": 174,
       "code": "while index < encoded.len() {",
       "classification": "productive",
       "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
     },
     {
-      "file": "crates/catten-services/src/lib.rs",
+      "file": "crates/knytos-services/src/lib.rs",
       "line": 1175,
       "code": "let call = loop {",
       "classification": "productive",
       "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
     },
     {
-      "file": "crates/catten-services/src/lib.rs",
+      "file": "crates/knytos-services/src/lib.rs",
       "line": 1180,
       "code": "super::sleep_ms(5)",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/lib.rs",
+      "file": "crates/knytos-services/src/lib.rs",
       "line": 2025,
       "code": "while offset < total {",
       "classification": "productive",
       "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 35,
       "code": "sleep_ms,",
       "classification": "non-executable",
       "reason": "Import."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 57,
       "code": "loop {",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 63,
       "code": "sleep_ms(10)",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 76,
       "code": "loop {",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 86,
       "code": "sleep_ms(10);",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 206,
       "code": "while wait() {",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/node_identity.rs",
+      "file": "crates/knytos-services/src/node_identity.rs",
       "line": 259,
       "code": "sleep_ms(10);",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/publication.rs",
+      "file": "crates/knytos-services/src/publication.rs",
       "line": 12,
       "code": "sleep_ms,",
       "classification": "non-executable",
       "reason": "Import."
     },
     {
-      "file": "crates/catten-services/src/publication.rs",
+      "file": "crates/knytos-services/src/publication.rs",
       "line": 33,
       "code": "loop {",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/publication.rs",
+      "file": "crates/knytos-services/src/publication.rs",
       "line": 69,
       "code": "sleep_ms(RETRY_PAUSE_MS);",
       "classification": "backoff-missing-subscription",
       "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
     },
     {
-      "file": "crates/catten-services/src/publication.rs",
+      "file": "crates/knytos-services/src/publication.rs",
       "line": 74,
       "code": "let reply = loop {",
       "classification": "fixed-reply-wait",
       "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
     },
     {
-      "file": "crates/catten-services/src/publication.rs",
+      "file": "crates/knytos-services/src/publication.rs",
       "line": 78,
       "code": "if let Some(reply) = call.poll().map_err(Error::Observation)? {",
       "classification": "fixed-reply-wait",
       "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
     },
     {
-      "file": "crates/catten-services/src/publication.rs",
+      "file": "crates/knytos-services/src/publication.rs",
       "line": 81,
       "code": "sleep_ms(RETRY_PAUSE_MS);",
       "classification": "fixed-reply-wait",
       "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
     },
     {
-      "file": "crates/catten-services/src/relmsg_transport.rs",
+      "file": "crates/knytos-services/src/relmsg_transport.rs",
       "line": 213,
       "code": "// refuse new routes past the bound while still refreshing known ones.",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/relmsg_transport.rs",
+      "file": "crates/knytos-services/src/relmsg_transport.rs",
       "line": 748,
       "code": "// ...while an existing route still refreshes.",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },
     {
-      "file": "crates/catten-services/src/socket_state.rs",
+      "file": "crates/knytos-services/src/socket_state.rs",
       "line": 133,
       "code": "loop {",
       "classification": "productive",
@@ -1771,7 +1771,7 @@
     {
       "file": "crates/catten/src/self_test/el0_security.rs",
       "line": 400,
-      "code": "while tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)",
+      "code": "while tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)",
       "classification": "non-executable",
       "reason": "Comment or literal matched the broad inventory expression."
     },

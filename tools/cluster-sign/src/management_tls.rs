@@ -36,7 +36,7 @@ use crate::{
 };
 
 // Bound complete PEM files, including base64/line overhead, before parsing.
-const FILE_BYTES: usize = charlotte_launch::management::MAX_PROFILE_BYTES * 2;
+const FILE_BYTES: usize = knytos_launch::management::MAX_PROFILE_BYTES * 2;
 pub(super) struct BudgetedSocket {
     socket: TcpStream,
     deadline: Deadline,
@@ -78,9 +78,9 @@ fn certificates(name: &str) -> crate::Result<Vec<CertificateDer<'static>>> {
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|_| format!("{name}: invalid certificate PEM"))?;
     if certs.is_empty()
-        || certs.len() > charlotte_launch::management::Limits::DEFAULT.max_roots
+        || certs.len() > knytos_launch::management::Limits::DEFAULT.max_roots
         || certs.iter().any(|certificate| {
-            certificate.len() > charlotte_launch::management::Limits::DEFAULT.max_certificate_bytes
+            certificate.len() > knytos_launch::management::Limits::DEFAULT.max_certificate_bytes
         })
     {
         return Err(format!("{name}: certificate capacity exceeded"));
@@ -93,7 +93,7 @@ fn configuration() -> crate::Result<ClientConfig> {
         roots.add(root).map_err(|_| "invalid management CA".to_owned())?;
     }
     let chain = certificates("CATTEN_MANAGEMENT_CERT_FILE")?;
-    if chain.len() > charlotte_launch::management::Limits::DEFAULT.max_chain_certificates {
+    if chain.len() > knytos_launch::management::Limits::DEFAULT.max_chain_certificates {
         return Err("management client chain capacity exceeded".into());
     }
     let bytes = input("CATTEN_MANAGEMENT_KEY_FILE")?;

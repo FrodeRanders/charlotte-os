@@ -77,7 +77,7 @@ reconstructed parser diagnosis or proof of a guest failure.
 
 ## Final validation
 
-- CharlotteOS host suite: **430 passed / 0 failed / 4 ignored**, including all
+- Knytos host suite: **430 passed / 0 failed / 4 ignored**, including all
   18 signer tests and signing/metadata selftests; six tooling boundary tests
   pass. The latter cover canonical named/platform assignments, malformed and
   duplicate entries, the retired paired flag and old variables (empty/nonempty),

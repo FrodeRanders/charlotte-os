@@ -1,4 +1,4 @@
-# CharlotteOS Async Syscall / Completion-Capability ABI
+# Knytos Async Syscall / Completion-Capability ABI
 
 > **Document role: architecture evolution record.** Sections 1--8 preserve
 > the original ABI proposal and its decision gates. Sections 9 onward record
@@ -6,7 +6,7 @@
 > behavior, source/tests and the manual's implementation-status appendix take
 > precedence over the early proposal text.
 >
-> Phase 2, Option C of the Sitas ↔ CharlotteOS collaboration (see
+> Phase 2, Option C of the Sitas ↔ Knytos collaboration (see
 > the earlier out-of-tree `sitas-runtime-model.md` note, §3, §5.4, §9a). This note
 > specifies the userspace↔kernel boundary for asynchronous system calls by
 > treating **Sitas as the executable specification** of the ABI: if Sitas'
@@ -36,7 +36,7 @@ historical decision record.
 
 ## 1. The thesis, stated as an ABI question
 
-CharlotteOS' design premise is that *nearly all syscalls are asynchronous*: a
+Knytos' design premise is that *nearly all syscalls are asynchronous*: a
 syscall **submits** an operation and returns a **completion capability** that
 userspace can wait on, rather than blocking the calling thread until the work is
 done. This intent is already written into the kernel — see the exit-observer
@@ -52,7 +52,7 @@ Sitas asks the *same* question from userspace: *what is the right
 submission/completion boundary for async I/O?* Its answer — visible in the
 experimental OS-backend branch — is a three-method reactor contract plus an
 owned-buffer completion model. Option C is the observation that **Sitas'
-reactor contract is the shape of CharlotteOS' syscall ABI**, and its io_uring
+reactor contract is the shape of Knytos' syscall ABI**, and its io_uring
 buffer discipline is the shape of the kernel's buffer-ownership contract.
 
 So we design the ABI by making Sitas' `ReactorBackend`, `Reply<T>`, and
@@ -106,7 +106,7 @@ capabilities from the OS:
 On Unix, `ReactorBackend::Handle` is pinned to `RawFd` because the readiness
 layer (`io_interest`, `unix_io`, the io_uring completion fd — ~33 `RawFd` uses)
 identifies every interest by file descriptor. The associated `Handle` type is
-where the design pressure concentrates. **For CharlotteOS, `Handle` is the
+where the design pressure concentrates. **For Knytos, `Handle` is the
 completion capability.** Getting the completion capability right *is* getting
 the ABI right. Everything else (the wait primitive, the waker) is comparatively
 trivial and already exists in the kernel.
@@ -140,13 +140,13 @@ cancel.**
 - `ShardSender<M>`/`ShardReceiver<M>` are bounded, owned-message channels
   between shards.
 
-These map onto CharlotteOS' per-LP scheduler + `IPI_CMD_QUEUES` + IPI wake.
+These map onto Knytos' per-LP scheduler + `IPI_CMD_QUEUES` + IPI wake.
 
 ---
 
 ## 3. The core abstraction: the completion capability
 
-A **completion capability** (`CompletionCap`) is the CharlotteOS realization of
+A **completion capability** (`CompletionCap`) is the Knytos realization of
 Sitas' `ReactorBackend::Handle`. It is:
 
 > a kernel-managed, per-address-space handle naming an in-flight (or completed)
@@ -237,7 +237,7 @@ wait(cq: CompletionQueueId, min_complete: u32, deadline: Option<Timestamp>)
 This is precisely Sitas' `ReactorBackend::wait(read, write, timeout) -> Event`.
 The mapping:
 
-| Sitas `wait` | CharlotteOS `wait` |
+| Sitas `wait` | Knytos `wait` |
 |---|---|
 | `read`/`write: &[Handle]` (fds to watch) | *not applicable* — interests are registered at `submit` and reported via the CQ; the shard watches one CQ rather than N handles |
 | `timeout: Option<Duration>` | `deadline: Option<Timestamp>` |
@@ -245,7 +245,7 @@ The mapping:
 | `woke` (wake pipe drained) | a wake IPI raised the CQ observable with no completion payload |
 
 Note the structural improvement: Sitas must *hand the OS the fd set on every
-wait* because readiness is edge/level-triggered per fd. CharlotteOS registers
+wait* because readiness is edge/level-triggered per fd. Knytos registers
 the interest once at `submit` and the completion is a one-shot event delivered to
 the owning shard's CQ. This is why the ABI can present **one** wait source (§2.1
 item 3 folds into item 1) — timers, cross-LP wakes, and async-syscall
@@ -360,7 +360,7 @@ backpressure across the boundary (`sitas-runtime-model.md` §7.3).
 | `ShardSender<M>`/`ShardReceiver<M>` | bounded typed capability channel | generalized `IpiRpc` → typed `M` (feeds Option B) |
 | Drop = cancel | `cancel(cap)` + deferred reclaim | new; specified by §4.4/§5 |
 
-### 7.1 Assembled picture (the CharlotteOS `ReactorBackend`)
+### 7.1 Assembled picture (the Knytos `ReactorBackend`)
 
 ```
 sitas-charlotte backend (implements Sitas' ReactorBackend + ShardRuntime)
@@ -442,7 +442,7 @@ illustrative — it does not compile into the kernel and commits no ABI numbers.
 //! Specified against Sitas' `ReactorBackend` as the reference consumer.
 
 /// A per-address-space handle naming an in-flight or completed async operation.
-/// This is the CharlotteOS answer to Sitas' `ReactorBackend::Handle`.
+/// This is the Knytos answer to Sitas' `ReactorBackend::Handle`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CompletionCap(u32);
 
@@ -494,7 +494,7 @@ pub enum CancelState { AlreadyComplete, CancelRequested }
 
 // ---- how the Sitas backend binds to it --------------------------------------
 
-/// Sketch of the CharlotteOS impl of Sitas' `ReactorBackend`.
+/// Sketch of the Knytos impl of Sitas' `ReactorBackend`.
 struct CharlotteReactor { cq: CompletionQueueId }
 
 impl ReactorBackend for CharlotteReactor {
@@ -524,7 +524,7 @@ backend falls out as a translation.
 
 The type sketch above is no longer only on paper. A **reference model of this
 ABI now exists and is tested in the Sitas repository** (branch
-the reactor-handle integration branch (`src/charlotte_abi.rs`): an in-memory `MockKernel`
+the reactor-handle integration branch (`src/knytos_abi.rs`): an in-memory `MockKernel`
 implementing the five operations (`submit`/`wait`/`wake`/`cancel`/`close`), plus
 a `CharlotteReactor` that implements Sitas' `ReactorBackend` contract with
 `Handle = CompletionCap`. It is not a Unix backend and talks to no kernel — it
@@ -608,7 +608,7 @@ When an SVC is taken from EL0 (EC = 0x15):
 5. Any result the handler writes into `frame.regs[0]` (x0) is written back to
    the stack before the IVT `pop_volatile_regs` restores it into the user's x0.
 
-The dispatch table now uses the shared `catten-syscall::SyscallNumber`
+The dispatch table now uses the shared `knytos-syscall::SyscallNumber`
 enumeration for the complete implemented ABI rather than independently
 maintained numeric arms. Synthetic `TrapFrame` tests cover dispatch, and
 multiple real-EL0 tests execute SVC instructions through the architectural
@@ -744,7 +744,7 @@ it. The zero-syscall completion loop is fully wired on the kernel side.
   (idle wait), `src/os/uring.rs` + `src/executor/uring.rs` (buffer-ownership),
   `src/sharded_executor.rs` (`ShardedSubmitter`), `src/shard_mailbox.rs`
   (`ShardSender<M>`), `src/runtime.rs` (`Reply<T>`/`ReplyFuture<T>`).
-- CharlotteOS kernel facilities the ABI binds to:
+- Knytos kernel facilities the ABI binds to:
   - Completion-capability design intent: `crates/catten/src/cpu/scheduler/threads/mod.rs:63-69`
   - Observer/waker: `crates/catten/src/klib/observer/mod.rs`,
     `crates/catten/src/cpu/scheduler/threads/waker.rs`

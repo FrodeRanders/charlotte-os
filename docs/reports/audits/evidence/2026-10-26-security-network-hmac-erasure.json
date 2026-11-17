@@ -23,11 +23,11 @@
   },
   "source_sha256": {
     "Cargo.lock": "147e31b7b45a34de5fd957ba057312eb2fd53edfd4f74de6182bd9774e52a9ad",
-    "crates/catten-services/Cargo.toml": "db38bceaf61ecadedbd5e51c7b0d71a9aab5423264620f0d01c9fc8ecd965695",
-    "crates/catten-services/src/bin/security_probe.rs": "541573c45dbad0022cc345ae009a242369a981aa8015cb72abd7b3f832729268",
-    "crates/catten-services/src/network_random.rs": "38a2d027b27a25ce44f4743e348f4b9067791fa41b3746afa0192d4dd356068f",
+    "crates/knytos-services/Cargo.toml": "db38bceaf61ecadedbd5e51c7b0d71a9aab5423264620f0d01c9fc8ecd965695",
+    "crates/knytos-services/src/bin/security_probe.rs": "541573c45dbad0022cc345ae009a242369a981aa8015cb72abd7b3f832729268",
+    "crates/knytos-services/src/network_random.rs": "38a2d027b27a25ce44f4743e348f4b9067791fa41b3746afa0192d4dd356068f",
     "scripts/run-host-tests.sh": "f88f2989f27e95068ef1de2da0719b703d78a176df1d4268d8002f473380c458",
-    "crates/catten-services/src/network_random/contract.rs": "a95b58191536dd6a5e3dca920fef696340cc5e743af9c0dad74147759a6d1ed6",
+    "crates/knytos-services/src/network_random/contract.rs": "a95b58191536dd6a5e3dca920fef696340cc5e743af9c0dad74147759a6d1ed6",
     "scripts/tests/test-network-random.py": "82d99fde724d54292c1b60bfdb2f83e37ab328040623f83e94520594204f5dff"
   },
   "shared_hash_source_sha256": "b0583e16bd7afcf983ebdd14f93e7e39ed6b61e1c7b504434926391a0cf4f867",
@@ -39,15 +39,15 @@
     "zeroize-1.9.0/src/lib.rs": "61012679ef3d0cc4e29b6f9c9d6c572c4ba8110e70a1e1c527da6bfaf77494ef"
   },
   "checks": {
-    "dependency_graph": "Only catten-services direct hmac 0.12.1 and sha2 0.10.9 edges removed. Every package/version/checksum and all other package records unchanged. TLS transitive owners remain.",
+    "dependency_graph": "Only knytos-services direct hmac 0.12.1 and sha2 0.10.9 edges removed. Every package/version/checksum and all other package records unchanged. TLS transitive owners remain.",
     "strict_service_clippy": {
-      "aarch64": "cargo clippy --locked -p catten-services --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --lib --bins -- -D warnings",
-      "x86_64": "cargo clippy --locked -p catten-services --target crates/catten-services/x86_64-unknown-none.json --target-dir crates/catten-services/target --lib --bin tcpip --bin security_probe -- -D warnings",
+      "aarch64": "cargo clippy --locked -p knytos-services --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --lib --bins -- -D warnings",
+      "x86_64": "cargo clippy --locked -p knytos-services --target crates/knytos-services/x86_64-unknown-none.json --target-dir crates/knytos-services/target --lib --bin tcpip --bin security_probe -- -D warnings",
       "results": "pass"
     },
     "host_suites": {
       "debug": {
-        "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p catten-services -p charlotte-launch --lib (cwd /private/tmp)",
+        "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p knytos-services -p knytos-launch --lib (cwd /private/tmp)",
         "service_tests": 227,
         "launch_tests": 10,
         "failed": 0,
@@ -64,7 +64,7 @@
         ]
       },
       "release": {
-        "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p catten-services -p charlotte-launch --lib (cwd /private/tmp)",
+        "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p knytos-services -p knytos-launch --lib (cwd /private/tmp)",
         "service_tests": 227,
         "launch_tests": 10,
         "failed": 0,
@@ -95,7 +95,7 @@
             "--target-dir",
             "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
           ],
-          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
           "source": "const _: () = assert!(core::mem::needs_drop::<hmac::Hmac<sha2::Sha256>>(),\n    \"legacy HMAC lacks Drop\");\nfn main() {}\n",
           "exit_status": 101,
           "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -116,8 +116,8 @@
             "--target-dir",
             "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
           ],
-          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
-          "source": "#[path=\"/Users/froran/Projects/private/charlotte-os/crates/catten-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<charlotte_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+          "source": "#[path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<knytos_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
           "exit_status": 0,
           "stdout_sha256": "f0e5ab2dbd125c7f8e17f8bb1d3709d60c0ee5fbac66e1f8e447933ced86d304",
           "diagnostics": [],
@@ -218,7 +218,7 @@
   },
   "bundle_builds": {
     "aarch64": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "bundle_sha256": {
         "agent.elf": "bdb4bc8d2b9df6096ba90f74506215dd0c4a1da290f9ea9420aba356517af4c7",
@@ -269,7 +269,7 @@
       ]
     },
     "x86_64": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0,
       "bundle_sha256": {
         "agent.elf": "f1c247d3f84642f73ed4d4891c2cd2fb7bb1af25268a782a19d57fb345416de0",

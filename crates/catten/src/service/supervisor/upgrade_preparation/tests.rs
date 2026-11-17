@@ -105,7 +105,7 @@ pub(in crate::service::supervisor) fn run() {
     let owner = DomainLaunchTransaction::new(dummy(target)).unwrap();
     let mut owner = PreparingUpgrade::new(owner, true);
     let baseline = used();
-    let count = charlotte_launch::CAPABILITY_VECTOR_CAPACITY - 1;
+    let count = knytos_launch::CAPABILITY_VECTOR_CAPACITY - 1;
     owner.prepare_storage(count).unwrap();
     let bytes = count * (core::mem::size_of::<PreparedTransfer>() + core::mem::size_of::<u64>());
     assert_eq!(used().0, [baseline.0[0] + bytes as u64, baseline.0[1]]);

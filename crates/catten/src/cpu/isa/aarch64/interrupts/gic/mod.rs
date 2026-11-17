@@ -99,7 +99,7 @@ fn gicr_base() -> usize {
 }
 
 /// QEMU `virt,msi=gicv2m` MSI frame. Platform discovery should replace this
-/// fixed address when CharlotteOS consumes the firmware interrupt topology.
+/// fixed address when Knytos consumes the firmware interrupt topology.
 const GICV2M_BASE: usize = 0x0802_0000;
 const GICV2M_MSI_TYPER: usize = 0x0008;
 const GICV2M_SETSPI_NS: usize = 0x0040;

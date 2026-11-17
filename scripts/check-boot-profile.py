@@ -12,7 +12,7 @@ MODES = {"minimal": b"CHARLOTTE_BOOT_MODE=minimal", "test": b"CHARLOTTE_BOOT_MOD
 
 
 def otlp_profile(env):
-    """Canonical public launch bytes, matching charlotte_launch::otlp::Profile."""
+    """Canonical public launch bytes, matching knytos_launch::otlp::Profile."""
     def number(name, default):
         text = env.get(name, str(default))
         if not text or any(c < "0" or c > "9" for c in text):

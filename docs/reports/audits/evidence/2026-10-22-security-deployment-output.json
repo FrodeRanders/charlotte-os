@@ -49,15 +49,15 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "15e9fe657223e573e2ff5c1ee9b887f20d21a047cd99a13ea7ac10af9d8dd559",
-    "crates/catten-services/src/bin/security_probe.rs": "b86db822c77bb7360fa289eb6af560f8b09ddb4fe4709c9154bc0caa89d6fa11",
-    "crates/catten-services/src/bin/tcpclient.rs": "3a5f59ceefbce13d16f0446a5a62223670907fc7d67b70b0fcb227d9a20906d7",
-    "crates/catten-services/src/bin/tcpip.rs": "fd38888c446477a83a84fbcafdee498a7d67f4e0d15568ba5acdfbf5d4a7a9bf",
-    "crates/catten-services/src/bin/time.rs": "f60d598c4390972075ebc41c5278c972cac87989cd80448c3ccccfadae862206",
-    "crates/catten-services/src/deployment_output.rs": "73ec12772030845c69fe03fa960a1f8839d0d2c3929602b6fb882ac52bbc057a",
-    "crates/catten-services/src/lib.rs": "a5aaece8c4ad46461d20bdfa0069d6de30b39eed8d95ea17450af3c824faf018",
-    "crates/catten-services/src/socket_send.rs": "630eb22c67459eb5316525e48e4b1592970dd8fdf10db40c5f0c3d364309732a",
-    "crates/catten-services/src/socket_state.rs": "dbf801ccdf3990cf536209683663a06644fe23109dea06c4218ad5774cd66965",
+    "crates/knytos-services/src/bin/deployd.rs": "15e9fe657223e573e2ff5c1ee9b887f20d21a047cd99a13ea7ac10af9d8dd559",
+    "crates/knytos-services/src/bin/security_probe.rs": "b86db822c77bb7360fa289eb6af560f8b09ddb4fe4709c9154bc0caa89d6fa11",
+    "crates/knytos-services/src/bin/tcpclient.rs": "3a5f59ceefbce13d16f0446a5a62223670907fc7d67b70b0fcb227d9a20906d7",
+    "crates/knytos-services/src/bin/tcpip.rs": "fd38888c446477a83a84fbcafdee498a7d67f4e0d15568ba5acdfbf5d4a7a9bf",
+    "crates/knytos-services/src/bin/time.rs": "f60d598c4390972075ebc41c5278c972cac87989cd80448c3ccccfadae862206",
+    "crates/knytos-services/src/deployment_output.rs": "73ec12772030845c69fe03fa960a1f8839d0d2c3929602b6fb882ac52bbc057a",
+    "crates/knytos-services/src/lib.rs": "a5aaece8c4ad46461d20bdfa0069d6de30b39eed8d95ea17450af3c824faf018",
+    "crates/knytos-services/src/socket_send.rs": "630eb22c67459eb5316525e48e4b1592970dd8fdf10db40c5f0c3d364309732a",
+    "crates/knytos-services/src/socket_state.rs": "dbf801ccdf3990cf536209683663a06644fe23109dea06c4218ad5774cd66965",
     "docs/guides/testing.md": "8b11c04d06c6243d78259af2ff487ef07df37c076ac3b17a74940a478e4d1119",
     "docs/manual-v2/chapters/13-networking.tex": "85dd7ecc6c5b427a9cf5d3a3f4a2d40aece8616ef8e9dbe2fc2fcba437cce367",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "ad8bc03aa29a06d6f3a37607787ffbd669973a2042d7f1da5e54b0cb96f6c87c",
@@ -107,7 +107,7 @@
         "elapsed_seconds": 300.07995841582306
       },
       "diagnostics": {
-        "serial": "UEFI diagnostics only; no Charlotte kernel banner or SELFTEST result. Last message: Image type X64 can't be loaded on AARCH64 UEFI system. That same firmware message also occurs before passing boots; it does not establish causality.",
+        "serial": "UEFI diagnostics only; no Knytos kernel banner or SELFTEST result. Last message: Image type X64 can't be loaded on AARCH64 UEFI system. That same firmware message also occurs before passing boots; it does not establish causality.",
         "cpu0_pc": "0x000000005fdf74ac",
         "secondary_pcs": [
           "0x0",
@@ -401,7 +401,7 @@
     "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec06-output CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-output-deploy --fresh-storage --timeout 300"
   ],
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked (cwd /private/tmp)",
     "result": "182 passed; 0 failed",
     "capture_sha256": "0ab4e8679c866688bc822c84ff042acb1495d88cb16dfd56d3d0816e35ef749b",
     "qualification": "Fake transport models blocked/ready/partial/rejection/uncertainty; binding abort checks owners before host unwind. Native map/bind rejection not fault-injected. Host tests do not prove hardware/TCP-buffer saturation fairness."
@@ -410,15 +410,15 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
-    "native_clippy": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe --bin tcpclient --bin time -- -D warnings",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe --bin tcpclient --bin time -- -D warnings",
     "host_clippy_sha256": "e84301c79c1f6ae84279561bb45e2ffc5a53e7603a189617bd55a35d102876c8",
     "native_clippy_sha256": "1f93aff2a454983dd89ddf19d2a40f5210f6e8c9854cc43bf49a7f02aba04982",
     "bundles": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ],
-    "arm_reproduction": "scripts/build-catten-services.sh --check: staged signatures verified and current-source signed bytes match"
+    "arm_reproduction": "scripts/build-knytos-services.sh --check: staged signatures verified and current-source signed bytes match"
   },
   "formal": {
     "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",

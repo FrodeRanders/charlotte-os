@@ -63,7 +63,7 @@ retained when a repaired behavior has a small, useful counterexample.
    behavior instead of overstating availability.
 
 5. **Dynamic admission could forget its authority fence on restart.** The
-   selected anchor and joining posture were process-local. CharlotteOS now
+   selected anchor and joining posture were process-local. Knytos now
    persists the anchor plus the pre-admission snapshot index before accepting
    the anchor's log, restores election suppression on restart, and snapshots
    admitted membership before clearing the fence. Auto-join is disabled when
@@ -88,9 +88,9 @@ retained when a repaired behavior has a small, useful counterexample.
   exercised the required unsafe action. These include stale catalog
   unregister, arbitrary join-anchor replication, forgotten restart admission,
   flat session collision, and receive-session regression.
-- `catten-graft` passed 24 host tests, including restart-fenced join admission,
+- `knytos-graft` passed 24 host tests, including restart-fenced join admission,
   selected-anchor rejection, snapshot correlation, and membership recovery.
-- `charlotte-protocol-msg` passed 6 host tests, including disjoint ordered
+- `knytos-protocol-msg` passed 6 host tests, including disjoint ordered
   retry/restart identities and fail-closed session exhaustion.
 - The changed `ns`, `relmsg`, and `raft` services built and passed Clippy with warnings
   denied for the AArch64 target. Workspace formatting, shell syntax, and diff

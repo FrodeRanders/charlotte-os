@@ -216,12 +216,12 @@ pub struct ConnectionRights(u32);
 /// Maximum capability vector entries per message (fits in one 4 KiB page
 /// with the `count` header). The page holds `count: u16` at offset 0,
 /// followed by up to this many entries.
-pub use catten_syscall::CAP_VECTOR_MAX;
+pub use knytos_syscall::CAP_VECTOR_MAX;
 /// A single entry in a capability vector page. The sender packs an array
 /// of these into a one-page memory object and passes it to
 /// `ipc_vector_send` / `ipc_vector_call`. Each entry specifies a
 /// memory-object capability and how it should be transferred.
-pub use catten_syscall::CapVectorEntry;
+pub use knytos_syscall::CapVectorEntry;
 const CAP_VECTOR_BYTES: usize = 2 + CAP_VECTOR_MAX * core::mem::size_of::<CapVectorEntry>();
 
 impl ConnectionRights {

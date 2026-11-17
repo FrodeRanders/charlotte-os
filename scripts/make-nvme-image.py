@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce a CharlotteOS object-store image preseeded with signed userspace
+"""Produce a Knytos object-store image preseeded with signed userspace
 service ELFs.
 
 AArch64 uses a small embedded storage bootstrap and loads the remaining

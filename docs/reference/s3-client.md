@@ -1,16 +1,16 @@
 # S3 client service
 
-CharlotteOS provides a native, capability-oriented S3 data-plane client for
+Knytos provides a native, capability-oriented S3 data-plane client for
 communicating with centrally managed object stores. The initial compatibility
 targets are RustFS and Dell EMC ECS.
 
 The implementation is intentionally not a port of the AWS SDK. It is split at
 the platform boundary:
 
-- `charlotte-s3` is a transport-independent `no_std` core. It implements
+- `knytos-s3` is a transport-independent `no_std` core. It implements
   S3 URI/query canonicalization, HMAC-SHA256, AWS Signature Version 4, bounded
   HTTP/1.1 response parsing, and incremental chunked-transfer decoding.
-- `charlotte-protocol-s3` defines the application/service wire ABI. It contains
+- `knytos-protocol-s3` defines the application/service wire ABI. It contains
   no live capabilities and makes object streams explicit remote resources.
 - `s3.elf` owns TCP connections and credentials and publishes the short name
   `s3`.
@@ -41,7 +41,7 @@ and call `launch_s3_profile`. The launcher encodes the bounded immutable
 domain only after the transfer succeeds. The S3 service retains its secret key
 in zeroizing storage.
 
-Static launches and operational pickup use `charlotte_protocol_s3::Profile`
+Static launches and operational pickup use `knytos_protocol_s3::Profile`
 as the sole format authority. The legacy manifest fallback, per-key exports
 and synthesized region/port values are removed. A missing or malformed profile
 rejects before connector publication. Operational profiles are stored centrally
@@ -174,7 +174,7 @@ Plain HTTP remains available only when an explicitly provisioned profile sets
 
 The opt-in runner path starts an ephemeral RustFS container with a freshly
 generated P-256 test CA and server certificate, provisions the
-`charlotte-test` bucket, then boots CharlotteOS. The in-guest smoke application
+`charlotte-test` bucket, then boots Knytos. The in-guest smoke application
 performs PUT, HEAD, GET, body verification, and DELETE through the same owned
 client API applications use:
 
@@ -298,7 +298,7 @@ kernel/TLS backing keep their own lifetimes. See the
 
 ## Local request-key and raw-path lifetime
 
-`charlotte_s3::request::OwnedRequest::decode` uses the existing complete wire
+`knytos_s3::request::OwnedRequest::decode` uses the existing complete wire
 validation before copying a key into `Zeroizing<Vec<u8>>`. Scalars and flags
 keep their existing values. The service's IPC memory mapping still ends at the
 same decode boundary; the request keeps an independent key snapshot. It has no
@@ -315,7 +315,7 @@ retain their separate lifetimes. See the
 
 ## Service-local launch-profile lifetime
 
-`charlotte_s3::profile::OwnedProfile::decode` validates the complete current
+`knytos_s3::profile::OwnedProfile::decode` validates the complete current
 CHS3PF1 record before allocating one `Zeroizing<Vec<u8>>` snapshot. It reserves
 the full frame and installs the owner before copying. Credentials, endpoint,
 bucket/prefix, namespace and public CA bytes share that local lifetime. The
@@ -341,7 +341,7 @@ keep separate contracts. Ordinary Drop requires execution. See the
 
 ## Encoded launch-profile lifetime
 
-`charlotte_protocol_s3::Profile::encode` returns
+`knytos_protocol_s3::Profile::encode` returns
 `Option<Zeroizing<Vec<u8>>>`. It validates all fields and the complete bounded
 size before allocating one zero-filled frame, installs its erasing owner and
 then writes the header and credential-bearing fields. Ordinary Drop erases the

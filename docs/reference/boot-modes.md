@@ -120,8 +120,8 @@ diagnosis; it is not a regression suite.
 Build bundles separately with:
 
 ```sh
-scripts/build-catten-services.sh --embed --mode minimal
-scripts/build-catten-services-x86_64.sh --mode minimal
+scripts/build-knytos-services.sh --embed --mode minimal
+scripts/build-knytos-services-x86_64.sh --mode minimal
 # --mode test is the default for both builders.
 ```
 
@@ -134,7 +134,7 @@ CATTEN_SERVICE_HEARTBEATS=0 scripts/run-x86_64.sh --tests
 ```
 
 Both runners and standalone service builders accept this build-time setting;
-empty or other values reject. It selects the `catten-services` Cargo feature
+empty or other values reject. It selects the `knytos-services` Cargo feature
 `service-heartbeats` (`--no-default-features` disables it for direct Cargo
 builds). It gates the periodic `hb` lines from `net`, `e1000e`, `frouter`,
 `tcpip` and `time`, including their logging-only counters and socket summaries.
@@ -208,7 +208,7 @@ precedes the signed shutdown/drain check instead of racing application startup.
 | Unregistered kernel async/cross-LP demo and unused infinite logging thread | Registered EL0 cross-LP completion, CQ wait/wake, scheduler lifecycle and synchronous mailbox/queue checks. These have asserted outcomes and coordinator deadlines; the old demo's log-only success was not a reliable verdict. |
 | Separate physical-frame readback test | Mandatory startup frame/readback/accounting validation, also present in minimal builds. |
 | Verbose 1050-byte and 8 KiB allocator exercises | One mandatory aligned, multi-page heap readback; native retirement/failure controls remain in the regression suite. |
-| Native copies of elementary adaptive-stack policy assertions | The broader `charlotte-lifecycle` host boundary tests and native stack/admission/history tests. |
+| Native copies of elementary adaptive-stack policy assertions | The broader `knytos-lifecycle` host boundary tests and native stack/admission/history tests. |
 | First-boot seeding inside the NVMe verifier | Always-on operational launcher seeding, before steady-state publication; the verifier observes that initialized storage stack. |
 | Unused combined `run_self_tests` wrapper | Explicit synchronous and scheduler-owned deferred phases, preserving their distinct execution contexts. |
 

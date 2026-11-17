@@ -114,7 +114,7 @@ mod inner {
     }
 
     fn verify_ns_status(ns: &NameServiceHandle, root: crate::memory::AddressSpaceHandle) {
-        use charlotte_protocol_ns::snapshot;
+        use knytos_protocol_ns::snapshot;
 
         use crate::{
             ipc,
@@ -152,7 +152,7 @@ mod inner {
         let endpoint = ipc::endpoint_create(caller, 0x5354_4154, 1, 1).unwrap();
         let source =
             ipc::connection_delegate(caller, endpoint, caller, ipc::ConnectionRights::ALL).unwrap();
-        let mut name = [b'x'; charlotte_protocol_ns::MAX_NAME_LEN];
+        let mut name = [b'x'; knytos_protocol_ns::MAX_NAME_LEN];
         let prefix = b"audit.ns.status.";
         name[..prefix.len()].copy_from_slice(prefix);
         let mut last_generation = 0;
@@ -176,9 +176,9 @@ mod inner {
             last_generation = reply.result as u64;
             object::close_cap(caller, memory).unwrap();
         }
-        let retire = charlotte_protocol_ns::encode(
-            charlotte_protocol_ns::Action::Retire,
-            charlotte_protocol_ns::Request {
+        let retire = knytos_protocol_ns::encode(
+            knytos_protocol_ns::Action::Retire,
+            knytos_protocol_ns::Request {
                 name: &name,
                 generation: last_generation,
             },
@@ -190,7 +190,7 @@ mod inner {
             ipc::scalar_call_with_memory_move(
                 caller,
                 kernel_ns,
-                charlotte_protocol_ns::OP_UNREGISTER_GENERATION,
+                knytos_protocol_ns::OP_UNREGISTER_GENERATION,
                 retire.len() as u64,
                 memory,
             )
@@ -287,7 +287,7 @@ mod inner {
         let fixture = crate::service::loader::create_user_address_space_handle();
         crate::memory::register_domain_authority(
             fixture,
-            charlotte_launch::artifact_principal_id(b"ns-status-fixture"),
+            knytos_launch::artifact_principal_id(b"ns-status-fixture"),
             0,
         )
         .unwrap();
@@ -317,23 +317,23 @@ mod inner {
         logln!(
             "[http] tcpip initial status: stage={} error={:#x} detail={}",
             unsafe {
-                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
             },
             unsafe {
-                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::ERROR)
+                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::ERROR)
             },
             unsafe {
-                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::DETAIL)
+                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::DETAIL)
             }
         );
 
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe {
-            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
         } < 6
         {
             let error = unsafe {
-                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::ERROR)
+                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::ERROR)
             };
             assert_eq!(error, 0, "EL0 http tcpip startup failed with error {error:#x}");
             deadline.assert_pending("EL0 http tcpip service startup");
@@ -356,7 +356,7 @@ mod inner {
             let base: *mut u8 = disco.status_frame.into();
             base
         };
-        if !wait_for_stage(disco_cfg, charlotte_launch::disco_status::STAGE, 5, 20_000) {
+        if !wait_for_stage(disco_cfg, knytos_launch::disco_status::STAGE, 5, 20_000) {
             logln!("[http] disco did not reach serving; report shows disco/dns:null.");
         } else {
             logln!("[http] disco reached the serving stage.");
@@ -367,7 +367,7 @@ mod inner {
                 let base: *mut u8 = relmsg.status_frame.into();
                 base
             };
-            if !wait_for_stage(relmsg_cfg, charlotte_launch::relmsg_status::STAGE, 3, 20_000) {
+            if !wait_for_stage(relmsg_cfg, knytos_launch::relmsg_status::STAGE, 3, 20_000) {
                 logln!("[http] relmsg did not register; report shows relmsg:null.");
             } else {
                 logln!("[http] relmsg registered.");
@@ -376,7 +376,7 @@ mod inner {
                     let base: *mut u8 = dns.status_frame.into();
                     base
                 };
-                if !wait_for_stage(dns_cfg, charlotte_launch::dns_status::STAGE, 8, 20_000) {
+                if !wait_for_stage(dns_cfg, knytos_launch::dns_status::STAGE, 8, 20_000) {
                     logln!("[http] dns did not reach serving; report shows dns:null.");
                 } else {
                     logln!("[http] dns reached the serving stage.");
@@ -385,7 +385,7 @@ mod inner {
                     // (1=follower, 2=candidate, 3=leader), then register a name so the report's dns
                     // section has a real entry.
                     let kernel_ns = kernel_ns_connection(ns);
-                    if wait_for_value(dns_cfg, charlotte_launch::dns_status::RAFT_STATE, 3, 20_000)
+                    if wait_for_value(dns_cfg, knytos_launch::dns_status::RAFT_STATE, 3, 20_000)
                     {
                         logln!("[http] dns is the single-node cluster leader.");
                         let dns_conn = lookup_service(kernel_ns, DNS_NAME).unwrap_or(0);
@@ -394,7 +394,7 @@ mod inner {
                             if result >= 1
                                 && wait_for_value(
                                     dns_cfg,
-                                    charlotte_launch::dns_status::CATALOG_ENTRIES,
+                                    knytos_launch::dns_status::CATALOG_ENTRIES,
                                     1,
                                     20_000,
                                 )
@@ -419,16 +419,16 @@ mod inner {
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe {
-            crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::STAGE)
+            crate::self_test::status_u32(httpd_cfg, knytos_launch::httpd_status::STAGE)
         } < 6
         {
             spins += 1;
             if spins.is_multiple_of(200_000) {
                 let stage = unsafe {
-                    crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::STAGE)
+                    crate::self_test::status_u32(httpd_cfg, knytos_launch::httpd_status::STAGE)
                 };
                 let error = unsafe {
-                    crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::ERROR)
+                    crate::self_test::status_u32(httpd_cfg, knytos_launch::httpd_status::ERROR)
                 };
                 logln!("[http] waiting: httpd stage={} error={:#x}", stage, error);
             }

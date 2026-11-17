@@ -207,7 +207,7 @@ pub(super) fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
 }
 
 fn test_grant_abandonment() {
-    let principal = charlotte_launch::artifact_principal_id(b"device-grant-fixture-principal");
+    let principal = knytos_launch::artifact_principal_id(b"device-grant-fixture-principal");
     // Fake backend obligations: these do not install a hardware domain. The
     // real root and capability admission exercise implicit field destruction.
     for has_domain in [false, true] {

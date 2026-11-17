@@ -2,7 +2,7 @@
 use core::hint::black_box;
 
 use catten_services::s3 as wire;
-use charlotte_s3::{
+use knytos_s3::{
     request::OwnedRequest,
     sigv4::canonical_uri,
 };

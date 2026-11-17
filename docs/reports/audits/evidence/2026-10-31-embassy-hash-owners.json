@@ -1,20 +1,20 @@
 {
   "date": "2026-10-31",
   "base_revision": "e54c115906dfda34fef93b9aaa898c80113e36a6",
-  "scope": "One shared Embassy SHA-256/HMAC-SHA-256 registration uses existing erasing Charlotte hash owners for connector TLS as well as management certificate fingerprints. Stock registrations are removed from normal and management-test dependency graphs. No cryptographic algorithm, wire format, entropy authority, deadline or capability policy change.",
+  "scope": "One shared Embassy SHA-256/HMAC-SHA-256 registration uses existing erasing Knytos hash owners for connector TLS as well as management certificate fingerprints. Stock registrations are removed from normal and management-test dependency graphs. No cryptographic algorithm, wire format, entropy authority, deadline or capability policy change.",
   "source_sha256": {
-    "crates/catten-services/Cargo.toml": "02e082905b64c053534c233fecb957797c999b00fca86b8df04c965dfc485f27",
-    "crates/catten-services/src/bin/security_probe.rs": "215a160c8fe6b81c3d33c7b492e41cda9b20291cf82f36b5fa42ecb958859aa4",
-    "crates/catten-services/src/tls_client.rs": "53738f4f6b4b6db44b966eb3dec1d80eb21d82a6cb11acd86ca1f65663514ddf",
-    "crates/catten-services/src/tls_client/hash_contract.rs": "fe787307e27ca4e6214fce4bf7767528c770d2a9790d7f0dec53fd8d8344abae",
-    "crates/charlotte-management-tls/Cargo.toml": "526a25b2fd3dc47a996194208f5acdf8a10ea80646043e6c28b372e092c9b404",
-    "crates/charlotte-management-tls/src/crypto.rs": "bceff33f075bf68f420e918b730691e2c97170a2115017ee4784a2253ac7050b",
-    "crates/charlotte-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30"
+    "crates/knytos-services/Cargo.toml": "02e082905b64c053534c233fecb957797c999b00fca86b8df04c965dfc485f27",
+    "crates/knytos-services/src/bin/security_probe.rs": "215a160c8fe6b81c3d33c7b492e41cda9b20291cf82f36b5fa42ecb958859aa4",
+    "crates/knytos-services/src/tls_client.rs": "53738f4f6b4b6db44b966eb3dec1d80eb21d82a6cb11acd86ca1f65663514ddf",
+    "crates/knytos-services/src/tls_client/hash_contract.rs": "fe787307e27ca4e6214fce4bf7767528c770d2a9790d7f0dec53fd8d8344abae",
+    "crates/knytos-management-tls/Cargo.toml": "526a25b2fd3dc47a996194208f5acdf8a10ea80646043e6c28b372e092c9b404",
+    "crates/knytos-management-tls/src/crypto.rs": "bceff33f075bf68f420e918b730691e2c97170a2115017ee4784a2253ac7050b",
+    "crates/knytos-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30"
   },
   "ownership_contract": {
     "concrete_contexts": [
-      "charlotte_launch::sha256::Sha256",
-      "charlotte_launch::sha256::HmacSha256"
+      "knytos_launch::sha256::Sha256",
+      "knytos_launch::sha256::HmacSha256"
     ],
     "selection": "ZeroizeOnDrop bounds qualify actual driver associated context types; duplicate exported symbols reject stock registration.",
     "forwarding": "Pinned unitrait bb96601b3d293fa27d1ca2891f6ea148e534e433 generates Drop forwarding through drop_in_place of the concrete Context, consuming argument moves through ManuallyDrop, and concrete Clone forwarding. Its macro checks opaque storage size/alignment.",
@@ -39,14 +39,14 @@
   "expected_registration_rejections": [
     {
       "name": "stock-sha-hmac",
-      "command": "cargo test --locked --manifest-path crates/catten-services/Cargo.toml --lib tls_client::hash_contract --features embassy-crypto-rustcrypto/embassy-crypto-sha256,embassy-crypto-rustcrypto/embassy-crypto-hmac-sha256",
+      "command": "cargo test --locked --manifest-path crates/knytos-services/Cargo.toml --lib tls_client::hash_contract --features embassy-crypto-rustcrypto/embassy-crypto-sha256,embassy-crypto-rustcrypto/embassy-crypto-hmac-sha256",
       "exit_status": 101,
       "diagnostic": "warning: Linking globals named '_embassy_crypto_sha256_Context_clone': symbol multiply defined!",
       "classification": "Expected rejection of duplicate stock registration, before executing tests."
     },
     {
       "name": "stock-hmac-only",
-      "command": "cargo test --locked --manifest-path crates/catten-services/Cargo.toml --lib tls_client::hash_contract --features embassy-crypto-rustcrypto/embassy-crypto-hmac-sha256",
+      "command": "cargo test --locked --manifest-path crates/knytos-services/Cargo.toml --lib tls_client::hash_contract --features embassy-crypto-rustcrypto/embassy-crypto-hmac-sha256",
       "exit_status": 101,
       "diagnostic": "warning: Linking globals named '_embassy_crypto_hmac_sha256_Context_clone': symbol multiply defined!",
       "classification": "Expected rejection of duplicate stock registration, before executing tests."

@@ -12,7 +12,7 @@ use crate::{
 pub fn test_heap_admission() {
     memory::backing_budget::test_pool();
     let handle = loader::create_user_address_space_handle();
-    let page = charlotte_launch::HEAP_VADDR;
+    let page = knytos_launch::HEAP_VADDR;
     let used = memory::backing_budget::test_used_pages(memory::backing_budget::Kind::Heap);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     assert!(!memory::commit_user_heap_page_with_mapper(handle, page, |_, _| false));

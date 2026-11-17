@@ -638,10 +638,10 @@ pub(crate) fn run() {
         held,
         3,
         false,
-        catten_syscall::DmaMapError {
-            status: catten_syscall::device_status::DMA_INVALID,
-            phase: catten_syscall::dma_map_phase::BACKEND,
-            cause: catten_syscall::dma_map_cause::MAP_FAILED,
+        knytos_syscall::DmaMapError {
+            status: knytos_syscall::device_status::DMA_INVALID,
+            phase: knytos_syscall::dma_map_phase::BACKEND,
+            cause: knytos_syscall::dma_map_cause::MAP_FAILED,
         },
     );
     assert!(!REJECT_MAP_ROLLBACK.load(Ordering::Acquire));
@@ -666,7 +666,7 @@ pub(crate) fn run() {
         successor.id(),
         domain,
         address,
-        catten_syscall::device_status::DMA_INVALID,
+        knytos_syscall::device_status::DMA_INVALID,
     );
     assert!(!REJECT_UNMAP_COMPLETION.load(Ordering::Acquire));
     assert_eq!(dma_tables::used(), charged);

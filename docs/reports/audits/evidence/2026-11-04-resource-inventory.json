@@ -606,13 +606,13 @@
     "crates/catten/Cargo.toml": "4b8e9b910cd5a41755a85c762ba819ba320322ae95df046605807f7c6dd25b38",
     "target_specs/aarch64-unknown-none-catten.json": "8295350cd7123630e381fea157c2ee783c003033b2fb38f61335fab4323e3c69",
     "target_specs/x86_64-unknown-none-catten.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
-    "crates/charlotte-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
-    "crates/charlotte-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
-    "crates/charlotte-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
-    "crates/charlotte-launch/src/operations_pickup.rs": "707cc735894520eed1ee7a2eea432f98bab6607a110f261bb9884e0bd5b8e144",
-    "crates/charlotte-launch/src/operations_bundle.rs": "36e6b4ca928bfb51027dd1d94e103905d95ab618b0a83c0182795845a178fd3c",
-    "crates/charlotte-launch/src/release.rs": "56ec61085e336e20f018d45859823a05b7b63568a035f2e1346760b11a8d95d8",
-    "crates/charlotte-launch/src/shutdown.rs": "ccdbbb2a1216fc52b3d87a38dca0493d28965bc7b30d7f59ac0db2e704925160"
+    "crates/knytos-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
+    "crates/knytos-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
+    "crates/knytos-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
+    "crates/knytos-launch/src/operations_pickup.rs": "707cc735894520eed1ee7a2eea432f98bab6607a110f261bb9884e0bd5b8e144",
+    "crates/knytos-launch/src/operations_bundle.rs": "36e6b4ca928bfb51027dd1d94e103905d95ab618b0a83c0182795845a178fd3c",
+    "crates/knytos-launch/src/release.rs": "56ec61085e336e20f018d45859823a05b7b63568a035f2e1346760b11a8d95d8",
+    "crates/knytos-launch/src/shutdown.rs": "ccdbbb2a1216fc52b3d87a38dca0493d28965bc7b30d7f59ac0db2e704925160"
   },
   "scope": "Primary kernel-crate MIR for the declared profiles; compiled bodies include unused/generic code. Records are review candidates, not findings, allocations performed, reachability or lock-safety proofs.",
   "limitations": [
@@ -2229,7 +2229,7 @@
         63
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::VectorBudget<1>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::VectorBudget<1>>",
       "id": "b0b4bd693d1e462b",
       "profiles": [
         "arm-acpi-minimal",
@@ -2251,7 +2251,7 @@
         23
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::VectorBudget<1>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::VectorBudget<1>>",
       "id": "297a3d06e8f1ac12",
       "profiles": [
         "arm-acpi-minimal",
@@ -2691,7 +2691,7 @@
         81
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::VectorBudget<2>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::VectorBudget<2>>",
       "id": "efa515736fc054fb",
       "profiles": [
         "arm-acpi-minimal",
@@ -2735,7 +2735,7 @@
         23
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::VectorBudget<2>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::VectorBudget<2>>",
       "id": "2cf663458f2d8873",
       "profiles": [
         "arm-acpi-minimal",
@@ -8917,7 +8917,7 @@
         63
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::CountBudget>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::CountBudget>",
       "id": "14100a93b3752e80",
       "profiles": [
         "arm-acpi-minimal",
@@ -8983,7 +8983,7 @@
         23
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::CountBudget>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::CountBudget>",
       "id": "d95c0309f7c747d7",
       "profiles": [
         "arm-acpi-minimal",
@@ -11063,7 +11063,7 @@
         19
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::new",
-      "value_type": "spin::once::Once<alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>>",
+      "value_type": "spin::once::Once<alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>>",
       "id": "3cdf84023c326260",
       "profiles": [
         "x86-acpi-minimal"
@@ -11084,7 +11084,7 @@
         32
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::call_once::<{closure@crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs:50:25: 50:27}>",
-      "value_type": "&alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>",
+      "value_type": "&alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>",
       "id": "2389c908292031a5",
       "profiles": [
         "x86-acpi-minimal"
@@ -11105,7 +11105,7 @@
         27
       ],
       "callee": "alloc::vec::Vec::<Acknowledgement>::new",
-      "value_type": "alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>",
+      "value_type": "alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>",
       "id": "23447a6ee8252d6b",
       "profiles": [
         "x86-acpi-minimal"
@@ -11168,7 +11168,7 @@
         39
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::get",
-      "value_type": "core::option::Option<&alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>>",
+      "value_type": "core::option::Option<&alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>>",
       "id": "05ef8ef8d8cf2cfb",
       "profiles": [
         "x86-acpi-minimal"
@@ -11189,7 +11189,7 @@
         53
       ],
       "callee": "spin::once::Once::<alloc::vec::Vec<Acknowledgement>>::get",
-      "value_type": "core::option::Option<&alloc::vec::Vec<charlotte_lifecycle::shootdown::Acknowledgement>>",
+      "value_type": "core::option::Option<&alloc::vec::Vec<knytos_lifecycle::shootdown::Acknowledgement>>",
       "id": "070649d68d908e6f",
       "profiles": [
         "x86-acpi-minimal"
@@ -11210,7 +11210,7 @@
         53
       ],
       "callee": "drop",
-      "value_type": "charlotte_lifecycle::shootdown::Attempt<'_>",
+      "value_type": "knytos_lifecycle::shootdown::Attempt<'_>",
       "id": "c09541afe7754863",
       "profiles": [
         "x86-acpi-minimal"
@@ -28232,7 +28232,7 @@
         81
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::VectorBudget<2>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::VectorBudget<2>>",
       "id": "8fffefbb95d10795",
       "profiles": [
         "arm-acpi-minimal",
@@ -28276,7 +28276,7 @@
         23
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::VectorBudget<2>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::VectorBudget<2>>",
       "id": "69016b88dee22ef9",
       "profiles": [
         "arm-acpi-minimal",
@@ -32610,7 +32610,7 @@
         6
       ],
       "callee": "ipc::buffer::<CapVectorEntry>",
-      "value_type": "alloc::vec::Vec<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::Vec<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "90c058ad74926dc4",
       "profiles": [
         "arm-acpi-minimal",
@@ -32764,7 +32764,7 @@
         6
       ],
       "callee": "drop",
-      "value_type": "alloc::vec::IntoIter<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::IntoIter<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "d209d083723e4fbd",
       "profiles": [
         "arm-acpi-minimal",
@@ -32808,7 +32808,7 @@
         6
       ],
       "callee": "drop",
-      "value_type": "alloc::vec::Vec<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::Vec<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "abc769057f15f109",
       "profiles": [
         "arm-acpi-minimal",
@@ -36724,7 +36724,7 @@
         93
       ],
       "callee": "drop",
-      "value_type": "impl FnMut(catten_syscall::metadata_pools::Sample)",
+      "value_type": "impl FnMut(knytos_syscall::metadata_pools::Sample)",
       "id": "2a78685751434ac3",
       "profiles": [
         "arm-acpi-minimal",
@@ -36768,7 +36768,7 @@
         6
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::AdmissionPool<N>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::AdmissionPool<N>>",
       "id": "782b9e4b088165eb",
       "profiles": [
         "arm-acpi-minimal",
@@ -36790,7 +36790,7 @@
         75
       ],
       "callee": "drop",
-      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, charlotte_lifecycle::resources::AdmissionPool<N>>",
+      "value_type": "lock_api::MutexGuard<'_, cpu::multiprocessor::spin::mutex::MutexCore, knytos_lifecycle::resources::AdmissionPool<N>>",
       "id": "f243c09b462898b6",
       "profiles": [
         "arm-acpi-minimal",
@@ -53332,7 +53332,7 @@
         67
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, ClusterTcpService>, {closure@crates/catten/src/service/launch.rs:174:14: 174:23}> as Iterator>::collect::<alloc::vec::Vec<ServiceBinding<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_launch::ingress::ServiceBinding<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_launch::ingress::ServiceBinding<'_>>",
       "id": "61c35226467698eb",
       "profiles": [
         "arm-acpi-minimal",
@@ -53354,7 +53354,7 @@
         67
       ],
       "callee": "drop",
-      "value_type": "alloc::vec::Vec<charlotte_launch::ingress::ServiceBinding<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_launch::ingress::ServiceBinding<'_>>",
       "id": "efaaa87c043e50aa",
       "profiles": [
         "arm-acpi-minimal",
@@ -53507,7 +53507,7 @@
         864,
         78
       ],
-      "callee": "charlotte_protocol_s3::Profile::<'_>::encode",
+      "callee": "knytos_protocol_s3::Profile::<'_>::encode",
       "value_type": "core::option::Option<zeroize::Zeroizing<alloc::vec::Vec<u8>>>",
       "id": "9bb35fa9577abae0",
       "profiles": [
@@ -53574,7 +53574,7 @@
         84
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, KafkaProduceRoute<'_>>, {closure@crates/catten/src/service/launch.rs:902:14: 902:21}> as Iterator>::collect::<alloc::vec::Vec<ProduceRoute<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_protocol_kafka::ProduceRoute<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_protocol_kafka::ProduceRoute<'_>>",
       "id": "2cef73458ad11a0e",
       "profiles": [
         "arm-acpi-minimal",
@@ -53596,7 +53596,7 @@
         84
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, KafkaBrokerEndpoint<'_>>, {closure@crates/catten/src/service/launch.rs:910:14: 910:22}> as Iterator>::collect::<alloc::vec::Vec<BrokerEndpoint<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_protocol_kafka::BrokerEndpoint<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_protocol_kafka::BrokerEndpoint<'_>>",
       "id": "726ec6da110a9b89",
       "profiles": [
         "arm-acpi-minimal",
@@ -53618,7 +53618,7 @@
         84
       ],
       "callee": "<core::iter::Map<core::slice::Iter<'_, KafkaAuthorityEndpoint<'_>>, {closure@crates/catten/src/service/launch.rs:920:18: 920:28}> as Iterator>::collect::<alloc::vec::Vec<AuthorityEndpoint<'_>>>",
-      "value_type": "alloc::vec::Vec<charlotte_protocol_kafka::AuthorityEndpoint<'_>>",
+      "value_type": "alloc::vec::Vec<knytos_protocol_kafka::AuthorityEndpoint<'_>>",
       "id": "6c78139f4510cec7",
       "profiles": [
         "arm-acpi-minimal",
@@ -53639,8 +53639,8 @@
         898,
         84
       ],
-      "callee": "charlotte_protocol_kafka::Profile::<'_>::encode",
-      "value_type": "core::result::Result<zeroize::Zeroizing<alloc::vec::Vec<u8>>, charlotte_protocol_kafka::ProfileError>",
+      "callee": "knytos_protocol_kafka::Profile::<'_>::encode",
+      "value_type": "core::result::Result<zeroize::Zeroizing<alloc::vec::Vec<u8>>, knytos_protocol_kafka::ProfileError>",
       "id": "cfec7a3cfaacb5c2",
       "profiles": [
         "arm-acpi-minimal",
@@ -53661,7 +53661,7 @@
         898,
         84
       ],
-      "callee": "Result::<Zeroizing<alloc::vec::Vec<u8>>, charlotte_protocol_kafka::ProfileError>::expect",
+      "callee": "Result::<Zeroizing<alloc::vec::Vec<u8>>, knytos_protocol_kafka::ProfileError>::expect",
       "value_type": "zeroize::Zeroizing<alloc::vec::Vec<u8>>",
       "id": "fc3f5391cf3099e4",
       "profiles": [
@@ -53684,7 +53684,7 @@
         84
       ],
       "callee": "drop",
-      "value_type": "charlotte_protocol_kafka::Profile<'_>",
+      "value_type": "knytos_protocol_kafka::Profile<'_>",
       "id": "8d0041f084ddd0c7",
       "profiles": [
         "arm-acpi-minimal",
@@ -53749,7 +53749,7 @@
         984,
         85
       ],
-      "callee": "Result::<alloc::vec::Vec<u8>, charlotte_kafka_step::ProfileError>::expect",
+      "callee": "Result::<alloc::vec::Vec<u8>, knytos_kafka_step::ProfileError>::expect",
       "value_type": "alloc::vec::Vec<u8>",
       "id": "13b0df5033911d66",
       "profiles": [
@@ -53771,8 +53771,8 @@
         984,
         85
       ],
-      "callee": "charlotte_kafka_step::Profile::<'_>::encode",
-      "value_type": "core::result::Result<alloc::vec::Vec<u8>, charlotte_kafka_step::ProfileError>",
+      "callee": "knytos_kafka_step::Profile::<'_>::encode",
+      "value_type": "core::result::Result<alloc::vec::Vec<u8>, knytos_kafka_step::ProfileError>",
       "id": "271cd1b5af182e85",
       "profiles": [
         "arm-acpi-minimal",
@@ -53816,7 +53816,7 @@
         85
       ],
       "callee": "drop",
-      "value_type": "charlotte_kafka_step::Profile<'_>",
+      "value_type": "knytos_kafka_step::Profile<'_>",
       "id": "518779acbd3c535f",
       "profiles": [
         "arm-acpi-minimal",
@@ -53926,7 +53926,7 @@
         6
       ],
       "callee": "drop",
-      "value_type": "core::option::Option<charlotte_launch::management::sealed::PreparedProfile>",
+      "value_type": "core::option::Option<knytos_launch::management::sealed::PreparedProfile>",
       "id": "ad64ee9798c04732",
       "profiles": [
         "arm-acpi-minimal",
@@ -59154,7 +59154,7 @@
         34
       ],
       "callee": "drop",
-      "value_type": "core::result::Result<charlotte_protocol_kafka::Profile<'_>, charlotte_protocol_kafka::ProfileError>",
+      "value_type": "core::result::Result<knytos_protocol_kafka::Profile<'_>, knytos_protocol_kafka::ProfileError>",
       "id": "9f7bc44d72d053e6",
       "profiles": [
         "arm-acpi-minimal",

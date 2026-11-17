@@ -46,14 +46,14 @@ extern "C" fn verify_el0_s3() {
             tls: true,
             ca_certificate_der: Some(ca_der),
             region: b"us-east-1",
-            bucket: b"charlotte-test",
+            bucket: b"knytos-test",
             prefix: b"",
-            access_key: b"charlotte-test-access",
-            secret_key: b"charlotte-test-secret-2026",
+            access_key: b"knytos-test-access",
+            secret_key: b"knytos-test-secret-2026",
             namespace: None,
-            rights: charlotte_protocol_s3::RIGHT_GET
-                | charlotte_protocol_s3::RIGHT_PUT
-                | charlotte_protocol_s3::RIGHT_DELETE,
+            rights: knytos_protocol_s3::RIGHT_GET
+                | knytos_protocol_s3::RIGHT_PUT
+                | knytos_protocol_s3::RIGHT_DELETE,
         },
     );
     logln!("[s3-test] S3 service spawned (asid={})", service.asid);
@@ -74,17 +74,17 @@ extern "C" fn verify_el0_s3() {
     let deadline = crate::self_test::results::Deadline::after_millis(180_000);
     loop {
         let stage = unsafe {
-            crate::self_test::status_u32(status, charlotte_launch::s3_smoke_status::STAGE)
+            crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::STAGE)
         };
         let error = unsafe {
-            crate::self_test::status_u32(status, charlotte_launch::s3_smoke_status::ERROR)
+            crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::ERROR)
         };
         let service_error = unsafe {
-            crate::self_test::status_u32(service_status, charlotte_launch::s3_status::ERROR)
+            crate::self_test::status_u32(service_status, knytos_launch::s3_status::ERROR)
         };
-        if stage == charlotte_launch::s3_smoke_status::SUCCESS {
+        if stage == knytos_launch::s3_smoke_status::SUCCESS {
             let bytes = unsafe {
-                crate::self_test::status_u32(status, charlotte_launch::s3_smoke_status::BYTES)
+                crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::BYTES)
             };
             logln!("[s3-test] SUCCESS: verified {}-byte object round trip", bytes);
             crate::self_test::results::pass(crate::self_test::results::TestId::S3);
@@ -92,24 +92,24 @@ extern "C" fn verify_el0_s3() {
         }
         if error != 0 {
             let time_state = unsafe {
-                crate::self_test::status_u32(time_status, charlotte_launch::time_status::SYNC_STATE)
+                crate::self_test::status_u32(time_status, knytos_launch::time_status::SYNC_STATE)
             };
             let time_failures = unsafe {
                 crate::self_test::status_u32(
                     time_status,
-                    charlotte_launch::time_status::NTP_FAILURES,
+                    knytos_launch::time_status::NTP_FAILURES,
                 )
             };
             let time_setup_phase = unsafe {
                 crate::self_test::status_u32(
                     time_status,
-                    charlotte_launch::time_status::NTP_SETUP_PHASE,
+                    knytos_launch::time_status::NTP_SETUP_PHASE,
                 )
             };
             let time_setup_status = unsafe {
                 crate::self_test::status_u32(
                     time_status,
-                    charlotte_launch::time_status::NTP_SETUP_STATUS,
+                    knytos_launch::time_status::NTP_SETUP_STATUS,
                 )
             };
             logln!(

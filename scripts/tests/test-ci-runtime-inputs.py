@@ -34,7 +34,7 @@ class CiRuntimeInputs(unittest.TestCase):
     def test_pinned_dependency_uses_the_current_kernel_wait_number(self):
         pin = re.search(r"^  SITAS_REV: ([0-9a-f]{40})$", self.workflow, re.MULTILINE)
         self.assertIsNotNone(pin, "CI must use a full immutable Sitas revision")
-        syscall = (ROOT / "crates/catten-syscall/src/lib.rs").read_text()
+        syscall = (ROOT / "crates/knytos-syscall/src/lib.rs").read_text()
         number = re.search(r"\(CqWaitChecked,\s*(\d+)\)", syscall)
         self.assertIsNotNone(number)
         self.assertEqual(checked_wait_number(self.sitas_source(pin.group(1))), int(number.group(1)))

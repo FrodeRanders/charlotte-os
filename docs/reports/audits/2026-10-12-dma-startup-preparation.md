@@ -146,8 +146,8 @@ after that correction; passing x86 runs do not substitute for ARM evidence.
 ## Final validation and artifacts
 
 Both signed bundles were rebuilt before guests with
-`scripts/build-catten-services.sh --embed` and
-`scripts/build-catten-services-x86_64.sh`. Host suite: **384 passed, 0 failed,
+`scripts/build-knytos-services.sh --embed` and
+`scripts/build-knytos-services-x86_64.sh`. Host suite: **384 passed, 0 failed,
 3 ignored**. Formatting, diff and changed Markdown-link checks passed. Strict
 `-D warnings` Clippy passed for bundled services, final-source ARM
 security/HTTP/DHCP kernel and final-source x86 HTTP/DHCP kernel.

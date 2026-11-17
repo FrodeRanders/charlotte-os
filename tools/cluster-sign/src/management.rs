@@ -1,7 +1,7 @@
 //! Complete, bounded management startup resources. Private inputs are file-only;
 //! erasing owners precede reads/encoding. Verification does not install trust.
 
-use charlotte_launch::{
+use knytos_launch::{
     management::{
         self,
         sealed,
@@ -111,7 +111,7 @@ pub(super) fn profile_create(args: &[String]) -> Result<()> {
                 return Err("empty management operator certificate".into());
             }
             Ok(Enrollment {
-                certificate_sha256: charlotte_launch::sha256::digest(&certificate),
+                certificate_sha256: knytos_launch::sha256::digest(&certificate),
                 role: *role,
             })
         })
@@ -136,7 +136,7 @@ pub(super) fn profile_create(args: &[String]) -> Result<()> {
 }
 
 fn policy(path: &str) -> Result<AdmissionTrust> {
-    let bytes = read_bounded_regular(path, charlotte_launch::trust::ENCODED_LEN)?;
+    let bytes = read_bounded_regular(path, knytos_launch::trust::ENCODED_LEN)?;
     AdmissionTrust::decode(&bytes).ok_or_else(|| "malformed public admission policy".into())
 }
 
@@ -146,7 +146,7 @@ pub(super) fn development_policy(args: &[String]) -> Result<()> {
                     <cluster-mnemonic>"
             .into());
     }
-    let trust = charlotte_launch::development_admission_trust(args[1].as_bytes())
+    let trust = knytos_launch::development_admission_trust(args[1].as_bytes())
         .ok_or("invalid development cluster")?;
     write_new_file(&args[0], &trust.encode().unwrap(), false)?;
     println!("exported public development fixture policy; not production enrollment");
@@ -189,7 +189,7 @@ pub(super) fn resource_seal(args: &[String]) -> Result<()> {
         "sealed management resource {} policy={} sha256={}",
         args[0],
         hex_encode(&sealed::policy_digest(&trust).unwrap()),
-        hex_encode(&charlotte_launch::sha256::digest(&resource))
+        hex_encode(&knytos_launch::sha256::digest(&resource))
     );
     Ok(())
 }

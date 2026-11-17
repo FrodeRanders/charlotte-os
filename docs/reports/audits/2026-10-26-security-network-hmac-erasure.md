@@ -11,7 +11,7 @@ copies. This is a source-confirmed SEC-15 gap, without a demonstrated cross-doma
 secret read or prediction of a live network key.
 
 Port selection now uses the existing allocation-free
-`charlotte_launch::sha256::hmac_sha256` and its zeroizing result owner.
+`knytos_launch::sha256::hmac_sha256` and its zeroizing result owner.
 Initialization also owns its entropy scratch before filling, including partial
 or error returns. The label, accepted counter sequence, byte order, output
 mapping and fresh-entropy startup requirement are preserved. The service's unused

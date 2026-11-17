@@ -1,0 +1,15 @@
+[package]
+name = "knytos-graft"
+version = "0.1.0"
+edition = "2024"
+description = "no_std Raft consensus core adapted for Knytos"
+
+[lib]
+name = "catten_graft"
+path = "src/lib.rs"
+bench = false
+
+[dependencies]
+knytos-syscall = { path = "../knytos-syscall" }
+spin = { version = "0.9", features = ["lock_api"] }
+prost = { version = "0.14.4", default-features = false, features = ["derive"] }

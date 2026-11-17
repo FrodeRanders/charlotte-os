@@ -5,7 +5,7 @@
   },
   "themeCSS": ".actor-line { stroke: #666666 !important; stroke-width: 1.25px !important; } .loopLine { stroke: #666666 !important; } .labelBox { stroke: #666666 !important; fill: #e0e0e0 !important; }",
   "deterministicIds": true,
-  "deterministicIDSeed": "charlotte-os-manual",
+  "deterministicIDSeed": "knytos-os-manual",
   "htmlLabels": false,
   "flowchart": {
     "useMaxWidth": true

@@ -1,6 +1,6 @@
-//! Offline signing and inspection for CharlotteOS cluster artifacts.
+//! Offline signing and inspection for Knytos cluster artifacts.
 //!
-//! The tool deliberately uses `charlotte-launch`'s parser, metadata encoder,
+//! The tool deliberately uses `knytos-launch`'s parser, metadata encoder,
 //! SHA-256, and verifier.  Host tooling and the kernel therefore cannot drift
 //! into subtly different interpretations of the signed byte stream.
 
@@ -32,7 +32,7 @@ use std::{
     process::ExitCode,
 };
 
-use charlotte_launch::{
+use knytos_launch::{
     deployment::{
         self,
         CapabilityGrant,
@@ -171,7 +171,7 @@ fn add_note_section(image: &[u8], metadata: ArtifactMetadata) -> Result<Vec<u8>>
     let output_len = table_offset
         .checked_add(old_table.len())
         .and_then(|len| len.checked_add(ELF64_SECTION_HEADER_LEN))
-        .filter(|len| *len <= charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
+        .filter(|len| *len <= knytos_launch::MAX_ARTIFACT_ELF_SIZE)
         .ok_or_else(|| "signed ELF exceeds the 4 MiB artifact limit".to_owned())?;
     let mut output = Vec::with_capacity(output_len);
     output.extend_from_slice(image);
@@ -344,7 +344,7 @@ impl ArtifactEdit {
             &mut file,
             &metadata,
             path,
-            charlotte_launch::MAX_ARTIFACT_ELF_SIZE,
+            knytos_launch::MAX_ARTIFACT_ELF_SIZE,
         )?;
         Ok(Self {
             file,
@@ -358,7 +358,7 @@ impl ArtifactEdit {
 
     /// Consumes the edit even on failure; partial writes have no implicit retry.
     fn commit(mut self) -> std::io::Result<()> {
-        if self.image.len() > charlotte_launch::MAX_ARTIFACT_ELF_SIZE {
+        if self.image.len() > knytos_launch::MAX_ARTIFACT_ELF_SIZE {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "signed artifact exceeds the 4 MiB limit",
@@ -412,7 +412,7 @@ fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
     if !is_development_secret(&encoded) {
         #[cfg(unix)]
         {
-            // Host tooling only; no Charlotte capability is acquired here.
+            // Host tooling only; no Knytos capability is acquired here.
             let effective_uid = unsafe { libc::geteuid() };
             if metadata.uid() != effective_uid || metadata.mode() & 0o077 != 0 {
                 return Err("private-key file must be owned by this user with no group/other \
@@ -946,11 +946,11 @@ fn elf_sign(args: &[String]) -> Result<()> {
     let location = signature_note::signature_location(image)
         .ok_or_else(|| "failed to construct canonical signature note".to_owned())?;
     let digest =
-        charlotte_launch::sha256::digest_skipping(image, location.signature_offset, SIGNATURE_LEN);
+        knytos_launch::sha256::digest_skipping(image, location.signature_offset, SIGNATURE_LEN);
     let signature: Signature = secret.sign(digest, None);
     image[location.signature_offset..location.signature_offset + SIGNATURE_LEN]
         .copy_from_slice(signature.as_ref());
-    let artifact_digest = charlotte_launch::sha256::digest(image);
+    let artifact_digest = knytos_launch::sha256::digest(image);
     edit.commit().map_err(|error| format!("rewrite artifact opened at {path}: {error}"))?;
     println!(
         "signed artifact opened at {path} as {name:?} class={class:?} version={version} \
@@ -970,7 +970,7 @@ fn elf_verify(args: &[String]) -> Result<()> {
         .map_err(|_| "public key must contain 32 bytes".to_owned())?;
     let key: &[u8; 32] =
         public.as_ref().try_into().map_err(|_| "public key must contain 32 bytes".to_owned())?;
-    let image = read_bounded_regular(path, charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
+    let image = read_bounded_regular(path, knytos_launch::MAX_ARTIFACT_ELF_SIZE)?;
     match signature_note::verify_elf_for_name(&image, key, name.as_bytes()) {
         signature_note::VerifyOutcome::Valid => {
             let metadata = signature_note::artifact_metadata(&image)
@@ -1022,10 +1022,10 @@ fn parse_u16_option(value: &str, label: &str) -> Result<u16> {
         .map_err(|_| format!("{label} exceeds the descriptor width"))
 }
 
-type ParsedPlacement<'a> = (charlotte_launch::placement::PlacementPolicy, Vec<(&'a [u8], u16)>);
+type ParsedPlacement<'a> = (knytos_launch::placement::PlacementPolicy, Vec<(&'a [u8], u16)>);
 
 fn parse_placement_and_grants(values: &[String]) -> Result<ParsedPlacement<'_>> {
-    use charlotte_launch::placement::{
+    use knytos_launch::placement::{
         PlacementPolicy,
         COLOCATE_AFFINITY_GROUP,
         EVERY_ELIGIBLE_NODE,
@@ -1078,11 +1078,11 @@ fn deployment_sign(args: &[String]) -> Result<()> {
             deployment::MAX_VARIANTS
         ));
     }
-    let image = read_bounded_regular(image_path, charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
+    let image = read_bounded_regular(image_path, knytos_launch::MAX_ARTIFACT_ELF_SIZE)?;
     let architecture =
-        charlotte_launch::execution_target::ExecutionTarget::elf_architecture(&image)
+        knytos_launch::execution_target::ExecutionTarget::elf_architecture(&image)
             .ok_or_else(|| "unsupported ELF architecture".to_owned())?;
-    let artifact_digest = charlotte_launch::sha256::digest(&image);
+    let artifact_digest = knytos_launch::sha256::digest(&image);
     let node_key =
         parse_required_u64(args.get(4).ok_or_else(|| "missing node key".to_owned())?, "node key")?;
     let sequence = parse_required_u64(
@@ -1111,7 +1111,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         read_signing_key(args.get(9).ok_or_else(|| "missing private-key file".to_owned())?)?;
     let mut variant_storage = vec![(
         object_key.to_owned(),
-        charlotte_launch::execution_target::ExecutionTarget::baseline(architecture),
+        knytos_launch::execution_target::ExecutionTarget::baseline(architecture),
         0u16,
         artifact_digest,
     )];
@@ -1122,9 +1122,9 @@ fn deployment_sign(args: &[String]) -> Result<()> {
             if parts.len() != 5 {
                 return Err("variant requires OBJECT_KEY,ELF,FEATURE_MASK,PRIORITY,ABI".to_owned());
             }
-            let image = read_bounded_regular(parts[1], charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
-            let mut target = charlotte_launch::execution_target::ExecutionTarget::baseline(
-                charlotte_launch::execution_target::ExecutionTarget::elf_architecture(&image)
+            let image = read_bounded_regular(parts[1], knytos_launch::MAX_ARTIFACT_ELF_SIZE)?;
+            let mut target = knytos_launch::execution_target::ExecutionTarget::baseline(
+                knytos_launch::execution_target::ExecutionTarget::elf_architecture(&image)
                     .ok_or_else(|| "unsupported variant ELF architecture".to_owned())?,
             );
             target.features = parse_required_u64(parts[2], "feature mask")?;
@@ -1138,7 +1138,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
                 parts[0].to_owned(),
                 target,
                 priority,
-                charlotte_launch::sha256::digest(&image),
+                knytos_launch::sha256::digest(&image),
             ));
         } else if let Some(features) = option.strip_prefix("--features=") {
             variant_storage[0].1.features = parse_required_u64(features, "feature mask")?;
@@ -1149,7 +1149,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     let (placement, parsed_grants) = parse_placement_and_grants(&options)?;
     let variants = variant_storage
         .iter()
-        .map(|(key, target, priority, digest)| charlotte_launch::deployment::ArtifactVariant {
+        .map(|(key, target, priority, digest)| knytos_launch::deployment::ArtifactVariant {
             target: *target,
             priority: *priority,
             artifact_digest: *digest,
@@ -1675,7 +1675,7 @@ fn deployment_notify_bytes(
 }
 
 struct AdmittedRelease {
-    receipt: charlotte_launch::release_admission::Receipt,
+    receipt: knytos_launch::release_admission::Receipt,
     body: String,
 }
 
@@ -2044,7 +2044,7 @@ fn run() -> Result<()> {
         Some("operations-bundle-notify") => operations_bundle_notify(&args[2..]),
         Some("cluster-id") => {
             let mnemonic = args.get(2).ok_or_else(|| "missing cluster mnemonic".to_owned())?;
-            let id = charlotte_launch::trust::cluster_id(mnemonic.as_bytes())
+            let id = knytos_launch::trust::cluster_id(mnemonic.as_bytes())
                 .ok_or_else(|| "cluster mnemonic must not be empty".to_owned())?;
             println!("{}", hex_encode(&id));
             Ok(())
@@ -2058,7 +2058,7 @@ fn run() -> Result<()> {
             Ok(())
         }
         Some("selftest") => {
-            if charlotte_launch::sha256::digest(b"abc") != charlotte_launch::sha256::TEST_VECTOR_ABC
+            if knytos_launch::sha256::digest(b"abc") != knytos_launch::sha256::TEST_VECTOR_ABC
             {
                 return Err("SHA-256 self-test failed".to_owned());
             }
@@ -2070,7 +2070,7 @@ fn run() -> Result<()> {
                 signature_note::FLAG_PARALLEL_INSTANCES,
             )
             .ok_or_else(|| "metadata self-test construction failed".to_owned())?
-            .with_key_id(&charlotte_launch::CLUSTER_PUBLIC_KEY)
+            .with_key_id(&knytos_launch::CLUSTER_PUBLIC_KEY)
             .with_provenance_digest([0x5a; 32]);
             let decoded =
                 signature_note::decode_metadata(&signature_note::encode_descriptor(metadata))
@@ -2078,11 +2078,11 @@ fn run() -> Result<()> {
             if decoded != metadata {
                 return Err("metadata self-test round trip failed".to_owned());
             }
-            let policy = charlotte_launch::placement::PlacementPolicy {
+            let policy = knytos_launch::placement::PlacementPolicy {
                 replicas: 2,
                 max_instances_per_node: 2,
                 min_distinct_nodes: 1,
-                flags: charlotte_launch::placement::COLOCATE_AFFINITY_GROUP,
+                flags: knytos_launch::placement::COLOCATE_AFFINITY_GROUP,
                 affinity_group: 42,
                 anti_affinity_group: 0,
             };
@@ -2094,9 +2094,9 @@ fn run() -> Result<()> {
                 rights: deployment::CLIENT_RIGHTS,
             }];
             let fields = DescriptorFields {
-                variants: &[charlotte_launch::deployment::ArtifactVariant {
-                    target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-                        charlotte_launch::execution_target::Architecture::Aarch64,
+                variants: &[knytos_launch::deployment::ArtifactVariant {
+                    target: knytos_launch::execution_target::ExecutionTarget::baseline(
+                        knytos_launch::execution_target::Architecture::Aarch64,
                     ),
                     priority: 0,
                     artifact_digest: [0xa5; 32],
@@ -2304,7 +2304,7 @@ mod tests {
             };
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let path = env::temp_dir().join(format!(
-                "charlotte-key-test-{}-{}",
+                "knytos-key-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -2371,7 +2371,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn signed_policy_commands_enroll_rotate_and_preserve_existing_output() {
-        use charlotte_launch::trust::signed_policy::{
+        use knytos_launch::trust::signed_policy::{
             self,
             BootstrapKey,
             PolicyExpectation,
@@ -2394,7 +2394,7 @@ mod tests {
             read_hex_key(&public_path, 32, "public key").unwrap().try_into().unwrap(),
         )
         .unwrap();
-        let cluster = charlotte_launch::trust::cluster_id(args[3].as_bytes()).unwrap();
+        let cluster = knytos_launch::trust::cluster_id(args[3].as_bytes()).unwrap();
         let accepted = signed_policy::verify(
             &original,
             &public,
@@ -2403,7 +2403,7 @@ mod tests {
         )
         .unwrap();
         let mut candidate =
-            charlotte_launch::trust::AdmissionTrust::decode(&fs::read(&args[1]).unwrap()).unwrap();
+            knytos_launch::trust::AdmissionTrust::decode(&fs::read(&args[1]).unwrap()).unwrap();
         candidate.sequence = 8;
         fs::write(&args[1], candidate.encode().unwrap()).unwrap();
         args[0] = directory.path("rotated.signed");
@@ -2499,7 +2499,7 @@ mod tests {
         invalid[2] = fixture_path;
         assert!(trust_policy::sign(&invalid).unwrap_err().contains("DevelopmentKey"));
         let mut candidate =
-            charlotte_launch::trust::AdmissionTrust::decode(&fs::read(&args[1]).unwrap()).unwrap();
+            knytos_launch::trust::AdmissionTrust::decode(&fs::read(&args[1]).unwrap()).unwrap();
         candidate.artifact_key =
             read_hex_key(&public_path, 32, "public key").unwrap().try_into().unwrap();
         fs::write(&args[1], candidate.encode().unwrap()).unwrap();
@@ -2570,8 +2570,8 @@ mod tests {
         let args = trust_policy_args(&directory);
         trust_policy::create(&args).unwrap();
         let bytes = fs::read(&args[0]).unwrap();
-        assert_eq!(bytes.len(), charlotte_launch::trust::ENCODED_LEN);
-        let decoded = charlotte_launch::trust::AdmissionTrust::decode(&bytes).unwrap();
+        assert_eq!(bytes.len(), knytos_launch::trust::ENCODED_LEN);
+        let decoded = knytos_launch::trust::AdmissionTrust::decode(&bytes).unwrap();
         assert_eq!(decoded.sequence, 7);
         assert_eq!(decoded.artifact_key.as_slice(), read_hex_key(&args[3], 32, "public").unwrap());
         trust_policy::check(&[args[0].clone(), args[1].clone(), "7".into()]).unwrap();
@@ -2599,9 +2599,9 @@ mod tests {
         let args = trust_policy_args(&directory);
         let artifact = fs::read(&args[3]).unwrap();
         let cases = [
-            hex_encode(&charlotte_launch::CLUSTER_PUBLIC_KEY),
-            hex_encode(&charlotte_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY),
-            hex_encode(&charlotte_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY),
+            hex_encode(&knytos_launch::CLUSTER_PUBLIC_KEY),
+            hex_encode(&knytos_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY),
+            hex_encode(&knytos_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY),
             "00".repeat(32),
             "ff".repeat(32),
             "x".repeat(65),
@@ -2835,7 +2835,7 @@ mod tests {
         let path = directory.path("artifact");
         fs::write(&path, b"public original").unwrap();
         let mut edit = ArtifactEdit::open(&path).unwrap();
-        edit.image_mut().resize(charlotte_launch::MAX_ARTIFACT_ELF_SIZE + 1, 0);
+        edit.image_mut().resize(knytos_launch::MAX_ARTIFACT_ELF_SIZE + 1, 0);
         assert_eq!(edit.commit().unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
         assert_eq!(fs::read(&path).unwrap(), b"public original");
     }
@@ -2889,7 +2889,7 @@ mod tests {
         assert!(descriptor
             .variants()
             .all(|v| v.artifact_digest
-                == charlotte_launch::sha256::digest(&fs::read(&image).unwrap())));
+                == knytos_launch::sha256::digest(&fs::read(&image).unwrap())));
     }
 
     #[cfg(unix)]
@@ -2897,7 +2897,7 @@ mod tests {
     fn artifact_input_size_rejects_before_parsing() {
         let f = SignedControlFixture::new();
         let large = f.path("large.elf");
-        fs::write(&large, vec![0; charlotte_launch::MAX_ARTIFACT_ELF_SIZE + 1]).unwrap();
+        fs::write(&large, vec![0; knytos_launch::MAX_ARTIFACT_ELF_SIZE + 1]).unwrap();
         let regular = f.path("regular.elf");
         fs::write(&regular, minimal_artifact_elf()).unwrap();
         let mut variant_args = artifact_deployment_args(&f, &regular);
@@ -2953,7 +2953,7 @@ mod tests {
         let f = SignedControlFixture::new();
         let image = f.path("full.elf");
         let mut original = minimal_artifact_elf();
-        original.resize(charlotte_launch::MAX_ARTIFACT_ELF_SIZE, 0);
+        original.resize(knytos_launch::MAX_ARTIFACT_ELF_SIZE, 0);
         fs::write(&image, &original).unwrap();
         let result = elf_sign(&[image.clone(), "app".into(), f.private.clone()]);
         let after = fs::metadata(&image).unwrap().len();
@@ -3354,9 +3354,9 @@ mod tests {
 
     fn signed_descriptor(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
         let fields = DescriptorFields {
-            variants: &[charlotte_launch::deployment::ArtifactVariant {
-                target: charlotte_launch::execution_target::ExecutionTarget::baseline(
-                    charlotte_launch::execution_target::Architecture::Aarch64,
+            variants: &[knytos_launch::deployment::ArtifactVariant {
+                target: knytos_launch::execution_target::ExecutionTarget::baseline(
+                    knytos_launch::execution_target::Architecture::Aarch64,
                 ),
                 priority: 0,
                 artifact_digest: [sequence as u8; 32],
@@ -3366,10 +3366,10 @@ mod tests {
             node_key: 0,
 
             artifact_name: name,
-            stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
-            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
-            shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
-            placement: charlotte_launch::placement::PlacementPolicy::singleton(),
+            stack_pages_per_thread: knytos_launch::DEFAULT_USER_STACK_PAGES as u16,
+            max_threads: knytos_launch::DEFAULT_USER_MAX_THREADS as u16,
+            shutdown_grace_ms: knytos_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            placement: knytos_launch::placement::PlacementPolicy::singleton(),
 
             grants: &[],
         };

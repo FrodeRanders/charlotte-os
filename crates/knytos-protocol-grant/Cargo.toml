@@ -1,0 +1,8 @@
+[package]
+name = "knytos-protocol-grant"
+version = "0.1.0"
+edition = "2024"
+description = "Capability grant-controller wire protocol"
+
+[dependencies]
+knytos-launch = { path = "../knytos-launch" }

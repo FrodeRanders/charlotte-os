@@ -1,6 +1,6 @@
 # CI Sitas runtime pin and panic diagnostics
 
-Date: 2026-10-15. CharlotteOS baseline `04b45974`.
+Date: 2026-10-15. Knytos baseline `04b45974`.
 
 ## Reported failure and source mismatch
 
@@ -15,7 +15,7 @@ boot input or independently establish other pending-test behavior.
 
 All six CI Sitas checkout sites used the immutable but obsolete
 `94eca68554e88f06721df4ccf3a69222a963c2c9` pin. That backend calls unchecked CQ
-syscalls 12/42, retired by CharlotteOS runtime ABI 3. It ignores the new rejection
+syscalls 12/42, retired by Knytos runtime ABI 3. It ignores the new rejection
 contract; compilation and current ELF signing alone do not establish syscall
 compatibility. Local native validations instead used sibling Sitas commit
 `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`, which uses checked syscall 88 and
@@ -26,7 +26,7 @@ After the owner pushed Sitas, remote HEAD/main verified as `d27f7e7`. CI now pin
 that published commit directly in every detached checkout. No patch application,
 older-decoder fallback, kernel compatibility syscall or timeout increase is added.
 The local `../../gautelis/sitas` working tree remains unchanged. Old-source
-validation uses an isolated archived CharlotteOS workspace and Sitas checkout.
+validation uses an isolated archived Knytos workspace and Sitas checkout.
 
 ## Frame-pointer correction and regression checks
 
@@ -117,6 +117,6 @@ This corrects CI build inputs and diagnostic compilation. It changes no CQ
 readiness producer, ownership/retirement policy, physical cleanup proof or
 accepted-request replay rule. Historical IPC exact-exit and Raft persistence
 attribution remain separate. The GitHub pipeline itself must run after the
-CharlotteOS changes are published; local equivalent-profile validation does
+Knytos changes are published; local equivalent-profile validation does
 not claim an unobserved GitHub job passed. Results and artifact identities are
 retained inline, without ignored build files or temporary-log evidence links.

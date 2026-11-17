@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# build-external-elf.sh -- build an out-of-tree CharlotteOS EL0 ELF.
+# build-external-elf.sh -- build an out-of-tree Knytos EL0 ELF.
 #
 # The platform definition (target specification, linker script, toolchain, and
-# build-std invocation) is owned by CharlotteOS. This script is context
+# build-std invocation) is owned by Knytos. This script is context
 # sensitive:
 #
-#   * in the CharlotteOS repository it reads the platform files from
-#     crates/catten-services;
+#   * in the Knytos repository it reads the platform files from
+#     crates/knytos-services;
 #   * in an exported application SDK it reads platform/<arch>/ next to itself.
 #
 # It ends at a stripped, layout-verified ELF. Signing (tools/cluster-sign
@@ -78,8 +78,8 @@ if [ "$SDK_BUNDLE" = "1" ]; then
         TOOLCHAIN="$(sed -n 's/^toolchain=//p' "$PLATFORM_ROOT/VERSION" | head -1)"
     fi
 else
-    BASE_JSON="$PLATFORM_ROOT/crates/catten-services/$ARCH-unknown-none.json"
-    LINK_X="$PLATFORM_ROOT/crates/catten-services/link.x"
+    BASE_JSON="$PLATFORM_ROOT/crates/knytos-services/$ARCH-unknown-none.json"
+    LINK_X="$PLATFORM_ROOT/crates/knytos-services/link.x"
     if [ -z "$TOOLCHAIN" ] && [ -f "$PLATFORM_ROOT/rust-toolchain.toml" ]; then
         TOOLCHAIN="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$PLATFORM_ROOT/rust-toolchain.toml" | head -1)"
     fi
@@ -133,7 +133,7 @@ HOST_TRIPLE="$("${RUSTC[@]}" -vV | awk '/^host:/ {print $2}')"
 OBJCOPY="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-objcopy"
 READOBJ="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-readobj"
 if [ ! -x "$OBJCOPY" ] || [ ! -x "$READOBJ" ]; then
-    echo "error: llvm-tools is required to build a CharlotteOS ELF" >&2
+    echo "error: llvm-tools is required to build a Knytos ELF" >&2
     echo "       run: rustup component add llvm-tools rust-src" >&2
     exit 1
 fi

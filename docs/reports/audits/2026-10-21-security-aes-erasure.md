@@ -18,7 +18,7 @@ compile out their round-key wiping statements. A destructor's presence alone
 does not establish erasure. This is a source-confirmed missing defense, without
 a demonstrated cross-domain secret read or a new retained-storage measurement.
 
-`catten-services` now directly requires AES with `zeroize` enabled. The locked
+`knytos-services` now directly requires AES with `zeroize` enabled. The locked
 package versions and checksums stay unchanged; the lockfile adds two dependency
 edges. Feature unification supplies that same AES package to embedded-tls.
 Production constant trait checks require `ZeroizeOnDrop` for `Aes128`,
@@ -34,7 +34,7 @@ does not require a new buffer, registry, wire grammar or runtime ABI.
 
 The existing [C18 row](../../reference/cleanup-recovery.md) records local
 cipher-field erasure in the existing transport scope. AES Drop introduces no
-Charlotte capability/root cleanup, allocator, guard, wait, remote teardown,
+Knytos capability/root cleanup, allocator, guard, wait, remote teardown,
 custody or physical completion/retry authority. No cached dependency source is
 edited or vendored.
 

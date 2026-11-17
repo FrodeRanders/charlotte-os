@@ -37,7 +37,7 @@ pub(super) fn run() {
     readiness::serialized();
     let root = crate::service::loader::create_user_address_space_handle();
     let cap = grant(root);
-    use catten_syscall::{
+    use knytos_syscall::{
         DmaMapError,
         device_status as status,
         dma_map_cause as cause,
@@ -121,7 +121,7 @@ pub(super) fn run() {
                 root.id(),
                 cap,
                 0,
-                catten_syscall::device_status::OPERATION_IN_FLIGHT,
+                knytos_syscall::device_status::OPERATION_IN_FLIGHT,
             );
             assert_eq!(
                 crate::memory::close_user_address_space_handle(root),
@@ -150,13 +150,13 @@ pub(super) fn run() {
         root.id(),
         u64::MAX,
         0,
-        catten_syscall::device_status::UNKNOWN_CAPABILITY,
+        knytos_syscall::device_status::UNKNOWN_CAPABILITY,
     );
     crate::self_test::syscall::test_dma_unmap_status(
         root.id(),
         cap,
         0,
-        catten_syscall::device_status::DMA_INVALID,
+        knytos_syscall::device_status::DMA_INVALID,
     );
     for (error, status) in [
         (UnmapError::Admission(dma::Error::OperationInFlight), DeviceError::OperationInFlight),

@@ -35,7 +35,7 @@ pub(crate) fn test_snapshot_buffers() {
     snapshot_buffers::tests::run();
 }
 
-pub use catten_syscall::SyscallNumber;
+pub use knytos_syscall::SyscallNumber;
 
 use crate::{
     cpu::isa::{
@@ -651,7 +651,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         // Unknown op codes are a caller-controlled input and must be rejected
         // non-fatally rather than crashing the kernel.
         _ => {
-            frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+            frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED;
             return;
         }
     };
@@ -663,7 +663,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
     let did_read = match op {
         crate::completion::OpCode::Read if buf_ptr != 0 && buf_len >= 4 => Some((buf_ptr, buf_len)),
         crate::completion::OpCode::Read => {
-            frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+            frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED;
             return;
         }
         _ => None,
@@ -683,7 +683,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
             }
             // Use the ABI's reserved failure sentinel rather than a capability
             // value.
-            Err(_) => frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED,
+            Err(_) => frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED,
         }
         return;
     }
@@ -693,7 +693,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
             if let Some((user_address, len)) = did_read {
                 if write_user_u32(asid, user_address, 0xfeed_f00d).is_err() {
                     let _ = crate::completion::abort_submission(asid, cap);
-                    frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+                    frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED;
                     return;
                 }
                 let _ = crate::completion::complete(
@@ -706,7 +706,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         }
         // Backpressure (full table) or a missing address space is a non-fatal
         // caller-visible error, mirroring the submit_timer path.
-        Err(_) => frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED,
+        Err(_) => frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED,
     }
 }
 
@@ -716,7 +716,7 @@ fn sys_completion_submit_detached_timer(frame: &mut TrapFrame) {
     let cq = frame.regs[2] as u32;
     let user_data = frame.regs[3];
     frame.regs[0] = crate::completion::submit_detached_timer(asid, cq, timeout_ms, user_data)
-        .unwrap_or(catten_syscall::COMPLETION_SUBMIT_FAILED);
+        .unwrap_or(knytos_syscall::COMPLETION_SUBMIT_FAILED);
 }
 
 fn sys_completion_complete(frame: &mut TrapFrame) {
@@ -736,19 +736,19 @@ fn sys_completion_poll(frame: &mut TrapFrame) {
     let cap = frame.regs[1];
     match crate::completion::poll(asid, cap) {
         Ok(Some(completed)) => {
-            frame.regs[0] = catten_syscall::completion_status::READY;
+            frame.regs[0] = knytos_syscall::completion_status::READY;
             frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
             frame.regs[2] = completed.buffer.as_ref().map_or(0, |buf| buf.len()) as u64;
         }
         Ok(None) => {
-            frame.regs[0] = catten_syscall::completion_status::PENDING_OR_TIMEOUT;
+            frame.regs[0] = knytos_syscall::completion_status::PENDING_OR_TIMEOUT;
             frame.regs[1] = 0;
             frame.regs[2] = 0;
         }
         // An unknown capability is a terminal caller error; distinguish it
         // from a valid operation that is still pending.
         Err(_) => {
-            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[0] = knytos_syscall::completion_status::INVALID_CAPABILITY;
             frame.regs[1] = 0;
             frame.regs[2] = 0;
         }
@@ -787,7 +787,7 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
 
     frame.regs[0] = u64::MAX;
     frame.regs[1] = 0;
-    if !charlotte_launch::user_address::valid_range(entry_vaddr, 1)
+    if !knytos_launch::user_address::valid_range(entry_vaddr, 1)
         || frame.regs[2] >= crate::cpu::multiprocessor::get_lp_count() as u64
     {
         return;
@@ -1168,7 +1168,7 @@ fn sys_memory_alloc(frame: &mut TrapFrame) {
 }
 
 fn sys_memory_map(frame: &mut TrapFrame) {
-    if !charlotte_launch::user_address::valid_pages(frame.regs[2] as usize, 1) {
+    if !knytos_launch::user_address::valid_pages(frame.regs[2] as usize, 1) {
         frame.regs[0] = memory_status(object::MemoryObjectError::MapFailed);
         return;
     }
@@ -1226,7 +1226,7 @@ fn sys_memory_get_phys_page(frame: &mut TrapFrame) {
 fn dma_map_return(frame: &mut TrapFrame, result: Result<u64, crate::device::MapError>) {
     match result {
         Ok(iova) => {
-            frame.regs[0] = catten_syscall::device_status::OK;
+            frame.regs[0] = knytos_syscall::device_status::OK;
             frame.regs[1] = iova;
             frame.regs[2] = 0;
         }
@@ -1264,7 +1264,7 @@ fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
 fn sys_dma_unmap(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     frame.regs[0] = crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2])
-        .map_or_else(device_status, |()| catten_syscall::device_status::OK);
+        .map_or_else(device_status, |()| knytos_syscall::device_status::OK);
 }
 
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
@@ -1652,7 +1652,7 @@ fn recv_vec_into_frame(frame: &mut TrapFrame) {
 }
 
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
-    use catten_syscall::completion_status as status;
+    use knytos_syscall::completion_status as status;
 
     use crate::completion::{
         self,
@@ -1693,7 +1693,7 @@ fn sys_cq_wait_checked(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let Ok(cq) = u32::try_from(frame.regs[2]) else {
         frame.regs[0] = 0;
-        frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
+        frame.regs[1] = knytos_syscall::completion_status::INVALID_CAPABILITY;
         return;
     };
     let timeout = match frame.regs[3] {
@@ -1701,18 +1701,18 @@ fn sys_cq_wait_checked(frame: &mut TrapFrame) {
         1 => Some(frame.regs[1]),
         _ => {
             frame.regs[0] = 0;
-            frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[1] = knytos_syscall::completion_status::INVALID_CAPABILITY;
             return;
         }
     };
     frame.regs[1] = match crate::completion::wait_on_cq_checked(asid, cq, timeout) {
-        Ok(true) => catten_syscall::completion_status::READY,
-        Ok(false) => catten_syscall::completion_status::PENDING_OR_TIMEOUT,
+        Ok(true) => knytos_syscall::completion_status::READY,
+        Ok(false) => knytos_syscall::completion_status::PENDING_OR_TIMEOUT,
         Err(crate::completion::CqWaitError::AdmissionRejected) => {
-            catten_syscall::completion_status::WAIT_ADMISSION_FAILED
+            knytos_syscall::completion_status::WAIT_ADMISSION_FAILED
         }
         Err(crate::completion::CqWaitError::UnknownQueue) => {
-            catten_syscall::completion_status::INVALID_CAPABILITY
+            knytos_syscall::completion_status::INVALID_CAPABILITY
         }
     };
     frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
@@ -1755,7 +1755,7 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
 }
 
 fn sys_device_mmio_map(frame: &mut TrapFrame) {
-    if !charlotte_launch::user_address::valid_pages(frame.regs[2] as usize, 1) {
+    if !knytos_launch::user_address::valid_pages(frame.regs[2] as usize, 1) {
         frame.regs[0] = device_status(crate::device::DeviceError::InvalidRange);
         return;
     }
@@ -1851,7 +1851,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         };
         // Keep the upgrade image under the same artifact ceiling as the
         // deployment gates; the snapshot allocation must stay bounded.
-        if size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE {
+        if size == 0 || size > knytos_launch::MAX_ARTIFACT_ELF_SIZE {
             let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
             frame.regs[0] = 0;
             return;
@@ -1954,10 +1954,10 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         || elf_cap == 0
         || descriptor_cap == 0
         || descriptor_cap == elf_cap
-        || elf_size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
+        || elf_size.is_none_or(|size| size == 0 || size > knytos_launch::MAX_ARTIFACT_ELF_SIZE)
         || descriptor_size.is_none_or(|size| {
-            !(charlotte_launch::deployment::HEADER_LEN
-                ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
+            !(knytos_launch::deployment::HEADER_LEN
+                ..=knytos_launch::deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&size)
         })
     {
@@ -1981,7 +1981,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
     };
     let image = &inputs.image;
     let descriptor = &inputs.descriptor;
-    let Some(decoded) = charlotte_launch::deployment::decode(descriptor) else {
+    let Some(decoded) = knytos_launch::deployment::decode(descriptor) else {
         frame.regs[0] = 0;
         return;
     };
@@ -1989,16 +1989,16 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     };
-    if charlotte_launch::signature_note::verify_elf_for_name(
+    if knytos_launch::signature_note::verify_elf_for_name(
         image,
         &trust.artifact_key,
         decoded.artifact_name,
-    ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    ) != knytos_launch::signature_note::VerifyOutcome::Valid
     {
         frame.regs[0] = 0;
         return;
     }
-    let principal = charlotte_launch::artifact_principal_id(decoded.artifact_name);
+    let principal = knytos_launch::artifact_principal_id(decoded.artifact_name);
     let Some(preparation) = crate::service::supervisor::PreparingDeployment::reserve(principal)
     else {
         frame.regs[0] = 0;
@@ -2035,8 +2035,8 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
     if actor.is_none()
         || package_cap == 0
         || package_size.is_none_or(|size| {
-            !(charlotte_launch::operations_pickup::PICKUP_HEADER_LEN
-                ..=charlotte_launch::operations_pickup::MAX_PICKUP_LEN)
+            !(knytos_launch::operations_pickup::PICKUP_HEADER_LEN
+                ..=knytos_launch::operations_pickup::MAX_PICKUP_LEN)
                 .contains(&size)
         })
     {
@@ -2057,11 +2057,11 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
     };
     let package = &inputs.package;
     let plaintext = &mut inputs.plaintext;
-    let Some(pickup) = charlotte_launch::operations_pickup::Pickup::decode(package) else {
+    let Some(pickup) = knytos_launch::operations_pickup::Pickup::decode(package) else {
         frame.regs[0] = 0;
         return;
     };
-    let principal = charlotte_launch::artifact_principal_id(pickup.binding.target_artifact);
+    let principal = knytos_launch::artifact_principal_id(pickup.binding.target_artifact);
     if requested_principal != principal {
         frame.regs[0] = 0;
         return;
@@ -2069,25 +2069,25 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
 
     let launched = crate::service::admission::with_operational_launch_trust(
         |trust, recipient_private_key, name_service| {
-            let descriptor = charlotte_launch::deployment::decode(pickup.descriptor)?;
-            let release = charlotte_launch::release::decode(pickup.release)?;
-            let envelope = charlotte_launch::operations::decode(pickup.envelope)?;
-            if charlotte_launch::deployment::verify(pickup.descriptor, &trust.deployment_key)
-                != charlotte_launch::deployment::VerifyOutcome::Valid
-                || charlotte_launch::release::verify(pickup.release, &trust.deployment_key)
-                    != charlotte_launch::release::VerifyOutcome::Valid
-                || charlotte_launch::sha256::digest(pickup.release) != pickup.binding.release_digest
+            let descriptor = knytos_launch::deployment::decode(pickup.descriptor)?;
+            let release = knytos_launch::release::decode(pickup.release)?;
+            let envelope = knytos_launch::operations::decode(pickup.envelope)?;
+            if knytos_launch::deployment::verify(pickup.descriptor, &trust.deployment_key)
+                != knytos_launch::deployment::VerifyOutcome::Valid
+                || knytos_launch::release::verify(pickup.release, &trust.deployment_key)
+                    != knytos_launch::release::VerifyOutcome::Valid
+                || knytos_launch::sha256::digest(pickup.release) != pickup.binding.release_digest
                 || release.release_name != pickup.binding.release_name
                 || !release.descriptors().any(|candidate| candidate == pickup.descriptor)
                 || descriptor.artifact_name != pickup.binding.target_artifact
                 || !crate::cpu::execution_target::current()
                     .is_some_and(|target| descriptor.accepts_image(pickup.artifact, target))
-                || charlotte_launch::signature_note::verify_elf_for_name(
+                || knytos_launch::signature_note::verify_elf_for_name(
                     pickup.artifact,
                     &trust.artifact_key,
                     pickup.binding.target_artifact,
-                ) != charlotte_launch::signature_note::VerifyOutcome::Valid
-                || charlotte_launch::sha256::digest(pickup.envelope)
+                ) != knytos_launch::signature_note::VerifyOutcome::Valid
+                || knytos_launch::sha256::digest(pickup.envelope)
                     != pickup.binding.envelope_digest
                 || envelope.cluster_id != trust.cluster_id
                 || envelope.release_digest != pickup.binding.release_digest
@@ -2098,10 +2098,10 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                 || envelope.recipient_key_id != pickup.binding.recipient_key_id
                 || envelope.signing_key_id != pickup.binding.signing_key_id
                 || envelope.recipient_key_id
-                    != charlotte_launch::operations::recipient_key_id(&trust.recipient_key)
+                    != knytos_launch::operations::recipient_key_id(&trust.recipient_key)
                 || envelope.signing_key_id
-                    != charlotte_launch::operations::signing_key_id(&trust.operations_key)
-                || !charlotte_launch::operations_bundle::verify_binding_authorization(
+                    != knytos_launch::operations::signing_key_id(&trust.operations_key)
+                || !knytos_launch::operations_bundle::verify_binding_authorization(
                     pickup.binding.bundle_sequence,
                     &trust.cluster_id,
                     &pickup.binding.release_digest,
@@ -2121,7 +2121,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
             let preparation = crate::service::supervisor::PreparingDeployment::reserve(principal)?;
             preparation.launch(|| {
                 plaintext.try_initialize_zeroed(envelope.ciphertext.len()).ok()?;
-                let profile_len = charlotte_launch::operations::open(
+                let profile_len = knytos_launch::operations::open(
                     pickup.envelope,
                     recipient_private_key,
                     &trust.operations_key,
@@ -2133,11 +2133,11 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                 .ok()?;
                 let profile = plaintext.get(..profile_len)?;
                 let valid_profile = match pickup.binding.profile_kind {
-                    charlotte_launch::operations::PROFILE_KIND_S3 => {
-                        charlotte_protocol_s3::Profile::decode(profile).is_some()
+                    knytos_launch::operations::PROFILE_KIND_S3 => {
+                        knytos_protocol_s3::Profile::decode(profile).is_some()
                     }
-                    charlotte_launch::operations::PROFILE_KIND_KAFKA => {
-                        charlotte_protocol_kafka::Profile::validate_encoded(profile).is_ok()
+                    knytos_launch::operations::PROFILE_KIND_KAFKA => {
+                        knytos_protocol_kafka::Profile::validate_encoded(profile).is_ok()
                     }
                     _ => false,
                 };
@@ -2174,12 +2174,12 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
     let principal = frame.regs[1];
     let force = frame.regs[2] != 0;
     let requested_reason = match frame.regs[3] {
-        0 => charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
-        reason if reason == u64::from(charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED) => {
-            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
+        0 => knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+        reason if reason == u64::from(knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED) => {
+            knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
         }
-        reason if reason == u64::from(charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN) => {
-            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
+        reason if reason == u64::from(knytos_launch::lifecycle::REASON_NODE_SHUTDOWN) => {
+            knytos_launch::lifecycle::REASON_NODE_SHUTDOWN
         }
         _ => {
             frame.regs[0] = u64::MAX;
@@ -2203,7 +2203,7 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
     let actor = deployment_agent_identity(caller_asid);
     if actor.is_none()
         || envelope_cap == 0
-        || envelope_size != Some(charlotte_launch::shutdown::ENCODED_LEN)
+        || envelope_size != Some(knytos_launch::shutdown::ENCODED_LEN)
     {
         close_input();
         frame.regs[0] = u64::MAX;
@@ -2211,7 +2211,7 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
     }
     let envelope =
         actor.and_then(|actor| snapshot_buffers::Class::capture(actor).ok()).and_then(|class| {
-            class.snapshot(envelope_cap, charlotte_launch::shutdown::ENCODED_LEN).ok()
+            class.snapshot(envelope_cap, knytos_launch::shutdown::ENCODED_LEN).ok()
         });
     close_input();
     let Some(trust) = crate::service::admission::configured_admission_trust() else {
@@ -2222,13 +2222,13 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
         frame.regs[0] = u64::MAX;
         return;
     };
-    if charlotte_launch::shutdown::verify(&envelope, &trust.deployment_key)
-        != charlotte_launch::shutdown::VerifyOutcome::Valid
+    if knytos_launch::shutdown::verify(&envelope, &trust.deployment_key)
+        != knytos_launch::shutdown::VerifyOutcome::Valid
     {
         frame.regs[0] = u64::MAX;
         return;
     }
-    let Some(fields) = charlotte_launch::shutdown::decode(&envelope) else {
+    let Some(fields) = knytos_launch::shutdown::decode(&envelope) else {
         frame.regs[0] = u64::MAX;
         return;
     };
@@ -2247,10 +2247,10 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
 }
 
 const _: () = assert!(
-    catten_syscall::artifact_retirement_reason::DEPLOYMENT_RETIRED
-        == charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
-        && catten_syscall::artifact_retirement_reason::NODE_SHUTDOWN
-            == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
+    knytos_syscall::artifact_retirement_reason::DEPLOYMENT_RETIRED
+        == knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
+        && knytos_syscall::artifact_retirement_reason::NODE_SHUTDOWN
+            == knytos_launch::lifecycle::REASON_NODE_SHUTDOWN
 );
 
 /// Advance one deployment-owned domain through cooperative drain, forced
@@ -2283,8 +2283,8 @@ pub(crate) fn retire_deployed_artifact_with_registry<const N: usize>(
     enclosing_deadline_ms: u64,
 ) -> u64 {
     assert!(
-        requested_reason == charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
-            || requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+        requested_reason == knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
+            || requested_reason == knytos_launch::lifecycle::REASON_NODE_SHUTDOWN,
         "invalid internal deployment-retirement reason"
     );
     if principal == 0 {
@@ -2383,7 +2383,7 @@ pub(crate) fn retire_deployed_artifact_with_registry<const N: usize>(
     let retired = deployed.remove(position);
     drop(deployed);
     let acknowledged = retired.retirement_acknowledged;
-    if retired.retirement_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+    if retired.retirement_reason == knytos_launch::lifecycle::REASON_NODE_SHUTDOWN {
         if retired.force_requested {
             crate::service::supervisor::NODE_SHUTDOWN_FORCED_RETIREMENTS
                 .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
@@ -2433,7 +2433,7 @@ fn prepare_deployment_drain(
         let status = bootstrap::with_service_pages(&domain, |pages| pages.lifecycle_status())
             .map_err(|_| DomainTeardownError::ServicePagesUnavailable)?;
         drain.acknowledged =
-            drain.deadline_ms.is_some() && status == charlotte_launch::lifecycle::STATUS_READY;
+            drain.deadline_ms.is_some() && status == knytos_launch::lifecycle::STATUS_READY;
         return Ok((drain, Some(DomainTeardown::new(domain))));
     }
     let now = crate::cpu::scheduler::monotonic_millis();
@@ -2442,14 +2442,14 @@ fn prepare_deployment_drain(
     if drain.deadline_ms.is_none() {
         let signed_deadline = now.saturating_add(u64::from(drain.grace_ms));
         drain.deadline_ms = Some(
-            if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+            if requested_reason == knytos_launch::lifecycle::REASON_NODE_SHUTDOWN {
                 signed_deadline.min(enclosing_deadline_ms)
             } else {
                 signed_deadline
             },
         );
         drain.reason = requested_reason;
-    } else if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+    } else if requested_reason == knytos_launch::lifecycle::REASON_NODE_SHUTDOWN {
         drain.deadline_ms = Some(drain.deadline_ms.unwrap().min(enclosing_deadline_ms));
         drain.reason = requested_reason;
     }
@@ -2462,7 +2462,7 @@ fn prepare_deployment_drain(
                     crate::cpu::scheduler::system_scheduler::Error::ThreadTerminated
                 })?;
                 pages.write_request(
-                    charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                    knytos_launch::lifecycle::STATE_FORCE_TERMINATING,
                     drain.reason,
                     deadline,
                 );
@@ -2477,7 +2477,7 @@ fn prepare_deployment_drain(
                 && (old_deadline != drain.deadline_ms || old_reason != drain.reason)
             {
                 pages.write_request(
-                    charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                    knytos_launch::lifecycle::STATE_DRAIN_REQUESTED,
                     drain.reason,
                     deadline,
                 );

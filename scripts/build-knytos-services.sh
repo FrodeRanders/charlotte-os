@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Build the AArch64 EL0 service bundle and optionally stage it as an
+# architecture-qualified, generated kernel input.
+#
+# Every staged ELF is signed with the cluster's private key (the
+# version-controlled development key in tools/cluster-sign/dev-key.hex by
+# default, $CLUSTER_SIGN_KEY_FILE for another signing-key file) before the kernel
+# embeds it: the EL0 loader refuses any image that is not validly signed, so
+# the whole bundle must carry signature notes.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/signing-policy.sh"
+catten_require_development_trust
+cd "$ROOT"
+
+MODE="build"
+CLEAN=0
+BUNDLE_MODE="test"
+source "$ROOT/scripts/lib/service-bundle.sh"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --mode) [ "$#" -ge 2 ] || exit 1; BUNDLE_MODE="$2"; shift 2 ;;
+        --embed) MODE="embed"; shift ;;
+        --check) MODE="check"; shift ;;
+        --clean) CLEAN=1; shift ;;
+        *) echo "usage: $0 [--embed|--check] [--clean] [--mode minimal|test]" >&2; exit 1 ;;
+    esac
+done
+
+MANIFEST="crates/knytos-services/Cargo.toml"
+TARGET="crates/knytos-services/aarch64-unknown-none.json"
+OUTPUT="crates/knytos-services/target/aarch64-unknown-none/release"
+catten_service_bundle aarch64 "$BUNDLE_MODE" "$ROOT"
+
+if [ "$CLEAN" = "1" ]; then
+    echo ">>> Cleaning service target artifacts..."
+    cargo clean --manifest-path "$MANIFEST" --target "$TARGET" \
+        --target-dir crates/knytos-services/target 2>/dev/null || true
+    rm -rf "$BUNDLE"
+    echo ">>> Forcing clean rebuild of all EL0 services..."
+fi
+
+build_bins=()
+for service in "${SERVICES[@]}"; do build_bins+=(--bin "$service"); done
+
+cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
+    --target-dir crates/knytos-services/target \
+    --release -Z build-std=core,alloc "${SERVICE_FEATURE_ARGS[@]}" "${build_bins[@]}"
+
+if [ "$MODE" = "embed" ]; then
+    mkdir -p "$(dirname "$BUNDLE")"
+    STAGING="$(mktemp -d "$(dirname "$BUNDLE")/.aarch64-services.XXXXXX")"
+    trap 'rm -rf -- "$STAGING"' EXIT
+    printf '%s\n' "$SERVICE_HEARTBEATS" > "$STAGING/service-heartbeats"
+    for service in "${SERVICES[@]}"; do
+        install -m 0755 "$OUTPUT/$service" \
+            "$STAGING/$service.elf"
+    done
+    "$ROOT/scripts/sign-service-elfs.sh" "$STAGING" "${SERVICES[@]}"
+    rm -rf -- "$BUNDLE"
+    mv "$STAGING" "$BUNDLE"
+    trap - EXIT
+    catten_validate_service_bundle "$BUNDLE_MODE" aarch64
+    echo ">>> Staged and signed AArch64 EL0 service bundle at $BUNDLE."
+elif [ "$MODE" = "check" ]; then
+    # Reproduce the signed bundle from the just-built binaries and compare it
+    # byte-for-byte. Signature validity alone does not prove that a staged ELF
+    # corresponds to current source.
+    CHECK_BUNDLE="$(mktemp -d /tmp/catten-service-check.XXXXXX)"
+    trap 'rm -rf -- "$CHECK_BUNDLE"' EXIT
+    for service in "${SERVICES[@]}"; do
+        install -m 0755 "$OUTPUT/$service" "$CHECK_BUNDLE/$service.elf"
+    done
+    "$ROOT/scripts/sign-service-elfs.sh" "$CHECK_BUNDLE" >/dev/null
+    catten_validate_service_bundle "$BUNDLE_MODE" aarch64
+    stale=0
+    for service in "${SERVICES[@]}"; do
+        if [ ! -f "$BUNDLE/$service.elf" ]; then
+            echo "error: staged AArch64 $service.elf is missing" >&2
+            stale=1
+        elif ! cmp -s "$BUNDLE/$service.elf" "$CHECK_BUNDLE/$service.elf"; then
+            echo "error: staged AArch64 $service.elf is stale" >&2
+            stale=1
+        fi
+    done
+    for elf in "$BUNDLE"/*.elf; do
+        [ -f "$elf" ] || continue
+        if ! (cd /tmp && cargo run --locked --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
+            -- elf-verify "$elf" "$(basename "$elf" .elf)" \
+            "3ddc95c26bd5f4022d95a4c6c8d074f577f11af7873e527b018b21be2c035463" \
+            >/dev/null 2>&1); then
+            echo "error: staged AArch64 $(basename "$elf") signature or identity is invalid" >&2
+            stale=1
+        fi
+    done
+    if [ "$stale" -ne 0 ]; then
+        echo "run scripts/build-knytos-services.sh --embed" >&2
+        exit 1
+    fi
+    echo ">>> Staged AArch64 service bundle signatures verified."
+fi

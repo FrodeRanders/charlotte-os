@@ -133,7 +133,7 @@ pub(crate) fn test_dma_map_status(
     memory: u64,
     direction: u64,
     exclusive: bool,
-    expected: catten_syscall::DmaMapError,
+    expected: knytos_syscall::DmaMapError,
 ) {
     let mut frame = synthetic_trap_frame_in(asid, 0, cap, memory, direction);
     syscall::syscall_dispatch(
@@ -181,28 +181,28 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut invalid_submit, call_no::COMPLETION_SUBMIT);
         assert_eq!(
             invalid_submit.regs[0],
-            catten_syscall::COMPLETION_SUBMIT_FAILED,
+            knytos_syscall::COMPLETION_SUBMIT_FAILED,
             "unknown completion opcodes must fail non-fatally"
         );
         let mut missing_buffer = synthetic_trap_frame_in(asid, 0, OpCode::Read as u64, 0, 0);
         syscall::syscall_dispatch(&mut missing_buffer, call_no::COMPLETION_SUBMIT);
         assert_eq!(
             missing_buffer.regs[0],
-            catten_syscall::COMPLETION_SUBMIT_FAILED,
+            knytos_syscall::COMPLETION_SUBMIT_FAILED,
             "completion Read must reject a missing destination buffer"
         );
         let mut invalid_poll = synthetic_trap_frame_in(asid, 0, u64::MAX, 0, 0);
         syscall::syscall_dispatch(&mut invalid_poll, call_no::COMPLETION_POLL);
         assert_eq!(
             invalid_poll.regs[0],
-            catten_syscall::completion_status::INVALID_CAPABILITY,
+            knytos_syscall::completion_status::INVALID_CAPABILITY,
             "poll must distinguish an invalid capability from pending"
         );
         let mut invalid_wait = synthetic_trap_frame_in(asid, 0, u64::MAX, 1, 0);
         syscall::syscall_dispatch(&mut invalid_wait, call_no::COMPLETION_WAIT_TIMEOUT);
         assert_eq!(
             invalid_wait.regs[0],
-            catten_syscall::completion_status::INVALID_CAPABILITY,
+            knytos_syscall::completion_status::INVALID_CAPABILITY,
             "wait_timeout must distinguish an invalid capability from timeout"
         );
     }
@@ -260,7 +260,7 @@ pub fn test_syscall_dispatch() {
         let mut f = synthetic_trap_frame_in(asid, 0, timeout, cq, timed);
         syscall::syscall_dispatch(&mut f, call_no::CQ_WAIT_CHECKED);
         assert_eq!(f.regs[0], 0);
-        assert_eq!(f.regs[1], catten_syscall::completion_status::INVALID_CAPABILITY);
+        assert_eq!(f.regs[1], knytos_syscall::completion_status::INVALID_CAPABILITY);
     }
 
     // Mailbox endpoint capabilities.
@@ -370,13 +370,13 @@ pub fn test_syscall_dispatch() {
     }
     // Empty and rejected receives must not expose stale payload or identity.
     let empty = test_ipc_receive(asid, endpoint, None);
-    assert_eq!(empty.regs[0], catten_syscall::ipc_status::NO_MESSAGE);
+    assert_eq!(empty.regs[0], knytos_syscall::ipc_status::NO_MESSAGE);
     assert_eq!(&empty.regs[1..=11], &[0; 11]);
     for number in [call_no::IPC_RECV, call_no::IPC_RECV_BLOCK, call_no::IPC_RECV_VEC] {
         let mut rejected = synthetic_trap_frame_in(asid, 0, u64::MAX, 0, 0);
         rejected.regs[2..=11].fill(u64::MAX);
         syscall::syscall_dispatch(&mut rejected, number);
-        assert_ne!(rejected.regs[0], catten_syscall::ipc_status::OK);
+        assert_ne!(rejected.regs[0], knytos_syscall::ipc_status::OK);
         assert_eq!(&rejected.regs[1..=11], &[0; 11]);
     }
     let call = {
@@ -470,7 +470,7 @@ pub fn test_syscall_dispatch() {
     rejected.regs[5] = crate::ipc::ConnectionRights::SEND.bits() as u64;
     syscall::syscall_dispatch(&mut rejected, call_no::IPC_SCALAR_CALL_CONNECTION);
     assert_eq!(rejected.regs[0], 0, "rejection creates no pending owner");
-    assert_eq!(rejected.regs[1], catten_syscall::ipc_status::QUEUE_FULL);
+    assert_eq!(rejected.regs[1], knytos_syscall::ipc_status::QUEUE_FULL);
     for _ in 0..4 {
         let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
@@ -483,7 +483,7 @@ pub fn test_syscall_dispatch() {
     accepted.regs[5] = crate::ipc::ConnectionRights::SEND.bits() as u64;
     syscall::syscall_dispatch(&mut accepted, call_no::IPC_SCALAR_CALL_CONNECTION);
     assert_ne!(accepted.regs[0], 0);
-    assert_eq!(accepted.regs[1], catten_syscall::ipc_status::OK);
+    assert_eq!(accepted.regs[1], knytos_syscall::ipc_status::OK);
     let accepted_call = accepted.regs[0];
     let mut received = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
     syscall::syscall_dispatch(&mut received, call_no::IPC_RECV);
@@ -528,7 +528,7 @@ pub fn test_syscall_dispatch() {
         let mut f =
             synthetic_trap_frame_in(memory_owner, 0, OpCode::Read as u64, cross_page as u64, 4);
         syscall::syscall_dispatch(&mut f, call_no::COMPLETION_SUBMIT);
-        assert_ne!(f.regs[0], catten_syscall::COMPLETION_SUBMIT_FAILED);
+        assert_ne!(f.regs[0], knytos_syscall::COMPLETION_SUBMIT_FAILED);
         f.regs[0]
     };
     let completed = completion::poll(memory_owner, user_copy_completion)
@@ -563,7 +563,7 @@ pub fn test_syscall_dispatch() {
     syscall::syscall_dispatch(&mut read_only, call_no::COMPLETION_SUBMIT);
     assert_eq!(
         read_only.regs[0],
-        catten_syscall::COMPLETION_SUBMIT_FAILED,
+        knytos_syscall::COMPLETION_SUBMIT_FAILED,
         "completion Read must not bypass a read-only user mapping"
     );
     object::unmap(memory_owner, user_copy_cap).expect("checked user-copy read-only unmap failed");
@@ -837,7 +837,7 @@ pub fn test_syscall_dispatch() {
     }
 
     {
-        use catten_syscall::{
+        use knytos_syscall::{
             THREAD_STATISTICS_HEADER_U64S,
             THREAD_STATISTICS_MAGIC,
             THREAD_STATISTICS_VERSION,
@@ -863,7 +863,7 @@ pub fn test_syscall_dispatch() {
                     .expect("statistics field should contain one u64"),
             )
         };
-        assert_eq!(catten_syscall::metadata_pools::from_statistics(&bytes).unwrap().len(), 0);
+        assert_eq!(knytos_syscall::metadata_pools::from_statistics(&bytes).unwrap().len(), 0);
         assert_eq!(field(header::METADATA_RECORD_COUNT), 0);
         assert_eq!(field(header::MAGIC), THREAD_STATISTICS_MAGIC);
         assert_eq!(field(header::VERSION), THREAD_STATISTICS_VERSION);
@@ -907,8 +907,8 @@ pub fn test_syscall_dispatch() {
             usize::try_from(system.regs[1]).expect("system statistics length exceeds usize"),
         )
         .expect("system statistics snapshot should be readable");
-        let pools = catten_syscall::metadata_pools::from_statistics(&system_bytes).unwrap();
-        assert_eq!(pools.len(), catten_syscall::metadata_pools::COUNT);
+        let pools = knytos_syscall::metadata_pools::from_statistics(&system_bytes).unwrap();
+        assert_eq!(pools.len(), knytos_syscall::metadata_pools::COUNT);
         assert!(pools.into_iter().any(|pool| pool.used.is_some()));
         crate::klib::admission::test_observation();
         let system_count = u64::from_le_bytes(
@@ -926,7 +926,7 @@ pub fn test_syscall_dispatch() {
         ));
     }
 
-    let policy_digest = charlotte_launch::sha256::digest(b"admitted deployment policy");
+    let policy_digest = knytos_launch::sha256::digest(b"admitted deployment policy");
     let owner_identity = crate::memory::current_address_space_handle(memory_owner).unwrap();
     let generation = owner_identity.generation() as u64;
     crate::memory::register_domain_authority(owner_identity, 1, 0).unwrap();
@@ -941,7 +941,7 @@ pub fn test_syscall_dispatch() {
     assert!(!crate::memory::launch_descriptor_matches(
         memory_owner,
         generation,
-        &charlotte_launch::sha256::digest(b"another signed policy for the same logical artifact"),
+        &knytos_launch::sha256::digest(b"another signed policy for the same logical artifact"),
     ));
     let mut query = synthetic_trap_frame_in(memory_owner, 0, memory_owner as u64, generation, 0);
     for (word, chunk) in query.regs[3..7].iter_mut().zip(policy_digest.as_chunks::<8>().0) {

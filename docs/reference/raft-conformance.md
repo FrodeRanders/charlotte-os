@@ -1,8 +1,8 @@
-# Graft Conformance in CharlotteOS
+# Graft Conformance in Knytos
 
-`catten-graft` is a `no_std` adaptation of the general Graft implementation,
+`knytos-graft` is a `no_std` adaptation of the general Graft implementation,
 not an independent Raft design. Consensus behavior should remain equivalent to
-the Java, C++, and Rust implementations in the Graft repository. CharlotteOS
+the Java, C++, and Rust implementations in the Graft repository. Knytos
 substitutes capability IPC, name-service discovery, completion queues, and the
 NVMe object store at the platform boundary.
 
@@ -29,7 +29,7 @@ for execution evidence and unresolved TLS availability failures.
 
 ## Required behavioral parity
 
-| Concern | CharlotteOS implementation |
+| Concern | Knytos implementation |
 |---|---|
 | Membership identity | Peer IDs are normalized; duplicate IDs cannot manufacture a quorum. |
 | Elections | Only voters campaign, only active voters receive votes, and joint configurations require a majority of each voter set. |
@@ -52,14 +52,14 @@ response fencing. See
 
 ## Intentional platform differences
 
-- The general runtimes frame protobuf envelopes over TCP. CharlotteOS passes
+- The general runtimes frame protobuf envelopes over TCP. Knytos passes
   the protobuf payload in a moved memory capability and carries its exact byte
   length in the scalar IPC argument/result.
 - A peer address is encoded as `charlotte:<service-name>` in `PeerSpec.host`.
   The local transport obtains the corresponding connection capability through
   a waitable name-service lookup. Discovery follows committed membership, not
   only the boot manifest.
-- CharlotteOS stores term/vote/log/snapshot records in object-store namespaces.
+- Knytos stores term/vote/log/snapshot records in object-store namespaces.
   Snapshot replacement and retained-suffix persistence use one atomic disk
   record update; this is deliberately stronger than a two-write
   compact-then-install sequence. The current [persistence contract](raft-persistence.md)
@@ -106,13 +106,13 @@ compares the clean Graft checkout at `1a818d416a40330bea2055e03f61580679baa9f6`.
 Its version-controlled evidence retains the relevant Java, C++ and Rust source
 extracts and file hashes, so the comparison does not depend on that local checkout.
 
-| Boundary | Observed upstream behavior | Charlotte qualification |
+| Boundary | Observed upstream behavior | Knytos qualification |
 |---|---|---|
-| Delayed responses | C++ checks exact response term and keeps monotonic successful progress. The inspected Java/Rust handlers differ; caller scheduling also matters. | The preceding Charlotte unsafe-commit regression is reproduced and corrected. No equivalent upstream failure is claimed from static inspection alone. |
-| Automatic finalization | Java/Rust require the committed JOINT fence and proposed-member catch-up. | Restored after a Charlotte-specific early-finalization change introduced in `4d2856df`. Explicit/manual FINALIZE remains separate. A lagging proposed learner can intentionally delay automatic completion. |
-| Retained learner leadership | Java has a periodic non-voter role check. The Rust core has one too, with different runtime scheduling. | Charlotte's former timeout check merely returned false; finalization now relinquishes authority immediately without erasing the term's vote. |
+| Delayed responses | C++ checks exact response term and keeps monotonic successful progress. The inspected Java/Rust handlers differ; caller scheduling also matters. | The preceding Knytos unsafe-commit regression is reproduced and corrected. No equivalent upstream failure is claimed from static inspection alone. |
+| Automatic finalization | Java/Rust require the committed JOINT fence and proposed-member catch-up. | Restored after a Knytos-specific early-finalization change introduced in `4d2856df`. Explicit/manual FINALIZE remains separate. A lagging proposed learner can intentionally delay automatic completion. |
+| Retained learner leadership | Java has a periodic non-voter role check. The Rust core has one too, with different runtime scheduling. | Knytos' former timeout check merely returned false; finalization now relinquishes authority immediately without erasing the term's vote. |
 | Hostile membership scenarios | The Jepsen harness covers non-leader demotion and separate leader removal, along with partition, pause/restart and mixed-implementation scenarios. | The new retained-leader-as-learner regression complements those definitions. Jepsen was not rerun here. |
-| Mixed clusters | Graft's suites include Java/C++, Java/Rust and three-language cases. | Shared protobuf message shapes do not establish native interoperation. Charlotte uses capability IPC/relmsg and a different application/environment; no Graft TCP gateway or cross-runtime cluster is qualified by these ARM checks. |
+| Mixed clusters | Graft's suites include Java/C++, Java/Rust and three-language cases. | Shared protobuf message shapes do not establish native interoperation. Knytos uses capability IPC/relmsg and a different application/environment; no Graft TCP gateway or cross-runtime cluster is qualified by these ARM checks. |
 
 Consensus reviews must compare core **and runtime** behavior across the reference
 implementations. Capture each deliberate difference and its regression before
@@ -146,7 +146,7 @@ failures. Historical reports retain the original unsafe execution.
 This uses the shared empty no-op log grammar. It adds one log entry and quorum
 commit per read, with durable write and snapshot costs; no throughput or latency
 qualification is claimed. Graft core/runtime read paths differ, and no new
-upstream execution, Jepsen result or mixed Charlotte/Graft cluster is claimed.
+upstream execution, Jepsen result or mixed Knytos/Graft cluster is claimed.
 
 ## Bounded observations and service time
 

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class SigningBatch(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="charlotte-sign-batch-")
+        self.directory = tempfile.TemporaryDirectory(prefix="knytos-sign-batch-")
         self.addCleanup(self.directory.cleanup)
         self.base = Path(self.directory.name)
         self.bundle = self.base / "bundle"

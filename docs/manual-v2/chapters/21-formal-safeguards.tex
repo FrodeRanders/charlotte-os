@@ -2,7 +2,7 @@
 \label{chap:formal-safeguards}
 \newcommand{\tlbreak}[2]{\texttt{#1}\allowbreak\texttt{#2}}
 
-CharlotteOS uses executable TLA+ models to review stateful functionality. The
+Knytos uses executable TLA+ models to review stateful functionality. The
 models state each safety contract, explore action orderings in a finite instance,
 keep known-bad designs as counterexamples, and map abstract transitions back to
 Rust.
@@ -20,7 +20,7 @@ target builds, Clippy, and boot tests. Each layer answers a different question:
     \item[Conformance map] Which concrete Rust state and linearization point
         implement each abstract action?
     \item[Rust and boot tests] Does the implementation exercise the intended
-        transition on the host and on CharlotteOS targets?
+        transition on the host and on Knytos targets?
     \item[Build and lint gates] Does the integrated implementation remain
         type-correct and warning-free for the actual target?
 \end{description}
@@ -35,11 +35,11 @@ chapter.
 seL4's verification connects an abstract kernel specification to its
 implementation through machine-checked refinement proofs. The 2014 account
 also describes security properties and binary-level verification under stated
-assumptions \cite{prior:sel4}. CharlotteOS currently explores finite TLA+
+assumptions \cite{prior:sel4}. Knytos currently explores finite TLA+
 state machines with TLC and maintains a reviewed correspondence to Rust.
 That correspondence is not a mechanically checked implementation refinement.
 
-The practical value of the CharlotteOS approach is early examination of
+The practical value of the Knytos approach is early examination of
 lifecycle, ownership and distributed-protocol interleavings, including known
 unsafe variants that must produce counterexamples. It supports the method
 developed in this chapter while leaving much of the code and hardware outside
@@ -99,7 +99,7 @@ systematically covers the orderings rather than hoping to encounter them.
 
 \section{The safeguarding loop}
 
-CharlotteOS applies the models as a feedback loop between design,
+Knytos applies the models as a feedback loop between design,
 implementation, and validation:
 
 \begin{enumerate}
@@ -128,7 +128,7 @@ implementation, and validation:
     \item \textbf{Map back to code.} \repofile|docs/tla/CONFORMANCE.md| records
         the concrete function, persisted field, and linearization point for
         every modeled action. Disagreement is resolved by changing the model,
-        changing CharlotteOS, or documenting behavior outside the abstraction.
+        changing Knytos, or documenting behavior outside the abstraction.
     \item \textbf{Validate both levels.} Run TLC, focused Rust tests, target
         builds and Clippy, and relevant boot or multi-node tests.
 \end{enumerate}
@@ -489,7 +489,7 @@ This is no recoverable custody, deadline-duration, field-destructor or runtime
 abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 \end{implementationdetail}
 
-\section[Model-driven findings]{How model reasoning changes CharlotteOS}
+\section[Model-driven findings]{How model reasoning changes Knytos}
 
 The most valuable result is often a mismatch discovered while constructing the
 model. The correct response depends on which side was wrong: sometimes the
@@ -727,12 +727,12 @@ admission must violate \tlbreak{RestartPreserves}{Admission}.
 
 \subsection{Membership changes preserve the tested Graft contract}
 
-Charlotte's Raft port derives from Graft, whose Java, C++ and Rust runtimes are
+Knytos' Raft port derives from Graft, whose Java, C++ and Rust runtimes are
 intended to form mixed clusters. The upstream Jepsen harness exercises hostile
 schedules and membership changes. That evidence makes core and runtime parity
 an explicit review concern, so a local model or host test does not replace it.
 
-A source comparison found that Charlotte had replaced the Java/Rust automatic
+A source comparison found that Knytos had replaced the Java/Rust automatic
 finalization catch-up gate with immediate proposal after JOINT committed. The
 port now waits for every proposed remote voter and learner to reach the committed
 JOINT fence. The leader owns that prefix locally. Committing FINALIZE still
@@ -740,7 +740,7 @@ requires both voter majorities. A slow proposed member can delay automatic
 completion, while explicit/manual finalization is a separate path.
 
 A second regression finalizes the current leader as a retained learner. The
-previous Charlotte code kept it in the leader state. It now becomes a follower
+previous Knytos code kept it in the leader state. It now becomes a follower
 immediately, keeps its existing-term durable vote, and remains a member. The
 upstream Jepsen demotion scenario selects a non-leader, while leader removal has
 its own scenario, and the new regression covers the retained-leader transition.
@@ -749,7 +749,7 @@ its own scenario, and the new regression covers the retained-leader transition.
 next-only voter elections with both majorities and rejects automatic finalization
 while a proposed member lags. Three counterexamples remove the catch-up,
 leader-eligibility and dual-quorum guards. Durable vote persistence remains a
-source-test obligation. Native Charlotte checks do not establish Graft TCP
+source-test obligation. Native Knytos checks do not establish Graft TCP
 interoperation, mixed implementation histories or read-lease correctness.
 
 \subsection{A delayed acknowledgement belongs to its original term}
@@ -806,7 +806,7 @@ confirmation within the request, rather than authority at delivery time.
 
 The shared no-op wire grammar is unchanged. Each read adds a durable log entry
 and quorum commit, with corresponding storage and latency costs. No performance,
-Jepsen or mixed Charlotte/Graft execution claim is made. Bounded status/ingress
+Jepsen or mixed Knytos/Graft execution claim is made. Bounded status/ingress
 observations track receive-time freshness separately, but this is not general lease
 qualification.
 
@@ -1347,12 +1347,12 @@ synchronization work, including the 15 August domain-abort and memory-ownership
 repair, included:
 
 \begin{itemize}
-    \item host tests for \texttt{catten-graft}, including restart before durable
+    \item host tests for \texttt{knytos-graft}, including restart before durable
         membership and restart between membership persistence and fence clear;
-    \item host tests for \texttt{charlotte-protocol-msg}, including disjoint
+    \item host tests for \texttt{knytos-protocol-msg}, including disjoint
         retry/restart sessions and fail-closed exhaustion;
     \item host tests for ownership-aware runtime cleanup and the shared
-        \texttt{charlotte-lifecycle} thread-join and timed-wait classifiers;
+        \texttt{knytos-lifecycle} thread-join and timed-wait classifiers;
     \item AArch64 release builds and warning-denied Clippy for the changed
         \texttt{raft}, \texttt{relmsg}, and \texttt{ns} services;
     \item AArch64 and x86-64 kernel checks, plus warning-denied AArch64 Clippy,
@@ -1392,7 +1392,7 @@ mean one of three things:
 
 \begin{enumerate}
     \item \textbf{Functionality is unsafe.} The Raft admission restart gap was
-        of this kind and required a CharlotteOS change.
+        of this kind and required a Knytos change.
     \item \textbf{The model overclaims.} Atomic service replacement was of this
         kind, so the model was corrected to admit temporary unavailability.
     \item \textbf{The behavior is outside scope.} It must be documented rather

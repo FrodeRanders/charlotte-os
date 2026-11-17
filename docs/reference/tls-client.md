@@ -23,8 +23,8 @@ differences are recorded with that workspace member.
 
 TLS enables `rustpki,p256,p384,ed25519`. The RustCrypto backend registers only
 SHA-384/512, HMAC-SHA-384, P-256 ECDH/ECDSA, P-384 ECDSA and Ed25519 operations.
-`charlotte-management-tls` registers the shared SHA-256/HMAC-SHA-256 drivers
-over `charlotte_launch::sha256`'s erasing owners. Domains supply the sole RNG
+`knytos-management-tls` registers the shared SHA-256/HMAC-SHA-256 drivers
+over `knytos_launch::sha256`'s erasing owners. Domains supply the sole RNG
 and AES-128-GCM drivers. Do not enable the stock SHA-256, HMAC-SHA-256 or GCM
 drivers, including through another workspace consumer's test dependencies;
 duplicate exported driver symbols reject the linked build. Avoid the backend
@@ -130,12 +130,12 @@ authentication. Missing/duplicate signature-algorithm extensions and trailing
 request bytes reject. Both synchronous and asynchronous client paths require the
 actual key's scheme to be offered and valid for TLS 1.3 before sending the
 identity or signing. An unknown or legacy scheme selected in CertificateVerify
-rejects. RSA remains disabled in Charlotte's client: recognizing RSA values in
+rejects. RSA remains disabled in Knytos' client: recognizing RSA values in
 an external offer does not activate a provider. The original PKCS#1 v1.5
 code points are certificate-only under
 [sections 4.2.3 and 4.4.3](https://www.rfc-editor.org/rfc/rfc8446.html#section-4.4.3).
 [RFC 9963](https://www.rfc-editor.org/rfc/rfc9963.html) defines distinct, opt-in
-legacy client-signature codes; Charlotte does not implement them. This client
+legacy client-signature codes; Knytos does not implement them. This client
 rejects PKCS#1 v1.5, SHA-1 and SHA-224 in CertificateVerify.
 
 The [wire investigation](../reports/audits/2026-11-01-tls-signature-offers.md)
@@ -189,7 +189,7 @@ constant-time execution or complete physical-memory erasure.
 ## Compile-time capacities
 
 The related constants are grouped at the top of
-[`tls_client.rs`](../../crates/catten-services/src/tls_client.rs):
+[`tls_client.rs`](../../crates/knytos-services/src/tls_client.rs):
 
 | Setting | Default bytes | Consequences of adjustment |
 | --- | --- | --- |
@@ -199,7 +199,7 @@ The related constants are grouped at the top of
 The separate entropy request budget travels in startup's `EntropyConfig` and
 can be supplied through that Rust API. Bundled S3/Kafka and TCP/IP currently
 select the one `EntropyLimits::DEFAULT` in
-[`entropy_client.rs`](../../crates/catten-services/src/tls_client/entropy_client.rs).
+[`entropy_client.rs`](../../crates/knytos-services/src/tls_client/entropy_client.rs).
 Changing that default rebuilds services; no launch-profile/config-page field,
 boot-module parser or live update is added. A longer budget also retains the
 source checkout, pending metadata, output borrow and possible reply/mapping

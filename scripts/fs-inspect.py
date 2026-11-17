@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect or format a CharlotteOS v4 persistent object-store image.
+"""Inspect or format a Knytos v4 persistent object-store image.
 
 Usage:
     python3 scripts/fs-inspect.py <image>                    # filesystem tree

@@ -71,7 +71,7 @@ into a scalar field in the new operation. Existing kernel returned-memory
 ## Failed executions preserved
 
 The first AArch64 execution panicked at
-`crates/charlotte-launch/src/lib.rs:619:5` with
+`../../../crates/knytos-launch` with
 `manifest keys are limited to eight bytes`. The newly introduced `auditprobe`
 key was ten bytes. The guest was stopped after its panic; it has no passing
 coordinator result. Kernel SHA-256:

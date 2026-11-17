@@ -366,7 +366,7 @@
       "x86": "7ae9ef04e9307441e58f96971d0cb604af9f8fe1c2bc4ca9dff6a6df0efacb79",
       "arm": "cdfc22d448740e9e3ac0c6a3cfdcccf0a095c31c83ccd25b2c2a763882d34634"
     },
-    "bundle_reproduction": "scripts/build-catten-services.sh --check; current-source signed bytes match and signatures verify",
+    "bundle_reproduction": "scripts/build-knytos-services.sh --check; current-source signed bytes match and signatures verify",
     "bundle_reproduction_capture_sha256": "348840005cb1fb69117075188fb15b87cb0044c24274b8ed15edb97da977ef8f",
     "host_tests": "Kernel-only changes; deterministic real-root tests run inside both native boots. No unrelated host suite rerun claimed."
   },

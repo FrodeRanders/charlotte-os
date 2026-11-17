@@ -50,14 +50,14 @@ fn run_inner(destroy: &mut impl FnMut(&mut AddressSpace, &mut Deallocator<'_>) -
         let free_before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let mut space = AddressSpace::try_new_user().unwrap();
         bind_raw_fixture(&mut space);
-        install(&mut space, Kind::Heap, charlotte_launch::HEAP_VADDR);
-        install(&mut space, Kind::Image, charlotte_launch::HEAP_VADDR + 4096);
+        install(&mut space, Kind::Heap, knytos_launch::HEAP_VADDR);
+        install(&mut space, Kind::Image, knytos_launch::HEAP_VADDR + 4096);
         let catalog_bytes = space.owned_frames.capacity_bytes();
         // An unowned leaf shares these tables, but not their backing lifetime.
         let foreign = PreparingUserFrame::allocate_zeroed().unwrap();
         space
             .map_existing_page(MemoryMapping {
-                vaddr: VAddr::from(charlotte_launch::HEAP_VADDR + 8192),
+                vaddr: VAddr::from(knytos_launch::HEAP_VADDR + 8192),
                 paddr: foreign.frame(),
                 page_type: PageType::UserData,
             })

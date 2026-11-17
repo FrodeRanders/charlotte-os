@@ -1,0 +1,13 @@
+[package]
+name = "knytos-syscall"
+version = "0.1.0"
+edition = "2024"
+description = "Typed no_std wrappers for the Knytos syscall ABI"
+
+[lib]
+name = "knytos_syscall"
+path = "src/lib.rs"
+test = true
+bench = false
+
+[dependencies]

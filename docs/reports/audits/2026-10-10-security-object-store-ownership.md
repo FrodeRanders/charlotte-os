@@ -24,7 +24,7 @@ in images written by earlier builds) now stores the creating principal and an
 attribute word; CRC coverage and the shared encode/decode path keep the format
 compatible with image-staged objects.
 
-- Policy ([objstore module](../../../crates/catten-services/src/lib.rs#L1350)):
+- Policy ([objstore module](../../../crates/knytos-services/src/lib.rs#L1350)):
   - `may_create`: ordinary IDs are open; reserved IDs require a reserved
     mutator, so creation cannot squat the artifact/executable namespaces.
   - `may_mutate`: reserved IDs follow the kernel/`clusterctl` rule; ordinary
@@ -34,7 +34,7 @@ compatible with image-staged objects.
     `ATTR_SHARED_READ` objects admit every authenticated domain, unowned
     legacy objects stay readable for compatibility, and owned ordinary
     objects are private to their owner and the kernel.
-- Store ([objstore.rs:1273](../../../crates/catten-services/src/bin/objstore.rs#L1290)):
+- Store ([objstore.rs:1273](../../../crates/knytos-services/src/bin/objstore.rs#L1290)):
   creation records the kernel-authenticated sender as owner; `OP_READ`,
   `OP_INFO`, `OP_DELETE`, `OP_SET_SIZE` and `OP_WRITE` evaluate the policy
   before touching data and reply `ERR_DENIED` otherwise. Header rewrites

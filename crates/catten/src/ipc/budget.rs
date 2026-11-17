@@ -7,7 +7,7 @@ use core::ops::{
     DerefMut,
 };
 
-use charlotte_lifecycle::resources::VectorBudget;
+use knytos_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;

@@ -1,0 +1,10 @@
+[package]
+name = "knytos-kafka-step"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-kafka = { path = "../knytos-protocol-kafka" }
+

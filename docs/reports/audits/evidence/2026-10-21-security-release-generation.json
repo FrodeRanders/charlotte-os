@@ -36,7 +36,7 @@
   "failures_preserved_separately": [
     {
       "kind": "optimized production defect",
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign -p charlotte-launch -p catten-services --lib",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign -p knytos-launch -p knytos-services --lib",
       "exit_status": 101,
       "test": "operations_admission::tests::release_reservations_are_charged_cumulatively",
       "diagnostic": "assertion left == right failed; left: Ok([[1], [1]]); right: Err(InsufficientCapacity)",
@@ -197,24 +197,24 @@
       "exit_status": 0
     },
     "host_clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign -p charlotte-launch --all-targets -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign -p knytos-launch --all-targets -- -D warnings",
       "exit_status": 0
     },
     "service_clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
       "exit_status": 0
     },
     "arm_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0
     },
     "arm_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "diagnostic": "Staged AArch64 service bundle signatures verified."
     },
     "x86_build": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0
     },
     "diff": {
@@ -674,23 +674,23 @@
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-aarch64.sh": "d3a1e6123786ac9e880f79f577520d5f59378d98e909de647ba9260b6829d901",
     "scripts/run-x86_64.sh": "aadaf04b63519e457dcbf23ab91e2087483398076f4705900c4ad6f6f395612e",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291"
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291"
   },
   "reviewed_source_sha256": {
-    "crates/catten-services/src/bin/clusterctl.rs": "7e567ef6edc729a01cf929b1c181fdeec0716a046f23852e857704ad44c9a9a1",
-    "crates/catten-services/src/bin/deployd.rs": "6d9c104024a1294978cf7b164d4f5078e40e31dff1b8905b60472eba6b278f00",
-    "crates/catten-services/src/bin/dns.rs": "96b8c619f006188e9055b9397612a35fdb199af3fa31921017511f6571003548",
-    "crates/catten-services/src/bin/dns/message_memory.rs": "fe843dd5ffe097f1da07e3c399d450a5f05dd0f5728daf4a6b3cfa2d24e7260e",
-    "crates/catten-services/src/bin/dns/reactor.rs": "efa65453db5fd765a56bc42637d23c56f7455a7020e5006dbc1ced6713e8c7e2",
-    "crates/catten-services/src/bin/dns/state.rs": "b1ad4a905dcedc070ebf3487e39baa8898bd436c8472e21aacbaf43c9dcb5d06",
-    "crates/catten-services/src/lib.rs": "7cb5c047da1a688aebee41365e53d523d9ce31d81028bca47663e51885e3a332",
-    "crates/catten-services/src/name_catalog.rs": "6e62f3302a9d27d5a611f0a596aba2d59ec3bfec202209e86db4d3a490f3e571",
-    "crates/catten-services/src/name_catalog/tests.rs": "39334c666ac1407c4bdb5ade11bb9a9f6a131694db7b40b3f132276274f73ff8",
-    "crates/catten-services/src/operations_admission.rs": "8674e062b5603a9fc96ef5156cfc701d7e49ba0aabb5e02d890c273bb33dfb04",
-    "crates/catten-services/src/release_admission.rs": "59a9cc899e725402122cedb4898037afd17f4aa14698a293df3908997c148720",
-    "crates/charlotte-launch/src/lib.rs": "1ee12b6e4af7cbd413fc7362f9efa129562be4797f20c120a93f694e361e3ce5",
-    "crates/charlotte-launch/src/release_admission.rs": "55f35232f630f43bf123f7f921f7aa37117bea869d3740725680b73acda71379",
+    "crates/knytos-services/src/bin/clusterctl.rs": "7e567ef6edc729a01cf929b1c181fdeec0716a046f23852e857704ad44c9a9a1",
+    "crates/knytos-services/src/bin/deployd.rs": "6d9c104024a1294978cf7b164d4f5078e40e31dff1b8905b60472eba6b278f00",
+    "crates/knytos-services/src/bin/dns.rs": "96b8c619f006188e9055b9397612a35fdb199af3fa31921017511f6571003548",
+    "crates/knytos-services/src/bin/dns/message_memory.rs": "fe843dd5ffe097f1da07e3c399d450a5f05dd0f5728daf4a6b3cfa2d24e7260e",
+    "crates/knytos-services/src/bin/dns/reactor.rs": "efa65453db5fd765a56bc42637d23c56f7455a7020e5006dbc1ced6713e8c7e2",
+    "crates/knytos-services/src/bin/dns/state.rs": "b1ad4a905dcedc070ebf3487e39baa8898bd436c8472e21aacbaf43c9dcb5d06",
+    "crates/knytos-services/src/lib.rs": "7cb5c047da1a688aebee41365e53d523d9ce31d81028bca47663e51885e3a332",
+    "crates/knytos-services/src/name_catalog.rs": "6e62f3302a9d27d5a611f0a596aba2d59ec3bfec202209e86db4d3a490f3e571",
+    "crates/knytos-services/src/name_catalog/tests.rs": "39334c666ac1407c4bdb5ade11bb9a9f6a131694db7b40b3f132276274f73ff8",
+    "crates/knytos-services/src/operations_admission.rs": "8674e062b5603a9fc96ef5156cfc701d7e49ba0aabb5e02d890c273bb33dfb04",
+    "crates/knytos-services/src/release_admission.rs": "59a9cc899e725402122cedb4898037afd17f4aa14698a293df3908997c148720",
+    "crates/knytos-launch/src/lib.rs": "1ee12b6e4af7cbd413fc7362f9efa129562be4797f20c120a93f694e361e3ce5",
+    "crates/knytos-launch/src/release_admission.rs": "55f35232f630f43bf123f7f921f7aa37117bea869d3740725680b73acda71379",
     "docs/architecture/cluster-artifacts-and-placement.md": "f68f24385654b86cba2e83962a466956ca098ffdedf990943052fa39b4db4df0",
     "docs/guides/testing.md": "143ea61c6589cba90a95759f8d93dfa8bad9268e82e42ea984b42c7d1921b4f8",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "4740b335028864a90273cba1b42f7ee10cc4147f76ecb74760ab1c6b8d0e96df",

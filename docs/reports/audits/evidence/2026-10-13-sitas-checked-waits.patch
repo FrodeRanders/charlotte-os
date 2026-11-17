@@ -394,9 +394,9 @@ index 87dc854..15e557f 100644
  on the readiness-based TCP path. They do not make TCP accept, send, or receive
  completion-based `io_uring` operations.
  
-+### CharlotteOS checked CQ waits
++### Knytos checked CQ waits
 +
-+The Charlotte backend uses runtime ABI 3's checked CQ syscall 88; unchecked
++The Knytos backend uses runtime ABI 3's checked CQ syscall 88; unchecked
 +syscalls 12/42 are retired. Its explicit timed flag distinguishes finite
 +milliseconds (including the maximum value) from an event-only wait. Ready and
 +deadline are separate from waiter admission rejection and invalid requests.

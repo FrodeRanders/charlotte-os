@@ -11,7 +11,7 @@ spec.loader.exec_module(fixture)
 
 
 def snapshots():
-    return {name: {"schema": "charlotte.cluster.v2", "fresh_committed": True, "truncated": False,
+    return {name: {"schema": "knytos.cluster.v2", "fresh_committed": True, "truncated": False,
                    "served_by_leader": name == "a", "raft": {"term": 4, "leader": "a", "served_by": name},
                    "nodes": [{"node_key": node, "member": True} for node in ("a", "b", "c")]}
             for name in ("a", "b", "c")}

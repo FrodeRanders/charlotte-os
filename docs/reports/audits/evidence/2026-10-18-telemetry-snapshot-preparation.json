@@ -46,8 +46,8 @@
     "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
     "format": "cargo fmt --all -- --check",
     "bundles": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ]
   },
   "runs": [

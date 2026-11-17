@@ -41,11 +41,11 @@ class SdkTests(unittest.TestCase):
             self.assertEqual(config['sdk_fingerprint'], hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest())
             self.assertTrue((project / 'logic/src/lib.rs').is_file())
             self.assertTrue((project / 'app/src/main.rs').is_file())
-            (sdk / 'crates/charlotte-app').mkdir(parents=True)
-            (sdk / 'crates/charlotte-app/Cargo.toml').write_text('[package]\nname="charlotte-app"\n')
+            (sdk / 'crates/knytos-app').mkdir(parents=True)
+            (sdk / 'crates/knytos-app/Cargo.toml').write_text('[package]\nname="knytos-app"\n')
             sdk_cli.checked_project_sources(sdk, project)
             manifest = project / 'app/Cargo.toml'
-            manifest.write_text(manifest.read_text().replace(str(sdk / 'crates/charlotte-app'), str(root / 'other-sdk/charlotte-app')))
+            manifest.write_text(manifest.read_text().replace(str(sdk / 'crates/knytos-app'), str(root / 'other-sdk/knytos-app')))
             with self.assertRaisesRegex(ValueError, 'selected SDK'):
                 sdk_cli.checked_project_sources(sdk, project)
             (project / 'sentinel').write_text('keep')

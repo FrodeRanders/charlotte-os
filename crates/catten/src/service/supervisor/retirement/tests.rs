@@ -33,7 +33,7 @@ pub(crate) fn run() {
 
 fn domain() -> ServiceDomain {
     let handle = loader::create_user_address_space_handle();
-    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    assert!(memory::commit_user_heap_page_handle(handle, knytos_launch::HEAP_VADDR));
     // No ELF or running threads in these fixtures. The owner never accesses
     // bootstrap/status frames; deployment tests supply an already-pending
     // owner and a cached acknowledgement rather than reading dummy addresses.
@@ -106,7 +106,7 @@ fn test_timeout_registry() {
             domain,
             shutdown_grace_ms: 0,
             retirement_deadline_ms: Some(0),
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            retirement_reason: knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
             retirement_acknowledged: true,
             teardown: DeploymentTeardown::Polling,
@@ -117,7 +117,7 @@ fn test_timeout_registry() {
             &registry,
             PRINCIPAL,
             false,
-            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             0,
         )
     };
@@ -126,7 +126,7 @@ fn test_timeout_registry() {
             &registry,
             0,
             true,
-            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            knytos_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             0,
         ),
         u64::MAX,

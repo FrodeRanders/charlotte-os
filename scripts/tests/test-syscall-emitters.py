@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-SOURCE = Path(__file__).resolve().parents[2] / "crates/catten-syscall/src/lib.rs"
+SOURCE = Path(__file__).resolve().parents[2] / "crates/knytos-syscall/src/lib.rs"
 
 
 def parse_declared_numbers(text):

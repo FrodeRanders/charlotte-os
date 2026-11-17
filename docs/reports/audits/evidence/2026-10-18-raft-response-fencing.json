@@ -209,13 +209,13 @@
     "docs/tla/check.sh": "c09413db2254ab6f1f50a3d18c93fbff0af98989b758abbc8202acf21f96763e"
   },
   "reviewed_source_sha256": {
-    "crates/catten-graft/src/node.rs": "56a5710bcd18c39471cca0534b91470d85a551d33ba264e02ade0a6dcc27f43e",
-    "crates/catten-graft/src/membership.rs": "0157bd75f9051072d97dd99169e0a7c5f2d2376ce9432828077d467927f8b540",
-    "crates/catten-graft/src/transport.rs": "354b62c5d62ec429c2a9ee14ea241a62c360ad99b36c6c76e3f51868f226b99e",
-    "crates/catten-graft/src/charlotte.rs": "e46e4e2a7aa41dc62143ad91bd4a9ffe9df6c855361296ffd6282e845d5b00f4",
-    "crates/catten-services/src/relmsg_transport.rs": "771136f16d833b5449977de6837b354695f01652e6e26ec7c27a89e6119c6178",
-    "crates/catten-services/src/bin/raft.rs": "7bf44c274b36f45e383dd82f5e8a54dae5fbddd0000f06b48db2d107fd04ea4d",
-    "crates/catten-services/src/bin/dns/transport.rs": "f18945e35b6f4776e7e6ab0f9aa26e0cf44a931b13cb96906f0a3e37969213cc"
+    "crates/knytos-graft/src/node.rs": "56a5710bcd18c39471cca0534b91470d85a551d33ba264e02ade0a6dcc27f43e",
+    "crates/knytos-graft/src/membership.rs": "0157bd75f9051072d97dd99169e0a7c5f2d2376ce9432828077d467927f8b540",
+    "crates/knytos-graft/src/transport.rs": "354b62c5d62ec429c2a9ee14ea241a62c360ad99b36c6c76e3f51868f226b99e",
+    "crates/knytos-graft/src/charlotte.rs": "e46e4e2a7aa41dc62143ad91bd4a9ffe9df6c855361296ffd6282e845d5b00f4",
+    "crates/knytos-services/src/relmsg_transport.rs": "771136f16d833b5449977de6837b354695f01652e6e26ec7c27a89e6119c6178",
+    "crates/knytos-services/src/bin/raft.rs": "7bf44c274b36f45e383dd82f5e8a54dae5fbddd0000f06b48db2d107fd04ea4d",
+    "crates/knytos-services/src/bin/dns/transport.rs": "f18945e35b6f4776e7e6ab0f9aa26e0cf44a931b13cb96906f0a3e37969213cc"
   },
   "cases": [
     {
@@ -2334,7 +2334,7 @@
       "meaning": "Production regression: old-term acknowledgement advances commit to 3; expected 0.",
       "log_sha256": "07d89afb97162b5924e112fcf90d0f53811e629900892660497f1e715002d7db",
       "diagnostics": [
-        "thread 'node::tests::old_term_append_response_cannot_commit_a_replaced_prefix' (19242131) panicked at crates/catten-graft/src/node.rs:1563:9:",
+        "thread 'node::tests::old_term_append_response_cannot_commit_a_replaced_prefix' (19242131) panicked at crates/knytos-graft/src/node.rs:1563:9:",
         "assertion `left == right` failed: an old response cannot acknowledge the new prefix",
         "  left: 3",
         " right: 0",
@@ -2349,12 +2349,12 @@
       "meaning": "Production regressions: confirmed match 3 regresses to 1, and an unadmitted higher-term source steps the leader down.",
       "log_sha256": "b1318fa4d1aa8b88878ec03bef93ecb58387354fd414471c3915b97ec7273923",
       "diagnostics": [
-        "thread 'node::tests::replication_responses_require_an_admitted_matching_peer_and_local_index' (19242264) panicked at crates/catten-graft/src/node.rs:1656:9:",
+        "thread 'node::tests::replication_responses_require_an_admitted_matching_peer_and_local_index' (19242264) panicked at crates/knytos-graft/src/node.rs:1656:9:",
         "assertion `left == right` failed",
         "  left: Follower",
         " right: Leader",
         "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
-        "thread 'node::tests::reordered_replication_responses_preserve_confirmed_progress' (19242263) panicked at crates/catten-graft/src/node.rs:1599:9:",
+        "thread 'node::tests::reordered_replication_responses_preserve_confirmed_progress' (19242263) panicked at crates/knytos-graft/src/node.rs:1599:9:",
         "  left: Some(1)",
         " right: Some(3)",
         "",
@@ -2367,7 +2367,7 @@
       "meaning": "Fixture mistake: leader construction prepopulates snapshot_offsets. Rejection must preserve that map, not make it empty.",
       "log_sha256": "b849f1bd8349b5b60eaf4bc68567caceec862b0e899351ca25a3723010298ff8",
       "diagnostics": [
-        "thread 'node::tests::snapshot_responses_require_an_admitted_peer_and_completed_result' (19245410) panicked at crates/catten-graft/src/node.rs:1763:9:",
+        "thread 'node::tests::snapshot_responses_require_an_admitted_peer_and_completed_result' (19245410) panicked at crates/knytos-graft/src/node.rs:1763:9:",
         "assertion failed: node.snapshot_offsets.is_empty()",
         "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
         "test result: FAILED. 35 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
@@ -2398,7 +2398,7 @@
   ],
   "host_validation": [
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 36,
       "failed": 0,
@@ -2411,7 +2411,7 @@
       ]
     },
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-services/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 145,
       "failed": 0,
@@ -2421,18 +2421,18 @@
   ],
   "checks": {
     "clippy": {
-      "command": "cargo clippy --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
+      "command": "cargo clippy --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
       "exit_status": 0,
       "log_sha256": "e6d35c3329663fcb8ff6ba60d320447fec5001a415d650d9c56cc46ec01dc3ff"
     },
     "format": "cargo fmt --all -- --check passes",
     "bundle_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "762d209fd4b9cd73ca31be1227eaf274538021e3e982e55f6bdc780d7b46940a"
     },
     "bundle_check": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "bd12602f973835550e64c32359da39335de24fca89d6154fe94e745fa68e97bf"
     },

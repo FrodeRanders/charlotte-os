@@ -1,0 +1,10 @@
+[package]
+name = "knytos-app-sitas"
+version = "0.1.0"
+edition = "2024"
+description = "Owned Knytos call futures on the existing Sitas shard executor"
+
+[dependencies]
+knytos-rt = { path = "../knytos-rt" }
+sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core", default-features = false }
+spin = "0.9"

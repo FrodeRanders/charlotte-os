@@ -26,10 +26,10 @@ def digest(data):
 class RngDeviceFence(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-rng-fence-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-rng-fence-")
         cls.directory = Path(cls.temporary.name)
-        cls.source = (ROOT / "crates/catten-services/src/rng_device.rs").read_text()
-        cls.contract = (ROOT / "crates/catten-services/src/rng_device/contract.rs").read_text()
+        cls.source = (ROOT / "crates/knytos-services/src/rng_device.rs").read_text()
+        cls.contract = (ROOT / "crates/knytos-services/src/rng_device/contract.rs").read_text()
         cls.toolchain = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
 
     @classmethod

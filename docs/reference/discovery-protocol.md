@@ -1,6 +1,6 @@
 # Current discovery protocol
 
-CharlotteOS discovery uses EtherType `0x88B6` and version 1. There is one
+Knytos discovery uses EtherType `0x88B6` and version 1. There is one
 complete advertisement grammar for broadcast probes and unicast responses.
 Discovery supplies transient identity-to-MAC routes and cluster posture;
 it does not authenticate a peer or grant voting, deployment or capability
@@ -49,7 +49,7 @@ Rebuild every node's signed discovery service together. Mixed old/new service
 bundles are unsupported: old nodes cannot satisfy the declared-length
 contract. No stored discovery state needs migration; peers are a transient,
 bounded cache. `OP_LIST_PEERS` and `OP_CLUSTER_STATUS` IPC layouts remain as
-documented in `charlotte-protocol-disco`; this batch changes the Ethernet
+documented in `knytos-protocol-disco`; this batch changes the Ethernet
 advertisement boundary.
 
 See the [simplification ledger](api-simplification.md) and

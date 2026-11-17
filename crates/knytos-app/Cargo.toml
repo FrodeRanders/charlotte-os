@@ -1,0 +1,31 @@
+[package]
+name = "knytos-app"
+version = "0.1.0"
+edition = "2024"
+description = "Owned application context and typed service clients for Knytos"
+
+[features]
+default = []
+kafka = ["dep:knytos-protocol-kafka"]
+s3 = ["dep:knytos-protocol-s3"]
+socket = []
+test-support = []
+
+[dependencies]
+knytos-rt = { path = "../knytos-rt" }
+knytos-launch = { path = "../knytos-launch" }
+knytos-protocol-grant = { path = "../knytos-protocol-grant" }
+knytos-protocol-kafka = { path = "../knytos-protocol-kafka", optional = true }
+knytos-protocol-s3 = { path = "../knytos-protocol-s3", optional = true }
+
+[[example]]
+name = "reconnecting_client"
+path = "examples/reconnecting_client.rs"
+test = true
+bench = false
+
+[[example]]
+name = "echo_service"
+path = "examples/echo_service.rs"
+test = true
+bench = false

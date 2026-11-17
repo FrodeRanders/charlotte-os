@@ -1,4 +1,4 @@
-# CharlotteOS renewed security audit — 2026-10-05
+# Knytos renewed security audit — 2026-10-05
 
 This follows the [2026-10-03 audit](2026-10-03-security-audit.md) and its
 [remediation ledger](2026-10-03-security-remediation.md). It reviews revision
@@ -197,18 +197,18 @@ never observed. Client-side RAII cannot close an ID it never received.
 
 Evidence:
 
-- [tcpip.rs:146](../../../crates/catten-services/src/bin/tcpip.rs#L146):
+- [tcpip.rs:146](../../../crates/knytos-services/src/bin/tcpip.rs#L146):
   exact occupancy ownership.
-- [tcpip.rs:300](../../../crates/catten-services/src/bin/tcpip.rs#L300):
+- [tcpip.rs:300](../../../crates/knytos-services/src/bin/tcpip.rs#L300):
   quotas and operations compare the complete owner.
-- [tcpip.rs:759](../../../crates/catten-services/src/bin/tcpip.rs#L759),
+- [tcpip.rs:759](../../../crates/knytos-services/src/bin/tcpip.rs#L759),
   especially line 811: reaping requires activated/closing protocol state.
-- [tcpip.rs:915](../../../crates/catten-services/src/bin/tcpip.rs#L915),
+- [tcpip.rs:915](../../../crates/knytos-services/src/bin/tcpip.rs#L915),
   especially lines 978–993: publication in service state precedes an unchecked
   scalar reply.
-- [tcpip.rs:1330](../../../crates/catten-services/src/bin/tcpip.rs#L1330):
+- [tcpip.rs:1330](../../../crates/knytos-services/src/bin/tcpip.rs#L1330):
   explicit client close is the normal resource-release trigger.
-- [lib.rs:635](../../../crates/charlotte-launch/src/lib.rs#L635): default
+- [lib.rs:635](../../../crates/knytos-launch/src/lib.rs#L635): default
   shared capacity is 64 and the per-owner ceiling is also 64, with two MiB of
   per-owner buffer allowance. TCP buffers consume 32 KiB per socket. Apart
   from DHCP's dedicated protocol slot, ordinary clients and platform clients
@@ -249,10 +249,10 @@ test-only overrides.
 
 Evidence:
 
-- [tcpip.rs:555](../../../crates/catten-services/src/bin/tcpip.rs#L555): fixed
+- [tcpip.rs:555](../../../crates/knytos-services/src/bin/tcpip.rs#L555): fixed
   `Config::random_seed`.
-- [tcpip.rs:289](../../../crates/catten-services/src/bin/tcpip.rs#L289) and
-  [tcpip.rs:611](../../../crates/catten-services/src/bin/tcpip.rs#L611):
+- [tcpip.rs:289](../../../crates/knytos-services/src/bin/tcpip.rs#L289) and
+  [tcpip.rs:611](../../../crates/knytos-services/src/bin/tcpip.rs#L611):
   sequential ephemeral-port allocator and fixed initial port.
 - The resolved `smoltcp` **0.13.1** source was inspected in the local Cargo
   cache: `iface/interface/mod.rs` initializes `Rand` from that seed;
@@ -358,7 +358,7 @@ progress/failure and device reset/quiescence in acceptance work.
 | Check | Result and limits |
 | --- | --- |
 | `scripts/run-host-tests.sh` | Passed, including the 18 direct slot-owner tests, six scratch tests, 33 runtime tests, protocol/authorization suites, signing-policy checks and cluster-sign self-test. |
-| Bundled AArch64 services | Rebuilt and signed through `scripts/build-catten-services.sh` as invoked by the guest runner; no production service source changes. |
+| Bundled AArch64 services | Rebuilt and signed through `scripts/build-knytos-services.sh` as invoked by the guest runner; no production service source changes. |
 | Fresh AArch64 security guest | **19 passed, 0 failed, 0 pending**. Both scoped probes reported `0x7fff`; publication generations advanced to 1 and 2. Concurrent cancellation traffic retired after **4,400 requests**. |
 | Committed dependency graph | `cargo-audit 0.22.2`, **177 dependencies**, **0 reported vulnerabilities**, no informational warnings. Advisory database had 1,290 advisories at commit `ef6173cbc5c50ec8166f9a5b28f07834144373ee`, updated `2026-10-03T10:14:03+02:00`. This is a database-relative result, not proof of dependency safety. |
 

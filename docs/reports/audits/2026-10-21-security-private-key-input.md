@@ -41,7 +41,7 @@ text does not validate a key or grant that exemption on its own.
 This is a helper ownership improvement and verification of existing behavior,
 not a reproduced secret exposure in the command path. The existing
 [C18 row](../../reference/cleanup-recovery.md) records the same host file and
-byte-owner scope. Ordinary byte Drop adds no Charlotte capability/root cleanup,
+byte-owner scope. Ordinary byte Drop adds no Knytos capability/root cleanup,
 guards, waits, remote teardown, custody registry, physical completion or retry
 authority.
 

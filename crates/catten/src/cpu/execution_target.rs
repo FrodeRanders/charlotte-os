@@ -7,7 +7,7 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use charlotte_launch::execution_target::{
+use knytos_launch::execution_target::{
     Architecture,
     ExecutionTarget,
     KNOWN_FEATURES,

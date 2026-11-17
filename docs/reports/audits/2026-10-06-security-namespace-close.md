@@ -110,7 +110,7 @@ an injected rejected-IPI campaign.
 | Check | Result |
 | --- | --- |
 | `scripts/run-host-tests.sh` | Passed, including 23 direct slot tests, scratch ownership, runtime/services/protocol, signing and boot-result suites. |
-| `scripts/build-catten-services.sh --embed` | Passed; rebuilt/staged/signed the AArch64 bundle. |
+| `scripts/build-knytos-services.sh --embed` | Passed; rebuilt/staged/signed the AArch64 bundle. |
 | x86 and AArch64 kernel Clippy | Both custom targets, `--locked`, `-D warnings`: passed. |
 | Formatting/whitespace | `cargo fmt --all -- --check` and `git diff --check`: passed. |
 | ELF permissions | Saved failing ELF rejected; corrected x86/AArch64 kernels accepted. Each final guest runner checked its exact kernel before image creation. |

@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# export-app-sdk.sh -- package the CharlotteOS application SDK.
+# export-app-sdk.sh -- package the Knytos application SDK.
 #
-# The tarball contains everything a new out-of-tree CharlotteOS project needs
-# to build an EL0 ELF and sign/deploy artifacts, without a CharlotteOS
+# The tarball contains everything a new out-of-tree Knytos project needs
+# to build an EL0 ELF and sign/deploy artifacts, without a Knytos
 # checkout:
 #
 #   build-external-elf.sh   platform build wrapper (context sensitive)
 #   platform/<arch>/        target specification and linker script
 #   signer/                 standalone workspace with cluster-sign and
-#                           charlotte-launch
+#                           knytos-launch
 #   keys/                   the publicly known development keys
 #   VERSION                 sdk schema, OS revision, pinned toolchain
 #
 # Usage:
 #   scripts/export-app-sdk.sh [--output PATH]
 #
-# The output defaults to target/charlotte-app-sdk-<short-revision>.tar.gz and
+# The output defaults to target/knytos-app-sdk-<short-revision>.tar.gz and
 # a <output>.sha256 sidecar is written.
 set -euo pipefail
 
@@ -32,41 +32,41 @@ done
 REVISION="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 TOOLCHAIN="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$ROOT/rust-toolchain.toml" | head -1)"
 if [ -z "$OUTPUT" ]; then
-    OUTPUT="$ROOT/target/charlotte-app-sdk-${REVISION:0:12}.tar.gz"
+    OUTPUT="$ROOT/target/knytos-app-sdk-${REVISION:0:12}.tar.gz"
 fi
 mkdir -p "$(dirname "$OUTPUT")"
 
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-app-sdk.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/knytos-app-sdk.XXXXXX")"
 trap 'rm -rf -- "$STAGE"' EXIT
-SDK="$STAGE/charlotte-app-sdk"
+SDK="$STAGE/knytos-app-sdk"
 mkdir -p "$SDK/platform/aarch64" "$SDK/platform/x86_64" "$SDK/signer/tools" \
     "$SDK/signer/crates" "$SDK/keys"
 
 install -m 0755 "$ROOT/scripts/build-external-elf.sh" "$SDK/build-external-elf.sh"
 
 for arch in aarch64 x86_64; do
-    install -m 0644 "$ROOT/crates/catten-services/$arch-unknown-none.json" \
+    install -m 0644 "$ROOT/crates/knytos-services/$arch-unknown-none.json" \
         "$SDK/platform/$arch/target.json"
-    install -m 0644 "$ROOT/crates/catten-services/link.x" \
+    install -m 0644 "$ROOT/crates/knytos-services/link.x" \
         "$SDK/platform/$arch/link.x"
 done
 
 tar -C "$ROOT/tools" --exclude target --exclude Cargo.lock --exclude .DS_Store \
     -cf - cluster-sign | tar -C "$SDK/signer/tools" -xf -
-tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - charlotte-launch \
+tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - knytos-launch \
     | tar -C "$SDK/signer/crates" -xf -
 
 cat > "$SDK/signer/Cargo.toml" <<'EOF'
 [workspace]
-members = ["tools/cluster-sign", "crates/charlotte-launch"]
+members = ["tools/cluster-sign", "crates/knytos-launch"]
 resolver = "3"
 EOF
 
 # Application source closure is independent of the platform service package.
 mkdir -p "$SDK/crates"
-for package in catten-rt catten-syscall charlotte-launch charlotte-lifecycle \
-    charlotte-app charlotte-app-sitas charlotte-protocol-grant \
-    charlotte-protocol-kafka charlotte-protocol-s3 charlotte-kafka; do
+for package in knytos-rt knytos-syscall knytos-launch knytos-lifecycle \
+    knytos-app knytos-app-sitas knytos-protocol-grant \
+    knytos-protocol-kafka knytos-protocol-s3 knytos-kafka; do
     tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - "$package" \
         | tar -C "$SDK/crates" -xf -
 done
@@ -76,7 +76,7 @@ SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "$ROOT/.github/workflows/ci.yml" 
 git -C "$SITAS_DIR" archive "$SITAS_REVISION" crates/sitas-core crates/sitas-charlotte crates/sitas-unix \
     | tar -C "$SDK" -xf -
 # Both source trees now live inside the SDK, without a required sibling checkout.
-python3 - "$SDK/crates/charlotte-app-sitas/Cargo.toml" <<'PYSDK'
+python3 - "$SDK/crates/knytos-app-sitas/Cargo.toml" <<'PYSDK'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
@@ -105,9 +105,9 @@ toolchain=$TOOLCHAIN
 EOF
 
 cat > "$SDK/README.md" <<'EOF'
-# CharlotteOS application SDK
+# Knytos application SDK
 
-This bundle is exported from a CharlotteOS revision and contains the platform
+This bundle is exported from a Knytos revision and contains the platform
 inputs for out-of-tree application builds. It does not include the kernel or
 any service binary.
 
@@ -157,9 +157,9 @@ from pathlib import Path
 import hashlib, json, re, subprocess, sys
 sdk, revision, toolchain, sitas, root = sys.argv[1:]
 sdk = Path(sdk)
-source = (Path(root) / 'crates/charlotte-launch/src/execution_target.rs').read_text()
+source = (Path(root) / 'crates/knytos-launch/src/execution_target.rs').read_text()
 abi = int(re.search(r'pub const RUNTIME_ABI: u32 = (\d+)', source).group(1))
-launch_source = (Path(root) / 'crates/charlotte-launch/src/lib.rs').read_text()
+launch_source = (Path(root) / 'crates/knytos-launch/src/lib.rs').read_text()
 launch = {part.lower(): int(re.search(r'pub const LAUNCH_ABI_' + part + r': u16 = (\d+)', launch_source).group(1)) for part in ['MAJOR', 'MINOR']}
 files = {str(p.relative_to(sdk)): hashlib.sha256(p.read_bytes()).hexdigest()
          for p in sorted(sdk.rglob('*')) if p.is_file()}
@@ -171,7 +171,7 @@ lock = dict(schema=2, os_revision=revision, toolchain=toolchain,
 PYSDK
 
 rm -f "$OUTPUT"
-tar -czf "$OUTPUT" -C "$STAGE" charlotte-app-sdk
+tar -czf "$OUTPUT" -C "$STAGE" knytos-app-sdk
 
 if command -v sha256sum >/dev/null 2>&1; then
     DIGEST="$(sha256sum "$OUTPUT" | awk '{print $1}')"

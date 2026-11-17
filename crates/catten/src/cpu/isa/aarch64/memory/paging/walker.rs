@@ -74,7 +74,7 @@ impl<'vas> Walker<'vas> {
         let tables = crate::memory::translation::account::test_used_pages();
         let mut space = AddressSpace::try_new_user().unwrap();
         assert!(matches!(
-            Walker::new(&mut space, VAddr::from(charlotte_launch::HEAP_VADDR))
+            Walker::new(&mut space, VAddr::from(knytos_launch::HEAP_VADDR))
                 .ensure_root_with_tag(|_, _, _| false),
             Err(WalkerError::HardwareAsidExhausted)
         ));
@@ -564,7 +564,7 @@ impl<'vas, Prepare: FnMut(TableScope) -> bool> Walker<'vas, Prepare> {
         }
     }
 
-    /// Translate only an EL0-writable leaf. Charlotte does not set table-level
+    /// Translate only an EL0-writable leaf. Knytos does not set table-level
     /// access restrictions, so the page/block descriptor selected here holds
     /// the effective permission.
     pub fn translate_user_writable(&mut self) -> WalkerResult<PAddr> {

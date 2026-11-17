@@ -10,7 +10,7 @@ SEC-15 remains **partial**, with **29 corrected / 6 partial / 3 open** overall.
 
 ## Finding and correction
 
-`charlotte_protocol_kafka::Profile::encode` returned a plain vector containing
+`knytos_protocol_kafka::Profile::encode` returned a plain vector containing
 SCRAM passwords and/or client private keys. The kernel's `launch_kafka_profile`
 immediately wrapped that result in `Zeroizing`, so its ordinary release already
 erased the buffer. The encoder API left that obligation with every caller.

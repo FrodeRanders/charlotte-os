@@ -42,8 +42,8 @@ distinction and permits a later generation to use the slot.
 The wait projection follows
 [`try_block_until_with_constraint`](../../../crates/catten/src/cpu/scheduler/mod.rs),
 scheduler [`prepare_wait` / `publish_wait`](../../../crates/catten/src/cpu/scheduler/system_scheduler/wait.rs),
-and owned [IPC](../../../crates/catten-rt/src/owned/ipc.rs) and
-[completion](../../../crates/catten-rt/src/owned/completion.rs) observation.
+and owned [IPC](../../../crates/knytos-rt/src/owned/ipc.rs) and
+[completion](../../../crates/knytos-rt/src/owned/completion.rs) observation.
 Watchdog rejection precedes source preparation; time can advance during
 preparation. An ended claim episode wakes its old interest without completing
 the enclosing accepted operation. Unrelated notifications and rejected wait

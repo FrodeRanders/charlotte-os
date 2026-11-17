@@ -26,7 +26,7 @@ TLS version 0.19.0 despite changing the API. P-256/P-384 are 0.14.0,
 elliptic-curve is 0.14.3 and ECDSA is 0.17.0.
 
 Only required hash, HMAC, curve and Ed25519 backend operations are selected.
-Charlotte registers its RNG and AES-128-GCM drivers; the stock GCM driver and
+Knytos registers its RNG and AES-128-GCM drivers; the stock GCM driver and
 backend `all` feature are disabled. No Embassy executor, TLS fork, arithmetic
 backport or old-provider compatibility path is introduced. The former direct
 rand_core 0.6/signature dependencies and per-handshake borrowed entropy

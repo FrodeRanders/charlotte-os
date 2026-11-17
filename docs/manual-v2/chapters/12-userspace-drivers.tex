@@ -1,7 +1,7 @@
 \chapter{Userspace Drivers}
 \label{chap:userspace-drivers}
 
-CharlotteOS runs device drivers as userspace processes with delegated device
+Knytos runs device drivers as userspace processes with delegated device
 resources and endpoint interfaces.
 
 \section{The problem with kernel drivers}
@@ -23,7 +23,7 @@ receive protected virtualized device interfaces and can perform ordinary I/O
 without kernel mediation on each operation \cite{prior:arrakis}. This is
 protected direct access, not unrestricted access to physical hardware.
 
-CharlotteOS shares the goal of moving hardware-facing work out of the kernel,
+Knytos shares the goal of moving hardware-facing work out of the kernel,
 but delegates MMIO, interrupts and DMA domains to isolated driver services.
 Ordinary applications receive service connections and exchange owned or
 borrowed buffers, and they do not normally receive the device queue itself. The

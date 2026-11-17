@@ -5,8 +5,8 @@
   "scope": "Requested-byte admission for parsed descriptor entries, capability-ID buffers, PreparedTransfer staging and ReplyToken loan-origin vectors. Shared ByteAllocator mechanics retain captured classification and full allocation lifetime; complete local owners retain roots, authority and cleanup obligations. Descriptor byte snapshots and reply/cancellation revocation-work vectors remain separate work.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten/src/ipc/attachments.rs": "f0f3628feeb62156dada3107ae5bca892f157431e7e12f68f2683ca8d0b4a6ec",
     "crates/catten/src/ipc/attachments/host_tests.rs": "627f9b073f90071767fac4c934ed223af178b7a7a234a90b82e03c23629c5d74",
     "crates/catten/src/ipc/attachments/tests.rs": "bf65cfc6287b52c2637bdfbefe2fc2f494cd9eeb991e6f1b125ce6fc79450d93",

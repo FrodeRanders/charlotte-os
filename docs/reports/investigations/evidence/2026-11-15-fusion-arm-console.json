@@ -139,7 +139,7 @@
       "kernel_sha256": "d2f1aa040f6f58931e24141a32909993dd54d14637ae6e0535f67d1ec61dbda6",
       "result": "failed observation: remained before kernel entry; stopped manually",
       "pc": "0x5fdf74a8",
-      "display": "TianoCore logo; no CharlotteOS serial output; source of pre-entry stall unresolved"
+      "display": "TianoCore logo; no Knytos serial output; source of pre-entry stall unresolved"
     },
     {
       "name": "qemu_virtio_gpu_same_kernel",
@@ -200,7 +200,7 @@
       },
       "https": {
         "status": 200,
-        "content": "<!doctype html>; title CharlotteOS",
+        "content": "<!doctype html>; title Knytos",
         "authentication": "reader mTLS; CA verification enabled"
       },
       "limit": "Earlier pre-kernel ramfb stall remains unexplained; this passing repeat does not establish a causal fix."

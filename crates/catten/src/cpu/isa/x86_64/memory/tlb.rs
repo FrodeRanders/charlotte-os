@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-/// CharlotteOS does not yet enable CR4.PCIDE or assign x86 PCIDs. Reloading
+/// Knytos does not yet enable CR4.PCIDE or assign x86 PCIDs. Reloading
 /// CR3 therefore invalidates all non-global translations for the address
 /// space currently active on this LP. That is sufficient for a shootdown:
 /// if `asid` is active it is flushed now, and if it is inactive its next

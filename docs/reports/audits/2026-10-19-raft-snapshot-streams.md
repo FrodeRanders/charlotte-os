@@ -54,11 +54,11 @@ narrow source extracts and complete file hashes for each inspected port.
 |---|---|
 | Java | `PendingSnapshot` retains leader ID and boundary. A sender/boundary change starts an empty buffer; exact offset is checked. The owner has no captured RPC term. |
 | C++ | Restarts on offset zero or boundary change; checks byte offset against buffered size. The inspected receive fields do not bind sender/RPC term. |
-| Rust | Offset zero creates a buffer with boundary/offset/bytes. The inspected continuation appends to that buffer without Charlotte's boundary/offset checks or an explicit sender/RPC-term binding. |
-| Charlotte | Captures sender and RPC term as well as boundary/offset, clears on election/term change, and requires an explicit zero-offset replacement. |
+| Rust | Offset zero creates a buffer with boundary/offset/bytes. The inspected continuation appends to that buffer without Knytos' boundary/offset checks or an explicit sender/RPC-term binding. |
+| Knytos | Captures sender and RPC term as well as boundary/offset, clears on election/term change, and requires an explicit zero-offset replacement. |
 
 This comparison identifies source differences. Upstream core/runtime execution,
-Jepsen and mixed Charlotte/Graft clusters were not run. It does not establish an
+Jepsen and mixed Knytos/Graft clusters were not run. It does not establish an
 upstream failure from isolated handlers. Protobuf, snapshot envelope, persistent
 formats and runtime ABI remain unchanged.
 
@@ -100,7 +100,7 @@ full-suite run is claimed.
   all host Raft targets. Four new tests cover continuation identity, successful
   restart/replacement, preserving rejection and election/term invalidation.
 - The signed ARM service bundle builds with
-  `scripts/build-catten-services.sh --embed`; `--check` verifies final-source
+  `scripts/build-knytos-services.sh --embed`; `--check` verifies final-source
   freshness and staged signatures before native execution.
 - Fresh-storage ARM DNS/Raft pair: **20 passed / zero failed / zero pending
   on each guest**, bitmap `0xfffff`. Full-name invocation, local placement

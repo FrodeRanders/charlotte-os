@@ -1,4 +1,4 @@
-# CharlotteOS Code/Documentation Cross-Check Audit — August 2026
+# Knytos Code/Documentation Cross-Check Audit — August 2026
 
 > **Historical report:** this is point-in-time evidence and may describe
 > defects or document paths that were later corrected. See the
@@ -107,7 +107,7 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   page cap (`MAX_MEMORY_OBJECT_PAGES`, 64 MiB); full per-domain *total* quotas
   remain future work and should be tracked alongside the existing "resource
   accounting" limitation in `implementation-status.tex`.
-- **M — `ipc_recv_vec` result-page register mismatch** (`crates/catten-syscall/src/lib.rs:1319-1355`
+- **M — `ipc_recv_vec` result-page register mismatch** (`../../../crates/knytos-syscall`
   vs `crates/catten/src/syscall/mod.rs:1256-1259`). The wrapper passed
   `result_page` in x2 while the kernel read x3, silently disabling vector-receive
   result delivery. **Fixed** in this session (§4.2), together with the wrapper's
@@ -176,34 +176,34 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
 ### 3.5 Storage (M/L)
 
 - **M — 32-bit truncations**: NVMe device size (`nsze as u32`,
-  `crates/catten-services/src/bin/nvme.rs:738`) and directory generation
-  (`u32`, `crates/catten-services/src/bin/objstore.rs:375`) wrap after 2^32,
+  `../../../crates/knytos-services`) and directory generation
+  (`u32`, `../../../crates/knytos-services`) wrap after 2^32,
   breaking geometry/generation-selection.
 - **M — `make-nvme-image.py` directory-slot collision** (`scripts/make-nvme-image.py:213-218`):
   slot derived from only 8 bits of the FNV hash, so distinct artifacts colliding
   in those bits silently overwrite a directory entry.
 - **L — block `OP_WRITE` documented as "Move" but implemented as "BorrowRead"**
-  (`docs/manual-v2/chapters/17-storage.tex:73-75,119` vs `crates/catten-services/src/bin/nvme.rs:910-959`).
-- **L — `charlotte-protocol-objstore` crate docstring is a version behind**
+  (`docs/manual-v2/chapters/17-storage.tex:73-75,119` vs `../../../crates/knytos-services`).
+- **L — `knytos-protocol-objstore` crate docstring is a version behind**
   ("v2", "512-entry directory", "one extent" vs v3, device-scaled, ≤16 extents).
 
 ### 3.6 Networking (M/L)
 
 - **M — `relmsg` trusts caller-supplied length without checking object size**
-  (`crates/catten-services/src/bin/relmsg.rs:534-571`): a 4 KiB moved object with
+  (`../../../crates/knytos-services`): a 4 KiB moved object with
   a 65535-byte length causes a 64 KiB out-of-bounds read.
 - **M — `tcpip`/`httpd` dereference a possibly-invalid mapping**
-  (`crates/catten-services/src/bin/tcpip.rs:354,484`; `httpd.rs:64,242,470-483`):
+  (`../../../crates/knytos-services`; `httpd.rs:64,242,470-483`):
   `memory_map_any` status is discarded, and httpd reads some entries from a
   hardcoded scratch address instead of the returned mapping.
 - **L — `dns` `OP_CATALOG` count field overstates the number of emitted entries**
-  (`crates/catten-services/src/bin/dns.rs:1958-1965`) for catalogs > ~4 KB.
+  (`../../../crates/knytos-services`) for catalogs > ~4 KB.
 - **L — per-peer Raft outbound queue unbounded + `Vec::remove(0)`**
-  (`crates/catten-services/src/relmsg_transport.rs:246-311`).
+  (`../../../crates/knytos-services`).
 
 ### 3.7 Consensus / authorization / deployment (H/M)
 
-- **H — unauthenticated DNS mutation endpoints** (`crates/catten-services/src/bin/dns.rs`).
+- **H — unauthenticated DNS mutation endpoints** (`../../../crates/knytos-services`).
   `OP_DEPLOY`/`OP_REGISTER`/`OP_UNREGISTER` accept any caller holding a
   connection, allowing a client to overwrite the replicated deployment manifest
   or hijack a name. This is *acknowledged*
@@ -211,12 +211,12 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   `19-cluster-vision.tex`) and deferred pending a separately delegated
   administrator capability — open security debt, **not fixed** this session.
 - **M — deployment/key/catalog reads bypass the Graft read barrier**
-  (`crates/catten-services/src/bin/dns.rs:1799-1822,1855-1864,1934-2002`): answered
+  (`../../../crates/knytos-services`): answered
   from locally applied state with no read barrier or leader forwarding. The
   earlier F8 finding was closed only for `OP_LOOKUP`/`OP_CALL`.
-- **M — Raft no-op sentinel is `data.is_empty()`** (`crates/catten-graft/src/types.rs:69-71`),
+- **M — Raft no-op sentinel is `data.is_empty()`** (`../../../crates/knytos-graft`),
   so an empty client command is silently dropped.
-- **M — deploy agent hard-codes the `greet` name** (`crates/catten-services/src/bin/agent.rs:196-205`);
+- **M — deploy agent hard-codes the `greet` name** (`../../../crates/knytos-services`);
   the "agent verifies the assigned artifact" claim is greet-specific.
 - **L — live-upgrade design doc describes a dead code path**: the
   endpoint-takeover + multi-state rollback helper (`supervisor::spawn_upgrade`)
@@ -258,7 +258,7 @@ that verdict.
    destination bytes, validates the complete range before writing, supports
    unaligned/cross-page buffers, and rolls back its reserved completion slot on
    validation failure.
-2. **`ipc_recv_vec` register fix** (`crates/catten-syscall/src/lib.rs`): the
+2. **`ipc_recv_vec` register fix** (`../../../crates/knytos-syscall`): the
    wrapper now places `result_page` in x3, matching the kernel's read, and
    captures `arg0`/`reply` from x2/x3 respectively. Its inline assembly no
    longer claims `nomem`, so the compiler observes the result-page write.
@@ -279,7 +279,7 @@ that verdict.
    kernel producer serialization, and the shared EL0 consumer protocol.
    `cq_ring_of` is unsafe and documents the close/replace and single-consumer
    obligations at the API boundary.
-7. **Completion ABI errors made explicit** (`crates/catten-syscall/src/lib.rs`,
+7. **Completion ABI errors made explicit** (`../../../crates/knytos-syscall`,
    `crates/catten/src/syscall/mod.rs`): shared constants now define ready,
    pending/timeout, invalid-capability, and submission-failure results. Poll and
    timeout-wait distinguish invalid capabilities, and all wrappers document the
@@ -306,10 +306,10 @@ should be corrected in a follow-up pass (no code change implied):
 | `docs/architecture/live-upgrade.md` | Endpoint-takeover + multi-state rollback path is dead code; the manual is correct. |
 | `17-storage.tex` | Block `OP_WRITE` "Move" vs implemented "BorrowRead"; filesystem operation count (eight, not six). |
 | `docs/architecture/persistent-storage.md` | §3.2 init sequence missing Set-Features; §3.3 `memory_get_phys` wording (superseded by IOVA/`dma_map`); §4.2 "two objects" vs four object slots in code. |
-| `charlotte-protocol-objstore` (crate doc) | "v2", "512-entry directory", "one extent" (now v3, device-scaled, ≤16 extents). |
+| `knytos-protocol-objstore` (crate doc) | "v2", "512-entry directory", "one extent" (now v3, device-scaled, ≤16 extents). |
 | `docs/reference/raft-conformance.md` | "host tests obstructed by duplicate core" (host tests pass). |
 | `docs/architecture/sitas-xous.md` | "per-shard CQ boot-validated" (not exercised by sitas test); "TX completion reclamation not claimed" (now implemented). |
-| `catten-rt` / `el0_sitas` comments | Heap VADDR "0x13000" (actual `0x30000`); stale "adder program" verifier branch. |
+| `knytos-rt` / `el0_sitas` comments | Heap VADDR "0x13000" (actual `0x30000`); stale "adder program" verifier branch. |
 
 ---
 

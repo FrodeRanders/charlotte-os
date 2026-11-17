@@ -38,7 +38,7 @@ notification. This batch does not call that hardware path event-driven.
 ## Shared configuration
 
 No new limits are introduced. RNG now shares the compile-time publication
-settings in `crates/catten-services/src/publication.rs`:
+settings in `../../../crates/knytos-services`:
 
 | Setting | Current milliseconds | Scope |
 | --- | --- | --- |

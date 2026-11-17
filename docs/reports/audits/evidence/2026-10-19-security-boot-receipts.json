@@ -4,8 +4,8 @@
   "reviewed_revision": "d224a13e9fa6c56f6d7ab9b59c00bebb3f40114e",
   "classification": "Shared API hardening. The existing native fixture already rejected uninstalled successors; no baseline unsafe boot reproduced. Production remains disabled; no protected installer/state/custody implemented.",
   "reviewed_source_sha256": {
-    "crates/charlotte-launch/src/trust/signed_policy.rs": "a9b121a45c83c735760ba332ea771028ec40991c81289756873e2d64ae97900c",
-    "crates/charlotte-launch/tests/signed_policy.rs": "e04ba360a8463b15649bec2e3e7ec7144262b46f0d0016d5e56dec35515e98a4",
+    "crates/knytos-launch/src/trust/signed_policy.rs": "a9b121a45c83c735760ba332ea771028ec40991c81289756873e2d64ae97900c",
+    "crates/knytos-launch/tests/signed_policy.rs": "e04ba360a8463b15649bec2e3e7ec7144262b46f0d0016d5e56dec35515e98a4",
     "crates/catten/src/service/admission.rs": "394f49690f0eac9d6ff6d0854672addbe3e480ecffb00061df57420702080eb0",
     "crates/catten/src/service/admission/boot_fixture.rs": "022045295e8d0209e113141e53cb1315be3585207dc4895ff94c893e3c0ad582",
     "crates/catten/src/service/admission/tests.rs": "e8ef362c7a66084e4d8d617539f9eee6331bef697921178c435b9a5d6a358b89",
@@ -91,11 +91,11 @@
   },
   "failed_runs": [
     {
-      "command": "scripts/build-catten-services-x86_64.sh --embed",
+      "command": "scripts/build-knytos-services-x86_64.sh --embed",
       "exit_status": 1,
       "log_sha256": "64f80cd18e0b8d726bc2700f1a5c09e1c4774791f5249e034f6f9ca6e227a81a",
       "diagnostics": [
-        "usage: scripts/build-catten-services-x86_64.sh [--clean]"
+        "usage: scripts/build-knytos-services-x86_64.sh [--clean]"
       ],
       "meaning": "Unsupported guide argument; rejected before building. Corrected guide/command omit --embed."
     },
@@ -1251,7 +1251,7 @@
   "final_checks": {
     "workspace_fmt": "cargo fmt --all -- --check: passed",
     "diff_whitespace": "git diff --check: passed",
-    "shell_syntax": "bash -n scripts/prepare-secure-boot-tools.sh scripts/build-catten-services-x86_64.sh scripts/build-catten-services.sh docs/tla/check.sh: passed",
+    "shell_syntax": "bash -n scripts/prepare-secure-boot-tools.sh scripts/build-knytos-services-x86_64.sh scripts/build-knytos-services.sh docs/tla/check.sh: passed",
     "python_syntax": "ast.parse of changed runner and parser tests: passed",
     "source_model_document_and_bundled_artifact_fingerprints_rechecked": true,
     "local_documentation_targets_checked": 404,

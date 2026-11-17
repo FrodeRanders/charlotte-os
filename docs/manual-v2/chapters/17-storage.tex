@@ -1,7 +1,7 @@
 \chapter{Persistent Storage}
 \label{chap:storage}
 
-CharlotteOS treats storage as a layered stack of userspace services, each
+Knytos treats storage as a layered stack of userspace services, each
 speaking a well-defined protocol through endpoint IPC. The block driver,
 object store, and filesystem services run in userspace. The kernel still
 participates through capability, memory-mapping, physical-address, interrupt,
@@ -10,7 +10,7 @@ and PCI/MSI-X setup paths.
 \begin{architecturalcomparison}{EROS and the boundary of persistence}
 EROS couples object capabilities to a single-level store: persistent system
 objects and periodic checkpoints make persistence transparent to applications
-\cite{prior:eros}. CharlotteOS takes the capability idea without adopting
+\cite{prior:eros}. Knytos takes the capability idea without adopting
 transparent persistence of the running object graph. Its block, object-store
 and filesystem services expose explicit operations, durable formats and flush
 boundaries. A live memory capability is not, by itself, a durable reference
@@ -34,11 +34,11 @@ on the service, storage stack and device flush contract.
     proto/.style={align=left, font=\footnotesize},
 ]
     \node[layer] (fs) {Filesystem (``fs'')};
-    \node[proto, right=0.5cm of fs] (fsproto) {charlotte-protocol-fs};
+    \node[proto, right=0.5cm of fs] (fsproto) {knytos-protocol-fs};
     \node[layer, below=0.6cm of fs] (obj) {Object store (``obj'')};
-    \node[proto, right=0.5cm of obj] (objproto) {charlotte-protocol-objstore};
+    \node[proto, right=0.5cm of obj] (objproto) {knytos-protocol-objstore};
     \node[layer, below=0.6cm of obj] (blk) {Block driver (``blk0'')};
-    \node[proto, right=0.5cm of blk] (blkproto) {charlotte-protocol-block};
+    \node[proto, right=0.5cm of blk] (blkproto) {knytos-protocol-block};
     \node[layer, below=0.6cm of blk] (nvme) {NVMe controller};
     \node[proto, right=0.5cm of nvme] (nvmeproto) {MMIO + DMA + MSI-X\\(granted at boot)};
 
@@ -141,7 +141,7 @@ The NVMe driver exposed several non-obvious requirements:
 
 \section{Block device protocol}
 
-The block protocol (\texttt{charlotte-protocol-block}) is a minimal
+The block protocol (\texttt{knytos-protocol-block}) is a minimal
 \texttt{no\_std} crate defining the endpoint IPC interface between block
 device consumers and drivers:
 
@@ -169,7 +169,7 @@ would still require separate implementations.
 
 \section{Object store}
 
-The persistent object-store prototype (\texttt{charlotte-protocol-objstore})
+The persistent object-store prototype (\texttt{knytos-protocol-objstore})
 provides dynamically sized blob storage on top of a block device. Ordinary objects
 receive monotonically increasing 64-bit IDs, while service-owned objects can use
 stable IDs through \texttt{OP\_CREATE\_AT}. Stable IDs let a replacement Raft
@@ -268,7 +268,7 @@ and validation limits.
 
 The host build produces an architecture-qualified service bundle and blesses
 every ELF according to
-\repofile|crates/catten-services/artifact-policy.tsv|. AArch64 embeds naming,
+\repofile|crates/knytos-services/artifact-policy.tsv|. AArch64 embeds naming,
 storage, UART, observation and grant mediation, plus the boot entropy/network
 driver images needed to prepare grants before starting storage. The exact sets
 are listed in \autoref{chap:cluster-vision} and
@@ -381,7 +381,7 @@ remains a single-voter restart test.
 
 \section{Native filesystem}
 
-The filesystem (\texttt{charlotte-protocol-fs}) builds hierarchical naming on
+The filesystem (\texttt{knytos-protocol-fs}) builds hierarchical naming on
 top of the object store. Directories and files are stored as objects, and the root
 directory is a fixed object ID (100).
 
@@ -413,7 +413,7 @@ v4 directory banks and multi-extent headers, selects the newest valid directory
 record, checks CRCs and allocation overlap, compares reachable blocks with the
 bitmap, and verifies object contents against their FNV-1a hashes. It provides
 tree, dump, raw, cat, object-list, metadata, information, and format commands,
-enabling post-mortem debugging without booting CharlotteOS:
+enabling post-mortem debugging without booting Knytos:
 
 \begin{verbatim}
 scripts/fs-inspect.py <image> info

@@ -16,7 +16,7 @@ bucket, prefix and key. Ordinary success, cancellation or rejection released
 those local key/path bytes without erasure. Canonical URI encoding already had
 its separate owner; the original raw path and key had different lifetimes.
 
-The byte-only request now lives in `charlotte_s3::request::OwnedRequest`.
+The byte-only request now lives in `knytos_s3::request::OwnedRequest`.
 `decode` uses the existing protocol decoder to validate the complete current
 record before allocating. It reserves the key length, constructs
 `Zeroizing<Vec<u8>>` before copying, and preserves the decoded flags, lengths,

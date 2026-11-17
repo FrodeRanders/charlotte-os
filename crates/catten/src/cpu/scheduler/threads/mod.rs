@@ -692,7 +692,7 @@ impl Thread {
         let mut context_storage = allocate_context().map_err(|_| Error::ThreadPreparationFailed)?;
         let generation = NEXT_THREAD_GENERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-                charlotte_lifecycle::claim_generation(next).map(|(_, following)| following)
+                knytos_lifecycle::claim_generation(next).map(|(_, following)| following)
             })
             .map_err(|_| Error::ThreadPreparationFailed)?;
         let context = if asid != KERNEL_ASID {

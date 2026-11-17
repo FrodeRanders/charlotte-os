@@ -5,8 +5,8 @@
   "scope": "IPC capability and endpoint payload nodes join pending-call and reply-token nodes in the existing ipc_nodes requested-byte/count pool. Each node retains backing and its optional logical reservation through preparation, hidden results, detached cleanup and actual deallocation. No new metadata pool, holder allocation, cleanup registry, SDK or wire change.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten/src/capability.rs": "d3a032852b0e8297cd0372f1e6f53a876b7f543fc5388a0465357731e0f39e95",
     "crates/catten/src/ipc/budget.rs": "ea997e45c0d8f7341f3bd0131dbe15e11d266611240e5032a1d956aac30c38b8",
     "crates/catten/src/ipc/cap_storage.rs": "d399b1b9fc60a0f3ab06ce7c6a1860a5a0a2160aefcfe084cce68f762814470b",

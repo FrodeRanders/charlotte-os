@@ -258,14 +258,14 @@
     "target_clippy": "passed",
     "minimal_target_compilation": "passed",
     "workspace_formatting": "passed",
-    "full_suite_initial_result": "failed: 266 catten-services tests passed, one TLS interop failure; suite stopped before later packages",
+    "full_suite_initial_result": "failed: 266 knytos-services tests passed, one TLS interop failure; suite stopped before later packages",
     "full_suite_repeat_result": "failed again with the same TLS Handshake(32) assertion; 266 passed/1 failed",
-    "full_suite_repeat_capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4873271) panicked at crates/catten-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s",
+    "full_suite_repeat_capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4873271) panicked at crates/knytos-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s",
     "full_suite_repeat_log_sha256": "30fbcae2698a67bad4ad55573ded19458322a0e1bddfbb46a699f96d4b5ba656",
     "serial_suite_command": "RUST_TEST_THREADS=1 CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
     "serial_suite_log_sha256": "bd9732b770adce4058a8d9429729cf75963dce695568a02d0a4494b4ad59a86b",
     "serial_suite_result": "failed with the same TLS Handshake(32) assertion; 266 passed/1 failed",
-    "serial_suite_capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4889682) panicked at crates/catten-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s",
+    "serial_suite_capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4889682) panicked at crates/knytos-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s",
     "serial_suite_tail": [
       "",
       "",
@@ -285,8 +285,8 @@
     "log_sha256": "a01e741d34203962cf9e80f9e589bc138a60874881bfcfe3da2b5f6e24b379e9",
     "test_source_sha256": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
     "lockfile_sha256": "1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa",
-    "capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4846128) panicked at crates/catten-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.03s",
-    "isolated_repeat_command": "cargo +nightly-2026-07-27 test --locked --manifest-path crates/catten-services/Cargo.toml --lib tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip -- --exact --nocapture (invoked outside root target configuration)",
+    "capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4846128) panicked at crates/knytos-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.03s",
+    "isolated_repeat_command": "cargo +nightly-2026-07-27 test --locked --manifest-path crates/knytos-services/Cargo.toml --lib tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip -- --exact --nocapture (invoked outside root target configuration)",
     "isolated_repeat_receipts": [
       "test tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip ... ok",
       "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 266 filtered out; finished in 0.23s"

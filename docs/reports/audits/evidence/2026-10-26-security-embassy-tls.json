@@ -17,19 +17,19 @@
     ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
     ".cargo/audit.toml": "6dedf4733a1def7aab3bb002f58c005b1d0d05d7a54dea7308847b90e60d3fdd",
     ".cargo/audit-version": "76dff43b6331e7f1a4f0d1b14bbc1c3e001190af5a7ed008ab165bbc3c815e12",
-    "crates/catten-services/Cargo.toml": "3ca9d0b32ccecfeca2745454b98c4632b280f558d1695387315cd7b0ea9b6bb8",
-    "crates/catten-services/src/tls_client.rs": "5d383f4e08529d57504dca1f23595dcc366db7153baa55fe25e05b92665ea980",
-    "crates/catten-services/src/tls_client/crypto.rs": "e93748db23fde582261b5c042492adbf7f485b659a0089f7e971ad1b18440cb2",
-    "crates/catten-services/src/tls_client/runtime.rs": "a333072c8254d81d27357019a023321f00fdc494bf8e44fb407833220e859e44",
-    "crates/catten-services/src/tls_client/interop.rs": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
-    "crates/catten-services/src/tls_client/gcm_contract.rs": "f8f54dc83c5e84faebfc6eac4e4b6f8073a3e45bd4e4c3daaa146b7db4059299",
-    "crates/catten-services/src/bin/s3.rs": "b93a9ab75fd6dcbf6afed4eed10cb0fda5d1f214a3564ddaad534654da21f973",
-    "crates/catten-services/src/bin/kafka.rs": "35b7e12e18a31764629a539e36047bcf7f0acce74fbb9b568bd0599493486071",
-    "crates/catten-services/src/bin/tcpip.rs": "4277752327dac68625ee18c587cd243574723cc23bddc44ec48e6f8080f7ca3f",
-    "crates/catten-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
-    "scripts/build-catten-user.sh": "2559a292bbd7642a69a60631d3bf083a7793519229196ca4bfb0adc699bd8cec",
+    "crates/knytos-services/Cargo.toml": "3ca9d0b32ccecfeca2745454b98c4632b280f558d1695387315cd7b0ea9b6bb8",
+    "crates/knytos-services/src/tls_client.rs": "5d383f4e08529d57504dca1f23595dcc366db7153baa55fe25e05b92665ea980",
+    "crates/knytos-services/src/tls_client/crypto.rs": "e93748db23fde582261b5c042492adbf7f485b659a0089f7e971ad1b18440cb2",
+    "crates/knytos-services/src/tls_client/runtime.rs": "a333072c8254d81d27357019a023321f00fdc494bf8e44fb407833220e859e44",
+    "crates/knytos-services/src/tls_client/interop.rs": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
+    "crates/knytos-services/src/tls_client/gcm_contract.rs": "f8f54dc83c5e84faebfc6eac4e4b6f8073a3e45bd4e4c3daaa146b7db4059299",
+    "crates/knytos-services/src/bin/s3.rs": "b93a9ab75fd6dcbf6afed4eed10cb0fda5d1f214a3564ddaad534654da21f973",
+    "crates/knytos-services/src/bin/kafka.rs": "35b7e12e18a31764629a539e36047bcf7f0acce74fbb9b568bd0599493486071",
+    "crates/knytos-services/src/bin/tcpip.rs": "4277752327dac68625ee18c587cd243574723cc23bddc44ec48e6f8080f7ca3f",
+    "crates/knytos-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-user.sh": "2559a292bbd7642a69a60631d3bf083a7793519229196ca4bfb0adc699bd8cec",
     "scripts/tests/test-tls-gcm-backend.py": "216d6e28e514f473804eb6d89beef974163d4b7db5179c6808235205d2837695",
     "scripts/check-dependency-advisories.py": "f0d601732ebf1beef98c10742121c224d38d026d2df41df06e90463a7e8bb379"
   },
@@ -156,7 +156,7 @@
       "mode": "debug",
       "exit_code": 0,
       "cwd": "/private/tmp",
-      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p charlotte-launch -p cluster-sign -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-launch -p cluster-sign -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "distinct_runtime_tests": 476,
       "doctests": 1,
       "harnesses": [
@@ -177,11 +177,11 @@
           "executable_sha256": "ecc57496f64a79f006d5dae7ebf4739ac49e2dc7d8e9550f710fccd1e4d2d842"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/charlotte_launch-c320b4d01e73e2f2)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_launch-c320b4d01e73e2f2)",
           "passed": 10,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/debug/deps/charlotte_launch-c320b4d01e73e2f2",
+          "executable": "target/debug/deps/knytos_launch-c320b4d01e73e2f2",
           "executable_sha256": "17b089d05c6ca20d2aef71bcca0596633107323850c42bc9ad170f8848a2830a"
         },
         {
@@ -423,7 +423,7 @@
           "ignored": 0
         },
         {
-          "harness": "Doc-tests charlotte_launch",
+          "harness": "Doc-tests knytos_launch",
           "passed": 1,
           "failed": 0,
           "ignored": 0
@@ -439,7 +439,7 @@
       "mode": "release",
       "exit_code": 0,
       "cwd": "/private/tmp",
-      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p charlotte-launch -p cluster-sign -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-launch -p cluster-sign -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "distinct_runtime_tests": 476,
       "doctests": 1,
       "harnesses": [
@@ -460,11 +460,11 @@
           "executable_sha256": "3824ff597aa76069be6ba38b07fcb2e1f1d33ede4fb334feb6331b3ad85653ab"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/charlotte_launch-db5d3d1f3f779a4e)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_launch-db5d3d1f3f779a4e)",
           "passed": 10,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/release/deps/charlotte_launch-db5d3d1f3f779a4e",
+          "executable": "target/release/deps/knytos_launch-db5d3d1f3f779a4e",
           "executable_sha256": "a790ff2cc692144d43dc04b7274bcebe264dc314a056ad0abe54f5fd799ef8c5"
         },
         {
@@ -706,7 +706,7 @@
           "ignored": 0
         },
         {
-          "harness": "Doc-tests charlotte_launch",
+          "harness": "Doc-tests knytos_launch",
           "passed": 1,
           "failed": 0,
           "ignored": 0
@@ -720,7 +720,7 @@
     }
   ],
   "gcm_backend_controls": {
-    "target": "crates/catten-services/x86_64-unknown-none.json",
+    "target": "crates/knytos-services/x86_64-unknown-none.json",
     "guard": "#![no_std]\n#[cfg(any(target_arch = \"aarch64\", all(target_arch = \"x86_64\", target_os = \"none\")))]\nconst _: () = {\n    assert!(core::mem::needs_drop::<polyval::Polyval>());\n    assert!(core::mem::needs_drop::<ghash::GHash>());\n};\n",
     "guard_sha256": "1c44b3e68dc3fb700b35dd44279a3442b592023900822fcfbbf517a70d35945b",
     "controls": [
@@ -736,7 +736,7 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
           "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
         ],
@@ -756,7 +756,7 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
           "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
         ],
@@ -780,7 +780,7 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
           "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
         ],
@@ -798,27 +798,27 @@
     {
       "target": "aarch64-unknown-none",
       "exit_code": 0,
-      "command": "cargo clippy -p catten-services --bins --lib --target crates/catten-services/aarch64-unknown-none.json --target-dir target/embassy-migration-check --locked --offline -- -D warnings"
+      "command": "cargo clippy -p knytos-services --bins --lib --target crates/knytos-services/aarch64-unknown-none.json --target-dir target/embassy-migration-check --locked --offline -- -D warnings"
     },
     {
       "target": "x86_64-unknown-none",
       "exit_code": 0,
-      "command": "cargo clippy -p catten-services --bins --lib --target crates/catten-services/x86_64-unknown-none.json --target-dir target/embassy-migration-check --locked --offline -- -D warnings"
+      "command": "cargo clippy -p knytos-services --bins --lib --target crates/knytos-services/x86_64-unknown-none.json --target-dir target/embassy-migration-check --locked --offline -- -D warnings"
     }
   ],
   "build_commands": [
     {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_code": 0,
       "scope": "Final AArch64 forty-service bundle"
     },
     {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_code": 0,
       "scope": "Final x86_64 thirty-seven-service bundle"
     },
     {
-      "command": "scripts/build-catten-user.sh --embed",
+      "command": "scripts/build-knytos-user.sh --embed",
       "exit_code": 0,
       "scope": "Separate AArch64 Sitas image; unchanged by subsequent service-source finalization"
     }
@@ -1555,7 +1555,7 @@
       "name": "x86 builder incorrect option",
       "exit_code": 1,
       "diagnostics": [
-        "usage: scripts/build-catten-services-x86_64.sh [--clean]"
+        "usage: scripts/build-knytos-services-x86_64.sh [--clean]"
       ],
       "correction": "Invoke without --embed; the builder always stages/signs."
     }

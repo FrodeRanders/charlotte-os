@@ -25,7 +25,7 @@ missing platform, persistent-state and custody boundaries.
 
 ## Source comparison
 
-- [`signed_policy.rs`](../../../crates/charlotte-launch/src/trust/signed_policy.rs):
+- [`signed_policy.rs`](../../../crates/knytos-launch/src/trust/signed_policy.rs):
   explicit enrollment/installed expectations, exact current digest, immediate
   successor/predecessor checks and immutable `VerifiedPolicy` receipts.
 - [`trust_policy.rs`](../../../tools/cluster-sign/src/trust_policy.rs): explicit

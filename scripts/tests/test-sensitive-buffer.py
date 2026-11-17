@@ -14,7 +14,7 @@ def run():
     cargo = subprocess.check_output(["rustup", "which", "--toolchain", channel, "cargo"], text=True).strip()
     rustc = subprocess.check_output(["rustup", "which", "--toolchain", channel, "rustc"], text=True).strip()
     env = dict(os.environ, RUSTC=rustc, CATTEN_RESOURCE_POLICY_FILE=str(ROOT / "crates/catten/src/resource_policy/defaults.rs"))
-    with tempfile.TemporaryDirectory(prefix="charlotte-sensitive-buffer-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-sensitive-buffer-") as temporary:
         directory = Path(temporary)
         (directory / "src").mkdir()
         (directory / "Cargo.toml").write_text(
@@ -25,11 +25,11 @@ def run():
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes, unexpected_cfgs)]
 extern crate alloc;
-extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "@ROOT@/crates/catten-syscall/src/lib.rs"] mod syscall_format;
+extern crate self as knytos_lifecycle;
+extern crate self as knytos_syscall;
+#[path = "@ROOT@/crates/knytos-syscall/src/lib.rs"] mod syscall_format;
 pub use syscall_format::*;
-#[path = "@ROOT@/crates/charlotte-lifecycle/src/resources.rs"] pub mod resources;
+#[path = "@ROOT@/crates/knytos-lifecycle/src/resources.rs"] pub mod resources;
 #[path = "@ROOT@/crates/catten/src/resource_policy.rs"] mod resource_policy;
 #[macro_export] macro_rules! logln { ($message:literal) => {{}}; }
 mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {

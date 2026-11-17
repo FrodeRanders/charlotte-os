@@ -5,8 +5,8 @@
   "scope": "Requested-byte admission for the preallocated RetiredMemory catalog inside queued IPC MemoryAttachments. Original requester class, caps, full allocated capacity, remaining retirement owners and charge stay in one inert owner through queueing, delivery and FIFO child handoff. Capability-ID, transfer and loan vectors remain separate work.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten/src/ipc/attachments.rs": "47c1c24726eea6e0f4048fb3b4de5c0dd676fa2028a887509e4f37ccdd6bc114",
     "crates/catten/src/ipc/attachments/host_tests.rs": "8aca9dff59886c969949922153144209b808f544101d26f5fc9e614e140a9f4c",
     "crates/catten/src/ipc/attachments/tests.rs": "c4080df53cf165a188601be678e80cf174404d5b1bebe8bc6f9336aabec84f76",

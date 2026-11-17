@@ -110,8 +110,8 @@ pub fn test_admission() {
 }
 
 fn rejected_preparation_retains_principal(image: &[u8]) {
-    let metadata = charlotte_launch::signature_note::artifact_metadata(image).unwrap();
-    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    let metadata = knytos_launch::signature_note::artifact_metadata(image).unwrap();
+    let principal = knytos_launch::artifact_principal_id(metadata.name());
     let before = memory::usage::principal_backing_used(principal);
     // Serialized kernel ABI fixture owns the moved capability in this Cell.
     // It is consumed once after the failed loader has closed its original root.
@@ -147,8 +147,8 @@ fn rejected_preparation_retains_principal(image: &[u8]) {
 }
 
 fn signed_instances_share_backing_limit(image: &[u8]) {
-    let metadata = charlotte_launch::signature_note::artifact_metadata(image).unwrap();
-    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    let metadata = knytos_launch::signature_note::artifact_metadata(image).unwrap();
+    let principal = knytos_launch::artifact_principal_id(metadata.name());
     let baseline = memory::usage::principal_backing_used(principal);
     let first = try_load_domain(image).unwrap();
     let second = try_load_domain(image).unwrap();
@@ -229,11 +229,11 @@ fn test_validation() {
     many_headers[..image.len()].copy_from_slice(&image);
     many_headers[56..58].copy_from_slice(&((MAX_ELF_PROGRAM_HEADERS + 1) as u16).to_le_bytes());
     assert!(!validate_user_elf(&many_headers));
-    let gap = (HEAP_VADDR + charlotte_launch::HEAP_SIZE) as u64;
+    let gap = (HEAP_VADDR + knytos_launch::HEAP_SIZE) as u64;
     image[24..32].copy_from_slice(&gap.to_le_bytes());
     image[80..88].copy_from_slice(&gap.to_le_bytes());
     assert!(!validate_user_elf(&image), "ELF cannot occupy the adaptive heap extension");
-    let stack = charlotte_launch::user_address::STACK_BASE as u64;
+    let stack = knytos_launch::user_address::STACK_BASE as u64;
     image[24..32].copy_from_slice(&stack.to_le_bytes());
     image[80..88].copy_from_slice(&stack.to_le_bytes());
     assert!(!validate_user_elf(&image), "ELF cannot occupy the stack arena");
@@ -254,7 +254,7 @@ pub(crate) fn service_pages_fixture() -> crate::service::supervisor::ServiceDoma
         bytes.fill(0);
     })
     .unwrap();
-    crate::service::bootstrap::write_launch_header(config_frame, charlotte_launch::HEAP_SIZE);
+    crate::service::bootstrap::write_launch_header(config_frame, knytos_launch::HEAP_SIZE);
     let status_frame = map_image_page(handle, STATUS_VADDR, PageType::UserData, |_| {}).unwrap();
     crate::service::supervisor::ServiceDomain {
         asid: handle.id(),

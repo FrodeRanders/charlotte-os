@@ -80,7 +80,7 @@ Host suite: 354 passed, zero failed, three ignored, including the owned scalar-a
 
 ## Reproduction and limits
 
-Build the ARM bundle with `scripts/build-catten-services.sh --embed` and use dedicated host ports:
+Build the ARM bundle with `scripts/build-knytos-services.sh --embed` and use dedicated host ports:
 
 ```sh
 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_QEMU_NET_DUMP=1 \

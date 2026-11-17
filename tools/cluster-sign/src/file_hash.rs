@@ -4,7 +4,7 @@ use std::io::{
     Read,
 };
 
-use charlotte_launch::sha256::Sha256;
+use knytos_launch::sha256::Sha256;
 use zeroize::Zeroizing;
 
 pub(super) const CHUNK_LEN: usize = 16 * 1024;

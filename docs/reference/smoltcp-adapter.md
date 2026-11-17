@@ -1,13 +1,13 @@
-# smoltcp → CharlotteOS Adapter
+# smoltcp → Knytos Adapter
 
 ## The fit
 
 smoltcp is the industry-standard embedded TCP/IP stack: `no_std` + `alloc`,
 poll-driven, no threads, ~30 KiB of code. It already runs on bare-metal
 microcontrollers through an Ethernet `Device` trait that looks almost
-identical to what a CharlotteOS NIC driver exports:
+identical to what a Knytos NIC driver exports:
 
-| smoltcp `Device` | CharlotteOS NIC protocol |
+| smoltcp `Device` | Knytos NIC protocol |
 |---|---|
 | `receive() → Option<RxToken>` | frame queue fed by the frouter's `OP_FRAME` ingress |
 | `transmit() → Option<TxToken>` | `OP_SEND` (call with a moved memory object holding the frame) |
@@ -169,8 +169,8 @@ carry the complete ID; immediate and deferred send share one frame grammar.
 - The frouter demultiplexes frames by EtherType to `tcpip` via `OP_FRAME`
 - Memory objects provide the buffer ownership model smoltcp needs
 - The name service handles discovery (generation-safe lookup)
-- `catten-syscall` has all the IPC and memory primitives
-- `charlotte-smoltcp` implements the `phy::Device` adapter
+- `knytos-syscall` has all the IPC and memory primitives
+- `knytos-smoltcp` implements the `phy::Device` adapter
 - `tcpip.elf` serves the socket protocol over the `"tcpip"` name
 - A self-configuring smoke client (`tcpclient.elf`) exercises a full
   two-node TCP echo through `--tcpip-test`

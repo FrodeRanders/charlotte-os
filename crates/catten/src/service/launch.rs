@@ -72,7 +72,7 @@ pub struct NetworkAppliance {
     pub httpd: ServiceDomain,
 }
 
-/// A TCP service exposed through Charlotte's distributed L2 ingress.
+/// A TCP service exposed through Knytos' distributed L2 ingress.
 /// Platform launch policy supplies this descriptor to both the frame router
 /// (classification/forwarding), TCP/IP service (local VIP acceptance), and
 /// DNS (placement/readiness-derived backend eligibility).
@@ -103,10 +103,10 @@ pub struct TcpipSocketPolicy {
 impl Default for TcpipSocketPolicy {
     fn default() -> Self {
         Self {
-            socket_slots: charlotte_launch::tcpip_config::DEFAULT_SOCKET_SLOTS,
-            sockets_per_principal: charlotte_launch::tcpip_config::DEFAULT_SOCKETS_PER_PRINCIPAL,
+            socket_slots: knytos_launch::tcpip_config::DEFAULT_SOCKET_SLOTS,
+            sockets_per_principal: knytos_launch::tcpip_config::DEFAULT_SOCKETS_PER_PRINCIPAL,
             buffer_bytes_per_principal:
-                charlotte_launch::tcpip_config::DEFAULT_BUFFER_BYTES_PER_PRINCIPAL,
+                knytos_launch::tcpip_config::DEFAULT_BUFFER_BYTES_PER_PRINCIPAL,
         }
     }
 }
@@ -146,7 +146,7 @@ fn parse_cluster_tcp_service(value: &'static str) -> Option<ClusterTcpService> {
             .and_then(|()| value.checked_mul(10))
             .and_then(|value| value.checked_add(u16::from(byte - b'0')))
     })?;
-    if backend_name.is_some_and(|name| !charlotte_launch::deployment::valid_artifact_name(name)) {
+    if backend_name.is_some_and(|name| !knytos_launch::deployment::valid_artifact_name(name)) {
         return None;
     }
     (port != 0).then_some(ClusterTcpService {
@@ -162,7 +162,7 @@ pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
         .split(';')
         .filter(|entry| !entry.is_empty());
     assert!(
-        entries.clone().count() <= charlotte_launch::ingress::MAX_SERVICES,
+        entries.clone().count() <= knytos_launch::ingress::MAX_SERVICES,
         "too many compiled cluster services"
     );
     entries
@@ -175,20 +175,20 @@ pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
 
 fn encode_cluster_tcp_services(services: &[ClusterTcpService]) -> Vec<u8> {
     assert!(
-        services.len() <= charlotte_launch::ingress::MAX_SERVICES,
+        services.len() <= knytos_launch::ingress::MAX_SERVICES,
         "too many cluster services for launch encoding"
     );
     let bindings = services
         .iter()
-        .map(|service| charlotte_launch::ingress::ServiceBinding {
-            service: charlotte_launch::ingress::ServiceId::tcp_v4(service.address, service.port),
+        .map(|service| knytos_launch::ingress::ServiceBinding {
+            service: knytos_launch::ingress::ServiceId::tcp_v4(service.address, service.port),
             backend_name: service.backend_name,
         })
         .collect::<Vec<_>>();
-    let len = charlotte_launch::ingress::encoded_len(&bindings)
+    let len = knytos_launch::ingress::encoded_len(&bindings)
         .expect("invalid cluster ingress launch policy");
     let mut encoded = alloc::vec![0; len];
-    charlotte_launch::ingress::encode(&bindings, &mut encoded)
+    knytos_launch::ingress::encode(&bindings, &mut encoded)
         .expect("cluster ingress launch policy changed after validation");
     encoded
 }
@@ -491,7 +491,7 @@ fn start_network(
 ) -> NetworkStack {
     let (prepared, driver_elf) = prepared;
     let driver = prepared.start();
-    const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
+    const INGRESS_SERVICES_KEY: u64 = knytos_launch::manifest_key(b"vips");
     let encoded_services = encode_cluster_tcp_services(services);
     let frouter_manifest = [ManifestEntry {
         key: INGRESS_SERVICES_KEY,
@@ -526,10 +526,10 @@ fn launch_node_cluster_with_services(
 ) -> Cluster {
     let ns = boot_trust.name_service();
     let trust = boot_trust.public();
-    const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
-    const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
-    const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
-    assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
+    const CLUSTER_KEY: u64 = knytos_launch::manifest_key(b"cluster");
+    const ELECTION_KEY: u64 = knytos_launch::manifest_key(b"elect-ms");
+    const INGRESS_SERVICES_KEY: u64 = knytos_launch::manifest_key(b"vips");
+    assert_eq!(trust.cluster_id, knytos_launch::trust::cluster_id(cluster).unwrap());
     let trust = trust.encode().expect("valid admission trust");
 
     let disco = crate::service::supervisor::spawn_with_manifest(
@@ -547,7 +547,7 @@ fn launch_node_cluster_with_services(
         ns,
         ConnectionRights::CALL,
         &[ManifestEntry {
-            key: charlotte_launch::relmsg_status::AUDIT_PROBE_KEY,
+            key: knytos_launch::relmsg_status::AUDIT_PROBE_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(u64::from(cfg!(feature = "security_test"))),
         }],
@@ -564,7 +564,7 @@ fn launch_node_cluster_with_services(
             value: ManifestValue::Unsigned(2_000),
         },
         ManifestEntry {
-            key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+            key: knytos_launch::ADMISSION_TRUST_MANIFEST_KEY,
             flags: 0,
             value: ManifestValue::Bytes(&trust),
         },
@@ -655,7 +655,7 @@ pub fn launch_network_appliance_with_services(
 /// Spawn the IP/application-facing network services with an explicit TCP/IP
 /// capacity and per-principal quota policy. This is a launch-authorized
 /// setting; callers must use values within the bounds in
-/// [`charlotte_launch::tcpip_config`].
+/// [`knytos_launch::tcpip_config`].
 pub fn launch_network_appliance_with_policy(
     ns: &NameServiceHandle,
     persist_time: bool,
@@ -674,7 +674,7 @@ fn spawn_management_service(
     // The service's entry frame exists before credential admission, including
     // the missing-profile path which must remain alive for lifecycle handling.
     let limits = ServiceLimits::default().with_user_stack_size(
-        charlotte_launch::management::USER_STACK_PAGES * charlotte_launch::USER_STACK_PAGE_SIZE,
+        knytos_launch::management::USER_STACK_PAGES * knytos_launch::USER_STACK_PAGE_SIZE,
     );
     if let Some(profile) = profile {
         crate::service::supervisor::try_spawn_with_read_only_profile_and_manifest_and_limits(
@@ -706,22 +706,22 @@ fn launch_network_appliance_with_services_mode(
     socket_policy: TcpipSocketPolicy,
     management: Option<&[u8]>,
 ) -> NetworkAppliance {
-    const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
-    const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
+    const DHCP_KEY: u64 = knytos_launch::manifest_key(b"dhcp");
+    const INGRESS_SERVICES_KEY: u64 = knytos_launch::manifest_key(b"vips");
     let encoded_services = encode_cluster_tcp_services(services);
     let mut manifest = [
         ManifestEntry {
-            key: charlotte_launch::tcpip_config::SOCKET_SLOTS_KEY,
+            key: knytos_launch::tcpip_config::SOCKET_SLOTS_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(socket_policy.socket_slots as u64),
         },
         ManifestEntry {
-            key: charlotte_launch::tcpip_config::SOCKET_QUOTA_KEY,
+            key: knytos_launch::tcpip_config::SOCKET_QUOTA_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(socket_policy.sockets_per_principal as u64),
         },
         ManifestEntry {
-            key: charlotte_launch::tcpip_config::BUFFER_QUOTA_KEY,
+            key: knytos_launch::tcpip_config::BUFFER_QUOTA_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(socket_policy.buffer_bytes_per_principal as u64),
         },
@@ -762,14 +762,14 @@ fn launch_network_appliance_with_services_mode(
         crate::service::store::service_elf(b"httpd").expect("[launch] httpd.elf"),
         ns,
         &[ManifestEntry {
-            key: charlotte_launch::httpd_status::TRACE_KEY,
+            key: knytos_launch::httpd_status::TRACE_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(u64::from(cfg!(feature = "http_net_test"))),
         }],
         management,
     );
-    const NTP_IP_KEY: u64 = charlotte_launch::manifest_key(b"ntp_ip");
-    const PERSIST_KEY: u64 = charlotte_launch::manifest_key(b"persist");
+    const NTP_IP_KEY: u64 = knytos_launch::manifest_key(b"ntp_ip");
+    const PERSIST_KEY: u64 = knytos_launch::manifest_key(b"persist");
     let time_manifest = [
         ManifestEntry {
             key: NTP_IP_KEY,
@@ -808,21 +808,21 @@ fn launch_deployment_plane(
 ) -> DeploymentPlane {
     let ns = boot_trust.name_service();
     let trust = boot_trust.public();
-    assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
+    assert_eq!(trust.cluster_id, knytos_launch::trust::cluster_id(cluster).unwrap());
     let admission_trust = trust.encode().expect("valid admission trust");
     let controller_trust = [ManifestEntry {
-        key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+        key: knytos_launch::ADMISSION_TRUST_MANIFEST_KEY,
         flags: 0,
         value: ManifestValue::Bytes(&admission_trust),
     }];
     let artifact_trust = [
         ManifestEntry {
-            key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
+            key: knytos_launch::CLUSTER_KEY_MANIFEST_KEY,
             flags: 0,
             value: ManifestValue::Bytes(&trust.artifact_key),
         },
         ManifestEntry {
-            key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+            key: knytos_launch::ADMISSION_TRUST_MANIFEST_KEY,
             flags: 0,
             value: ManifestValue::Bytes(&admission_trust),
         },
@@ -844,7 +844,7 @@ fn launch_deployment_plane(
         crate::service::store::service_elf(b"deployd").expect("[launch] deployd.elf"),
         ns,
         &[ManifestEntry {
-            key: charlotte_launch::deployd_status::TRACE_KEY,
+            key: knytos_launch::deployd_status::TRACE_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(u64::from(cfg!(feature = "http_net_test"))),
         }],
@@ -855,7 +855,7 @@ fn launch_deployment_plane(
         clusterctl.asid,
         agent.asid,
         ingress.asid,
-        charlotte_launch::DEPLOY_NOTIFY_PORT
+        knytos_launch::DEPLOY_NOTIFY_PORT
     );
     DeploymentPlane {
         clusterctl,
@@ -871,7 +871,7 @@ fn launch_deployment_plane(
 /// provisioning path. Multiple instances may eventually publish distinct
 /// policy-selected names; the current protocol name supports one instance.
 pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> ServiceDomain {
-    let encoded = charlotte_protocol_s3::Profile {
+    let encoded = knytos_protocol_s3::Profile {
         endpoint_ipv4: profile.endpoint_ipv4,
         host: profile.host,
         port: profile.port,
@@ -905,33 +905,33 @@ pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> Ser
 /// admitted by the profile. Route selection therefore does not turn topic
 /// names into ambient application authority.
 pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) -> ServiceDomain {
-    let routes: alloc::vec::Vec<charlotte_protocol_kafka::ProduceRoute<'_>> = profile
+    let routes: alloc::vec::Vec<knytos_protocol_kafka::ProduceRoute<'_>> = profile
         .produce_routes
         .iter()
-        .map(|route| charlotte_protocol_kafka::ProduceRoute {
+        .map(|route| knytos_protocol_kafka::ProduceRoute {
             topic: route.topic,
             partition: i32::try_from(route.partition).expect("Kafka partition exceeds i32"),
         })
         .collect();
-    let brokers: alloc::vec::Vec<charlotte_protocol_kafka::BrokerEndpoint<'_>> = profile
+    let brokers: alloc::vec::Vec<knytos_protocol_kafka::BrokerEndpoint<'_>> = profile
         .broker_endpoints
         .iter()
-        .map(|broker| charlotte_protocol_kafka::BrokerEndpoint {
+        .map(|broker| knytos_protocol_kafka::BrokerEndpoint {
             endpoint_ipv4: broker.endpoint_ipv4,
             host: broker.host,
             port: broker.port,
         })
         .collect();
-    let authority_endpoints: alloc::vec::Vec<charlotte_protocol_kafka::AuthorityEndpoint<'_>> =
+    let authority_endpoints: alloc::vec::Vec<knytos_protocol_kafka::AuthorityEndpoint<'_>> =
         profile
             .authority_endpoints
             .iter()
-            .map(|endpoint| charlotte_protocol_kafka::AuthorityEndpoint {
+            .map(|endpoint| knytos_protocol_kafka::AuthorityEndpoint {
                 service_name: endpoint.service_name,
                 rights: endpoint.rights,
             })
             .collect();
-    let encoded = charlotte_protocol_kafka::Profile {
+    let encoded = knytos_protocol_kafka::Profile {
         instance_name: profile.instance_name,
         authority_endpoints,
         endpoint_ipv4: profile.endpoint_ipv4,
@@ -947,18 +947,18 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
         group: profile.group,
         transactional_id: profile.transactional_id,
         authentication: match profile.authentication {
-            KafkaAuthentication::None => charlotte_protocol_kafka::Authentication::None,
+            KafkaAuthentication::None => knytos_protocol_kafka::Authentication::None,
             KafkaAuthentication::ScramSha256 {
                 username,
                 password,
-            } => charlotte_protocol_kafka::Authentication::ScramSha256 {
+            } => knytos_protocol_kafka::Authentication::ScramSha256 {
                 username,
                 password,
             },
             KafkaAuthentication::MtlsP256 {
                 certificate_der,
                 private_key_der,
-            } => charlotte_protocol_kafka::Authentication::MtlsP256 {
+            } => knytos_protocol_kafka::Authentication::MtlsP256 {
                 certificate_der,
                 private_key_der,
             },
@@ -967,7 +967,7 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
                 password,
                 certificate_der,
                 private_key_der,
-            } => charlotte_protocol_kafka::Authentication::ScramSha256AndMtlsP256 {
+            } => knytos_protocol_kafka::Authentication::ScramSha256AndMtlsP256 {
                 username,
                 password,
                 certificate_der,
@@ -991,7 +991,7 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
 /// Launch the generic Kafka transactional-step runner with a read-only,
 /// digest-checked orchestration profile.
 pub fn launch_kafka_step(ns: &NameServiceHandle, profile: &KafkaStepProfile<'_>) -> ServiceDomain {
-    let encoded = charlotte_kafka_step::Profile {
+    let encoded = knytos_kafka_step::Profile {
         procedure_name: profile.procedure_name,
         kafka_connector_name: profile.kafka_connector_name,
         allowed_routes: profile.allowed_routes.to_vec(),
@@ -1123,7 +1123,7 @@ pub(crate) fn launch_steady_state_with_trust(
             &ns,
             ConnectionRights::CALL,
             &[ManifestEntry {
-                key: charlotte_launch::otlp::KEY,
+                key: knytos_launch::otlp::KEY,
                 flags: 0,
                 value: ManifestValue::Bytes(telemetry_profile),
             }],
@@ -1183,7 +1183,7 @@ pub(crate) fn local_node_key() -> Option<u64> {
     let mut any = false;
     for index in 0..6 {
         let byte = unsafe {
-            core::ptr::read_volatile(base.add(charlotte_launch::net_status::MAC + index))
+            core::ptr::read_volatile(base.add(knytos_launch::net_status::MAC + index))
         };
         any |= byte != 0;
         hash ^= u64::from(byte);

@@ -5,11 +5,11 @@
   "scope": "Discrete consolidation of 22 independent metadata pools into family-typed charge mechanics and a read-only observer inventory; no numerical limit, register ABI or physical completion contract changes.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
-    "crates/catten-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
-    "crates/catten-syscall/src/lib.rs": "08596862b4707022812c6cb416770e52ce876bf0f0be0fa376487c945c32d700",
-    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
-    "crates/catten-syscall/src/metadata_pools/tests.rs": "e49f1c4617c3191e46b1c05b06171e7507f27038ace7ffbeae2eb4a945d0d6f2",
+    "crates/knytos-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
+    "crates/knytos-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
+    "crates/knytos-syscall/src/lib.rs": "08596862b4707022812c6cb416770e52ce876bf0f0be0fa376487c945c32d700",
+    "crates/knytos-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/knytos-syscall/src/metadata_pools/tests.rs": "e49f1c4617c3191e46b1c05b06171e7507f27038ace7ffbeae2eb4a945d0d6f2",
     "crates/catten/src/capability/record_budget.rs": "6eda25956da5f8949d8ca67f3e4c12e3e8d35582db8156a6a906dc3ab7103d29",
     "crates/catten/src/completion/account_budget.rs": "0eee7f60a561b794084a5a37995ca7c8863a9ff7ee9713507fb9ac9fccae79b8",
     "crates/catten/src/completion/entry_budget.rs": "fc3659a19b1b9f520fd9890120f77b19bc06b77f2e8c6eb636d9c24247957162",
@@ -43,7 +43,7 @@
     "crates/catten/src/syscall/mailbox_node_budget.rs": "1346e7183aab671f19aed8050fa0d3e02ad249043fe325f7f86f115d0b4e1fb3",
     "crates/catten/src/syscall/statistics.rs": "514085962d07de34572833fb538c16576286d4b3bf05f9af02e899d98af3485a",
     "crates/catten/src/timers/account_budget.rs": "d59e73251afd5d6940923503bc4d8f22362de1c4170e29ef5838db919bb4e81e",
-    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "crates/knytos-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-host-tests.sh": "c0b59cdb5b9f66a834d3d9fae91df45085a1e3555d61a77e3c345889ea125ef2",
     "scripts/tests/test-http-keyhole-liveness.py": "f85aec80ea182915fcc078fd69e179e5ddaaf1cb9cf2d830d9966f91fe2251ac"
@@ -627,8 +627,8 @@
       "platform": "arm",
       "booted": false,
       "result": "Runner stopped before boot because the freshly restaged test bundle lacked sitas-user.elf.",
-      "diagnostic": "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed",
-      "resolution": "Rebuilt and signed the required fixture with scripts/build-catten-user.sh --embed; passing run recorded separately above.",
+      "diagnostic": "error: test bundle requires sitas-user.elf; run scripts/build-knytos-user.sh --embed",
+      "resolution": "Rebuilt and signed the required fixture with scripts/build-knytos-user.sh --embed; passing run recorded separately above.",
       "capture_limitation": "Original complete preflight log was not retained; the emitted diagnostic is preserved here."
     }
   ],

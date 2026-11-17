@@ -72,15 +72,15 @@ disposal failure.
 ## Validation and artifact identity
 
 Both bundled architectures were rebuilt before guest execution using
-`scripts/build-catten-services.sh --embed` and
-`scripts/build-catten-services-x86_64.sh`. Host tests:
+`scripts/build-knytos-services.sh --embed` and
+`scripts/build-knytos-services-x86_64.sh`. Host tests:
 `scripts/run-host-tests.sh`: **384 passed, 0 failed, 3 ignored**.
 `cargo fmt --all -- --check`, `git diff --check`, and strict `-D warnings`
 Clippy passed for bundled services, ARM security/HTTP/DHCP kernel and x86
 HTTP/DHCP kernel.
 
 Initial kernel Clippy invocations incorrectly pointed both bundle environment
-variables at nonexistent `target/catten-services/.../catten-services.bundle`
+variables at nonexistent `target/knytos-services/.../knytos-services.bundle`
 directories. They failed on missing embedded ELF files (ARM 11 compiler errors,
 x86 33). Corrected runs used the rebuilt `target/embedded-services` directories
 and ARM's generated `CATTEN_SECURITY_TEST_DIR`; both passed. These are

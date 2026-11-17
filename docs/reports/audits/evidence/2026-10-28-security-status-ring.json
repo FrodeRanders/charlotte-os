@@ -4,13 +4,13 @@
   "toolchain": "nightly-2026-07-27",
   "scope": "Status-only preliminary runs and ring-corrected runs remain separate. No overall pass is inferred from individual control receipts.",
   "source_sha256": {
-    "crates/catten-rt/src/owned.rs": "4ed9e61e7ccb004cec59b67f7c2ff6f9507a2514201b3b783411c2380696c010",
-    "crates/catten-rt/src/owned/memory.rs": "8af6988dababe95aef2e8ada0ff44c7e383a5a39dd28e58a7951636f17ec099d",
-    "crates/catten-services/src/status_observation.rs": "29380db5c6cc8350330ed5165053f7d845d6d0ff7083ee5f80d7b8c266aeeaa2",
-    "crates/catten-services/src/status_observation/contract.rs": "8eab21df0aa96a7b50804fb2491f5becfe16908bf68a2afbc50d1f22e7daa3a4",
-    "crates/catten-services/src/bin/httpd.rs": "cf3b2ec01890cecdac3d27fb9f8fdc95741600bb65f9e9cf9a4a75088f54b5cd",
-    "crates/catten-services/src/bin/rng.rs": "873b8c53baece3f89dd6993b2ba51d118d306c970f7b02cf34c6cf290a2efd9d",
-    "crates/catten-services/src/bin/security_probe.rs": "bf210fb565b9b45e188a7450f399816e569a974967c6cfd75e3a443484417c35",
+    "crates/knytos-rt/src/owned.rs": "4ed9e61e7ccb004cec59b67f7c2ff6f9507a2514201b3b783411c2380696c010",
+    "crates/knytos-rt/src/owned/memory.rs": "8af6988dababe95aef2e8ada0ff44c7e383a5a39dd28e58a7951636f17ec099d",
+    "crates/knytos-services/src/status_observation.rs": "29380db5c6cc8350330ed5165053f7d845d6d0ff7083ee5f80d7b8c266aeeaa2",
+    "crates/knytos-services/src/status_observation/contract.rs": "8eab21df0aa96a7b50804fb2491f5becfe16908bf68a2afbc50d1f22e7daa3a4",
+    "crates/knytos-services/src/bin/httpd.rs": "cf3b2ec01890cecdac3d27fb9f8fdc95741600bb65f9e9cf9a4a75088f54b5cd",
+    "crates/knytos-services/src/bin/rng.rs": "873b8c53baece3f89dd6993b2ba51d118d306c970f7b02cf34c6cf290a2efd9d",
+    "crates/knytos-services/src/bin/security_probe.rs": "bf210fb565b9b45e188a7450f399816e569a974967c6cfd75e3a443484417c35",
     "scripts/tests/test-rng-ring-access.py": "8cec94a54c6c066535b2ad4f549083b4558cc361c5b26d9f8ef1553c4ef620cf",
     "scripts/generate-security-test-fixtures.sh": "24f08db6a22591b0135d568de80dcd8588396807bd10b4e7452a8f4bc7928c98",
     "scripts/run-x86_64.sh": "35c895f3532ea5ee960bd31b2e96021865953ea78a6a57ad2396ee6161109489",
@@ -18,7 +18,7 @@
     "scripts/lib/boot-common.sh": "8decb90a7623c084870f56bfecc5f2e58184958d1fb0073a59773a1d0b227b13",
     "scripts/run-aarch64.sh": "84a143ff1b50749ea3e4f8076f5d1b17353063a7cf0056372016cef1b6b55fcc",
     "scripts/tests/test-management-runner-gates.py": "f374d17ad69434e5af677c4a2ca4f62d64806d41fcf65b05ac3722f81c2eb2d0",
-    "crates/catten-services/src/lib.rs": "cc4d6a6d54c6f430b8435fe4f1a11bfa597a883c82acd26887f0412fc8167183"
+    "crates/knytos-services/src/lib.rs": "cc4d6a6d54c6f430b8435fe4f1a11bfa597a883c82acd26887f0412fc8167183"
   },
   "signed_bundle_sha256": {
     "aarch64-unknown-none": {
@@ -219,10 +219,10 @@
       "relevant_diagnostics": [
         "[+    90.413007] [EL0 LOG] lp=0 asid=130 [deployd] response ended: Transport(Tls(Tls(InvalidCertificate(ApplicationVerificationFailure))))",
         "[+    90.680532] [EL0 LOG] lp=0 asid=118 [rng] device retained after UnexpectedIndex { expected: 256, observed: 511 }, Some(Attempt { previous_index: 255, expected_index: 256, slot: 7, requested: 32, copied_prefix: 0, checked_completion: None }); no descriptor replay or cleanup",
-        "[+    90.682713] [EL0 LOG] lp=0 asid=130 [panic] panicked at crates/catten-services/src/tls_client/entropy_client.rs:310:42:",
+        "[+    90.682713] [EL0 LOG] lp=0 asid=130 [panic] panicked at crates/knytos-services/src/tls_client/entropy_client.rs:310:42:",
         "system entropy unavailable during TLS crypto: Rejected(-2)",
         "[+    90.683494] Aborting user address space 130",
-        "[+   102.630006] [EL0 LOG] lp=0 asid=126 [panic] panicked at crates/catten-services/src/tls_client/entropy_client.rs:310:42:",
+        "[+   102.630006] [EL0 LOG] lp=0 asid=126 [panic] panicked at crates/knytos-services/src/tls_client/entropy_client.rs:310:42:",
         "[+   102.631150] Aborting user address space 126"
       ],
       "native_clock_samples": [
@@ -628,7 +628,7 @@
       "failed": 0
     },
     "strict_clippy": [
-      "catten-rt host all targets",
+      "knytos-rt host all targets",
       "AArch64 services library/httpd/rng/security_probe",
       "freestanding x86 services library/httpd/rng/security_probe"
     ],
@@ -716,7 +716,7 @@
     }
   ],
   "reproduction_notes": [
-    "Build the signed bundles with scripts/build-catten-services.sh --embed and scripts/build-catten-services-x86_64.sh before final commands.",
+    "Build the signed bundles with scripts/build-knytos-services.sh --embed and scripts/build-knytos-services-x86_64.sh before final commands.",
     "Default development fixtures only; no production provisioning or protected time.",
     "Source and bundle hash maps describe the final implementation; each earlier campaign records its intermediate phase and exact kernel/probe/resource hashes separately.",
     "Host socket binding/QEMU forwarded sockets required authorized execution outside the local sandbox.",

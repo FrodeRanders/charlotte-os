@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use charlotte_launch::management::{
+use knytos_launch::management::{
     limit_values,
     Limits,
     LIMIT_NAMES,
@@ -25,7 +25,7 @@ impl Fixture {
     fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "charlotte-management-input-{}-{}",
+            "knytos-management-input-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));

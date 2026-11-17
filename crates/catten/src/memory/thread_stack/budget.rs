@@ -2,7 +2,7 @@
 //! Charges are independent of telemetry and never refunded by default Drop.
 use core::mem::ManuallyDrop;
 
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     Amount,
     Budget,
 };

@@ -8,7 +8,7 @@ ABI, required CPU features and selection priority. Variant targets must be
 distinct. The descriptor's aggregate size remains bounded to 3,584 bytes.
 
 The current execution contract is 64-bit little-endian ELF, either AArch64
-(`e_machine=183`) or x86_64 (`e_machine=62`), and Charlotte runtime ABI 4. ABI
+(`e_machine=183`) or x86_64 (`e_machine=62`), and Knytos runtime ABI 4. ABI
 matching is exact. A kernel/userspace ABI change must bump the shared
 `RUNTIME_ABI` and rebuild/sign components; an absent or old ABI is never filled
 in by a decoder. Microarchitecture names, vendor names and CPU generations

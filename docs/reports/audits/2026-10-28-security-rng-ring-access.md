@@ -16,9 +16,9 @@ The exact retained native diagnostics are:
 
 ```text
 [+ 90.680532] asid=118 [rng] device retained after UnexpectedIndex { expected: 256, observed: 511 }, Some(Attempt { previous_index: 255, expected_index: 256, slot: 7, requested: 32, copied_prefix: 0, checked_completion: None }); no descriptor replay or cleanup
-[+ 90.682713] asid=130 [panic] panicked at crates/catten-services/src/tls_client/entropy_client.rs:310:42:
+[+ 90.682713] asid=130 [panic] panicked at crates/knytos-services/src/tls_client/entropy_client.rs:310:42:
 system entropy unavailable during TLS crypto: Rejected(-2)
-[+ 102.630006] asid=126 [panic] panicked at crates/catten-services/src/tls_client/entropy_client.rs:310:42:
+[+ 102.630006] asid=126 [panic] panicked at crates/knytos-services/src/tls_client/entropy_client.rs:310:42:
 system entropy unavailable during TLS crypto: Rejected(-2)
 ```
 

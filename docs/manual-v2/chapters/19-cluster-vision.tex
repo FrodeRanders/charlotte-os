@@ -1,7 +1,7 @@
 \chapter{Server-Class Cluster Vision}
 \label{chap:cluster-vision}
 
-CharlotteOS explores an operating-system boundary at which the cluster is the
+Knytos explores an operating-system boundary at which the cluster is the
 primary administrative and computational unit. An operator assigns a signed
 workload to the cluster, declares its resources, authority, multiplicity, and
 placement constraints, and leaves physical placement to cluster policy. Nodes
@@ -29,7 +29,7 @@ This chapter first develops the cluster-level model and then uses Linux
 containers and Kubernetes/OpenShift as a counterpoint. The comparison separates
 the intrinsic cost of distributed computation from machinery needed to adapt
 general-purpose, machine-centered operating systems to isolated, reproducible,
-movable workloads. With CharlotteOS, we want to test that separation.
+movable workloads. With Knytos, we want to test that separation.
 This is still a research prototype.
 
 \section{The cluster is the computer}
@@ -39,7 +39,7 @@ This is still a research prototype.
 The central proposition is simple:
 
 \begin{quote}
-    The Charlotte cluster is the administrative unit, and nodes contribute
+    The Knytos cluster is the administrative unit, and nodes contribute
     replaceable execution and storage resources.
 \end{quote}
 
@@ -53,7 +53,7 @@ continue to reach the service through the same logical name.
 
 That indirection now has an external TCP counterpart. Node addresses serve
 protocols that intentionally target one machine. A cluster service VIP instead
-addresses functionality placed somewhere in Charlotte. Direct Server Return
+addresses functionality placed somewhere in Knytos. Direct Server Return
 both distributes load and hides ingress and execution nodes behind a stable
 cluster network identity. The
 implemented data path and its current placement-policy boundary are described
@@ -66,7 +66,7 @@ heterogeneous hardware: schedulable properties and failure-domain constraints
 express relevant differences without turning nodes into hand-maintained
 machine personalities.
 
-The same idea already appears one level down in CharlotteOS. The
+The same idea already appears one level down in Knytos. The
 shard-per-core model of \autoref{chap:sitas-executor} treats cores as executors
 over explicitly owned state, while the scheduler in
 \autoref{chap:scheduling} moves work between them. The
@@ -77,7 +77,7 @@ and the cluster becomes the unit within which execution is placed.
 \begin{architecturalcomparison}{Amoeba: hide location, expose uncertain outcomes}
 Amoeba organizes computation around processor pools and capability-protected
 objects, allowing users to address services without selecting a home machine
-\cite{prior:amoeba}. CharlotteOS shares this administrative indirection, but
+\cite{prior:amoeba}. Knytos shares this administrative indirection, but
 its invocation contract preserves request identity, generations, deadlines
 and uncertain outcomes. After a remote call times out, the caller may not know
 whether the service applied the request. Resolving the same logical service
@@ -88,7 +88,7 @@ The reason for exposing that uncertainty is the distributed-systems boundary
 identified by Waldo and colleagues: remote interactions introduce latency,
 concurrency and partial failure that a local-call abstraction cannot erase
 \cite{prior:distributed-note}. This is a limit on transparency, not an
-assertion that Amoeba ignored failures. CharlotteOS aims to hide physical
+assertion that Amoeba ignored failures. Knytos aims to hide physical
 placement while requiring protocols to decide deduplication, retry and state
 transfer. Applications gain location independence but have those obligations.
 The \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{cluster
@@ -111,7 +111,7 @@ do. Each workload executes in its own address space and receives a deliberate
 set of service endpoints, storage objects, devices, or administration
 capabilities.
 
-CharlotteOS therefore combines an immutable, name-bound identity at the
+Knytos therefore combines an immutable, name-bound identity at the
 loading boundary with explicit authority at the execution boundary. Signing
 without confinement accepts an over-powerful program, while confinement without
 authentication accepts code of unknown origin.
@@ -153,13 +153,13 @@ again to obtain connections to the replacements.
 Migration is consequently a cluster operation. Stateless reassignment starts an equivalent instance at
 the new location and retires the old one under generation fencing. Stateful
 migration additionally requires an explicit transfer of owned mutable state
-and a single, fenced change of ownership. CharlotteOS has demonstrated only
+and a single, fenced change of ownership. Knytos has demonstrated only
 the stateless cross-node case, but the stateful protocol remains a target.
 
 \begin{architecturalcomparison}{Borg and Kubernetes: native workloads}
 The Borg, Omega and Kubernetes experience supplies the desired-state pattern:
 controllers compare observed state with a declaration and act to reconcile
-them \cite{prior:borg}. CharlotteOS adopts that control-plane idea rather
+them \cite{prior:borg}. Knytos adopts that control-plane idea rather
 than treating cluster management as unnecessary. Its different choice is the
 execution object: a signed native artifact with declared resources and
 capability grants, launched directly into a protection domain instead of a
@@ -170,7 +170,7 @@ reduce the machinery needed to construct confined, reproducible workloads.
 Consensus, failure detection, readiness, placement and rollout remain necessary
 in either architecture. The cost of the native choice is a smaller software
 ecosystem and application adaptation, while Kubernetes can reuse Linux
-applications and operational tooling. The implemented CharlotteOS controller
+applications and operational tooling. The implemented Knytos controller
 has bounded placement and generation-fenced readiness, but capacity-aware
 scheduling, stateful movement and production administration remain open.
 See the \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{placement
@@ -213,7 +213,7 @@ node. It translates the operator's model of cluster workloads into Linux
 processes on machines, and gains enormous practical value from orchestrating
 the software and operating systems that already exist.
 
-CharlotteOS asks a different question: what becomes possible when the
+Knytos asks a different question: what becomes possible when the
 controlled distributed execution environment is the operating system,
 rather than something assembled above a set of general-purpose hosts?
 
@@ -222,7 +222,7 @@ rather than something assembled above a set of general-purpose hosts?
 The comparison is useful only if it separates two kinds of complexity.
 
 \subsubsection{Distributed-systems complexity is intrinsic}
-CharlotteOS still faces the core problems of distributed systems:
+Knytos still faces the core problems of distributed systems:
 scheduling, consensus, placement, replication, health management, service
 discovery, upgrades, resource accounting, storage, networking, observability,
 failure detection, load balancing, and recovery from partial failure. Network
@@ -253,20 +253,20 @@ per-node application installation may eliminate or radically simplify:
 \end{itemize}
 
 These are hypotheses about mechanisms and their location. Resource accounting,
-memory protection, and policy enforcement remain essential even when Charlotte
+memory protection, and policy enforcement remain essential even when Knytos
 expresses them through native resource objects, address spaces, and capability
 possession instead of cgroups, Linux namespaces, and SELinux labels.
 
 \subsection{The control plane may survive the execution stack}
 
-CharlotteOS explores absorbing cluster orchestration into the operating
+Knytos explores absorbing cluster orchestration into the operating
 system and shortening the machinery required to manufacture a controlled
 execution environment above Linux.
 
 Kubernetes's strongest control-plane ideas may survive remarkably well:
 declarative desired state, reconciliation, scheduling from constraints,
 generation-aware updates, health-driven replacement, replicated control
-state, and separation between specification and observation. A CharlotteOS
+state, and separation between specification and observation. A Knytos
 cluster executive may therefore look recognizably Kubernetes-like at the
 level of intent and convergence.
 
@@ -274,13 +274,13 @@ The execution path beneath that controller could, however, be much shorter.
 Instead of a desired workload becoming a Pod, an OCI image, a container
 runtime request, a low-level runtime invocation, a namespace/cgroup/LSM
 configuration, and finally Linux processes, a cluster assignment can become
-a verified Charlotte execution object loaded directly into a
+a verified Knytos execution object loaded directly into a
 capability-constrained address space. Discovering that reconciliation and
 scheduling survive while Pods, OCI, CRI, and much container security
 scaffolding do not would identify which platform ideas are consequences of
 distributed computation and which are consequences of the underlying platform.
 
-Existing Linux software needs adaptation to run on CharlotteOS. We give up
+Existing Linux software needs adaptation to run on Knytos. We give up
 that compatibility to explore a smaller, more explicit execution contract.
 The question we want to study is how applications might change when cluster
 execution, artifact trust, and explicit authority are part of the operating
@@ -301,7 +301,7 @@ in mutable node configuration.
 A target node lifecycle is:
 
 \begin{enumerate}
-    \item boot a known CharlotteOS image and establish the node's execution
+    \item boot a known Knytos image and establish the node's execution
         and hardware trust boundary;
     \item discover a cluster or contact a configured seed;
     \item authenticate, learn cluster identity and policy, and join the
@@ -338,7 +338,7 @@ include:
         administrative audit.
 \end{itemize}
 
-This is substantial orchestration work. CharlotteOS seeks a shorter control
+This is substantial orchestration work. Knytos seeks a shorter control
 path that acts directly on native execution objects, removing the intermediate
 machine-shaped compatibility environment while facing the hard distributed
 systems problems.
@@ -417,7 +417,7 @@ this chapter.
         mask while keeping TLS/SCRAM and mTLS credentials inside the connector and offering idempotent production,
         read-committed consumption, and transactional offset commits. These
         adapters make externally managed infrastructure usable through
-        Charlotte's capability model. Cluster-native storage and messaging are
+        Knytos' capability model. Cluster-native storage and messaging are
         separate research questions.
 
     \item \textbf{Role-separated operational deployment.} Development signs
@@ -551,7 +551,7 @@ a set-once, idempotent key ceremony.
 
 \subsection{The target pipeline}
 
-CharlotteOS gives the software supply chain an explicit cluster boundary. The
+Knytos gives the software supply chain an explicit cluster boundary. The
 intended pipeline is:
 
 \begin{enumerate}
@@ -1216,7 +1216,7 @@ budgets, and the power-off reason. There is deliberately no broadcast target:
 an operations controller can drain nodes in an order that preserves Raft and
 application quorum. The operator creates the record with
 \texttt{cluster-sign shutdown-sign} and submits it to
-\texttt{POST /v1/shutdowns}, and no private key enters CharlotteOS.
+\texttt{POST /v1/shutdowns}, and no private key enters Knytos.
 
 Any member may receive the bounded envelope. A follower relays it over the
 reliable-message channel, while the leader verifies the committed cluster key
@@ -1582,7 +1582,7 @@ not claims of equivalent guarantees or implementation maturity.
         dedicated machines provide file and directory services, and
         network-wide RPC uses capability-based access. Amoeba deliberately
         did not migrate processes, while explicit cross-node migration is an
-        extension in the CharlotteOS target.
+        extension in the Knytos target.
 
     \item \textbf{Plan 9} (Bell Labs) separates terminals, CPU servers, and
         file servers, and centralizes authentication and key handling in
@@ -1619,7 +1619,7 @@ not claims of equivalent guarantees or implementation maturity.
         Platform-as-a-Service}, ACM Queue 2016.
 
     \item \textbf{Kubernetes and OpenShift} are also the central counterpoint
-        of this chapter. CharlotteOS is not attempting to wish away their
+        of this chapter. Knytos is not attempting to wish away their
         distributed control responsibilities, but it is testing whether a native
         execution and authority model can substantially shorten the machinery
         underneath them.
@@ -1631,7 +1631,7 @@ not claims of equivalent guarantees or implementation maturity.
     \item \textbf{VMware DRS and vMotion} demonstrate the full operational
         arc of declared placement rules, load-observed rebalancing, live
         movement, and network-level switchover, though for virtual machines
-        rather than Charlotte execution objects.
+        rather than Knytos execution objects.
 
     \item \textbf{Erlang/OTP distribution} provides node discovery, named
         processes, supervision, hot code loading, and patterns resembling
@@ -1640,12 +1640,12 @@ not claims of equivalent guarantees or implementation maturity.
 
 \subsection{Capabilities and constrained execution}
 
-CharlotteOS also belongs in the lineage of capability-oriented and
+Knytos also belongs in the lineage of capability-oriented and
 least-authority systems. The relevant distinction is between possessing an
 explicit reference that confers authority and inheriting a broad machine
 environment whose authority must be denied by policy. Capability systems,
 microkernels, language sandboxes, WebAssembly runtimes, and unikernels make
-different trade-offs along this boundary. CharlotteOS combines a
+different trade-offs along this boundary. Knytos combines a
 capability-constrained service model with signed native artifacts and a
 cluster-level placement objective, but similarity in one dimension does not
 imply identical isolation or compatibility guarantees in the others.
@@ -1686,7 +1686,7 @@ imply identical isolation or compatibility guarantees in the others.
 
     \item \textbf{OCI registries with signed manifests} demonstrate
         content-addressed distribution and integrity for today's container
-        delivery model. A CharlotteOS artifact service needs analogous
+        delivery model. A Knytos artifact service needs analogous
         availability and lifecycle properties even if it does not store OCI
         filesystem images.
 \end{itemize}
@@ -1706,7 +1706,7 @@ The cluster vision can be summarized as the following proposition:
     distributed control plane would remain.
 \end{quote}
 
-CharlotteOS is an experimental vehicle for testing that proposition. Evidence
+Knytos is an experimental vehicle for testing that proposition. Evidence
 now spans signed and name-bound loading, capability-separated services,
 replicated naming and deployment state, dynamic membership, deterministic
 replica placement, central artifact pickup, remote invocation,

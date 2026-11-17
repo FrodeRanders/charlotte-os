@@ -51,7 +51,7 @@ x86/Intel VT-d four-LP runs exited 0. Both printed:
 ARM completed 17 deferred tests; Intel completed 15. Both reported zero failed
 and zero pending tests. These were debug, fresh-storage, no-network QEMU runs
 with `CARGO_BUILD_RUSTFLAGS='-D warnings'`. ARM services were built through
-`scripts/build-catten-services.sh`; its passing repeat reused that bundle.
+`scripts/build-knytos-services.sh`; its passing repeat reused that bundle.
 
 Reproduction commands (the first run used the pre-fix gate):
 

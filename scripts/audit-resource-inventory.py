@@ -156,10 +156,10 @@ def main():
     inputs = ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo/config.toml",
               "crates/catten/Cargo.toml", "target_specs/aarch64-unknown-none-catten.json",
               "target_specs/x86_64-unknown-none-catten.json"]
-    inputs += [f"crates/charlotte-launch/src/{name}.rs" for name in
+    inputs += [f"crates/knytos-launch/src/{name}.rs" for name in
                ["lib", "deployment", "operations", "operations_pickup", "operations_bundle", "release", "shutdown"]]
     result = {
-        "schema": "charlotte.resource-review-inventory.v1", "date": args.date,
+        "schema": "knytos.resource-review-inventory.v1", "date": args.date,
         "base_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "pinned_toolchain": tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"],
         "extractor_sha256": sha(Path(__file__)), "kernel_source_sha256": source_hashes,

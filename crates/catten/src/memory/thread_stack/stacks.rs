@@ -37,7 +37,7 @@ pub(super) fn retirement_progress() -> [u64; 6] {
 }
 
 const PAGE: usize = crate::cpu::isa::memory::paging::PAGE_SIZE;
-const _: () = assert!(charlotte_launch::INITIAL_USER_STACK_PAGES == 1 && PAGE == 4096);
+const _: () = assert!(knytos_launch::INITIAL_USER_STACK_PAGES == 1 && PAGE == 4096);
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
 
@@ -89,7 +89,7 @@ impl Stacks {
     }
 
     pub(crate) fn user(handle: AddressSpaceHandle, pages: usize) -> Result<Self, Error> {
-        if !(1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&pages) {
+        if !(1..=knytos_launch::MAX_USER_STACK_PAGES).contains(&pages) {
             return Err(Error::InvalidStack);
         }
         let preparation = PreparingStackPage::reserve(handle).map_err(|_| Error::InvalidStack)?;
@@ -317,7 +317,7 @@ fn retire_user_with(
     RETIREMENT_PROGRESS[STARTED].fetch_add(1, Ordering::Relaxed);
     let handle = stack.slot.identity();
     let low = stack.committed_low();
-    let mut frames = [None; charlotte_launch::MAX_USER_STACK_PAGES];
+    let mut frames = [None; knytos_launch::MAX_USER_STACK_PAGES];
     let mut ok = true;
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
@@ -423,7 +423,7 @@ impl Growth {
                 #[cfg(feature = "kernel_tests")]
                 crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 1);
                 PreparingUserFrame::allocate_with_policy(|free, total| {
-                    free > (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
+                    free > (total / knytos_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
                 })
             },
             |handle, vaddr, frame| {
@@ -461,7 +461,7 @@ impl Growth {
             let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
             (allocator.free_frames() as u64, allocator.usable_bytes() / PAGE as u64)
         };
-        let floor = (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
+        let floor = (total / knytos_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
         if free >= floor.saturating_add(((self.low() - self.target) / PAGE) as u64) {
             while self.low() > self.target {
                 self.frame = allocate();

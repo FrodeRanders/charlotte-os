@@ -464,7 +464,7 @@ impl From<ExtDuration> for TimerEvent {
 }
 
 pub(crate) fn deadline_after(duration: ExtDuration) -> Timestamp {
-    charlotte_lifecycle::saturating_timer_deadline(
+    knytos_lifecycle::saturating_timer_deadline(
         LpTimer::now(),
         duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos(),
     )

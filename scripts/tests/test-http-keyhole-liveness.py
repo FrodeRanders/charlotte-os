@@ -21,7 +21,7 @@ from management_tls import connect
 CATALOG = re.findall(
     r'\(\w+,\s*(\w+),\s*([12]),\s*"([^"]+)",\s*"([^"]*)"\)',
     (Path(__file__).resolve().parents[2] /
-     "crates/catten-syscall/src/metadata_pools.rs").read_text(),
+     "crates/knytos-syscall/src/metadata_pools.rs").read_text(),
 )
 
 def metadata_pools(document):
@@ -73,7 +73,7 @@ def read_metrics(port, require_dns_catalog=False, require_ns_status=False):
         metadata_pools(document)
         if require_dns_catalog:
             catalog = document["dns"]["catalog"]
-            assert catalog["schema"] == "charlotte.dns-catalog.v1"
+            assert catalog["schema"] == "knytos.dns-catalog.v1"
             rows = catalog["entries"]
             assert isinstance(rows, list) and catalog["count"] == len(rows)
             assert all(isinstance(row["name"], str) and row["name"]

@@ -1,4 +1,4 @@
-# Charlotte's embedded-tls source copy
+# Knytos' embedded-tls source copy
 
 This workspace member is copied from
 [embassy-rs/embedded-tls](https://github.com/embassy-rs/embedded-tls/tree/6487c62bb084c33361822022e21836ddfd48388f),
@@ -41,9 +41,9 @@ and target review. This avoids adding unused RSA/KEM/provider dependencies to th
 complete lockfile. Existing enabled dependency versions remain unchanged.
 
 Upstream's test/example dependency graph is not imported: its `all` crypto-driver
-feature would conflict with Charlotte's erasing SHA/GCM registrations. The
+feature would conflict with Knytos' erasing SHA/GCM registrations. The
 upstream unit-test driver and example branches remain unmodified source but
-are not test targets in this manifest. Charlotte's production-parser harness
+are not test targets in this manifest. Knytos' production-parser harness
 (`scripts/tests/test-tls-signature-lists.py`) imports the actual offer, selected
 signature, CertificateRequest/extension, buffer and parse modules, with an isolated old-parser rejection
 control. The host service suite exercises the complete production TLS client

@@ -12,7 +12,7 @@
 //! Names, lookup policy, and restart generations live entirely in the
 //! userspace name service; the kernel only moves opaque capabilities.
 
-use charlotte_launch::{
+use knytos_launch::{
     CAPABILITY_VECTOR_CAPACITY,
     CapabilityKind,
     CapabilityRecord,
@@ -65,9 +65,9 @@ impl<'a> ServicePages<'a> {
             return Err(ServicePageError::WrongBacking);
         }
         let space = table.get_mut(handle.id()).map_err(|_| ServicePageError::WrongBacking)?;
-        if space.translate_address(charlotte_launch::CONFIG_VADDR.into()).ok()
+        if space.translate_address(knytos_launch::CONFIG_VADDR.into()).ok()
             != Some(domain.config_frame)
-            || space.translate_address(charlotte_launch::STATUS_VADDR.into()).ok()
+            || space.translate_address(knytos_launch::STATUS_VADDR.into()).ok()
                 != Some(domain.status_frame)
         {
             return Err(ServicePageError::WrongBacking);
@@ -105,11 +105,11 @@ impl<'a> ServicePages<'a> {
         unsafe {
             (
                 core::sync::atomic::AtomicU32::from_ptr(
-                    base.add(charlotte_launch::objstore_status::STATE) as *mut u32,
+                    base.add(knytos_launch::objstore_status::STATE) as *mut u32,
                 )
                 .load(core::sync::atomic::Ordering::Acquire),
                 core::ptr::read_volatile(
-                    base.add(charlotte_launch::objstore_status::STARTUP_ERROR).cast(),
+                    base.add(knytos_launch::objstore_status::STARTUP_ERROR).cast(),
                 ),
             )
         }
@@ -146,21 +146,21 @@ pub fn write_launch_header(config_frame: PAddr, heap_bytes: usize) {
         header.heap_size = heap_bytes as u64;
         core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader, header);
         core::ptr::write_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_MAGIC_OFFSET) as *mut u64,
-            charlotte_launch::lifecycle::CONTROL_MAGIC,
+            base.add(knytos_launch::lifecycle::CONTROL_MAGIC_OFFSET) as *mut u64,
+            knytos_launch::lifecycle::CONTROL_MAGIC,
         );
         core::ptr::write_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) as *mut u32,
+            base.add(knytos_launch::lifecycle::CONTROL_REASON_OFFSET) as *mut u32,
             0,
         );
         core::ptr::write_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *mut u64,
+            base.add(knytos_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *mut u64,
             0,
         );
-        let state = &*(base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET)
+        let state = &*(base.add(knytos_launch::lifecycle::CONTROL_STATE_OFFSET)
             as *const core::sync::atomic::AtomicU32);
         state.store(
-            charlotte_launch::lifecycle::STATE_RUNNING,
+            knytos_launch::lifecycle::STATE_RUNNING,
             core::sync::atomic::Ordering::Release,
         );
     }
@@ -173,14 +173,14 @@ fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, deadlin
     let base: *mut u8 = config_frame.into();
     unsafe {
         core::ptr::write_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) as *mut u32,
+            base.add(knytos_launch::lifecycle::CONTROL_REASON_OFFSET) as *mut u32,
             reason,
         );
         core::ptr::write_volatile(
-            base.add(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *mut u64,
+            base.add(knytos_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *mut u64,
             deadline_ms,
         );
-        let control = &*(base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET)
+        let control = &*(base.add(knytos_launch::lifecycle::CONTROL_STATE_OFFSET)
             as *const core::sync::atomic::AtomicU32);
         control.store(state, core::sync::atomic::Ordering::Release);
     }
@@ -192,7 +192,7 @@ fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, deadlin
 fn lifecycle_status(status_frame: PAddr) -> u32 {
     let base: *mut u8 = status_frame.into();
     let status = unsafe {
-        &*(base.add(charlotte_launch::lifecycle::STATUS_STATE_OFFSET)
+        &*(base.add(knytos_launch::lifecycle::STATUS_STATE_OFFSET)
             as *const core::sync::atomic::AtomicU32)
     };
     status.load(core::sync::atomic::Ordering::Acquire)

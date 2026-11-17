@@ -1,14 +1,14 @@
-# CharlotteOS userspace development
+# Knytos userspace development
 
-CharlotteOS Rust programs use `catten-rt` as their small userspace runtime.
+Knytos Rust programs use `knytos-rt` as their small userspace runtime.
 The [application SDK guide](application-sdk.md) describes the smaller
-`charlotte-app` library, owned operation helpers, returning entry wrapper and
+`knytos-app` library, owned operation helpers, returning entry wrapper and
 independent project workflow. The [architecture note](../architecture/userspace-ergonomics.md)
 records its boundaries and remaining extensions.
 Run `cargo fmt --all` from the repository root to format every package,
 including the separately targeted service and application crates and host
 tools. Use `cargo fmt --all -- --check` for a non-mutating CI-style check.
-Because `catten-user` is part of that workspace, its sibling
+Because `knytos-user` is part of that workspace, its sibling
 `../../gautelis/sitas` path dependency must be checked out, and CI provisions the
 pinned revision before running workspace tooling.
 The source-level entry contract is:
@@ -24,7 +24,7 @@ fn main(ctx: Context) -> ! {
     let mode = ctx.manifest_value(catten_rt::manifest_key(b"mode"));
 
     // Program or service loop.
-    unsafe { catten_syscall::thread_exit() }
+    unsafe { knytos_syscall::thread_exit() }
 }
 
 catten_rt::entry!(main);
@@ -88,11 +88,11 @@ aborts the entire domain rather than interpreting unchecked offsets or leaving
 sibling threads running with an invalid launch contract.
 
 The kernel and runtime import this representation from the shared no-std
-`charlotte-launch` crate. Compile-time size assertions keep the header and
+`knytos-launch` crate. Compile-time size assertions keep the header and
 capability record layouts stable across both sides of the boundary.
 This launch-page version is separate from runtime syscall ABI 4, which signed
 executable variants must match exactly. The source constants in
-`charlotte-launch` define both contracts.
+`knytos-launch` define both contracts.
 
 The manifest is a bounded vector of named, typed records. Keys are stable
 packed names of up to eight bytes, while values may be unsigned integers, signed
@@ -129,7 +129,7 @@ Protocol-specific scalar resources also need owners, and
 `catten_services::socket::OwnedSocket` supplies explicit fallible close plus a
 best-effort `Drop` fallback for TCP/IP socket IDs.
 
-Keep raw `catten-syscall` calls within the runtime and documented driver
+Keep raw `knytos-syscall` calls within the runtime and documented driver
 boundaries. Service code should use the owning runtime types.
 Coherent `dma_map` is explicitly unsafe because the driver must
 synchronize CPU references and device access itself. Both DMA-map forms return
@@ -145,7 +145,7 @@ adopted a second time.
 
 The host test suite injects failures at unmap, DMA release, MMIO release,
 completion cancellation, and IPC submission boundaries. The shared
-`charlotte-lifecycle` crate exhaustively checks the generation decisions used
+`knytos-lifecycle` crate exhaustively checks the generation decisions used
 by both thread joins and timed completion waits.
 
 ## Authenticated service lookup
@@ -161,7 +161,7 @@ stable signed-artifact principal, and deployment roles captured at submission.
 The canonical runtime methods are `Endpoint::receive` and `try_receive`. See
 the [receive ABI contract](../reference/ipc-receive.md).
 Callers encode only the service name and explicit requested rights with
-`charlotte_authorization::wire::encode_lookup`, copy that request into
+`knytos_authorization::wire::encode_lookup`, copy that request into
 `OP_LOOKUP_AUTHORIZED`, and receive a connection attenuated to the policy
 decision. Default is deny.
 
@@ -185,8 +185,8 @@ For AArch64, build and stage the service and Sitas bundles before invoking the
 runner:
 
 ```sh
-scripts/build-catten-services.sh --embed
-scripts/build-catten-user.sh --embed
+scripts/build-knytos-services.sh --embed
+scripts/build-knytos-user.sh --embed
 scripts/run-aarch64.sh debug --hvf --no-network --timeout 10
 ```
 
@@ -196,7 +196,7 @@ use the x86-64 runner or the
 [VMware appliance builder](../platforms/vmware-x86_64.md). The x86 runner has
 no HVF option, and native Intel Linux can select KVM with `--kvm`.
 
-These build scripts use Charlotte's AArch64 target specification and linker
+These build scripts use Knytos' AArch64 target specification and linker
 script and validate the generated ELF layout. Generated AArch64 programs are
 staged under `target/embedded-services/aarch64-unknown-none/`, and they are not
 source files and are not version-controlled. `scripts/run-aarch64.sh` exports
@@ -225,9 +225,9 @@ tests must point that variable at an already built and signed native bundle.
 Service bundles are architecture-qualified and must never be shared between
 AArch64 and x86-64 builds.
 
-`catten-user` currently integrates the sibling `sitas` checkout. CI obtains
+`knytos-user` currently integrates the sibling `sitas` checkout. CI obtains
 `FrodeRanders/sitas` at the pinned revision recorded in the workflow and places
-it at the path expected by `crates/catten-user/Cargo.toml`, and developer checkouts
+it at the path expected by `../../crates/knytos-user`, and developer checkouts
 may provide the same sibling repository locally.
 
 ## Building an out-of-tree application
@@ -242,7 +242,7 @@ the cluster:
    script, and `-Z json-target-spec`/`-Z build-std`. It generates a build-local
    target specification with an absolute path to the linker script, strips the
    result, and rejects writable-executable or page-overlapping LOAD segments.
-   The application is responsible for pinning the same CharlotteOS revision in
+   The application is responsible for pinning the same Knytos revision in
    its Cargo dependencies.
 2. **Sign.** `cluster-sign elf-sign` adds the CLS2 note with the application's
    chosen name, class, version, rollback counter, flags, and provenance. The
@@ -262,15 +262,15 @@ Build the platform tooling once and export a self-contained SDK tarball for
 application projects:
 
 ```sh
-scripts/export-app-sdk.sh --output /tmp/charlotte-app-sdk.tar.gz
+scripts/export-app-sdk.sh --output /tmp/knytos-app-sdk.tar.gz
 ```
 
 The tarball contains `build-external-elf.sh`, both architecture platform
 definitions, a standalone `cluster-sign` workspace, the publicly known
 development keys, and a `VERSION` file recording the OS revision and pinned
-toolchain. A project unpacks it and builds against it without a CharlotteOS
+toolchain. A project unpacks it and builds against it without a Knytos
 checkout.
 
-The `charlotte-kafka-broker` repository is the reference out-of-tree project:
+The `knytos-kafka-broker` repository is the reference out-of-tree project:
 its `tools/charlotte-sdk.sh`, `tools/build-elf.sh`, and `tools/package.sh`
 resolve either a checkout or an exported SDK, build the EL0 image, and sign it.

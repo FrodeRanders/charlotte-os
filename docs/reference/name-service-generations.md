@@ -2,7 +2,7 @@
 
 NS interface **2** uses one mandatory `CNSGEN01` moved-memory record for
 publication observation (opcode 18) and exact-generation unregistration (opcode
-10). `arg0` is the exact frame length. `charlotte-protocol-ns` defines the shared
+10). `arg0` is the exact frame length. `knytos-protocol-ns` defines the shared
 encoder/borrowed decoder; `catten_services::ns_generation` reexports it. The
 kernel's node NS endpoint advertises the same shared interface version.
 
@@ -161,7 +161,7 @@ remain separate. Historical IPC exact-exit and later persistence intermittence
 remain unresolved.
 
 The reference echo service accepts an optional byte-valued
-`cluster` (`charlotte_launch::echo_config::CLUSTER_NAME`) manifest entry. It delegates its endpoint to DNS for
+`cluster` (`knytos_launch::echo_config::CLUSTER_NAME`) manifest entry. It delegates its endpoint to DNS for
 that distinct name before serving; DNS then owns its NS publication. Lookup and
 publication use one original five-second budget with owned calls and no retry.
 Wrong manifest types reject. The native leader fixture supplies this entry;

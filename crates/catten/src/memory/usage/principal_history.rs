@@ -7,7 +7,7 @@ use core::{
     mem::ManuallyDrop,
 };
 
-use charlotte_lifecycle::resources::{
+use knytos_lifecycle::resources::{
     Amount,
     Budget,
     VectorBudget,

@@ -20,8 +20,8 @@ if [[ "$TRACE" == *private-value-must-not-appear* ]]; then
     exit 1
 fi
 [[ "$TRACE" == *'CLUSTER_SIGN_PRIVATE_KEY is retired'* ]]
-for script in run-aarch64.sh run-x86_64.sh build-catten-services.sh \
-    build-catten-services-x86_64.sh build-catten-user.sh sign-service-elfs.sh; do
+for script in run-aarch64.sh run-x86_64.sh build-knytos-services.sh \
+    build-knytos-services-x86_64.sh build-knytos-user.sh sign-service-elfs.sh; do
     OUTPUT="$(CATTEN_TRUST_MODE=production bash "$ROOT/scripts/$script" 2>&1 || true)"
     [[ "$OUTPUT" == *'production images are disabled'* ]]
 done

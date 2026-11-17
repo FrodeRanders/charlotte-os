@@ -30,12 +30,12 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/security_probe.rs": "1cc6816280650b47854957c249b4a794b6181dc70bb2a627cb2cd7e17f492979",
-    "crates/catten-services/src/bin/tcpclient.rs": "3ac005fd77669677e9c0c64d574eefc04bdcc5f20250a79bfce636eb4f163042",
-    "crates/catten-services/src/bin/tcpip.rs": "4277752327dac68625ee18c587cd243574723cc23bddc44ec48e6f8080f7ca3f",
-    "crates/catten-services/src/bin/time.rs": "91638eb0d69cf89383757061db885cf67dddb441c289aa114c756458e21262b1",
-    "crates/catten-services/src/lib.rs": "63a225c7bdfaa5ad1b719e8e58ce0e774c67aa9f582acbbde4734e2e3ae6bdb4",
-    "crates/catten-services/src/socket_state.rs": "e0f1accff832943ca16d865f8454008fd1d1db326798da093e36a290e411f5fa",
+    "crates/knytos-services/src/bin/security_probe.rs": "1cc6816280650b47854957c249b4a794b6181dc70bb2a627cb2cd7e17f492979",
+    "crates/knytos-services/src/bin/tcpclient.rs": "3ac005fd77669677e9c0c64d574eefc04bdcc5f20250a79bfce636eb4f163042",
+    "crates/knytos-services/src/bin/tcpip.rs": "4277752327dac68625ee18c587cd243574723cc23bddc44ec48e6f8080f7ca3f",
+    "crates/knytos-services/src/bin/time.rs": "91638eb0d69cf89383757061db885cf67dddb441c289aa114c756458e21262b1",
+    "crates/knytos-services/src/lib.rs": "63a225c7bdfaa5ad1b719e8e58ce0e774c67aa9f582acbbde4734e2e3ae6bdb4",
+    "crates/knytos-services/src/socket_state.rs": "e0f1accff832943ca16d865f8454008fd1d1db326798da093e36a290e411f5fa",
     "docs/guides/resource-ownership.md": "3b4b2f1ba3b95027d2c61c9df68f1d4a3e64828c43a7d569912b6b99d2346e82",
     "docs/guides/testing.md": "f184406ee6a6915a22d1f40d41dfa70a47c09f150bbdd32c170388c18ea0db47",
     "docs/manual-v2/chapters/13-networking.tex": "add19d7b24360f94d8f64ff5dcedd08fb22b3aa698e01380ff0833660dda6031",
@@ -411,7 +411,7 @@
   ],
   "failed_run_qualification": "Initial x86 security run panicked in final cancellation-stress domain reclamation after both application scopes passed. Kept separately from same-source/budget repeat; no causal resolution claimed. Historical close-policy regressions, UEFI timeout and other startup intermittence remain in baseline reports.",
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked",
     "cwd": "/private/tmp",
     "result": "204 passed; 0 failed",
     "exit_code": 0,
@@ -423,19 +423,19 @@
   "checks": {
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
-    "native_clippy": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin tcpip --bin security_probe --bin tcpclient --bin time --bin deployd --bin httpd -- -D warnings",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin tcpip --bin security_probe --bin tcpclient --bin time --bin deployd --bin httpd -- -D warnings",
     "host_clippy_sha256": "666a188d20dee9ad5833c8b39c8ba9f730848a5970d230ede072d436db8a0aaa",
     "native_clippy_sha256": "207f257d7d4ea7cee1458cc322abb0abb6546b3b907f7c43d81c4d2d98e1283e",
     "bundles": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ],
     "bundle_build_capture_sha256": {
       "arm": "fe6dc7ba37d1ffdbf40c0644ecfc2bcfae692c593f10fa0b353e91dcab4d1ef7",
       "x86": "6fdfdd6206291cc58e1ab124c1ea76589e0cf5422e89a5ec22322cf60a5b0b0f"
     },
-    "arm_reproduction": "scripts/build-catten-services.sh --check: signatures verified and current-source signed bytes match",
+    "arm_reproduction": "scripts/build-knytos-services.sh --check: signatures verified and current-source signed bytes match",
     "arm_reproduction_capture_sha256": "a7249c22ebd2eefd5b32417a46c8fa5f3fe18127220a6f106d91b0e898c989ea"
   },
   "formal_scope": {
