@@ -1,5 +1,5 @@
 [package]
-name = "charlotte-app-sitas"
+name = "knytos-app-sitas"
 version = "0.1.0"
 edition = "2024"
 description = "Owned Knytos call futures on the existing Sitas shard executor"

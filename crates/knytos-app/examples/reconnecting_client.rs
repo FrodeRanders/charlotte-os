@@ -7,7 +7,7 @@ use catten_rt::abi::{
     IPC_REPLY_ENDPOINT_CLOSED,
     ipc_status,
 };
-use charlotte_app::{
+use knytos_app::{
     grant_client,
     prelude::*,
 };
@@ -58,7 +58,7 @@ fn main(ctx: &Context) -> Result<AppExit, Failure> {
 }
 
 #[cfg(not(test))]
-charlotte_app::entry!(main);
+knytos_app::entry!(main);
 //APPEND
 
 //DISCOVERYBEGIN

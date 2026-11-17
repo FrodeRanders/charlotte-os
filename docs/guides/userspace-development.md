@@ -2,7 +2,7 @@
 
 Knytos Rust programs use `knytos-rt` as their small userspace runtime.
 The [application SDK guide](application-sdk.md) describes the smaller
-`charlotte-app` library, owned operation helpers, returning entry wrapper and
+`knytos-app` library, owned operation helpers, returning entry wrapper and
 independent project workflow. The [architecture note](../architecture/userspace-ergonomics.md)
 records its boundaries and remaining extensions.
 Run `cargo fmt --all` from the repository root to format every package,
@@ -262,7 +262,7 @@ Build the platform tooling once and export a self-contained SDK tarball for
 application projects:
 
 ```sh
-scripts/export-app-sdk.sh --output /tmp/charlotte-app-sdk.tar.gz
+scripts/export-app-sdk.sh --output /tmp/knytos-app-sdk.tar.gz
 ```
 
 The tarball contains `build-external-elf.sh`, both architecture platform

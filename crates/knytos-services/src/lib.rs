@@ -16,7 +16,7 @@ pub mod deployment_listener;
 pub mod deployment_output;
 pub mod network_random;
 pub mod socket_lifetime;
-pub use charlotte_app::socket_send;
+pub use knytos_app::socket_send;
 pub mod socket_state;
 pub mod status_observation;
 
@@ -40,9 +40,9 @@ pub mod deployment_http;
 pub mod deployment_input;
 pub mod entropy_service;
 /// Owned application-side wrapper for the capability-grant controller.
-pub use charlotte_app::grant_client;
+pub use knytos_app::grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
-pub use charlotte_app::kafka_client;
+pub use knytos_app::kafka_client;
 pub mod management_io;
 pub mod otlp;
 pub mod otlp_transport;
@@ -54,7 +54,7 @@ pub mod rng_device;
 #[path = "rng_device/contract.rs"]
 mod rng_device_contract;
 /// Owned application-side wrappers for the S3 service protocol.
-pub use charlotte_app::s3_client;
+pub use knytos_app::s3_client;
 pub mod status_input;
 /// Verified, owned TLS client transport shared by network services.
 pub mod tls_client;
@@ -692,7 +692,7 @@ pub mod block {
 /// `Move` on reply for recv). The service authenticates the sender envelope,
 /// binds each socket to that sender generation/principal, and enforces the
 /// launch-configured per-principal socket and buffer quotas.
-pub use charlotte_app::socket;
+pub use knytos_app::socket;
 
 /// The initial service exports scheduler statistics for its own protection
 /// domain. Other services can expose or voluntarily publish their own

@@ -10,7 +10,7 @@ test = false
 bench = false
 
 [dependencies]
-charlotte-app-sitas = { path = "../charlotte-app-sitas" }
+knytos-app-sitas = { path = "../knytos-app-sitas" }
 knytos-rt = { path = "../knytos-rt" }
 catten-syscall = { path = "../catten-syscall" }
 sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }

@@ -1,5 +1,5 @@
 [package]
-name = "charlotte-app"
+name = "knytos-app"
 version = "0.1.0"
 edition = "2024"
 description = "Owned application context and typed service clients for Knytos"

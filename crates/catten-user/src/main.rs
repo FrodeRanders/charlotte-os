@@ -188,7 +188,7 @@ fn run_owned_call_probe() -> bool {
     let Some(memory) = incoming.memory.take() else {
         return false;
     };
-    let Ok(backend) = charlotte_app_sitas::WakeReactor::new(CharlotteReactor::new(0), 0, 2) else {
+    let Ok(backend) = knytos_app_sitas::WakeReactor::new(CharlotteReactor::new(0), 0, 2) else {
         return false;
     };
     let calls = backend.handle();

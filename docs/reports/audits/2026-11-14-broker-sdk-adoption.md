@@ -7,7 +7,7 @@ This checkpoint does not expand the broker's production or Kafka feature claims.
 
 ## Changes and current limits
 
-The EL0 adapter uses `charlotte-app::Application`, its returning entry wrapper,
+The EL0 adapter uses `knytos-app::Application`, its returning entry wrapper,
 owned socket operations and one CQ-zero network loop. At most eight sessions
 retain their accepted calls, original request deadlines, sockets, input frames
 and confirmed output prefixes. Sockets borrow one enclosing connection; no
@@ -163,7 +163,7 @@ the tested dependency versions while removing unused SDK workspace members.
 ## Manual example
 
 “A client with explicit recovery scopes” includes the actual
-`charlotte-app/examples/reconnecting_client.rs` source. The review replaced the
+`knytos-app/examples/reconnecting_client.rs` source. The review replaced the
 misleading `ServiceRestarted` name with `EndpointLost`, separated unstarted
 `DeadlineExpired` from `SessionLimit`, retained rejected-wait details and used
 shared lifecycle-aware admission with the original operation deadline. Accepted

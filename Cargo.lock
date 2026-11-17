@@ -195,7 +195,7 @@ name = "catten-user"
 version = "0.1.0"
 dependencies = [
  "catten-syscall",
- "charlotte-app-sitas",
+ "knytos-app-sitas",
  "knytos-rt",
  "sitas-charlotte",
  "sitas-core",
@@ -247,26 +247,6 @@ dependencies = [
  "chacha20",
  "cipher 0.5.2",
  "poly1305",
-]
-
-[[package]]
-name = "charlotte-app"
-version = "0.1.0"
-dependencies = [
- "charlotte-launch",
- "charlotte-protocol-grant",
- "charlotte-protocol-kafka",
- "charlotte-protocol-s3",
- "knytos-rt",
-]
-
-[[package]]
-name = "charlotte-app-sitas"
-version = "0.1.0"
-dependencies = [
- "knytos-rt",
- "sitas-core",
- "spin 0.9.9",
 ]
 
 [[package]]
@@ -1050,6 +1030,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "knytos-app"
+version = "0.1.0"
+dependencies = [
+ "charlotte-launch",
+ "charlotte-protocol-grant",
+ "charlotte-protocol-kafka",
+ "charlotte-protocol-s3",
+ "knytos-rt",
+]
+
+[[package]]
+name = "knytos-app-sitas"
+version = "0.1.0"
+dependencies = [
+ "knytos-rt",
+ "sitas-core",
+ "spin 0.9.9",
+]
+
+[[package]]
 name = "knytos-graft"
 version = "0.1.0"
 dependencies = [
@@ -1076,7 +1076,6 @@ dependencies = [
  "aes",
  "aes-gcm",
  "catten-syscall",
- "charlotte-app",
  "charlotte-authorization",
  "charlotte-kafka",
  "charlotte-kafka-step",
@@ -1102,6 +1101,7 @@ dependencies = [
  "embedded-tls",
  "getrandom 0.4.3",
  "ghash",
+ "knytos-app",
  "knytos-graft",
  "knytos-rt",
  "p256",

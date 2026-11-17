@@ -16,7 +16,7 @@
 # Usage:
 #   scripts/export-app-sdk.sh [--output PATH]
 #
-# The output defaults to target/charlotte-app-sdk-<short-revision>.tar.gz and
+# The output defaults to target/knytos-app-sdk-<short-revision>.tar.gz and
 # a <output>.sha256 sidecar is written.
 set -euo pipefail
 
@@ -32,13 +32,13 @@ done
 REVISION="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 TOOLCHAIN="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$ROOT/rust-toolchain.toml" | head -1)"
 if [ -z "$OUTPUT" ]; then
-    OUTPUT="$ROOT/target/charlotte-app-sdk-${REVISION:0:12}.tar.gz"
+    OUTPUT="$ROOT/target/knytos-app-sdk-${REVISION:0:12}.tar.gz"
 fi
 mkdir -p "$(dirname "$OUTPUT")"
 
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-app-sdk.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/knytos-app-sdk.XXXXXX")"
 trap 'rm -rf -- "$STAGE"' EXIT
-SDK="$STAGE/charlotte-app-sdk"
+SDK="$STAGE/knytos-app-sdk"
 mkdir -p "$SDK/platform/aarch64" "$SDK/platform/x86_64" "$SDK/signer/tools" \
     "$SDK/signer/crates" "$SDK/keys"
 
@@ -65,7 +65,7 @@ EOF
 # Application source closure is independent of the platform service package.
 mkdir -p "$SDK/crates"
 for package in knytos-rt catten-syscall charlotte-launch charlotte-lifecycle \
-    charlotte-app charlotte-app-sitas charlotte-protocol-grant \
+    knytos-app knytos-app-sitas charlotte-protocol-grant \
     charlotte-protocol-kafka charlotte-protocol-s3 charlotte-kafka; do
     tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - "$package" \
         | tar -C "$SDK/crates" -xf -
@@ -76,7 +76,7 @@ SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "$ROOT/.github/workflows/ci.yml" 
 git -C "$SITAS_DIR" archive "$SITAS_REVISION" crates/sitas-core crates/sitas-charlotte crates/sitas-unix \
     | tar -C "$SDK" -xf -
 # Both source trees now live inside the SDK, without a required sibling checkout.
-python3 - "$SDK/crates/charlotte-app-sitas/Cargo.toml" <<'PYSDK'
+python3 - "$SDK/crates/knytos-app-sitas/Cargo.toml" <<'PYSDK'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
@@ -171,7 +171,7 @@ lock = dict(schema=2, os_revision=revision, toolchain=toolchain,
 PYSDK
 
 rm -f "$OUTPUT"
-tar -czf "$OUTPUT" -C "$STAGE" charlotte-app-sdk
+tar -czf "$OUTPUT" -C "$STAGE" knytos-app-sdk
 
 if command -v sha256sum >/dev/null 2>&1; then
     DIGEST="$(sha256sum "$OUTPUT" | awk '{print $1}')"

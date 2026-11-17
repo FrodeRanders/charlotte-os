@@ -457,7 +457,7 @@ the broader design history.
 
 \section{Application helpers}
 
-The \texttt{charlotte-app} library packages launch-grant borrowing, named
+The \texttt{knytos-app} library packages launch-grant borrowing, named
 acquisition, publication and typed socket, Kafka and S3 clients separately
 from the platform service implementations. Optional client features keep the
 application dependency boundary explicit. Its returning \texttt{entry!}
@@ -471,7 +471,7 @@ owner on deadline or rejected wait admission. The explicit
 \texttt{cancel\_on\_failure} convenience policy uses the existing fail-closed
 cleanup. Observation deadlines do not promise bounded teardown latency.
 
-\texttt{charlotte-app-sitas} wraps the existing Sitas reactor and supplies owned
+\texttt{knytos-app-sitas} wraps the existing Sitas reactor and supplies owned
 call futures. IPC readiness can be a CQ wake without a cookie entry, so the
 wrapper rechecks a bounded, fallibly prepared set of task interests after
 backend wakes. The backend remains the only ring consumer, so results still come

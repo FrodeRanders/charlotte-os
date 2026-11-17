@@ -7,7 +7,7 @@ not close kernel cleanup gates or qualify every connector operation.
 
 ## Result and scope
 
-- `charlotte-app` has no dependency on platform service implementations.
+- `knytos-app` has no dependency on platform service implementations.
   `knytos-services` reexports its single grant/socket/Kafka/S3 client
   implementations. Grant wire data lives in `charlotte-protocol-grant`.
 - Runtime helpers retain existing owners: bounded queue-pressure admission,
@@ -15,7 +15,7 @@ not close kernel cleanup gates or qualify every connector operation.
   generation-bound native worker custody. The entry wrapper runs its terminal
   action after a returning application scope. Synchronous serving retains the
   authenticated request envelope and permits one publication attempt.
-- `charlotte-app-sitas` supplies owned call futures using the existing executor
+- `knytos-app-sitas` supplies owned call futures using the existing executor
   and sole backend CQ consumer. Backend wait rejection is terminal, retaining
   executor owners instead of permitting older executors' error retry loop.
 - The SDK exports an exact hashed source closure, target tools, pinned Sitas
@@ -40,7 +40,7 @@ test verifies terminal handling without releasing its registered interest.
 These host seams do not qualify native capability revocation or CQ delivery.
 
 `cargo fmt --all -- --check` and Clippy with all features/targets and denied
-warnings passed for `knytos-rt`, `charlotte-app` and `charlotte-app-sitas`.
+warnings passed for `knytos-rt`, `knytos-app` and `knytos-app-sitas`.
 The bundled AArch64 services built and signed through
 `scripts/build-knytos-services.sh`. The reconnecting-client and echo-service
 examples compiled for AArch64 and x86_64. The echo helper itself was compiled,

@@ -1,6 +1,6 @@
 # A client that can replace its service connection
 
-The [copyable Rust example](../../crates/charlotte-app/examples/reconnecting_client.rs)
+The [copyable Rust example](../../crates/knytos-app/examples/reconnecting_client.rs)
 uses the current userspace APIs. The manual includes this file directly in
 Chapter 5, “Service identity and discovery.” It performs three read-only greeting
 requests and can replace its connection before continuing the unfinished read.
@@ -76,9 +76,9 @@ From the repository root, build the example as a freestanding ELF for each
 architecture:
 
 ```sh
-cargo build --locked -p charlotte-app --example reconnecting_client \
+cargo build --locked -p knytos-app --example reconnecting_client \
   --target crates/knytos-services/aarch64-unknown-none.json
-cargo build --locked -p charlotte-app --example reconnecting_client \
+cargo build --locked -p knytos-app --example reconnecting_client \
   --target crates/knytos-services/x86_64-unknown-none.json
 bash scripts/run-host-tests.sh
 ```
@@ -86,7 +86,7 @@ bash scripts/run-host-tests.sh
 These builds produce unsigned ELFs. Use the normal
 [signing and deployment workflow](signing-and-trust.md) before launching one.
 
-The [example's host tests](../../crates/charlotte-app/examples/reconnecting_client/tests.rs)
+The [example's host tests](../../crates/knytos-app/examples/reconnecting_client/tests.rs)
 check endpoint-loss classification, refusal to replay cancellation and exact
 business-reply validation. Cross-target compilation checks the actual SDK
 types and consuming operations. These checks do not execute a deployed

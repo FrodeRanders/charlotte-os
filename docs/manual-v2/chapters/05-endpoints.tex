@@ -513,8 +513,8 @@ Keep the recovery scopes nested in this order:
 \end{samepage}
 
 The complete source is
-\repofile{crates/charlotte-app/examples/reconnecting_client.rs}. It depends on
-\texttt{knytos-rt}, \texttt{charlotte-app} and
+\repofile{crates/knytos-app/examples/reconnecting_client.rs}. It depends on
+\texttt{knytos-rt}, \texttt{knytos-app} and
 \texttt{charlotte-launch}. The listings below include that source directly, and
 the conditional attributes only allow its host tests to use Rust's test harness.
 
@@ -524,7 +524,7 @@ or cooperative shutdown, \texttt{run} must return and its owned resources must
 leave scope. If cancellation fails, the example instead aborts with those
 owners still in place, as shown below.
 
-\lstinputlisting[style=rustCode,linerange={APPBEGIN-APPEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={APPBEGIN-APPEND},rangeprefix={//},includerangemarker=false]{../../crates/knytos-app/examples/reconnecting_client.rs}
 
 \paragraph*{Discovery and session lifetime.}
 \texttt{Work} outlives every connection, keeping business progress outside the
@@ -537,7 +537,7 @@ reconnection, repeated discovery cannot renew its budget.
 Authorization, resource and malformed-request errors return to application policy.
 There is no fallback to public lookup.
 
-\lstinputlisting[style=rustCode,linerange={DISCOVERYBEGIN-DISCOVERYEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={DISCOVERYBEGIN-DISCOVERYEND},rangeprefix={//},includerangemarker=false]{../../crates/knytos-app/examples/reconnecting_client.rs}
 
 \paragraph*{Business operation.}
 The inner scope uses the current session. It classifies the current
@@ -551,7 +551,7 @@ then, shared \texttt{Admission} retries only unstarted queue pressure within the
 same deadline, checking lifecycle between attempts. An accepted timeout never
 enters that admission retry path.
 
-\lstinputlisting[style=rustCode,linerange={SESSIONBEGIN-SESSIONEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={SESSIONBEGIN-SESSIONEND},rangeprefix={//},includerangemarker=false]{../../crates/knytos-app/examples/reconnecting_client.rs}
 
 \begin{samepage}
 \paragraph*{Accepted-call lifetime.}
@@ -562,7 +562,7 @@ through terminal domain abort. Cancellation can wait for loan cleanup, so the
 five-second observation budget is not a guaranteed teardown deadline.\par
 \end{samepage}
 
-\lstinputlisting[style=rustCode,linerange={CALLBEGIN-CALLEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={CALLBEGIN-CALLEND},rangeprefix={//},includerangemarker=false]{../../crates/knytos-app/examples/reconnecting_client.rs}
 
 This example can repeat an unconfirmed greeting read after endpoint loss because
 the operation is read-only. A write, payment, device command or other mutation

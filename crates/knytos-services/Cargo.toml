@@ -118,7 +118,7 @@ test = false
 bench = false
 
 [dependencies]
-charlotte-app = { path = "../charlotte-app", features = ["kafka", "s3", "socket"] }
+knytos-app = { path = "../knytos-app", features = ["kafka", "s3", "socket"] }
 charlotte-protocol-grant = { path = "../charlotte-protocol-grant" }
 charlotte-management-tls = { path = "../charlotte-management-tls" }
 charlotte-authorization = { path = "../charlotte-authorization" }

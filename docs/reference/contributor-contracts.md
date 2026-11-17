@@ -1327,7 +1327,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   capabilities.
 - Service/client helpers wrap protocol lifetimes on top of `knytos-rt::owned`;
   they do not duplicate syscall cleanup.
-- `charlotte-app` packages application context and optional protocol clients
+- `knytos-app` packages application context and optional protocol clients
   without depending on platform service implementations. `knytos-services`
   reexports the same client implementations. The Sitas adapter composes the
   existing executor/backend and never independently consumes its CQ ring; see

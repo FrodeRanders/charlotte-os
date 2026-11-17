@@ -11,7 +11,7 @@ The broker is an appropriate application acceptance case. Its pure core, wire,
 engine and shard-runtime layers already support an independent host loop.
 Build/sign tooling consumes platform inputs without staging the broker into an
 OS bundle. The EL0 adapter still uses the older `knytos-services` client surface
-and local platform scripts; it has not adopted `charlotte-app` or the new CLI.
+and local platform scripts; it has not adopted `knytos-app` or the new CLI.
 The foundation needs the concrete extensions below before this concurrent TCP
 server becomes a complete example of the new SDK.
 
@@ -30,7 +30,7 @@ transferable. This compile-only check against the new application library fails:
 
 ```rust
 use std::sync::Arc;
-use charlotte_app::{owned::Connection, socket::{self, OwnedSocket}};
+use knytos_app::{owned::Connection, socket::{self, OwnedSocket}};
 pub fn handoff(tcp: Arc<Connection>) {
     let socket = OwnedSocket::open(tcp.as_ref().as_ref(), socket::DOMAIN_TCP).unwrap();
     let _worker: Box<dyn FnOnce() + Send + 'static> = Box::new(move || {

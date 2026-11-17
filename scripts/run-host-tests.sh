@@ -411,7 +411,7 @@ for manifest in "${manifests[@]}"; do
     # binary targets while retaining host unit tests in its library. Cargo
     # applies `test = false` per target, so let it select the enabled targets.
     features=()
-    if [ "$manifest" = "crates/charlotte-app/Cargo.toml" ]; then features=(--all-features); fi
+    if [ "$manifest" = "crates/knytos-app/Cargo.toml" ]; then features=(--all-features); fi
     RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \
         --manifest-path "$repo_root/$manifest" "${features[@]}"
 done
