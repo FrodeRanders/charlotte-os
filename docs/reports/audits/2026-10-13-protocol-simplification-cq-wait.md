@@ -170,7 +170,7 @@ not retrospective evidence for the failed guest.
   strict all-target Clippy, rustfmt and rustdoc pass. Tests retain sleep/reactor
   deadline through successive wakes, backward time and maximum budgets, and
   distinguish rejected/invalid/event-only-deadline outcomes.
-- Both signed bundles and ARM catten-user rebuilt. Strict service and linked
+- Both signed bundles and ARM knytos-user rebuilt. Strict service and linked
   kernel Clippy passes on both architectures. Native runners check kernel
   executable/read-only assembly sections. Rust formatting and source syntax/diff
   checks pass. The exact Sitas evidence patch is excluded from whitespace checks:
@@ -241,7 +241,7 @@ later be overwritten; these inline hashes preserve the original runs.
 | Final greet/variant fixture bundle | `86018b073e2a143e5f8fed747da730b1a2dc465be1a035e590edb05eddc33854` |
 | Signed ARM greet | `4e35b4a7fbe60b63c083b98cfaddebb21ef95351e83fee93fe5a09278ef1eb7f` |
 | Signed x86 greet | `a9bb27d0d53d73c35ac9eb877f8dd62773b7066b26eb96be4627810ae643da2b` |
-| Signed ARM catten-user | `a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564` |
+| Signed ARM knytos-user | `a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564` |
 | Pre-clock ARM S3 kernel | `d30daf5c9c87792465ad0594f939e26754d9c891d8786cfc8103817a54327547` |
 | Pre-clock ARM security kernel | `9858f80eefe062a1aa961aa7c5f661cf750fa115ff911a0589b2694e22db5946` |
 | Pre-clock ARM S3 descriptor | `9556f26441242f50c1a72bc9b40c4c57c76332aa5722eef946165ac79850d52f` |

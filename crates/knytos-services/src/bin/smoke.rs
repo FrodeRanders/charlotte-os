@@ -12,7 +12,7 @@ use catten_rt::{
     Context,
     config,
 };
-use catten_syscall::{
+use knytos_syscall::{
     el0_log,
     thread_exit,
 };

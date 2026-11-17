@@ -32610,7 +32610,7 @@
         6
       ],
       "callee": "ipc::buffer::<CapVectorEntry>",
-      "value_type": "alloc::vec::Vec<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::Vec<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "90c058ad74926dc4",
       "profiles": [
         "arm-acpi-minimal",
@@ -32764,7 +32764,7 @@
         6
       ],
       "callee": "drop",
-      "value_type": "alloc::vec::IntoIter<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::IntoIter<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "d209d083723e4fbd",
       "profiles": [
         "arm-acpi-minimal",
@@ -32808,7 +32808,7 @@
         6
       ],
       "callee": "drop",
-      "value_type": "alloc::vec::Vec<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::Vec<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "abc769057f15f109",
       "profiles": [
         "arm-acpi-minimal",
@@ -36724,7 +36724,7 @@
         93
       ],
       "callee": "drop",
-      "value_type": "impl FnMut(catten_syscall::metadata_pools::Sample)",
+      "value_type": "impl FnMut(knytos_syscall::metadata_pools::Sample)",
       "id": "2a78685751434ac3",
       "profiles": [
         "arm-acpi-minimal",

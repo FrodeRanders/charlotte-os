@@ -28,7 +28,7 @@ use catten_services::{
     ns,
     wait_reply,
 };
-use catten_syscall::{
+use knytos_syscall::{
     DmaDirection,
     IpcRights,
     device_irq_ack,
@@ -520,7 +520,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // descriptor engines. Issue it even after a drain timeout to stop
             // DMA, but publish graceful quiescence only if the queue drained.
             let reset = unsafe { reset_controller() };
-            if endpoint_closed && tx_drained && reset && catten_syscall::device_close(irq_cap) == 0
+            if endpoint_closed && tx_drained && reset && knytos_syscall::device_close(irq_cap) == 0
             {
                 return request;
             }
@@ -678,7 +678,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                     unsafe {
                         device_mmio_unmap(mmio_cap);
-                        catten_syscall::device_close(irq_cap);
+                        knytos_syscall::device_close(irq_cap);
                         thread_exit();
                     }
                 }

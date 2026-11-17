@@ -27,7 +27,7 @@ pub(crate) fn test_rejection(frame: &mut TrapFrame, stage: usize) {
 }
 
 fn encoded_len(threads: usize, domains: usize, pools: usize) -> Result<usize, Error> {
-    use catten_syscall::{
+    use knytos_syscall::{
         THREAD_STATISTICS_DOMAIN_RECORD_U64S,
         THREAD_STATISTICS_HEADER_U64S,
         THREAD_STATISTICS_RECORD_U64S,
@@ -41,7 +41,7 @@ fn encoded_len(threads: usize, domains: usize, pools: usize) -> Result<usize, Er
         })
         .and_then(|words| {
             pools
-                .checked_mul(catten_syscall::metadata_pools::WORDS)
+                .checked_mul(knytos_syscall::metadata_pools::WORDS)
                 .and_then(|pool_words| words.checked_add(pool_words))
         })
         .and_then(|words| words.checked_add(THREAD_STATISTICS_HEADER_U64S))
@@ -50,7 +50,7 @@ fn encoded_len(threads: usize, domains: usize, pools: usize) -> Result<usize, Er
 }
 
 fn capture_inner(frame: &mut TrapFrame, reject: usize) {
-    use catten_syscall::{
+    use knytos_syscall::{
         OBSERVABILITY_NONE,
         THREAD_STATISTICS_DOMAIN_RECORD_U64S,
         THREAD_STATISTICS_HEADER_U64S,
@@ -77,7 +77,7 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
     }
     let scope = (!observer).then_some(asid);
     let pool_count = if observer {
-        catten_syscall::metadata_pools::COUNT
+        knytos_syscall::metadata_pools::COUNT
     } else {
         0
     };
@@ -132,7 +132,7 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
         (THREAD_STATISTICS_DOMAIN_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
     header_words[header::DOMAIN_RECORD_COUNT] = domains.len() as u64;
     header_words[header::METADATA_RECORD_BYTES] =
-        (catten_syscall::metadata_pools::WORDS * 8) as u64;
+        (knytos_syscall::metadata_pools::WORDS * 8) as u64;
     header_words[header::METADATA_RECORD_COUNT] = pool_count as u64;
     let recovery = crate::memory::retirement::recovery::status_words(observer);
     header_words[header::ROOT_RECOVERY_AWAITING..=header::ROOT_RECOVERY_CAPACITY]
@@ -279,7 +279,7 @@ pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
     crate::logln!(
         "[metadata admission] {} independent pools; heap-held nonblocking observation, busy state \
          and owner sizes passed",
-        catten_syscall::metadata_pools::COUNT
+        knytos_syscall::metadata_pools::COUNT
     );
     memory::usage::test_snapshot_heap();
     crate::logln!(

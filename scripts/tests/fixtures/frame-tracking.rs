@@ -1,7 +1,7 @@
 #![feature(allocator_ext)]
 #![allow(dead_code, unused_imports, unused_attributes)]
 extern crate alloc;
-extern crate self as catten_syscall;
+extern crate self as knytos_syscall;
 extern crate self as charlotte_lifecycle;
 #[path = SDK]
 mod syscall_format;

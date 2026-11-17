@@ -34,7 +34,7 @@ use catten_services::{
     },
     ns,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcMessage,
     IpcRights,
     completion_status,
@@ -795,7 +795,7 @@ fn retire_closed(
     registry: &mut Registry,
     policy: &mut PolicyStore,
     own_identity: DomainIdentity,
-    entry: &catten_syscall::CqEntry,
+    entry: &knytos_syscall::CqEntry,
 ) {
     use catten_services::ns_publication::Observation;
     for (name, registration) in registry.iter_mut() {
@@ -836,7 +836,7 @@ fn main(ctx: Context) -> ! {
 
     let mut registry: Registry = BTreeMap::new();
     let mut waitlist: Waitlist = catten_services::broker::KeyedWaitlist::new();
-    let own = catten_syscall::get_domain_identity();
+    let own = knytos_syscall::get_domain_identity();
     let own_identity = DomainIdentity::new(own.asid, own.generation)
         .expect("name service received an invalid kernel identity");
     let own_principal =

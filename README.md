@@ -228,7 +228,7 @@ The main additions and extensions currently maintained here are:
   safe configurations and expected-counterexample regressions.
 - **[Sitas](https://github.com/FrodeRanders/sitas) shard runtime at EL0:**
   the `Sitas` no_std shard-per-core runtime (external crates) runs as a real
-  EL0 image (`catten-user`) boot-tested by the kernel. A mailbox index demo
+  EL0 image (`knytos-user`) boot-tested by the kernel. A mailbox index demo
   shows the division of responsibility: scanner shards route entries to
   logical assemblers through typed owned messages in userspace, and the
   coordinator merges and verifies the result, while the kernel only supplies

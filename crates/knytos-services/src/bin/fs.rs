@@ -32,7 +32,7 @@ use catten_services::{
     ns,
     objstore,
 };
-use catten_syscall::{
+use knytos_syscall::{
     ipc_status,
     *,
 };

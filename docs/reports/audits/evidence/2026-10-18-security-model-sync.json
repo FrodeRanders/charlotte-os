@@ -138,7 +138,7 @@
     "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
     "crates/knytos-rt/src/owned/completion.rs": "c9e3db6761c685c55c71a094269fa67f12af84c2f9a3780525178f81b7782910",
     "crates/knytos-services/src/bin/ns.rs": "4930dfdf257dc55669b4fa22909c9afaba3d95151e2b04d3f8c7217a2989b28a",
-    "crates/catten-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c"
+    "crates/knytos-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c"
   },
   "cases": [
     {

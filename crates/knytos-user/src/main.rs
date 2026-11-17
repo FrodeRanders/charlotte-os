@@ -14,7 +14,7 @@ use catten_rt::{
     Context,
     config,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use sitas_charlotte::CharlotteReactor;
 
 fn main(ctx: Context) -> ! {
@@ -88,7 +88,7 @@ fn run_join_probe(reactor: &CharlotteReactor, out: *mut u32) {
 /// monotonic deadline bounds readiness waits, including unrelated wakeups.
 fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
     let layout = ctx.completion_queue_layout();
-    let (started, frequency) = catten_syscall::monotonic_clock();
+    let (started, frequency) = knytos_syscall::monotonic_clock();
     if frequency == 0 {
         return false;
     }
@@ -97,7 +97,7 @@ fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
             return false;
         };
         loop {
-            let (now, current_frequency) = catten_syscall::monotonic_clock();
+            let (now, current_frequency) = knytos_syscall::monotonic_clock();
             if current_frequency != frequency || now < started {
                 return false;
             }
@@ -110,9 +110,9 @@ fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
                 // SAFETY: crt0 retains this mapped CQ page; all workers have
                 // joined. SDK and Sitas readers alternate on this one thread,
                 // never concurrently accessing tail or entries.
-                unsafe { catten_syscall::cq_read(layout.base, layout.entries) }
+                unsafe { knytos_syscall::cq_read(layout.base, layout.entries) }
             } else {
-                reactor.cq().read_one().map(|entry| catten_syscall::CqEntry {
+                reactor.cq().read_one().map(|entry| knytos_syscall::CqEntry {
                     operation: entry.operation,
                     cookie: entry.cookie,
                     status: entry.status,
@@ -169,7 +169,7 @@ fn run_owned_call_probe() -> bool {
     let Ok(endpoint) = Endpoint::create(0x46555452, 1, 4) else {
         return false;
     };
-    let Ok(connection) = endpoint.connect(catten_syscall::IpcRights::CALL) else {
+    let Ok(connection) = endpoint.connect(knytos_syscall::IpcRights::CALL) else {
         return false;
     };
     let Ok(payload) = OwnedPayload::copy_from(b"owned future", 32) else {

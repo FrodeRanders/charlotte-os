@@ -67,7 +67,7 @@ use catten_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     cq_read,
     ipc_recv,
     ipc_reply,
@@ -152,7 +152,7 @@ use catten_services::{
 };
 
 fn owner_status(owner: SocketOwner) -> u64 {
-    catten_syscall::socket_owner_status(owner.address_space, owner.generation, owner.principal)
+    knytos_syscall::socket_owner_status(owner.address_space, owner.generation, owner.principal)
 }
 
 fn tcpip_policy_value(ctx: &Context, key: u64, default: usize, maximum: usize) -> usize {
@@ -357,7 +357,7 @@ fn install_interface_addresses(
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
-    catten_syscall::el0_log(0x5443_5049, code as u64); // "TCPI"
+    knytos_syscall::el0_log(0x5443_5049, code as u64); // "TCPI"
     unsafe { thread_exit() }
 }
 
@@ -534,7 +534,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         next_sock_id: 1,
         random,
     };
-    let (counter, frequency) = catten_syscall::monotonic_clock();
+    let (counter, frequency) = knytos_syscall::monotonic_clock();
     let mut clock = ReactorClock::new(counter, frequency).unwrap_or_else(|| fail(0xe00b));
     let mut rx_queue_drops = 0u64;
     let mut rx_total: u32 = 0;
@@ -583,7 +583,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             catten_rt::logln!("[tcpip] shutdown: released {} socket(s)", socket_count);
             return request;
         }
-        let (counter, frequency) = catten_syscall::monotonic_clock();
+        let (counter, frequency) = knytos_syscall::monotonic_clock();
         let ticks = clock.sample(counter, frequency).unwrap_or_else(|| fail(0xe00b));
         config::write::<u64>(status::MONOTONIC_MS, ticks);
         device.poll_smoltcp(&mut iface, &mut sockets, ticks);
@@ -1388,7 +1388,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_FRAME => {
-                    if !catten_syscall::is_frame_router(msg.sender, msg.sender_generation) {
+                    if !knytos_syscall::is_frame_router(msg.sender, msg.sender_generation) {
                         if msg.memory != 0 {
                             memory_close(msg.memory);
                         }

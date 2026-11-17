@@ -217,7 +217,7 @@ fn main(ctx: Context) -> ! {
         .unwrap_or_else(|| catten_rt::domain_abort());
     // A deployed application also borrows ctx.profile_memory().
     // See the complete client in Section 5's discovery discussion.
-    unsafe { catten_syscall::thread_exit() }
+    unsafe { knytos_syscall::thread_exit() }
 }
 
 catten_rt::entry!(main);
@@ -277,7 +277,7 @@ integers. Application code should use the linear wrappers in
         so a replacement thread cannot satisfy a delayed join.
 \end{itemize}
 
-The raw \texttt{catten-syscall} interface remains available to runtimes and
+The raw \texttt{knytos-syscall} interface remains available to runtimes and
 drivers. Coherent \texttt{dma\_map} is explicitly unsafe because the driver
 must synchronize CPU references and device access itself. Mixing raw
 operations with an adopted ownership wrapper violates the wrapper's safety
@@ -420,7 +420,7 @@ pending call's terminal cleanup. The complete example in
 \autoref{sec:reconnecting-client} uses these APIs.
 
 The raw register ABI lives in the
-\repofiletext|crates/catten-syscall/src/lib.rs|{syscall SDK} and
+\repofiletext|crates/knytos-syscall/src/lib.rs|{syscall SDK} and
 \repofiletext|crates/catten/src/syscall/mod.rs|{kernel dispatcher}. The
 \repofiletext|docs/reference/ipc-receive.md|{receive contract} and
 \repofiletext|docs/reference/cq-wait.md|{checked CQ wait contract} describe their

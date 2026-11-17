@@ -20,7 +20,7 @@ use catten_services::{
         TAG_VOTE_RESPONSE,
     },
 };
-use catten_syscall::{
+use knytos_syscall::{
     ipc_close,
     ipc_reply_wait_with_memory,
     ipc_scalar_call,

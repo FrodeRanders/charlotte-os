@@ -33,7 +33,7 @@ fn submit<T>(
     loop {
         match attempt() {
             Ok(call) => return Ok(call),
-            Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)) if !expired() => pause(),
+            Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL)) if !expired() => pause(),
             Err(error) => return Err(error),
         }
     }
@@ -52,9 +52,9 @@ pub fn register(names: ConnectionRef<'_>, name: u64, endpoint: &Endpoint) -> Res
                 ns::OP_REGISTER,
                 name,
                 endpoint,
-                catten_syscall::IpcRights::SEND
-                    | catten_syscall::IpcRights::CALL
-                    | catten_syscall::IpcRights::MINT_CONNECTION,
+                knytos_syscall::IpcRights::SEND
+                    | knytos_syscall::IpcRights::CALL
+                    | knytos_syscall::IpcRights::MINT_CONNECTION,
             )
         },
         || deadline.expired(),
@@ -97,7 +97,7 @@ mod tests {
             || {
                 attempts.set(attempts.get() + 1);
                 if attempts.get() < 3 {
-                    Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))
+                    Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL))
                 } else {
                     Ok(7)
                 }
@@ -112,8 +112,8 @@ mod tests {
     #[test]
     fn expired_and_permanent_rejections_are_not_replayed() {
         for (error, expired) in [
-            (IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL), true),
-            (IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT), false),
+            (IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL), true),
+            (IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT), false),
             (IpcError::CreationFailed, false),
         ] {
             let attempts = Cell::new(0);

@@ -35,7 +35,7 @@ use catten_services::{
     },
     virtio,
 };
-use catten_syscall::{
+use knytos_syscall::{
     DmaDirection,
     cq_read,
     thread_exit,

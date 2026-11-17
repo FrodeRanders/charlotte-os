@@ -18,7 +18,7 @@ HW["Hardware and firmware<br/>CPU · RAM · PCIe · NVMe · NIC · timers"]
       end
 
       subgraph U["Userspace — isolated protection domains"]
-          ABI["catten-syscall<br/>raw ABI"]
+          ABI["knytos-syscall<br/>raw ABI"]
           RT["knytos-rt::owned<br/>linear resource ownership"]
           PROTOCOLS["Typed protocol crates"]
           SERVICES["Drivers and system services"]

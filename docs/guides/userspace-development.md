@@ -8,7 +8,7 @@ records its boundaries and remaining extensions.
 Run `cargo fmt --all` from the repository root to format every package,
 including the separately targeted service and application crates and host
 tools. Use `cargo fmt --all -- --check` for a non-mutating CI-style check.
-Because `catten-user` is part of that workspace, its sibling
+Because `knytos-user` is part of that workspace, its sibling
 `../../gautelis/sitas` path dependency must be checked out, and CI provisions the
 pinned revision before running workspace tooling.
 The source-level entry contract is:
@@ -24,7 +24,7 @@ fn main(ctx: Context) -> ! {
     let mode = ctx.manifest_value(catten_rt::manifest_key(b"mode"));
 
     // Program or service loop.
-    unsafe { catten_syscall::thread_exit() }
+    unsafe { knytos_syscall::thread_exit() }
 }
 
 catten_rt::entry!(main);
@@ -129,7 +129,7 @@ Protocol-specific scalar resources also need owners, and
 `catten_services::socket::OwnedSocket` supplies explicit fallible close plus a
 best-effort `Drop` fallback for TCP/IP socket IDs.
 
-Keep raw `catten-syscall` calls within the runtime and documented driver
+Keep raw `knytos-syscall` calls within the runtime and documented driver
 boundaries. Service code should use the owning runtime types.
 Coherent `dma_map` is explicitly unsafe because the driver must
 synchronize CPU references and device access itself. Both DMA-map forms return
@@ -186,7 +186,7 @@ runner:
 
 ```sh
 scripts/build-knytos-services.sh --embed
-scripts/build-catten-user.sh --embed
+scripts/build-knytos-user.sh --embed
 scripts/run-aarch64.sh debug --hvf --no-network --timeout 10
 ```
 
@@ -225,9 +225,9 @@ tests must point that variable at an already built and signed native bundle.
 Service bundles are architecture-qualified and must never be shared between
 AArch64 and x86-64 builds.
 
-`catten-user` currently integrates the sibling `sitas` checkout. CI obtains
+`knytos-user` currently integrates the sibling `sitas` checkout. CI obtains
 `FrodeRanders/sitas` at the pinned revision recorded in the workflow and places
-it at the path expected by `crates/catten-user/Cargo.toml`, and developer checkouts
+it at the path expected by `../../crates/knytos-user`, and developer checkouts
 may provide the same sibling repository locally.
 
 ## Building an out-of-tree application

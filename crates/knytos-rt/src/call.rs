@@ -103,7 +103,7 @@ impl<'a> Admission<'a> {
             }
             match submit() {
                 Ok(owner) => return Ok(owner),
-                Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)) => {
+                Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL)) => {
                     let pause =
                         Completion::timer(self.deadline.remaining_ms().min(remaining).min(1))
                             .map_err(AdmissionError::Backoff)?;
@@ -168,7 +168,7 @@ impl<'memory> PendingCall<'memory> {
         match self.wait_timeout(deadline.remaining_ms()) {
             Ok(Some(reply)) => CallObservation::Reply(reply),
             Ok(None) => CallObservation::Deadline(self),
-            Err(error @ IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT)) => {
+            Err(error @ IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT)) => {
                 CallObservation::WaitRejected {
                     pending: self,
                     error,
@@ -218,7 +218,7 @@ mod tests {
         let mut attempts = 0;
         let error = Admission::new(&deadline).submit::<()>(|| {
             attempts += 1;
-            Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))
+            Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL))
         });
         assert_eq!(error, Err(AdmissionError::Deadline));
         assert_eq!(attempts, 1);
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn timeout_and_wait_rejection_keep_pending_loan_until_cancellation() {
         let _guard = kernel::serial();
-        for status in [1, catten_syscall::ipc_status::RESOURCE_LIMIT] {
+        for status in [1, knytos_syscall::ipc_status::RESOURCE_LIMIT] {
             kernel::reset();
             kernel::update(|s| s.ipc_reply.push_back((status, 0, 0, 0)));
             let connection = unsafe { Connection::from_raw(8) }.unwrap();

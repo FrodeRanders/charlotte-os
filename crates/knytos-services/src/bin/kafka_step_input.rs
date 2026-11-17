@@ -15,7 +15,7 @@ use catten_services::{
     sleep_ms,
     wait_for_registered_name_bytes_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::kafka_step_input_status as status;
 use charlotte_protocol_kafka::RecordRequest;
 

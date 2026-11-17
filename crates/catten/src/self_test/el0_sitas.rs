@@ -1,7 +1,7 @@
-//! Self-test: load the Rust-compiled Sitas-based catten-user binary at EL0.
+//! Self-test: load the Rust-compiled Sitas-based knytos-user binary at EL0.
 //!
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
-//! ELF produced by the repository's pinned toolchain for the catten-user target
+//! ELF produced by the repository's pinned toolchain for the knytos-user target
 //! (which links against sitas-core and sitas-charlotte).  The kernel maps
 //! PT_LOAD segments at their linked virtual addresses with page permissions
 //! derived from ELF flags.
@@ -53,14 +53,14 @@ const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
 /// (mirrors `sitas_core::mailbox_index::RECORD_COUNT`).
 #[cfg(target_arch = "aarch64")]
 const SITAS_MAILBOX_INDEX_COUNT: u32 = 1024;
-/// Sum of the joined shard values the `catten-user` join probe writes on
+/// Sum of the joined shard values the `knytos-user` join probe writes on
 /// success (closures return 40 and 41).
 #[cfg(target_arch = "aarch64")]
 const SITAS_JOIN_PROBE_SUM: u32 = 81;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
-/// The Rust-compiled Sitas-based catten-user ELF.
+/// The Rust-compiled Sitas-based knytos-user ELF.
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
@@ -294,7 +294,7 @@ fn load_user_elf(asid: usize, image: &[u8]) -> usize {
 pub fn test_el0_sitas() {
     #[cfg(target_arch = "aarch64")]
     {
-        logln!("Testing EL0 sitas (Rust-compiled catten-user binary)...");
+        logln!("Testing EL0 sitas (Rust-compiled knytos-user binary)...");
 
         // The sitas binary lives in the object store, which comes up during
         // the NVMe test. The sitas test is registered after it, and the

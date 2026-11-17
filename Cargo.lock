@@ -166,7 +166,6 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "catten"
 version = "0.8.1"
 dependencies = [
- "catten-syscall",
  "charlotte-kafka-step",
  "charlotte-launch",
  "charlotte-lifecycle",
@@ -179,26 +178,12 @@ dependencies = [
  "flanterm_bindings",
  "flat_device_tree",
  "hashbrown",
+ "knytos-syscall",
  "limine",
  "lock_api",
  "spin 0.12.3",
  "talc",
  "zeroize",
-]
-
-[[package]]
-name = "catten-syscall"
-version = "0.1.0"
-
-[[package]]
-name = "catten-user"
-version = "0.1.0"
-dependencies = [
- "catten-syscall",
- "knytos-app-sitas",
- "knytos-rt",
- "sitas-charlotte",
- "sitas-core",
 ]
 
 [[package]]
@@ -374,8 +359,8 @@ dependencies = [
 name = "charlotte-smoltcp"
 version = "0.1.0"
 dependencies = [
- "catten-syscall",
  "charlotte-protocol-net",
+ "knytos-syscall",
  "smoltcp",
 ]
 
@@ -1053,7 +1038,7 @@ dependencies = [
 name = "knytos-graft"
 version = "0.1.0"
 dependencies = [
- "catten-syscall",
+ "knytos-syscall",
  "prost",
  "spin 0.9.9",
 ]
@@ -1062,9 +1047,9 @@ dependencies = [
 name = "knytos-rt"
 version = "0.1.0"
 dependencies = [
- "catten-syscall",
  "charlotte-launch",
  "charlotte-lifecycle",
+ "knytos-syscall",
  "lock_api",
  "talc",
 ]
@@ -1075,7 +1060,6 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
- "catten-syscall",
  "charlotte-authorization",
  "charlotte-kafka",
  "charlotte-kafka-step",
@@ -1104,12 +1088,28 @@ dependencies = [
  "knytos-app",
  "knytos-graft",
  "knytos-rt",
+ "knytos-syscall",
  "p256",
  "polyval",
  "rand_core",
  "smoltcp",
  "spin 0.12.3",
  "zeroize",
+]
+
+[[package]]
+name = "knytos-syscall"
+version = "0.1.0"
+
+[[package]]
+name = "knytos-user"
+version = "0.1.0"
+dependencies = [
+ "knytos-app-sitas",
+ "knytos-rt",
+ "knytos-syscall",
+ "sitas-charlotte",
+ "sitas-core",
 ]
 
 [[package]]

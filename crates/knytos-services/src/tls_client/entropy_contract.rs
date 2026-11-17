@@ -20,7 +20,7 @@ use catten_services::{
         ServiceEntropyRead,
     },
 };
-use catten_syscall::IpcRights;
+use knytos_syscall::IpcRights;
 
 use crate::check;
 
@@ -219,7 +219,7 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
     check(
         tls_client::fill_service_entropy(silent, &mut bytes, Deadline::after(REQUEST_BUDGET_MS))
             == Err(EntropyError::Submission(IpcError::Status(
-                catten_syscall::ipc_status::QUEUE_FULL,
+                knytos_syscall::ipc_status::QUEUE_FULL,
             ))),
         318,
     );

@@ -64,7 +64,7 @@ pub unsafe fn drain_hints(ctx: &Context) {
     let cq = ctx.completion_queue_layout();
     for _ in 0..cq.entries {
         // SAFETY: the caller retains the launch mapping and sole-reader role.
-        if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+        if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
             break;
         }
     }

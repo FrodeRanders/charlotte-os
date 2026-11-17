@@ -6,8 +6,8 @@
   "source_sha256": {
     ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten/src/cpu/scheduler/threads/mod.rs": "13123b115a4de54f3ce9ba310beb45268fe15c84d681a82ba1f0b00cb2ab73a8",
     "crates/catten/src/klib/admission.rs": "943997ba7a90d3c6ac59aae593c5e425daf9789fec6ed846227837d4fd86d9f8",
     "crates/catten/src/klib/admission/byte_allocator.rs": "30042575956fb29aa9677f34f205bcd7c346a0ba2b0474132235de31a6a88dea",

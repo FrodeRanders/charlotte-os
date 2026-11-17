@@ -41,7 +41,7 @@ use catten_services::{
     sleep_ms,
     wait_for_registered_name_owned,
 };
-use catten_syscall::IpcRights;
+use knytos_syscall::IpcRights;
 use charlotte_launch::objstore_status as status;
 use charlotte_protocol_objstore::disk::*;
 
@@ -1214,10 +1214,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             drop(endpoint);
             // Bound the shutdown flush so a dead block device cannot hang the
             // node's shutdown indefinitely.
-            let (start_ticks, frequency_hz) = catten_syscall::monotonic_clock();
+            let (start_ticks, frequency_hz) = knytos_syscall::monotonic_clock();
             let frequency_hz = frequency_hz.max(1);
             while !store.dev.flush() {
-                let (now_ticks, _) = catten_syscall::monotonic_clock();
+                let (now_ticks, _) = knytos_syscall::monotonic_clock();
                 let elapsed_ms =
                     now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
                 if elapsed_ms >= SHUTDOWN_FLUSH_TIMEOUT_MS {

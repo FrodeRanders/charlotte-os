@@ -32,7 +32,7 @@ use catten_services::{
     pl011,
     wait_reply,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     device_irq_ack,
     device_irq_bind_cq,
@@ -230,7 +230,7 @@ fn main(ctx: Context) -> ! {
                     }
                     unsafe {
                         device_mmio_unmap(mmio_cap);
-                        catten_syscall::device_close(irq_cap);
+                        knytos_syscall::device_close(irq_cap);
                         thread_exit();
                     }
                 }

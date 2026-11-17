@@ -950,7 +950,7 @@ fn selected_variant<'a>(
 ) -> Option<charlotte_launch::deployment::ArtifactVariant<'a>> {
     let position = entry.replica_nodes.binary_search(&node).ok()?;
     let variant = descriptor.variant(usize::from(*entry.replica_variants.get(position)?))?;
-    let (_, _, _, packed, features) = catten_syscall::node_pressure();
+    let (_, _, _, packed, features) = knytos_syscall::node_pressure();
     let target =
         charlotte_launch::execution_target::ExecutionTarget::from_pressure(packed, features)?;
     if !target.supports(variant.target) {

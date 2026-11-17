@@ -235,10 +235,10 @@ LP intact.
 The wrapper for syscall 77 exists and the kernel implements it, but the
 manual AArch64 `svc3` emitter table has no arm for 77, so the wrapper panics:
 
-- [catten-syscall/src/lib.rs:1966–1979](../../../crates/catten-syscall/src/lib.rs#L1966)
+- [knytos-syscall/src/lib.rs:1966–1979](../../../crates/knytos-syscall/src/lib.rs#L1966)
   calls `svc3(SyscallNumber::SpawnOperationalConnector, …)`.
 - The `svc3` match
-  ([lib.rs:396–451](../../../crates/catten-syscall/src/lib.rs#L396)) falls
+  ([lib.rs:396–451](../../../crates/knytos-syscall/src/lib.rs#L396)) falls
   through to `panic!("syscall {:?} has no svc3 emitter", imm)`; `svc #77`
   appears nowhere in the crate.
 - The deployment agent reaches it through

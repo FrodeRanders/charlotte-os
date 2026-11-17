@@ -54,7 +54,7 @@
   },
   "source_sha256": {
     "AGENTS.md": "6f2ea18519ea608718bc502207ce82dd1d758e02f5d8276d3a30ede3772eccfd",
-    "crates/catten-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c",
+    "crates/knytos-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c",
     "crates/catten/src/capability.rs": "7461b919e514ad9630710358a8d8f00ac67b71e527407790d54f2a7eff3344a2",
     "crates/catten/src/capability/admission_tests.rs": "3909110d9fe45879e18465ac79e9e8cd1014ccfdcc455d3073dcf4553f2f4b2e",
     "crates/catten/src/capability/budget.rs": "7ae3e3d02256b47af3e35dca15bcd0292d041006b43a11b08ad4ab42ead7a848",

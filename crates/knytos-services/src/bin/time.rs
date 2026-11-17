@@ -36,7 +36,7 @@ use catten_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     cq_read,
     monotonic_clock,
     thread_exit,
@@ -281,7 +281,7 @@ fn ntp_setup_failed(phase: u32, status: u32) {
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
-    catten_syscall::el0_log(0x454d_4954, code as u64); // "TIME"
+    knytos_syscall::el0_log(0x454d_4954, code as u64); // "TIME"
     unsafe { thread_exit() }
 }
 

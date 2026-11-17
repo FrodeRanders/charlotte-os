@@ -26,7 +26,7 @@ use catten_services::{
     ns,
     stage_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     thread_exit,
 };

@@ -75,7 +75,7 @@ pub(crate) fn run() {
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..64 {
         let mut spawn = frame(own.id(), 0x0002_0000, 0, 0);
-        syscall::syscall_dispatch(&mut spawn, catten_syscall::SyscallNumber::SpawnThread as u16);
+        syscall::syscall_dispatch(&mut spawn, knytos_syscall::SyscallNumber::SpawnThread as u16);
         assert_eq!((spawn.regs[0], spawn.regs[1]), (u64::MAX, 0));
     }
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
@@ -90,7 +90,7 @@ pub(crate) fn run() {
                 let mut watch = frame(own.id(), target as u64, expected, 0);
                 syscall::syscall_dispatch(
                     &mut watch,
-                    catten_syscall::SyscallNumber::ObserveThreadExit as u16,
+                    knytos_syscall::SyscallNumber::ObserveThreadExit as u16,
                 );
                 assert_eq!(watch.regs[0], u64::MAX);
                 assert_eq!(MASTER_THREAD_TABLE.read().get(target).unwrap().exit_watch_count(), 0);
@@ -101,7 +101,7 @@ pub(crate) fn run() {
         let mut watch = frame(own.id(), tid as u64, expected, 0);
         syscall::syscall_dispatch(
             &mut watch,
-            catten_syscall::SyscallNumber::ObserveThreadExit as u16,
+            knytos_syscall::SyscallNumber::ObserveThreadExit as u16,
         );
         assert_ne!(watch.regs[0], u64::MAX);
         completion::cancel(own.id(), watch.regs[0]).unwrap();
@@ -118,7 +118,7 @@ pub(crate) fn run() {
     completion::close(own.id(), watch).unwrap();
     // Ordinary EL0 callers cannot acquire TCP/IP's owner-inspection authority.
     let mut status = frame(own.id(), foreign.id() as u64, foreign.generation() as u64, 0);
-    syscall::syscall_dispatch(&mut status, catten_syscall::SyscallNumber::SocketOwnerStatus as u16);
+    syscall::syscall_dispatch(&mut status, knytos_syscall::SyscallNumber::SocketOwnerStatus as u16);
     assert_eq!(status.regs[0], u64::MAX);
     for target in [tid, foreign_tid, kernel_tid] {
         let thread = MASTER_THREAD_TABLE.write().take_element(target).unwrap();
@@ -135,7 +135,7 @@ pub(crate) fn run() {
     let replacement = Thread::try_new(foreign.id(), unused_entry).unwrap();
     let replacement_tid = publish_thread(replacement).unwrap();
     let mut stale = frame(own.id(), replacement_tid as u64, foreign_generation, 0);
-    syscall::syscall_dispatch(&mut stale, catten_syscall::SyscallNumber::ObserveThreadExit as u16);
+    syscall::syscall_dispatch(&mut stale, knytos_syscall::SyscallNumber::ObserveThreadExit as u16);
     assert_eq!(stale.regs[0], u64::MAX);
     let thread = MASTER_THREAD_TABLE.write().take_element(replacement_tid).unwrap();
     thread.release_unstarted().unwrap();

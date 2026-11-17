@@ -13,7 +13,7 @@ use catten_services::{
     net,
     wait_for_registered_name_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::net_client_status as status;
 
 const SENTINEL: u32 = 0xc0de;

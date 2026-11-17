@@ -64,7 +64,7 @@ EOF
 
 # Application source closure is independent of the platform service package.
 mkdir -p "$SDK/crates"
-for package in knytos-rt catten-syscall charlotte-launch charlotte-lifecycle \
+for package in knytos-rt knytos-syscall charlotte-launch charlotte-lifecycle \
     knytos-app knytos-app-sitas charlotte-protocol-grant \
     charlotte-protocol-kafka charlotte-protocol-s3 charlotte-kafka; do
     tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - "$package" \

@@ -65,7 +65,7 @@ and
 BUNDLES="$PWD/target/embedded-services"
 # AArch64 (headless, serial console only):
 scripts/build-knytos-services.sh --embed
-scripts/build-catten-user.sh --embed
+scripts/build-knytos-user.sh --embed
 export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLES/aarch64-unknown-none"
 cargo build --package catten \
   --target target_specs/aarch64-unknown-none-catten.json \
@@ -96,7 +96,7 @@ scripts/build-knytos-services.sh --embed
 scripts/build-knytos-services-x86_64.sh
 
 # Sitas user binary (requires external sitas crates):
-scripts/build-catten-user.sh --embed
+scripts/build-knytos-user.sh --embed
 \end{verbatim}
 
 Run from the repository root with the pinned toolchain. The Sitas helper needs

@@ -6,8 +6,8 @@
   "source_sha256": {
     ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten/src/ipc/attachments.rs": "f0f3628feeb62156dada3107ae5bca892f157431e7e12f68f2683ca8d0b4a6ec",
     "crates/catten/src/ipc/cancellation.rs": "6a760a647468e0aa888a03e9aba6b5f8d38deefe85028b051fdb150650406032",
     "crates/catten/src/ipc/cancellation/tests.rs": "097cfb658b3ffdfd6e7e0a94f612f5d823d07208ca8137f91f6e7e6dab3118fc",

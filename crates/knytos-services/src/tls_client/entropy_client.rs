@@ -126,7 +126,7 @@ pub fn fill_entropy(
     }
     let mut offset = 0;
     while offset < destination.len() {
-        let Some(word) = catten_syscall::random_u64() else {
+        let Some(word) = knytos_syscall::random_u64() else {
             break;
         };
         let bytes = Zeroizing::new(word.to_ne_bytes());

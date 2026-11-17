@@ -112,8 +112,8 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
 #[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
@@ -151,8 +151,8 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
 #[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
@@ -190,8 +190,8 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
 #[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
@@ -235,8 +235,8 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
 #[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
@@ -270,8 +270,8 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
 #[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
@@ -305,8 +305,8 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+extern crate self as knytos_syscall;
+#[path = "$repo_root/crates/knytos-syscall/src/lib.rs"]
 mod syscall_format;
 pub use syscall_format::*;
 #[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]

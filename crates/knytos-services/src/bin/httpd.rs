@@ -85,7 +85,7 @@ use catten_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     OBSERVABILITY_NONE,
     THREAD_STATISTICS_DOMAIN_RECORD_U64S,
     THREAD_STATISTICS_HEADER_U64S,
@@ -230,7 +230,7 @@ struct ServiceSet<'context> {
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
-    catten_syscall::el0_log(0x4854_5444, 0xfa00_0000 | code as u64);
+    knytos_syscall::el0_log(0x4854_5444, 0xfa00_0000 | code as u64);
     unsafe { thread_exit() };
 }
 
@@ -557,7 +557,7 @@ struct ThreadReport {
     cpu_busy_ticks: u64,
     rows: alloc::vec::Vec<ThreadRow>,
     domains: alloc::vec::Vec<DomainRow>,
-    pools: alloc::vec::Vec<catten_syscall::metadata_pools::Sample>,
+    pools: alloc::vec::Vec<knytos_syscall::metadata_pools::Sample>,
 }
 
 struct HistoryRow {
@@ -589,10 +589,10 @@ fn thread_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option
     let max_len = (header_words
         + THREAD_SAMPLE_ROWS * THREAD_STATISTICS_RECORD_U64S
         + DOMAIN_SAMPLE_ROWS * THREAD_STATISTICS_DOMAIN_RECORD_U64S
-        + catten_syscall::metadata_pools::COUNT * catten_syscall::metadata_pools::WORDS)
+        + knytos_syscall::metadata_pools::COUNT * knytos_syscall::metadata_pools::WORDS)
         .checked_mul(word_bytes)?;
     let bytes = read_moved(snapshot, observe_conn, observability::OP_THREAD_SNAPSHOT, 0, max_len)?;
-    let pools = catten_syscall::metadata_pools::from_statistics(&bytes)?.collect();
+    let pools = knytos_syscall::metadata_pools::from_statistics(&bytes)?.collect();
     let mut header = [0u64; THREAD_STATISTICS_HEADER_U64S];
     for (slot, word) in header.iter_mut().zip(bytes.chunks_exact(word_bytes)) {
         *slot = u64::from_le_bytes(word.try_into().ok()?);
@@ -1657,7 +1657,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 Ok(target) => {
                     trace_phase("received");
                     let reply = response(target, &mac, link, &services, &mut counters, &mut prev);
-                    catten_syscall::el0_log(0x4854_5444, 1);
+                    knytos_syscall::el0_log(0x4854_5444, 1);
                     trace_phase("send");
                     if let Some((socket, result)) =
                         outputs.start(socket, alloc::borrow::Cow::Owned(reply))

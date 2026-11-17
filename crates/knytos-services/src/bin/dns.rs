@@ -100,7 +100,7 @@ use catten_services::{
     wait_for_registered_name_owned,
     wait_reply,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     close as completion_close,
     cq_read,
@@ -207,7 +207,7 @@ const DEDUP_WINDOW: usize = 128;
 const AUTO_UNREGISTER_RETRY_MS: u64 = 1_000;
 
 fn fatal(stage: u64) -> ! {
-    catten_syscall::el0_log(0x444e_5300, stage);
+    knytos_syscall::el0_log(0x444e_5300, stage);
     unsafe { thread_exit() }
 }
 
@@ -269,7 +269,7 @@ fn register_name(
     transport: &RelmsgRaftTransport,
     pending_registers: &mut Vec<PendingRegistration>,
     node_name: &[u8],
-    message: &catten_syscall::IpcMessage,
+    message: &knytos_syscall::IpcMessage,
     name: Vec<u8>,
     deployment_generation: u64,
     session: u64,
@@ -908,7 +908,7 @@ const CAPACITY_NONCE_TIMEOUT_MS: u64 = 100;
 
 fn obtain_capacity_boot_nonce(ns_connection: ConnectionRef<'_>) -> Option<u64> {
     let deadline = catten_services::deadline::Deadline::after(CAPACITY_NONCE_TIMEOUT_MS);
-    if let Some(nonce) = catten_syscall::random_u64().filter(|nonce| *nonce != 0) {
+    if let Some(nonce) = knytos_syscall::random_u64().filter(|nonce| *nonce != 0) {
         return Some(nonce);
     }
     let mut lookup = ns_connection.call(ns::OP_TRY_LOOKUP, entropy::NAME).ok()?;
@@ -1135,7 +1135,7 @@ const TIME_QUERY_TIMEOUT_MS: u64 = 100;
 
 fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
     let mut call = time.call(catten_services::time::OP_UNIX_SECONDS, 0).ok()?;
-    let (start_ticks, frequency_hz) = catten_syscall::monotonic_clock();
+    let (start_ticks, frequency_hz) = knytos_syscall::monotonic_clock();
     let frequency_hz = frequency_hz.max(1);
     loop {
         match call.poll() {
@@ -1143,7 +1143,7 @@ fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
             Ok(None) => {}
             Err(_) => return None,
         }
-        let (now_ticks, _) = catten_syscall::monotonic_clock();
+        let (now_ticks, _) = knytos_syscall::monotonic_clock();
         let elapsed_ms = now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
         if elapsed_ms >= TIME_QUERY_TIMEOUT_MS {
             return None;
@@ -1789,7 +1789,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 capacity_boot_nonce = obtain_capacity_boot_nonce(ns_connection);
             }
             let (free_frames, usable_frames, cpu_load_permille, packed, features) =
-                catten_syscall::node_pressure();
+                knytos_syscall::node_pressure();
             let target = charlotte_launch::execution_target::ExecutionTarget::from_pressure(
                 packed, features,
             );
@@ -1800,7 +1800,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     target,
                     node_key,
                     boot_nonce,
-                    epoch: catten_syscall::monotonic_clock().0,
+                    epoch: knytos_syscall::monotonic_clock().0,
                     free_frames,
                     usable_frames,
                     cpu_load_permille: cpu_load_permille.min(u64::from(u16::MAX)) as u16,

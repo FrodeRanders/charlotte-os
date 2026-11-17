@@ -48,7 +48,7 @@ use catten_services::{
     sleep_ms,
     socket,
 };
-use catten_syscall::IpcRights;
+use knytos_syscall::IpcRights;
 use charlotte_launch::{
     deployment,
     security_probe_status as status,
@@ -74,7 +74,7 @@ impl Drop for CloseWatches {
 }
 
 extern "C" fn thread_probe_entry() {
-    unsafe { catten_syscall::thread_exit() }
+    unsafe { knytos_syscall::thread_exit() }
 }
 
 fn check(condition: bool, failure: u32) {
@@ -138,12 +138,12 @@ fn wait(mut pending: PendingCall<'static>, endpoint: &Endpoint) -> CallResult {
             return reply;
         }
         if !serviced {
-            let (_, status) = catten_syscall::cq_wait_checked(Some(deadline.remaining_ms()), 0);
+            let (_, status) = knytos_syscall::cq_wait_checked(Some(deadline.remaining_ms()), 0);
             check(
                 matches!(
                     status,
-                    catten_syscall::completion_status::READY
-                        | catten_syscall::completion_status::PENDING_OR_TIMEOUT
+                    knytos_syscall::completion_status::READY
+                        | knytos_syscall::completion_status::PENDING_OR_TIMEOUT
                 ),
                 104,
             );
@@ -207,7 +207,7 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     let outer = Deadline::after(7_000);
     loop {
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }
@@ -297,7 +297,7 @@ fn controller_server_relay_probe(ctx: &Context) {
     let cq = ctx.completion_queue_layout();
     loop {
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }
@@ -427,7 +427,7 @@ fn listener_reactor_probe(ctx: &Context) {
     let cq = ctx.completion_queue_layout();
     loop {
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }
@@ -550,7 +550,7 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     let mut completed = 0;
     while completed < 2 {
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }
@@ -610,7 +610,7 @@ fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket:
     let cq = ctx.completion_queue_layout();
     loop {
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }
@@ -631,7 +631,7 @@ fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket:
     let cq = ctx.completion_queue_layout();
     while closes.occupied_slots() != 0 {
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }
@@ -857,8 +857,8 @@ fn main(ctx: Context) -> ! {
                 drop(endpoint);
                 shutdown.complete();
             }
-            let (_, result) = catten_syscall::cq_wait_checked(None, 0);
-            check(result == catten_syscall::completion_status::READY, 401);
+            let (_, result) = knytos_syscall::cq_wait_checked(None, 0);
+            check(result == knytos_syscall::completion_status::READY, 401);
         }
     }
 
@@ -1006,7 +1006,7 @@ fn main(ctx: Context) -> ! {
     check(
         matches!(
             tcpip.send(socket::OP_FRAME, 0),
-            Err(catten_rt::owned::IpcError::Status(catten_syscall::ipc_status::PERMISSION_DENIED))
+            Err(catten_rt::owned::IpcError::Status(knytos_syscall::ipc_status::PERMISSION_DENIED))
         ),
         13,
     ); // CALL does not imply SEND.
@@ -1052,7 +1052,7 @@ fn main(ctx: Context) -> ! {
         matches!(
             publication::register(silent_connection.as_ref(), 0, &endpoint),
             Err(publication::Error::Admission(catten_rt::owned::IpcError::Status(
-                catten_syscall::ipc_status::QUEUE_FULL
+                knytos_syscall::ipc_status::QUEUE_FULL
             )))
         ) && !admission_budget.expired(),
         49,
@@ -1137,7 +1137,7 @@ fn main(ctx: Context) -> ! {
         matches!(
             clusterctl_client::call_move(silent_connection.as_ref(), PING, 0, request),
             Err(clusterctl_client::Error::Admission(catten_rt::owned::IpcError::Status(
-                catten_syscall::ipc_status::QUEUE_FULL
+                knytos_syscall::ipc_status::QUEUE_FULL
             )))
         ),
         52,
@@ -1181,7 +1181,7 @@ fn main(ctx: Context) -> ! {
                 true
             }
             Err(clusterctl_client::Error::Admission(catten_rt::owned::IpcError::Status(
-                catten_syscall::ipc_status::QUEUE_FULL,
+                knytos_syscall::ipc_status::QUEUE_FULL,
             ))) => false,
             Err(_) => {
                 check(false, 58);
@@ -1346,7 +1346,7 @@ fn main(ctx: Context) -> ! {
     );
     drop(watches.endpoint.take());
     for completion in watches.completions.drain(..) {
-        check(completion.wait() == Ok(catten_syscall::IPC_REPLY_ENDPOINT_CLOSED), 30);
+        check(completion.wait() == Ok(knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED), 30);
     }
     drop(watches);
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 31);
@@ -1376,7 +1376,7 @@ fn main(ctx: Context) -> ! {
         cancel_connection.watch_closed().unwrap_or_else(|_| catten_rt::domain_abort());
     check(surviving.poll() == Ok(None), 36);
     drop(cancel_endpoint);
-    check(surviving.wait() == Ok(catten_syscall::IPC_REPLY_ENDPOINT_CLOSED), 37);
+    check(surviving.wait() == Ok(knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED), 37);
     drop(cancel_connection);
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 38);
     checks |= 16_384;
@@ -1390,9 +1390,9 @@ fn main(ctx: Context) -> ! {
             0
         }
     };
-    check(unsafe { catten_syscall::observe_thread_exit(foreign_tid) } == u64::MAX, 44);
-    check(catten_syscall::observe_thread_exit_generation(foreign_tid, u64::MAX) == u64::MAX, 45);
-    check(catten_syscall::socket_owner_status(0, 0, 0) == u64::MAX, 46);
+    check(unsafe { knytos_syscall::observe_thread_exit(foreign_tid) } == u64::MAX, 44);
+    check(knytos_syscall::observe_thread_exit_generation(foreign_tid, u64::MAX) == u64::MAX, 45);
+    check(knytos_syscall::socket_owner_status(0, 0, 0) == u64::MAX, 46);
     checks |= 32_768;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
@@ -1406,8 +1406,8 @@ fn main(ctx: Context) -> ! {
             shutdown.complete();
         }
         if !serve(&endpoint) {
-            let (_, status) = catten_syscall::cq_wait_checked(None, 0);
-            check(status == catten_syscall::completion_status::READY, 106);
+            let (_, status) = knytos_syscall::cq_wait_checked(None, 0);
+            check(status == knytos_syscall::completion_status::READY, 106);
         }
     }
 }

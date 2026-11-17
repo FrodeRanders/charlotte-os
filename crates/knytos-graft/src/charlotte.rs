@@ -69,13 +69,13 @@ impl CharlotteTransport {
             self.peer_connections.lock().insert(peer_id.to_string(), connection_cap)
             && previous != connection_cap
         {
-            catten_syscall::ipc_close(previous);
+            knytos_syscall::ipc_close(previous);
         }
     }
 
     pub fn remove_peer(&self, peer_id: &str) {
         if let Some(connection) = self.peer_connections.lock().remove(peer_id) {
-            catten_syscall::ipc_close(connection);
+            knytos_syscall::ipc_close(connection);
         }
         let mut pending = self.pending_calls.lock();
         let mut cancelled = Vec::new();
@@ -89,7 +89,7 @@ impl CharlotteTransport {
         });
         drop(pending);
         for call in cancelled {
-            catten_syscall::ipc_close(call);
+            knytos_syscall::ipc_close(call);
         }
     }
 
@@ -115,7 +115,7 @@ impl CharlotteTransport {
             pending.iter().any(|call| call.peer_id == peer_id && call.rpc_type == rpc_type);
         drop(pending);
         for cap in stale_caps {
-            catten_syscall::ipc_close(cap);
+            knytos_syscall::ipc_close(cap);
         }
         !occupied
     }
@@ -139,9 +139,9 @@ impl CharlotteTransport {
             return;
         };
         let call_cap =
-            catten_syscall::ipc_scalar_call_move(connection, opcode, payload.len() as u64, memory);
+            knytos_syscall::ipc_scalar_call_move(connection, opcode, payload.len() as u64, memory);
         if call_cap == 0 {
-            catten_syscall::memory_close(memory);
+            knytos_syscall::memory_close(memory);
             return;
         }
         self.pending_calls.lock().push(PendingRpc {
@@ -267,12 +267,12 @@ impl RaftTransport for CharlotteTransport {
 
         for call in pending {
             if current_millis >= call.deadline_millis {
-                catten_syscall::ipc_close(call.call_cap);
+                knytos_syscall::ipc_close(call.call_cap);
                 continue;
             }
             let saved_call_cap = call.call_cap;
             let (status, result, _connection, memory) =
-                catten_syscall::ipc_reply_poll_with_memory(unsafe {
+                knytos_syscall::ipc_reply_poll_with_memory(unsafe {
                     core::ptr::read_volatile(&saved_call_cap)
                 });
             // IPC_REPLY_POLL returns 1 while pending; the receive-status
@@ -282,15 +282,15 @@ impl RaftTransport for CharlotteTransport {
                 continue;
             }
 
-            catten_syscall::ipc_close(unsafe { core::ptr::read_volatile(&saved_call_cap) });
+            knytos_syscall::ipc_close(unsafe { core::ptr::read_volatile(&saved_call_cap) });
             if status != 0 || memory == 0 {
                 if memory != 0 {
-                    catten_syscall::memory_close(memory);
+                    knytos_syscall::memory_close(memory);
                 }
                 continue;
             }
             let Ok(length) = usize::try_from(result) else {
-                catten_syscall::memory_close(memory);
+                knytos_syscall::memory_close(memory);
                 continue;
             };
             let Some(payload) = read_payload(memory, length) else {
@@ -334,12 +334,12 @@ fn write_payload(payload: &[u8]) -> Option<u64> {
     if payload.len() > RAFT_RPC_MEMORY_SIZE {
         return None;
     }
-    let cap = catten_syscall::memory_alloc(1);
+    let cap = knytos_syscall::memory_alloc(1);
     if cap == 0 {
         return None;
     }
-    if catten_syscall::memory_map(cap, TRANSPORT_SCRATCH_VADDR, true) != 0 {
-        catten_syscall::memory_close(cap);
+    if knytos_syscall::memory_map(cap, TRANSPORT_SCRATCH_VADDR, true) != 0 {
+        knytos_syscall::memory_close(cap);
         return None;
     }
     unsafe {
@@ -349,23 +349,23 @@ fn write_payload(payload: &[u8]) -> Option<u64> {
             payload.len(),
         );
     }
-    catten_syscall::memory_unmap(cap);
+    knytos_syscall::memory_unmap(cap);
     Some(cap)
 }
 
 fn read_payload(cap: u64, length: usize) -> Option<Vec<u8>> {
     if length > RAFT_RPC_MEMORY_SIZE {
-        catten_syscall::memory_close(cap);
+        knytos_syscall::memory_close(cap);
         return None;
     }
-    if catten_syscall::memory_map(cap, TRANSPORT_SCRATCH_VADDR, false) != 0 {
-        catten_syscall::memory_close(cap);
+    if knytos_syscall::memory_map(cap, TRANSPORT_SCRATCH_VADDR, false) != 0 {
+        knytos_syscall::memory_close(cap);
         return None;
     }
     let payload = unsafe {
         core::slice::from_raw_parts(TRANSPORT_SCRATCH_VADDR as *const u8, length).to_vec()
     };
-    catten_syscall::memory_unmap(cap);
-    catten_syscall::memory_close(cap);
+    knytos_syscall::memory_unmap(cap);
+    knytos_syscall::memory_close(cap);
     Some(payload)
 }

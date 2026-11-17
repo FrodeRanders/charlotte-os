@@ -7,9 +7,9 @@
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
     "crates/knytos-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
     "crates/knytos-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
-    "crates/catten-syscall/src/lib.rs": "08596862b4707022812c6cb416770e52ce876bf0f0be0fa376487c945c32d700",
-    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
-    "crates/catten-syscall/src/metadata_pools/tests.rs": "e49f1c4617c3191e46b1c05b06171e7507f27038ace7ffbeae2eb4a945d0d6f2",
+    "crates/knytos-syscall/src/lib.rs": "08596862b4707022812c6cb416770e52ce876bf0f0be0fa376487c945c32d700",
+    "crates/knytos-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/knytos-syscall/src/metadata_pools/tests.rs": "e49f1c4617c3191e46b1c05b06171e7507f27038ace7ffbeae2eb4a945d0d6f2",
     "crates/catten/src/capability/record_budget.rs": "6eda25956da5f8949d8ca67f3e4c12e3e8d35582db8156a6a906dc3ab7103d29",
     "crates/catten/src/completion/account_budget.rs": "0eee7f60a561b794084a5a37995ca7c8863a9ff7ee9713507fb9ac9fccae79b8",
     "crates/catten/src/completion/entry_budget.rs": "fc3659a19b1b9f520fd9890120f77b19bc06b77f2e8c6eb636d9c24247957162",
@@ -627,8 +627,8 @@
       "platform": "arm",
       "booted": false,
       "result": "Runner stopped before boot because the freshly restaged test bundle lacked sitas-user.elf.",
-      "diagnostic": "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed",
-      "resolution": "Rebuilt and signed the required fixture with scripts/build-catten-user.sh --embed; passing run recorded separately above.",
+      "diagnostic": "error: test bundle requires sitas-user.elf; run scripts/build-knytos-user.sh --embed",
+      "resolution": "Rebuilt and signed the required fixture with scripts/build-knytos-user.sh --embed; passing run recorded separately above.",
       "capture_limitation": "Original complete preflight log was not retained; the emitted diagnostic is preserved here."
     }
   ],

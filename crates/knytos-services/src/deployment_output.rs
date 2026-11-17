@@ -222,7 +222,7 @@ impl<'a> Calls for Runtime<'a> {
     type Socket = OwnedSocket<'a>;
 
     fn now(&self) -> u64 {
-        catten_syscall::monotonic_clock().0
+        knytos_syscall::monotonic_clock().0
     }
 
     fn submit(
@@ -287,7 +287,7 @@ impl<'a> Outputs<'a> {
         socket: OwnedSocket<'a>,
         response: Response,
     ) -> Option<Finished<OwnedSocket<'a>>> {
-        let (now, frequency) = catten_syscall::monotonic_clock();
+        let (now, frequency) = knytos_syscall::monotonic_clock();
         self.0.start(socket, response, now, frequency)
     }
 

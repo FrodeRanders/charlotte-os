@@ -608,7 +608,7 @@ When an SVC is taken from EL0 (EC = 0x15):
 5. Any result the handler writes into `frame.regs[0]` (x0) is written back to
    the stack before the IVT `pop_volatile_regs` restores it into the user's x0.
 
-The dispatch table now uses the shared `catten-syscall::SyscallNumber`
+The dispatch table now uses the shared `knytos-syscall::SyscallNumber`
 enumeration for the complete implemented ABI rather than independently
 maintained numeric arms. Synthetic `TrapFrame` tests cover dispatch, and
 multiple real-EL0 tests execute SVC instructions through the architectural

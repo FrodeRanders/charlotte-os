@@ -49,7 +49,7 @@ fn maximum() {
     let source = root();
     let target = root();
     let baseline = capability::node_admission_used();
-    let count = catten_syscall::CAP_VECTOR_MAX;
+    let count = knytos_syscall::CAP_VECTOR_MAX;
     let mut sources = Vec::new();
     let mut transfers = Vec::new();
     for index in 0..count {

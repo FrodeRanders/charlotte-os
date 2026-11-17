@@ -41,7 +41,7 @@ use catten_services::{
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     thread_exit,
 };

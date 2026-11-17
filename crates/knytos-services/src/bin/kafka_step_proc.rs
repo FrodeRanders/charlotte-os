@@ -22,7 +22,7 @@ use catten_services::{
     ns,
     sleep_ms,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     thread_exit,
 };

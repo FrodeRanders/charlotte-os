@@ -65,7 +65,7 @@ use catten_services::{
     socket,
     wait_for_registered_name_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::frouter_status as status;
 use charlotte_protocol_disco::DISCO_ETHERTYPE;
 use charlotte_protocol_msg::MSG_ETHERTYPE;
@@ -687,7 +687,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // polling could consume the last hint before the enclosing wait.
             let cq = ctx.completion_queue_layout();
             for _ in 0..cq.entries {
-                if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                     break;
                 }
             }
@@ -969,7 +969,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     Ok(result) if result >= 0 => forwarded = forwarded.wrapping_add(1),
                     Ok(result) => {
                         dropped = dropped.wrapping_add(1);
-                        if result == catten_syscall::IPC_REPLY_ENDPOINT_CLOSED
+                        if result == knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED
                             && let Some(stale_index) = routes
                                 .iter()
                                 .position(|route| route.ethertype == pending.route_ethertype)

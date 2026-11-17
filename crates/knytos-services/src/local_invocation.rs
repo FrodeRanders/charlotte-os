@@ -176,7 +176,7 @@ impl Calls for KernelCalls {
     type Pending = PendingCall<'static>;
 
     fn now(&self) -> u64 {
-        catten_syscall::monotonic_clock().0
+        knytos_syscall::monotonic_clock().0
     }
 
     fn bind(&mut self, pending: &mut Self::Pending, cq: u32) -> Result<(), ()> {
@@ -203,7 +203,7 @@ impl Calls for KernelCalls {
         arg: i64,
     ) -> Result<Self::Pending, i64> {
         connection.call(opcode, arg as u64).map_err(|error| match error {
-            catten_rt::owned::IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT) => {
+            catten_rt::owned::IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT) => {
                 dns::ERR_RESOURCE_LIMIT
             }
             _ => dns::ERR_NOT_FOUND,
@@ -228,7 +228,7 @@ impl LocalInvocation {
             names.call_move(ns::OP_TRY_LOOKUP_NAMED, name.len() as u64, memory).map_err(
                 |(_memory, error)| match error {
                     catten_rt::owned::IpcError::Status(
-                        catten_syscall::ipc_status::RESOURCE_LIMIT,
+                        knytos_syscall::ipc_status::RESOURCE_LIMIT,
                     ) => dns::ERR_RESOURCE_LIMIT,
                     _ => dns::ERR_NOT_FOUND,
                 },

@@ -28,7 +28,7 @@ use catten_services::{
     spin_reply,
     virtio,
 };
-use catten_syscall::{
+use knytos_syscall::{
     DmaDirection,
     IpcRights,
     dma_map,
@@ -164,7 +164,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     };
     DMA_DOMAIN.store(dma_domain, Ordering::Release);
 
-    let (mmio_map_status, bar4) = catten_syscall::device_mmio_map_any(mmio_cap, true);
+    let (mmio_map_status, bar4) = knytos_syscall::device_mmio_map_any(mmio_cap, true);
     if mmio_map_status != 0 {
         unsafe { thread_exit() };
     }
@@ -350,7 +350,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 w8(common + virtio::M_DEVICE_STATUS, 0);
                 r8(common + virtio::M_DEVICE_STATUS) == 0
             };
-            if flushed && reset && catten_syscall::device_close(irq_cap) == 0 {
+            if flushed && reset && knytos_syscall::device_close(irq_cap) == 0 {
                 return request;
             }
             catten_rt::logln!("[virtio-blk] device quiescence failed; retaining controller domain");

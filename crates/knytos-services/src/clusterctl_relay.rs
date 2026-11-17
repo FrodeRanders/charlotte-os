@@ -422,7 +422,7 @@ impl Calls for Runtime<'_> {
     type Owner = Relay;
 
     fn now(&self) -> (u64, u64) {
-        catten_syscall::monotonic_clock()
+        knytos_syscall::monotonic_clock()
     }
 
     fn reservation(owner: &Relay) -> Result<usize, i64> {

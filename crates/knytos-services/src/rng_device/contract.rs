@@ -344,7 +344,7 @@ fn actual_owned_fields_follow_the_same_fence() {
         Endpoint,
         OwnedMemory,
     };
-    use catten_syscall::IpcRights;
+    use knytos_syscall::IpcRights;
     for mode in [Mode::Healthy, Mode::Timeout] {
         let control = Control::new(mode);
         let endpoint =

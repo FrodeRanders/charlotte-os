@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# build-catten-user.sh — compile catten-user, strip the ELF for embedding, and
+# build-knytos-user.sh — compile knytos-user, strip the ELF for embedding, and
 # (optionally) rebuild the kernel.
 #
 # Usage:
-#   scripts/build-catten-user.sh [--embed]
+#   scripts/build-knytos-user.sh [--embed]
 #
 #   --embed   Also stage the stripped ELF in the generated, architecture-
 #             qualified kernel bundle.
@@ -19,10 +19,10 @@ source "$ROOT/scripts/lib/signing-policy.sh"
 catten_require_development_trust
 cd "$ROOT"
 
-MANIFEST="crates/catten-user/Cargo.toml"
-TARGET_JSON="crates/catten-user/aarch64-unknown-none.json"
-TARGET_DIR="crates/catten-user/target/aarch64-unknown-none/debug"
-BIN_NAME="catten-user"
+MANIFEST="crates/knytos-user/Cargo.toml"
+TARGET_JSON="crates/knytos-user/aarch64-unknown-none.json"
+TARGET_DIR="crates/knytos-user/target/aarch64-unknown-none/debug"
+BIN_NAME="knytos-user"
 EMBED=0
 PAGE_SIZE=4096
 
@@ -36,7 +36,7 @@ done
 echo ">>> Building $BIN_NAME ..."
 cargo build --locked --manifest-path "$MANIFEST" \
     --target "$TARGET_JSON" \
-    --target-dir crates/catten-user/target \
+    --target-dir crates/knytos-user/target \
     -Z build-std=core,alloc 2>&1 | tail -3
 
 echo ">>> Stripping ELF for embedding ..."
@@ -45,13 +45,13 @@ HOST_TRIPLE="$(rustc -vV | awk '/^host:/ {print $2}')"
 OBJCOPY="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-objcopy"
 READOBJ="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-readobj"
 if [ ! -x "$OBJCOPY" ] || [ ! -x "$READOBJ" ]; then
-    echo "error: llvm-tools is required to stage the AArch64 catten-user image" >&2
+    echo "error: llvm-tools is required to stage the AArch64 knytos-user image" >&2
     echo "       run: rustup component add llvm-tools" >&2
     exit 1
 fi
-"$OBJCOPY" --strip-all "$TARGET_DIR/$BIN_NAME" /tmp/catten-user.elf
+"$OBJCOPY" --strip-all "$TARGET_DIR/$BIN_NAME" /tmp/knytos-user.elf
 
-SIZE=$(wc -c < /tmp/catten-user.elf)
+SIZE=$(wc -c < /tmp/knytos-user.elf)
 echo ">>> Embedded ELF size: $SIZE bytes"
 
 echo ">>> Validating ELF LOAD segments ..."
@@ -86,7 +86,7 @@ while read -r type _offset virt _phys _filesz memsz f1 f2 _align _rest; do
     LOAD_ENDS[LOAD_COUNT]=$page_end
     LOAD_FLAGS[LOAD_COUNT]=$flags
     LOAD_COUNT=$((LOAD_COUNT + 1))
-done < <("$READOBJ" --elf-output-style=GNU -l /tmp/catten-user.elf)
+done < <("$READOBJ" --elf-output-style=GNU -l /tmp/knytos-user.elf)
 
 if [ "$LOAD_COUNT" -eq 0 ]; then
     echo "ERROR: ELF has no LOAD segments" >&2
@@ -97,7 +97,7 @@ echo ">>> LOAD segments verified ($LOAD_COUNT segments, no W+X or page overlap).
 if [ "$EMBED" -eq 1 ]; then
     DEST="$ROOT/target/embedded-services/aarch64-unknown-none/sitas-user.elf"
     mkdir -p "$(dirname "$DEST")"
-    cp /tmp/catten-user.elf "$DEST"
+    cp /tmp/knytos-user.elf "$DEST"
     echo ">>> Copied ELF to $DEST"
     # The loader refuses unsigned images: sign the staged ELF with the
     # cluster's development key (or the file at $CLUSTER_SIGN_KEY_FILE).
@@ -112,4 +112,4 @@ if [ "$EMBED" -eq 1 ]; then
 fi
 
 echo ""
-echo ">>> Done. ELF at /tmp/catten-user.elf ($SIZE bytes)."
+echo ">>> Done. ELF at /tmp/knytos-user.elf ($SIZE bytes)."

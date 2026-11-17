@@ -165,7 +165,7 @@ Consumers can therefore derive CPU time, mean and variance of execution slices,
 and interval utilization by comparing two snapshots. The active slice is
 reported separately and is not included in the completed-slice accumulator.
 All wire fields are little-endian `u64` values; 128-bit values are encoded low
-word first. The constants in `catten-syscall` are the authoritative ABI.
+word first. The constants in `knytos-syscall` are the authoritative ABI.
 
 ## Security and aggregation
 

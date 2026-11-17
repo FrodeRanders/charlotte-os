@@ -88,10 +88,10 @@ jobs:
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           scripts/build-knytos-services.sh --embed
-          scripts/build-catten-user.sh --embed
+          scripts/build-knytos-user.sh --embed
           export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
           cargo clippy --locked --workspace \
-            --exclude knytos-services --exclude catten-user --exclude cluster-sign \
+            --exclude knytos-services --exclude knytos-user --exclude cluster-sign \
             --target target_specs/aarch64-unknown-none-catten.json \
             -- -D warnings
           cargo clippy --locked -p catten \
@@ -100,7 +100,7 @@ jobs:
           scripts/build-knytos-services-x86_64.sh
           export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           cargo clippy --locked --workspace \
-            --exclude knytos-services --exclude catten-user --exclude cluster-sign \
+            --exclude knytos-services --exclude knytos-user --exclude cluster-sign \
             --target target_specs/x86_64-unknown-none-catten.json \
             --no-default-features --features acpi \
             -- -D warnings
@@ -182,8 +182,8 @@ jobs:
           targets: aarch64-unknown-none
           components: rust-src,llvm-tools
 
-      # catten-user integrates the sibling gautelis/sitas checkout and is built
-      # by scripts/build-catten-user.sh in developer trees that provide it.
+      # knytos-user integrates the sibling gautelis/sitas checkout and is built
+      # by scripts/build-knytos-user.sh in developer trees that provide it.
       - name: Build service bundle
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
@@ -223,7 +223,7 @@ jobs:
             if [ "$mode" = test ]; then features=acpi,kernel_tests; fi
             if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
               scripts/build-knytos-services.sh --embed --mode "$mode"
-              if [ "$mode" = test ]; then scripts/build-catten-user.sh --embed; fi
+              if [ "$mode" = test ]; then scripts/build-knytos-user.sh --embed; fi
               catten_service_bundle aarch64 "$mode" "$GITHUB_WORKSPACE"
               export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
             else

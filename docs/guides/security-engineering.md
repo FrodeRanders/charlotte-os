@@ -306,7 +306,7 @@ readers. Kernel bounds remain private, because writable user mirrors cannot auth
 kernel accesses.
 
 Read [entropy](../reference/entropy.md) and the current
-[CQ ring definitions](../../crates/catten-syscall/src/lib.rs). The focused
+[CQ ring definitions](../../crates/knytos-syscall/src/lib.rs). The focused
 [RNG](../reports/audits/2026-10-28-security-rng-ring-access.md) and
 [CQ](../reports/audits/2026-10-29-cq-ring-ordering.md) reports retain the examples.
 

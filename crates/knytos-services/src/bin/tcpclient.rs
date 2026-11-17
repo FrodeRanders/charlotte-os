@@ -30,7 +30,7 @@ use catten_services::{
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::tcpclient_status as status;
 use charlotte_protocol_net::decode_status;
 

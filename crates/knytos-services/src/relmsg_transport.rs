@@ -42,7 +42,7 @@ use catten_graft::{
         encode_vote_request,
     },
 };
-use catten_syscall::*;
+use knytos_syscall::*;
 
 const SCRATCH: usize = 0x0000_0000_0083_0000;
 

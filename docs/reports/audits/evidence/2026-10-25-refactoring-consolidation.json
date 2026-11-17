@@ -78,7 +78,7 @@
     },
     "service_builds": [
       "scripts/build-knytos-services.sh --embed",
-      "scripts/build-catten-user.sh --embed",
+      "scripts/build-knytos-user.sh --embed",
       "scripts/build-knytos-services-x86_64.sh"
     ],
     "local_references": {

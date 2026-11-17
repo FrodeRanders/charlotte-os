@@ -45,7 +45,7 @@ See [register/ownership contract](../../reference/ipc-receive.md) and
   Existing descriptor selection/image and catalog placement mismatch tests now
   use explicit ABI 1 rejection. The owning-message test checks identity retention
   alongside exactly-once attachment cleanup.
-- ARM/x86 service bundles and ARM catten-user rebuilt and signed. Strict service
+- ARM/x86 service bundles and ARM knytos-user rebuilt and signed. Strict service
   and kernel Clippy passes for both targets (linked-deployment and final
   S3/HTTP profiles); formatting,
   runner syntax and diff checks pass.

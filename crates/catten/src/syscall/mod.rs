@@ -35,7 +35,7 @@ pub(crate) fn test_snapshot_buffers() {
     snapshot_buffers::tests::run();
 }
 
-pub use catten_syscall::SyscallNumber;
+pub use knytos_syscall::SyscallNumber;
 
 use crate::{
     cpu::isa::{
@@ -651,7 +651,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         // Unknown op codes are a caller-controlled input and must be rejected
         // non-fatally rather than crashing the kernel.
         _ => {
-            frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+            frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED;
             return;
         }
     };
@@ -663,7 +663,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
     let did_read = match op {
         crate::completion::OpCode::Read if buf_ptr != 0 && buf_len >= 4 => Some((buf_ptr, buf_len)),
         crate::completion::OpCode::Read => {
-            frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+            frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED;
             return;
         }
         _ => None,
@@ -683,7 +683,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
             }
             // Use the ABI's reserved failure sentinel rather than a capability
             // value.
-            Err(_) => frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED,
+            Err(_) => frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED,
         }
         return;
     }
@@ -693,7 +693,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
             if let Some((user_address, len)) = did_read {
                 if write_user_u32(asid, user_address, 0xfeed_f00d).is_err() {
                     let _ = crate::completion::abort_submission(asid, cap);
-                    frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+                    frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED;
                     return;
                 }
                 let _ = crate::completion::complete(
@@ -706,7 +706,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         }
         // Backpressure (full table) or a missing address space is a non-fatal
         // caller-visible error, mirroring the submit_timer path.
-        Err(_) => frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED,
+        Err(_) => frame.regs[0] = knytos_syscall::COMPLETION_SUBMIT_FAILED,
     }
 }
 
@@ -716,7 +716,7 @@ fn sys_completion_submit_detached_timer(frame: &mut TrapFrame) {
     let cq = frame.regs[2] as u32;
     let user_data = frame.regs[3];
     frame.regs[0] = crate::completion::submit_detached_timer(asid, cq, timeout_ms, user_data)
-        .unwrap_or(catten_syscall::COMPLETION_SUBMIT_FAILED);
+        .unwrap_or(knytos_syscall::COMPLETION_SUBMIT_FAILED);
 }
 
 fn sys_completion_complete(frame: &mut TrapFrame) {
@@ -736,19 +736,19 @@ fn sys_completion_poll(frame: &mut TrapFrame) {
     let cap = frame.regs[1];
     match crate::completion::poll(asid, cap) {
         Ok(Some(completed)) => {
-            frame.regs[0] = catten_syscall::completion_status::READY;
+            frame.regs[0] = knytos_syscall::completion_status::READY;
             frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
             frame.regs[2] = completed.buffer.as_ref().map_or(0, |buf| buf.len()) as u64;
         }
         Ok(None) => {
-            frame.regs[0] = catten_syscall::completion_status::PENDING_OR_TIMEOUT;
+            frame.regs[0] = knytos_syscall::completion_status::PENDING_OR_TIMEOUT;
             frame.regs[1] = 0;
             frame.regs[2] = 0;
         }
         // An unknown capability is a terminal caller error; distinguish it
         // from a valid operation that is still pending.
         Err(_) => {
-            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[0] = knytos_syscall::completion_status::INVALID_CAPABILITY;
             frame.regs[1] = 0;
             frame.regs[2] = 0;
         }
@@ -1226,7 +1226,7 @@ fn sys_memory_get_phys_page(frame: &mut TrapFrame) {
 fn dma_map_return(frame: &mut TrapFrame, result: Result<u64, crate::device::MapError>) {
     match result {
         Ok(iova) => {
-            frame.regs[0] = catten_syscall::device_status::OK;
+            frame.regs[0] = knytos_syscall::device_status::OK;
             frame.regs[1] = iova;
             frame.regs[2] = 0;
         }
@@ -1264,7 +1264,7 @@ fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
 fn sys_dma_unmap(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     frame.regs[0] = crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2])
-        .map_or_else(device_status, |()| catten_syscall::device_status::OK);
+        .map_or_else(device_status, |()| knytos_syscall::device_status::OK);
 }
 
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
@@ -1652,7 +1652,7 @@ fn recv_vec_into_frame(frame: &mut TrapFrame) {
 }
 
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
-    use catten_syscall::completion_status as status;
+    use knytos_syscall::completion_status as status;
 
     use crate::completion::{
         self,
@@ -1693,7 +1693,7 @@ fn sys_cq_wait_checked(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let Ok(cq) = u32::try_from(frame.regs[2]) else {
         frame.regs[0] = 0;
-        frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
+        frame.regs[1] = knytos_syscall::completion_status::INVALID_CAPABILITY;
         return;
     };
     let timeout = match frame.regs[3] {
@@ -1701,18 +1701,18 @@ fn sys_cq_wait_checked(frame: &mut TrapFrame) {
         1 => Some(frame.regs[1]),
         _ => {
             frame.regs[0] = 0;
-            frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[1] = knytos_syscall::completion_status::INVALID_CAPABILITY;
             return;
         }
     };
     frame.regs[1] = match crate::completion::wait_on_cq_checked(asid, cq, timeout) {
-        Ok(true) => catten_syscall::completion_status::READY,
-        Ok(false) => catten_syscall::completion_status::PENDING_OR_TIMEOUT,
+        Ok(true) => knytos_syscall::completion_status::READY,
+        Ok(false) => knytos_syscall::completion_status::PENDING_OR_TIMEOUT,
         Err(crate::completion::CqWaitError::AdmissionRejected) => {
-            catten_syscall::completion_status::WAIT_ADMISSION_FAILED
+            knytos_syscall::completion_status::WAIT_ADMISSION_FAILED
         }
         Err(crate::completion::CqWaitError::UnknownQueue) => {
-            catten_syscall::completion_status::INVALID_CAPABILITY
+            knytos_syscall::completion_status::INVALID_CAPABILITY
         }
     };
     frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
@@ -2247,9 +2247,9 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
 }
 
 const _: () = assert!(
-    catten_syscall::artifact_retirement_reason::DEPLOYMENT_RETIRED
+    knytos_syscall::artifact_retirement_reason::DEPLOYMENT_RETIRED
         == charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
-        && catten_syscall::artifact_retirement_reason::NODE_SHUTDOWN
+        && knytos_syscall::artifact_retirement_reason::NODE_SHUTDOWN
             == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
 );
 

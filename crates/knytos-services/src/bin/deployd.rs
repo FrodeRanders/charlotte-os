@@ -26,7 +26,7 @@ use catten_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_or_shutdown_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 
 const BAD_REQUEST_RESPONSE: &str = concat!(
     "HTTP/1.1 400 Bad Request\r\n",
@@ -96,7 +96,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // CQ entries are hints. Drain before checking the exact pending owners;
         // a completion arriving after this drain keeps the following wait ready.
         for _ in 0..cq.entries {
-            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+            if unsafe { knytos_syscall::cq_read(cq.base, cq.entries) }.is_none() {
                 break;
             }
         }

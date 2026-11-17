@@ -175,13 +175,13 @@ impl Unregistration {
         let pending = names
             .call_move(ns::OP_UNREGISTER_GENERATION, length, memory)
             .map_err(|_| BeginError::Unstarted(Error::Submission))?;
-        Operation::bind(pending, generation, deadline, cq, catten_syscall::monotonic_clock().0)
+        Operation::bind(pending, generation, deadline, cq, knytos_syscall::monotonic_clock().0)
             .map(Self)
             .map_err(|owner| BeginError::Accepted(Self(owner)))
     }
 
     pub fn advance(&mut self) -> Option<Outcome> {
-        self.0.advance_at(catten_syscall::monotonic_clock().0)
+        self.0.advance_at(knytos_syscall::monotonic_clock().0)
     }
 
     pub fn remaining_ms(&self) -> u64 {

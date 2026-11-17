@@ -169,7 +169,7 @@ carry the complete ID; immediate and deferred send share one frame grammar.
 - The frouter demultiplexes frames by EtherType to `tcpip` via `OP_FRAME`
 - Memory objects provide the buffer ownership model smoltcp needs
 - The name service handles discovery (generation-safe lookup)
-- `catten-syscall` has all the IPC and memory primitives
+- `knytos-syscall` has all the IPC and memory primitives
 - `charlotte-smoltcp` implements the `phy::Device` adapter
 - `tcpip.elf` serves the socket protocol over the `"tcpip"` name
 - A self-configuring smoke client (`tcpclient.elf`) exercises a full

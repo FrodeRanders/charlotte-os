@@ -68,7 +68,7 @@ use catten_services::{
     },
     sleep_ms,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     cq_read,
     ipc_close,
@@ -104,7 +104,7 @@ const JOIN_RETRY_MS: u64 = 1_000;
 const RAFT_TIMER_COOKIE: u64 = 0x5241_4654_5449_434b;
 
 fn fatal(stage: u64) -> ! {
-    catten_syscall::el0_log(0x5241_4654, stage);
+    knytos_syscall::el0_log(0x5241_4654, stage);
     unsafe { thread_exit() }
 }
 
@@ -229,14 +229,14 @@ fn fire_event(dns_conn: u64, event_name: &[u8]) -> u64 {
     let Some(memory) = write_payload_to_mem(event_name) else {
         return 0;
     };
-    let call = catten_syscall::ipc_scalar_call_move(
+    let call = knytos_syscall::ipc_scalar_call_move(
         dns_conn,
         dns::OP_EVENT_FIRE,
         event_name.len() as u64,
         memory,
     );
     if call == 0 {
-        catten_syscall::memory_close(memory);
+        knytos_syscall::memory_close(memory);
     }
     call
 }
@@ -668,8 +668,8 @@ fn main(ctx: Context) -> ! {
                 if generation >= 1 && conn != 0 {
                     let status_call = ipc_scalar_call(conn, net::OP_STATUS, 0);
                     if status_call != 0 {
-                        let (status, result, _cap) = catten_syscall::ipc_reply_wait(status_call);
-                        catten_syscall::ipc_close(status_call);
+                        let (status, result, _cap) = knytos_syscall::ipc_reply_wait(status_call);
+                        knytos_syscall::ipc_close(status_call);
                         let (link, mac) = if status == 0 {
                             charlotte_protocol_net::decode_status(result as i64)
                         } else {

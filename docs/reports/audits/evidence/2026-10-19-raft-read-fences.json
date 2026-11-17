@@ -1546,7 +1546,7 @@
       "sha256": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
       "first_line": 945,
       "last_line": 963,
-      "excerpt": "    /// Reply with an attenuated connection minted from a re-delegable\n    /// connection. This is the mediation counterpart to `reply_connection`:\n    /// a controller need not own the target service's endpoint.\n    pub fn reply_connection_ref(\n        mut self,\n        connection: ConnectionRef<'_>,\n        rights: IpcRights,\n        result: i64,\n    ) -> Result<(), IpcError> {\n        let reply = self.cap.take().expect(\"reply token already consumed\");\n        let status = kernel::ipc_reply_connection(reply, connection.cap, rights, result);\n        if status == catten_syscall::ipc_status::OK {\n            Ok(())\n        } else {\n            let _ = kernel::ipc_close(reply);\n            Err(IpcError::Status(status))\n        }\n    }\n}"
+      "excerpt": "    /// Reply with an attenuated connection minted from a re-delegable\n    /// connection. This is the mediation counterpart to `reply_connection`:\n    /// a controller need not own the target service's endpoint.\n    pub fn reply_connection_ref(\n        mut self,\n        connection: ConnectionRef<'_>,\n        rights: IpcRights,\n        result: i64,\n    ) -> Result<(), IpcError> {\n        let reply = self.cap.take().expect(\"reply token already consumed\");\n        let status = kernel::ipc_reply_connection(reply, connection.cap, rights, result);\n        if status == knytos_syscall::ipc_status::OK {\n            Ok(())\n        } else {\n            let _ = kernel::ipc_close(reply);\n            Err(IpcError::Status(status))\n        }\n    }\n}"
     }
   ],
   "upstream_comparison": {

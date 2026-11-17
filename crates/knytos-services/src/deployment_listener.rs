@@ -139,7 +139,7 @@ impl<C: Calls> Machine<C> {
                         }
                     }
                     Err(SocketError::Ipc(IpcError::Status(
-                        catten_syscall::ipc_status::QUEUE_FULL,
+                        knytos_syscall::ipc_status::QUEUE_FULL,
                     ))) => {
                         entry.retry = Some(Deadline::at(now, frequency, ADMISSION_BACKOFF_MS));
                     }
@@ -236,7 +236,7 @@ impl<'a> Calls for Runtime<'a> {
     type Socket = OwnedSocket<'a>;
 
     fn now(&self) -> (u64, u64) {
-        catten_syscall::monotonic_clock()
+        knytos_syscall::monotonic_clock()
     }
 
     fn owner(&self) -> Self::Owner {
@@ -540,7 +540,7 @@ mod tests {
     fn queue_full_is_retried_only_after_backoff_without_resetting_setup() {
         let mut m = machine(1);
         m.calls.rejection =
-            Some(SocketError::Ipc(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)));
+            Some(SocketError::Ipc(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL)));
         step(&mut m, 0, false);
         assert_eq!(m.remaining_ms(false), Some(50));
         m.calls.now.set(49);

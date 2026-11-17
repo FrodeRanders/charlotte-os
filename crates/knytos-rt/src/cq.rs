@@ -18,12 +18,12 @@ pub enum WaitError {
 /// Keep every pending resource and borrow alive through either error outcome.
 /// The kernel owns and cancels its transient source/watchdog registrations.
 pub fn wait(timeout_ms: Option<u64>, cq: u32) -> Result<WaitOutcome, WaitError> {
-    let (_, status) = catten_syscall::cq_wait_checked(timeout_ms, cq);
+    let (_, status) = knytos_syscall::cq_wait_checked(timeout_ms, cq);
     decode(status, timeout_ms.is_some())
 }
 
 fn decode(status: u64, timed: bool) -> Result<WaitOutcome, WaitError> {
-    use catten_syscall::completion_status as status_code;
+    use knytos_syscall::completion_status as status_code;
     match status {
         status_code::READY => Ok(WaitOutcome::Ready),
         status_code::PENDING_OR_TIMEOUT if timed => Ok(WaitOutcome::Deadline),
@@ -35,7 +35,7 @@ fn decode(status: u64, timed: bool) -> Result<WaitOutcome, WaitError> {
 
 #[cfg(test)]
 mod tests {
-    use catten_syscall::completion_status as status;
+    use knytos_syscall::completion_status as status;
 
     use super::*;
 

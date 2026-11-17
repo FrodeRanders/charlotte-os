@@ -233,7 +233,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         let jitter = if failures == 0 {
             0
         } else {
-            catten_syscall::monotonic_clock().0 % 1_000
+            knytos_syscall::monotonic_clock().0 % 1_000
         };
         if let Err(request) =
             catten_services::sleep_ms_or_shutdown(ctx, delay.saturating_add(jitter))

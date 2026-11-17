@@ -7,9 +7,9 @@
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
     "crates/knytos-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
     "crates/knytos-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
-    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
-    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
-    "crates/catten-syscall/src/metadata_pools/tests.rs": "3099f7bbcd50916d34a1106660c6acda1b417ffedf6a1ca2b712b83eaf298531",
+    "crates/knytos-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/knytos-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/knytos-syscall/src/metadata_pools/tests.rs": "3099f7bbcd50916d34a1106660c6acda1b417ffedf6a1ca2b712b83eaf298531",
     "crates/catten/src/ipc/call_storage_tests.rs": "3f4a9b4689a6b89a41532ac86190c9d97af04c7c9c51be8c39ca6e300ed9b989",
     "crates/catten/src/ipc/cap_storage/tests.rs": "915007efc9decb5761a6ba7b4b0435f9b4afa7f9134e40bdd53df64cad2c6373",
     "crates/catten/src/ipc/mod.rs": "7337389cd0744a90d5e208e532ee40a1ffa2affb8876f6b92d1dab2ea84c797e",
@@ -303,9 +303,9 @@
     "diagnostics": [
       ">>> Limine 12.9.6: checked-in files verified",
       ">>> Reusing staged AArch64 EL0 bundle.",
-      "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed"
+      "error: test bundle requires sitas-user.elf; run scripts/build-knytos-user.sh --embed"
     ],
-    "disposition": "Rebuilding the ARM service bundle replaces its staging directory, removing the separate Sitas fixture. Rebuilt and signed it with scripts/build-catten-user.sh --embed, then repeated with unchanged runtime source. This was a staging preflight rejection, not an observed kernel/runtime failure."
+    "disposition": "Rebuilding the ARM service bundle replaces its staging directory, removing the separate Sitas fixture. Rebuilt and signed it with scripts/build-knytos-user.sh --embed, then repeated with unchanged runtime source. This was a staging preflight rejection, not an observed kernel/runtime failure."
   },
   "validation": {
     "host_suite": "Full scripts/run-host-tests.sh passed, including actual collection/SDK/policy modules and expected rejected legacy crypto mutation controls. The 17-test retirement-list harness includes new actual System allocator tracing of independent backing and later-bound resource refunds after node free, both unused and published.",

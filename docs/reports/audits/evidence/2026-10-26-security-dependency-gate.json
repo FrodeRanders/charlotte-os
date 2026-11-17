@@ -874,7 +874,7 @@
       },
       "service_count": 40,
       "separate_sitas": {
-        "command": "scripts/build-catten-user.sh --embed",
+        "command": "scripts/build-knytos-user.sh --embed",
         "exit_status": 0,
         "captured_sha256": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
         "rebuilt_sha256": "a97f28fc30e98206e8693262752f674f4ef6a965519541ac58c41c32c95233ee",

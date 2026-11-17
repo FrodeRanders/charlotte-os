@@ -56,7 +56,7 @@ impl ThreadHandle {
     /// An unsuccessful observation cannot establish that the worker exited.
     pub fn join_preserving(self) -> Result<i64, (Self, ThreadError)> {
         let cap = kernel::observe_thread_exit(self.identity.tid(), self.identity.generation());
-        if cap == catten_syscall::COMPLETION_SUBMIT_FAILED {
+        if cap == knytos_syscall::COMPLETION_SUBMIT_FAILED {
             return Err((self, ThreadError::ObserverRegistrationFailed));
         }
         Completion::from_kernel(cap)
@@ -98,7 +98,7 @@ impl Completion {
     }
 
     pub(super) fn from_kernel(cap: u64) -> Result<Self, CompletionError> {
-        if cap == catten_syscall::COMPLETION_SUBMIT_FAILED {
+        if cap == knytos_syscall::COMPLETION_SUBMIT_FAILED {
             return Err(CompletionError::SubmissionFailed);
         }
         Ok(Self {
@@ -112,13 +112,13 @@ impl Completion {
 
     fn finish_result(&mut self, status: u64, result: u64) -> Result<Option<i64>, CompletionError> {
         match status {
-            catten_syscall::completion_status::READY => {
+            knytos_syscall::completion_status::READY => {
                 let cap = self.cap.take().expect("completion capability already consumed");
                 kernel::close(cap);
                 Ok(Some(result as i64))
             }
-            catten_syscall::completion_status::PENDING_OR_TIMEOUT => Ok(None),
-            catten_syscall::completion_status::WAIT_ADMISSION_FAILED => {
+            knytos_syscall::completion_status::PENDING_OR_TIMEOUT => Ok(None),
+            knytos_syscall::completion_status::WAIT_ADMISSION_FAILED => {
                 // Wait admission failed; no terminal result was observed. Keep ownership
                 // to retry the wait or let Drop cancel, wait for termination, and close.
                 Err(CompletionError::Status(status))
@@ -139,7 +139,7 @@ impl Completion {
     /// Match a CQ readiness hint without consuming this operation. A matching
     /// entry is not its terminal result: observe through `poll` before acting.
     /// An old entry cannot match an already consumed completion.
-    pub fn matches_cq(&self, entry: &catten_syscall::CqEntry) -> bool {
+    pub fn matches_cq(&self, entry: &knytos_syscall::CqEntry) -> bool {
         self.cap.is_some_and(|cap| cap == entry.cookie)
     }
 
@@ -155,7 +155,7 @@ impl Completion {
         match self.finish_result(status, result)? {
             Some(result) => Ok(result),
             None => {
-                Err(CompletionError::Status(catten_syscall::completion_status::PENDING_OR_TIMEOUT))
+                Err(CompletionError::Status(knytos_syscall::completion_status::PENDING_OR_TIMEOUT))
             }
         }
     }
@@ -244,7 +244,7 @@ mod worker_tests {
         let mut workers = Workers::new(1).unwrap();
         let handle = unsafe { ThreadHandle::spawn(0x20000, 0) }.unwrap();
         workers.insert(handle).unwrap();
-        kernel::update(|s| s.thread_observer = catten_syscall::COMPLETION_SUBMIT_FAILED);
+        kernel::update(|s| s.thread_observer = knytos_syscall::COMPLETION_SUBMIT_FAILED);
         assert_eq!(workers.join_all(), Err(ThreadError::ObserverRegistrationFailed));
         assert_eq!(workers.remaining_capacity(), 0);
         kernel::update(|s| {

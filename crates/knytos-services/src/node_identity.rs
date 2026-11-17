@@ -57,7 +57,7 @@ impl Store {
         loop {
             match self.connection.call(opcode, object) {
                 Ok(call) => return Some(call),
-                Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))
+                Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL))
                     if !self.deadline.expired() =>
                 {
                     sleep_ms(10)
@@ -80,7 +80,7 @@ impl Store {
                     // The move was rejected before publication. Keep its exact
                     // returned owner; retry only exact queue-capacity rejection.
                     memory = returned;
-                    if error != IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)
+                    if error != IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL)
                         || self.deadline.expired()
                     {
                         return None;

@@ -222,7 +222,7 @@ fn test_scheduler_waiter_admission() {
     );
     assert_eq!(
         crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 10_000),
-        (catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
+        (knytos_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
     );
     assert_eq!(completion::waiter_count(CQW_ASID, cap), waiter_budget::SOURCE_LIMIT);
     assert!(matches!(
@@ -252,21 +252,21 @@ fn test_scheduler_waiter_admission() {
         );
         assert_eq!(
             crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 10_000),
-            (catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
+            (knytos_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
         );
         assert_eq!(
             crate::self_test::syscall::test_cq_wait_result(CQW_ASID, 2, Some(u64::MAX)),
-            (0, catten_syscall::completion_status::WAIT_ADMISSION_FAILED),
+            (0, knytos_syscall::completion_status::WAIT_ADMISSION_FAILED),
             "maximum finite timeout must attempt watchdog admission, not become event-only",
         );
         assert_eq!(
             crate::self_test::syscall::test_cq_wait_result(CQW_ASID, 2, Some(0)),
-            (0, catten_syscall::completion_status::PENDING_OR_TIMEOUT),
+            (0, knytos_syscall::completion_status::PENDING_OR_TIMEOUT),
         );
         assert_eq!(completion::wait_timeout(CQW_ASID, cap, 0), Ok(false));
         assert_eq!(
             crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 0),
-            (catten_syscall::completion_status::PENDING_OR_TIMEOUT, 0)
+            (knytos_syscall::completion_status::PENDING_OR_TIMEOUT, 0)
         );
         assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
         assert_eq!(completion::state_of(CQW_ASID, cap), Ok(completion::OpStateKind::InFlight));
@@ -296,7 +296,7 @@ fn test_scheduler_waiter_admission() {
         );
         assert_eq!(
             crate::self_test::syscall::test_cq_wait_result(CQW_ASID, 2, timeout),
-            (0, catten_syscall::completion_status::WAIT_ADMISSION_FAILED),
+            (0, knytos_syscall::completion_status::WAIT_ADMISSION_FAILED),
         );
         assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), waiter_budget::SOURCE_LIMIT);
         assert!(matches!(
@@ -387,7 +387,7 @@ fn test_timed_completion_wakes() {
         if syscall {
             assert_eq!(
                 crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 5_000),
-                (catten_syscall::completion_status::READY, 42)
+                (knytos_syscall::completion_status::READY, 42)
             );
         } else {
             assert_eq!(completion::wait_timeout(CQW_ASID, cap, 5_000), Ok(true));

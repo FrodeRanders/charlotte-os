@@ -198,7 +198,7 @@ impl Reads {
     pub fn client(
         &mut self,
         node: &mut RaftNode,
-        message: catten_syscall::IpcMessage,
+        message: knytos_syscall::IpcMessage,
         transport: &RelmsgRaftTransport,
         node_name: &[u8],
         queries: &mut Vec<PendingQuery>,

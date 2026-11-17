@@ -19,7 +19,7 @@ use catten_services::{
     ns,
     stage_name_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::client_status as status;
 
 const ECHO_VALUE: u64 = 0x1234_5678;

@@ -598,7 +598,7 @@ fn try_load_domain_with_capacity(
     }
     let roles = if metadata.class == charlotte_launch::signature_note::ArtifactClass::Administration
     {
-        catten_syscall::domain_roles::POLICY_ADMIN | catten_syscall::domain_roles::SERVICE_MANAGER
+        knytos_syscall::domain_roles::POLICY_ADMIN | knytos_syscall::domain_roles::SERVICE_MANAGER
     } else {
         0
     };

@@ -22,7 +22,7 @@ use catten_services::{
     ns,
     objstore,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     ipc_close,
     ipc_endpoint_bind_cq,
@@ -108,8 +108,8 @@ fn policy_call(ns_conn: u64, opcode: u32, request: &[u8]) -> Option<(i64, u64)> 
 }
 
 fn verify_authorized_lookup(ns_conn: u64) -> bool {
-    let identity = catten_syscall::get_domain_identity();
-    if identity.principal == 0 || identity.roles & catten_syscall::domain_roles::POLICY_ADMIN == 0 {
+    let identity = knytos_syscall::get_domain_identity();
+    if identity.principal == 0 || identity.roles & knytos_syscall::domain_roles::POLICY_ADMIN == 0 {
         return false;
     }
     let mut request = [0u8; wire::MAX_REQUEST_LEN];
@@ -227,7 +227,7 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     }
 
     let (status, _handoff_result, _conn, state_cap) = ipc_reply_wait_with_memory(call);
-    catten_syscall::ipc_close(call);
+    knytos_syscall::ipc_close(call);
     if status != 0 {
         config::write::<u32>(status::ERROR, 3);
         return -3;
@@ -323,7 +323,7 @@ fn persistent_replacement(ns_conn: u64) -> (u64, u64) {
     }
     if read_status != 0 || memory == 0 || size == 0 {
         if memory != 0 {
-            catten_syscall::memory_close(memory);
+            knytos_syscall::memory_close(memory);
         }
         (0, 0)
     } else {

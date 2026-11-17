@@ -484,17 +484,17 @@ pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
     if name.is_empty() || name.len() > MAX_NAME_LEN {
         return None;
     }
-    let cap = catten_syscall::memory_alloc(1);
+    let cap = knytos_syscall::memory_alloc(1);
     if cap == 0 {
         return None;
     }
-    if catten_syscall::memory_map(cap, NAME_SCRATCH_VADDR, true) != 0 {
-        catten_syscall::memory_close(cap);
+    if knytos_syscall::memory_map(cap, NAME_SCRATCH_VADDR, true) != 0 {
+        knytos_syscall::memory_close(cap);
         return None;
     }
     unsafe {
         core::ptr::copy_nonoverlapping(name.as_ptr(), NAME_SCRATCH_VADDR as *mut u8, name.len());
-        catten_syscall::memory_unmap(cap);
+        knytos_syscall::memory_unmap(cap);
     }
     Some(cap)
 }
@@ -703,7 +703,7 @@ pub mod observability {
     pub const NAME: u64 = super::name(b"observe");
 
     /// Reply moves a memory object containing the
-    /// `catten_syscall::THREAD_STATISTICS_*` wire format. The scalar result is
+    /// `knytos_syscall::THREAD_STATISTICS_*` wire format. The scalar result is
     /// its exact byte length.
     pub const OP_THREAD_SNAPSHOT: u32 = 1;
 
@@ -2604,8 +2604,8 @@ pub mod rquery {
 ///
 /// `call` must be a live pending-call capability owned by the caller.
 pub unsafe fn wait_reply(call: u64) -> (i64, u64) {
-    let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
-    catten_syscall::ipc_close(call);
+    let (status, result, cap) = knytos_syscall::ipc_reply_wait(call);
+    knytos_syscall::ipc_close(call);
     if status == 0 {
         (result as i64, cap)
     } else {
@@ -2630,7 +2630,7 @@ pub fn wait_for_registered_name(ns_conn: u64, name: u64) -> Option<(i64, u64)> {
         Some((generation, connection))
     } else {
         if connection != 0 {
-            catten_syscall::ipc_close(connection);
+            knytos_syscall::ipc_close(connection);
         }
         None
     }
@@ -2638,8 +2638,8 @@ pub fn wait_for_registered_name(ns_conn: u64, name: u64) -> Option<(i64, u64)> {
 
 /// Block until a pending call completes.
 pub fn spin_reply(call: u64) -> (i64, u64) {
-    let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
-    catten_syscall::ipc_close(call);
+    let (status, result, cap) = knytos_syscall::ipc_reply_wait(call);
+    knytos_syscall::ipc_close(call);
     if status == 0 {
         (result as i64, cap)
     } else {
@@ -2837,7 +2837,7 @@ pub fn sleep_ms_or_shutdown(
 /// [`wait_reply`] or the corresponding memory-aware wait operation.
 pub fn scalar_call_with_backpressure(connection: u64, opcode: u32, arg0: u64) -> u64 {
     loop {
-        let call = catten_syscall::ipc_scalar_call(connection, opcode, arg0);
+        let call = knytos_syscall::ipc_scalar_call(connection, opcode, arg0);
         if call != 0 {
             return call;
         }
@@ -2861,7 +2861,7 @@ pub fn wait_for_local_ready(ns_conn: u64) -> bool {
     else {
         return false;
     };
-    catten_syscall::ipc_close(connection);
+    knytos_syscall::ipc_close(connection);
     true
 }
 
@@ -3437,10 +3437,10 @@ impl RequestAttachments {
 impl Drop for RequestAttachments {
     fn drop(&mut self) {
         if self.memory != 0 {
-            catten_syscall::memory_close(self.memory);
+            knytos_syscall::memory_close(self.memory);
         }
         if self.connection != 0 {
-            catten_syscall::ipc_close(self.connection);
+            knytos_syscall::ipc_close(self.connection);
         }
     }
 }

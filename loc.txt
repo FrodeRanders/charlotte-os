@@ -47,7 +47,7 @@ Attribution rules and limits:
 - Kernel includes native self-tests and adjacent subsystem fixtures; kernel
   demonstrations are listed separately. 'Other code' approximates kernel
   proper but still includes unclassified diagnostic/fixture scaffolding.
-- Userspace demonstrations: catten-user, knytos-services/examples, echo, greet.
+- Userspace demonstrations: knytos-user, knytos-services/examples, echo, greet.
 - Userspace test applications: cclient, client, kafka_fence_smoke, kafka_smoke,
   kafka_step_input, kafka_step_proc, nclient, nvme_client, objstore_client,
   rclient, s3_smoke, security_probe, shutdown_probe, smoke, tcpclient.

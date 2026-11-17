@@ -28,7 +28,7 @@ use catten_services::{
     grant,
     ns,
 };
-use catten_syscall::IpcRights;
+use knytos_syscall::IpcRights;
 use charlotte_authorization::{
     AuthorizationRights,
     wire,
@@ -58,7 +58,7 @@ fn authorized_request<'a>(
     // Signature verification used the configured deployment key at launch.
     // A valid signature alone is insufficient: bind this exact policy to the
     // actual image/occupancy, including after controller restart or ASID reuse.
-    if !catten_syscall::launch_descriptor_matches(
+    if !knytos_syscall::launch_descriptor_matches(
         message.sender,
         message.sender_generation,
         &charlotte_launch::sha256::digest(request.descriptor),
@@ -280,11 +280,11 @@ fn main(ctx: Context) -> ! {
         // publication all signal this CQ. Notifications are hints: the next
         // pass rechecks every source. No short timer polling or single-call wait.
         let timeout = pending.iter().map(|operation| operation.deadline.remaining_ms()).min();
-        let (_, status) = catten_syscall::cq_wait_checked(timeout, 0);
+        let (_, status) = knytos_syscall::cq_wait_checked(timeout, 0);
         match status {
-            catten_syscall::completion_status::READY
-            | catten_syscall::completion_status::PENDING_OR_TIMEOUT => {}
-            catten_syscall::completion_status::WAIT_ADMISSION_FAILED => {
+            knytos_syscall::completion_status::READY
+            | knytos_syscall::completion_status::PENDING_OR_TIMEOUT => {}
+            knytos_syscall::completion_status::WAIT_ADMISSION_FAILED => {
                 // No waiter was installed. Preserve the pending owners and
                 // their original deadlines; bounded admission backoff only.
                 catten_services::sleep_ms(10);

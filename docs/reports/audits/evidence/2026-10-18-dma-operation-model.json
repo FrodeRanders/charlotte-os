@@ -162,7 +162,7 @@
     "crates/catten/src/device/mod.rs": "b40d6faea5a7b7f1f2ddafd6b59fc74cbc79bc611dfc56db6a4312b79d3e1a5b",
     "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "crates/catten/src/syscall/mod.rs": "77986a583cb6bee56f85f381fc162735a6c16b59042efc3591ac4e05514f3eb3",
-    "crates/catten-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c",
+    "crates/knytos-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c",
     "crates/catten/src/memory/object.rs": "d8023c7174d490bd10f682ca1fa1dbcf99917e4509544391213ded7129e739d1",
     "crates/catten/src/memory/object/retirement_tests.rs": "5b1366e7c16c07c1be534bd74d48dd6a0d74100b2de8c967f75cff81759192d9"
   },

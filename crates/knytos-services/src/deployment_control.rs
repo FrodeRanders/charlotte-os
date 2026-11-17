@@ -498,7 +498,7 @@ impl<S> Calls for Runtime<'_, S> {
     type Socket = S;
 
     fn now(&self) -> u64 {
-        catten_syscall::monotonic_clock().0
+        knytos_syscall::monotonic_clock().0
     }
 
     fn begin(
@@ -566,7 +566,7 @@ impl<'a, S> Controls<'a, S> {
     }
 
     pub fn start(&mut self, socket: S, request: Request, available: usize) -> Option<Finished<S>> {
-        let (now, frequency) = catten_syscall::monotonic_clock();
+        let (now, frequency) = knytos_syscall::monotonic_clock();
         self.0.start(socket, request, available, now, frequency)
     }
 

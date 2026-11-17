@@ -84,7 +84,7 @@ new signature.
 ## SEC-34: AArch64 syscall emitter coverage
 
 The `svc3` table now emits
-[`svc #77`](../../../crates/catten-syscall/src/lib.rs#L445). A new host check,
+[`svc #77`](../../../crates/knytos-syscall/src/lib.rs#L445). A new host check,
 [test-syscall-emitters.py](../../../scripts/tests/test-syscall-emitters.py),
 parses the declared syscall list, each AArch64 `svcN` table and every
 `svcN(SyscallNumber::Variant, ...)` call site, and fails when a wrapper has no
@@ -122,7 +122,7 @@ query. The live-upgrade and scoped-launch guest paths continue to pass.
 
 - `scripts/build-knytos-services.sh --embed`: passed; the AArch64 bundle was
   staged and signed with the fixed `relmsg`, `tcpip`, `agent` and
-  `catten-syscall` code.
+  `knytos-syscall` code.
 - `scripts/run-host-tests.sh`: passed, **340 tests, zero failures** (was 336;
   the new reassembly/backpressure/MTU tests and the emitter check are
   included). The emitter check reports 68 call sites across four arities.

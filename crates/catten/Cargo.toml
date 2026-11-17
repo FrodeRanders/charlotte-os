@@ -96,7 +96,7 @@ x86_el0_smoke = ["kernel_tests"]
 qemu = ["virtio_gpu"]
 
 [dependencies]
-catten-syscall = { path = "../catten-syscall" }
+knytos-syscall = { path = "../knytos-syscall" }
 charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco", optional = true }

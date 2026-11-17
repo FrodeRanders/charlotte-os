@@ -9,7 +9,7 @@ pub enum MemoryError {
     AllocationFailed,
     InvalidCapability,
     MemoryStatus(u64),
-    DmaMap(catten_syscall::DmaMapError),
+    DmaMap(knytos_syscall::DmaMapError),
     DmaStatus(u64),
 }
 
@@ -50,7 +50,7 @@ impl<'context> LaunchMemoryRef<'context> {
 
     pub fn map_read_only(&self) -> Result<MappedLaunchMemory<'_>, MemoryError> {
         let (status, base) = kernel::memory_map_any(self.cap, false);
-        if status != catten_syscall::memory_status::OK {
+        if status != knytos_syscall::memory_status::OK {
             return Err(MemoryError::MemoryStatus(status));
         }
         Ok(MappedLaunchMemory {
@@ -220,7 +220,7 @@ impl OwnedMemory {
 
     fn map<Access>(self, writable: bool) -> Result<MappedMemory<Access>, (Self, MemoryError)> {
         let (status, base) = kernel::memory_map_any(self.raw_handle(), writable);
-        if status != catten_syscall::memory_status::OK {
+        if status != knytos_syscall::memory_status::OK {
             return Err((self, MemoryError::MemoryStatus(status)));
         }
         Ok(MappedMemory {
@@ -328,7 +328,7 @@ impl<Access> MappedMemory<Access> {
     pub fn unmap(mut self) -> Result<OwnedMemory, (Self, MemoryError)> {
         let cap = self.memory.as_ref().expect("mapped memory already consumed").raw_handle();
         let status = kernel::memory_unmap(cap);
-        if status != catten_syscall::memory_status::OK {
+        if status != knytos_syscall::memory_status::OK {
             return Err((self, MemoryError::MemoryStatus(status)));
         }
         Ok(self.memory.take().expect("mapped memory already consumed"))
@@ -408,14 +408,14 @@ impl DmaUnmap {
         }
         // A rejected/interrupted call cannot fall through to another attempt
         // from Drop. Only the kernel's explicit unstarted status rearms it.
-        *self = Self::Retained(catten_syscall::device_status::DMA_INVALID);
+        *self = Self::Retained(knytos_syscall::device_status::DMA_INVALID);
         let status = kernel::dma_unmap(domain, iova);
         *self = match status {
-            catten_syscall::device_status::OK => Self::Complete,
-            catten_syscall::device_status::OPERATION_IN_FLIGHT => Self::Active,
+            knytos_syscall::device_status::OK => Self::Complete,
+            knytos_syscall::device_status::OPERATION_IN_FLIGHT => Self::Active,
             other => Self::Retained(other),
         };
-        if status == catten_syscall::device_status::OK {
+        if status == knytos_syscall::device_status::OK {
             Ok(())
         } else {
             Err(MemoryError::DmaStatus(status))
@@ -544,7 +544,7 @@ impl SharedDmaMemory<'_> {
         }
         let memory = self.memory.as_ref().expect("shared DMA memory already consumed");
         let status = kernel::memory_unmap(memory.raw_handle());
-        if status != catten_syscall::memory_status::OK {
+        if status != knytos_syscall::memory_status::OK {
             return Err((self, MemoryError::MemoryStatus(status)));
         }
         Ok(self.memory.take().expect("shared DMA memory already consumed"))

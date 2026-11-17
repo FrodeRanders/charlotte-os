@@ -49,7 +49,7 @@ use catten_services::{
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
-use catten_syscall::{
+use knytos_syscall::{
     cq_read,
     ipc_close,
     ipc_recv,

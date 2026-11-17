@@ -4,7 +4,7 @@
 [`klib::admission`](../../crates/catten/src/klib/admission.rs) supplies four
 family-typed owners: byte/count node charges, fixed-bundle charges, multidimensional
 reservations, and observer actual-layout charges. A single
-[catalog](../../crates/catten-syscall/src/metadata_pools.rs) names all 24 pools,
+[catalog](../../crates/knytos-syscall/src/metadata_pools.rs) names all 24 pools,
 their dimensions and units. Every pool keeps its own static counter lock; the
 pool inventory adds no allocated registry, common pool-counter lock or centralized
 resource owner. Separate principal funding uses the existing history lock.

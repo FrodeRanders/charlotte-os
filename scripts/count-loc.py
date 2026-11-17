@@ -48,7 +48,7 @@ def component(path):
         return "Kernel demonstrations"
     if path.startswith("crates/catten/"):
         return "Kernel"
-    if path.startswith("crates/catten-user/") or path.startswith(
+    if path.startswith("crates/knytos-user/") or path.startswith(
         "crates/knytos-services/examples/"
     ):
         return "Userspace demonstrations"
@@ -280,7 +280,7 @@ def main():
                   "- Kernel includes native self-tests and adjacent subsystem fixtures; kernel",
                   "  demonstrations are listed separately. 'Other code' approximates kernel",
                   "  proper but still includes unclassified diagnostic/fixture scaffolding.",
-                  "- Userspace demonstrations: catten-user, knytos-services/examples, echo, greet.",
+                  "- Userspace demonstrations: knytos-user, knytos-services/examples, echo, greet.",
                   textwrap.fill("- Userspace test applications: " + ", ".join(sorted(PROBES)) + ".",
                                 width=79, subsequent_indent="  "),
                   "- Runtime service binaries are separate from the shared knytos-services SDK,",

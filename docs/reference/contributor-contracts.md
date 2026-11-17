@@ -1321,7 +1321,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   `charlotte_launch::execution_target::RUNTIME_ABI` and rebuild/sign every variant,
   including runner fixtures. Retired nine-register syscalls 22/27/53 reject.
   See `docs/reference/ipc-receive.md`.
-- `catten-syscall` mirrors the register ABI and intentionally exposes integers.
+- `knytos-syscall` mirrors the register ABI and intentionally exposes integers.
 - `knytos-rt::owned` is the safe application layer and owns kernel resources.
 - Protocol crates define wire formats and opcodes; they do not own live
   capabilities.

@@ -32,7 +32,7 @@ extern crate alloc;
 
 use alloc::collections::VecDeque;
 
-use catten_syscall::{
+use knytos_syscall::{
     ipc_close,
     ipc_reply_wait,
     ipc_scalar_call_move,

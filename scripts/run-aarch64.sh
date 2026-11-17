@@ -659,11 +659,11 @@ else
     "${ROOT_DIR}/scripts/build-knytos-services.sh" --embed --mode "$BOOT_MODE"
 fi
 if [ "$BOOT_MODE" = "test" ] && [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
-    "${ROOT_DIR}/scripts/build-catten-user.sh" --embed
+    "${ROOT_DIR}/scripts/build-knytos-user.sh" --embed
 fi
 catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
 if [ "$BOOT_MODE" = "test" ] && [ ! -f "$BUNDLE/sitas-user.elf" ]; then
-    echo "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed" >&2
+    echo "error: test bundle requires sitas-user.elf; run scripts/build-knytos-user.sh --embed" >&2
     exit 1
 fi
 export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"

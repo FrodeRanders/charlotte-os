@@ -13,7 +13,7 @@ use catten_services::{
     relmsg,
     wait_for_registered_name_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::relmsg_client_status as status;
 use charlotte_protocol_msg::{
     IPC_MESSAGE_HEADER_SIZE,

@@ -29,7 +29,7 @@
     "crates/knytos-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
     "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
     "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
-    "scripts/build-catten-user.sh": "2559a292bbd7642a69a60631d3bf083a7793519229196ca4bfb0adc699bd8cec",
+    "scripts/build-knytos-user.sh": "2559a292bbd7642a69a60631d3bf083a7793519229196ca4bfb0adc699bd8cec",
     "scripts/tests/test-tls-gcm-backend.py": "216d6e28e514f473804eb6d89beef974163d4b7db5179c6808235205d2837695",
     "scripts/check-dependency-advisories.py": "f0d601732ebf1beef98c10742121c224d38d026d2df41df06e90463a7e8bb379"
   },
@@ -818,7 +818,7 @@
       "scope": "Final x86_64 thirty-seven-service bundle"
     },
     {
-      "command": "scripts/build-catten-user.sh --embed",
+      "command": "scripts/build-knytos-user.sh --embed",
       "exit_code": 0,
       "scope": "Separate AArch64 Sitas image; unchanged by subsequent service-source finalization"
     }

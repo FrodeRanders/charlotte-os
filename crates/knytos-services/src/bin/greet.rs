@@ -27,7 +27,7 @@ use catten_services::{
     ns,
     sleep_ms,
 };
-use catten_syscall::IpcRights;
+use knytos_syscall::IpcRights;
 use charlotte_launch::greet_status as status;
 
 fn serve(ctx: &Context) -> ShutdownRequest {

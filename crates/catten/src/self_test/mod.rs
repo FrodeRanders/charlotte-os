@@ -77,7 +77,7 @@
 //!   to another LP completes a shared-CQ round trip.
 //! - [`el0_pingpong`] — two shards communicate cross-LP over the full svc ABI; outcome: the
 //!   mailbox/capability handshake completes with correct data.
-//! - [`el0_sitas`] — loads the Rust-compiled sitas/catten-user ELF and runs `basic_kv`; outcome: a
+//! - [`el0_sitas`] — loads the Rust-compiled sitas/knytos-user ELF and runs `basic_kv`; outcome: a
 //!   real ELF's PT_LOAD segments map and execute.
 //! - [`el0_service`] — the name service + service manager (Phase 3); outcome: services
 //!   register/lookup by name and restart semantics (teardown, stale-connection rejection,

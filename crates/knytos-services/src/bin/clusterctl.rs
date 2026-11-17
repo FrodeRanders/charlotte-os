@@ -43,7 +43,7 @@ use catten_services::{
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
-use catten_syscall::*;
+use knytos_syscall::*;
 use charlotte_launch::clusterctl_status as status;
 use charlotte_protocol_disco::{
     ROLE_LEADER,
@@ -136,7 +136,7 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
 
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
 /// memory object. The memory layout is `[payload_len:u64 LE][payload]`.
-fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
+fn read_payload(message: &knytos_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
     if message.memory == 0 {
         return None;
     }
@@ -494,7 +494,7 @@ fn run_join(
 }
 
 /// The 32 cluster-key bytes attached to an `OP_KEYCEREMONY` call.
-fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
+fn read_key(message: &knytos_syscall::IpcMessage) -> Option<[u8; 32]> {
     if message.memory == 0 {
         return None;
     }

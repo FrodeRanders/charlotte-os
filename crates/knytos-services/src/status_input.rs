@@ -215,12 +215,12 @@ impl<'a> Inputs<'a> {
     // Return the complete rejected connection without another fallible allocation.
     #[allow(clippy::result_large_err)]
     pub fn admit(&mut self, socket: Connection<'a>) -> Result<(), Connection<'a>> {
-        let (now, frequency) = catten_syscall::monotonic_clock();
+        let (now, frequency) = knytos_syscall::monotonic_clock();
         self.0.admit(socket, now, frequency)
     }
 
     pub fn advance(&mut self) -> (bool, Option<Finished<Connection<'a>>>) {
-        self.0.advance(catten_syscall::monotonic_clock().0)
+        self.0.advance(knytos_syscall::monotonic_clock().0)
     }
 
     pub fn cancel_one(&mut self) -> Option<Connection<'a>> {
@@ -232,7 +232,7 @@ impl<'a> Inputs<'a> {
     }
 
     pub fn remaining_ms(&self) -> Option<u64> {
-        self.0.remaining_ms(catten_syscall::monotonic_clock().0)
+        self.0.remaining_ms(knytos_syscall::monotonic_clock().0)
     }
 }
 

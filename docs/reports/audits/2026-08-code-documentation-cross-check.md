@@ -107,7 +107,7 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   page cap (`MAX_MEMORY_OBJECT_PAGES`, 64 MiB); full per-domain *total* quotas
   remain future work and should be tracked alongside the existing "resource
   accounting" limitation in `implementation-status.tex`.
-- **M — `ipc_recv_vec` result-page register mismatch** (`crates/catten-syscall/src/lib.rs:1319-1355`
+- **M — `ipc_recv_vec` result-page register mismatch** (`../../../crates/knytos-syscall`
   vs `crates/catten/src/syscall/mod.rs:1256-1259`). The wrapper passed
   `result_page` in x2 while the kernel read x3, silently disabling vector-receive
   result delivery. **Fixed** in this session (§4.2), together with the wrapper's
@@ -258,7 +258,7 @@ that verdict.
    destination bytes, validates the complete range before writing, supports
    unaligned/cross-page buffers, and rolls back its reserved completion slot on
    validation failure.
-2. **`ipc_recv_vec` register fix** (`crates/catten-syscall/src/lib.rs`): the
+2. **`ipc_recv_vec` register fix** (`../../../crates/knytos-syscall`): the
    wrapper now places `result_page` in x3, matching the kernel's read, and
    captures `arg0`/`reply` from x2/x3 respectively. Its inline assembly no
    longer claims `nomem`, so the compiler observes the result-page write.
@@ -279,7 +279,7 @@ that verdict.
    kernel producer serialization, and the shared EL0 consumer protocol.
    `cq_ring_of` is unsafe and documents the close/replace and single-consumer
    obligations at the API boundary.
-7. **Completion ABI errors made explicit** (`crates/catten-syscall/src/lib.rs`,
+7. **Completion ABI errors made explicit** (`../../../crates/knytos-syscall`,
    `crates/catten/src/syscall/mod.rs`): shared constants now define ready,
    pending/timeout, invalid-capability, and submission-failure results. Poll and
    timeout-wait distinguish invalid capabilities, and all wrappers document the

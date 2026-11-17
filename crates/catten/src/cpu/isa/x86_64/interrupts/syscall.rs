@@ -161,7 +161,7 @@ pub unsafe extern "C" fn syscall_entry_handler(frame_base: *mut u64) {
         [get_lp_id() as usize]
         .load(Ordering::Acquire);
 
-    if catten_syscall::SyscallNumber::try_from(syscall_no).is_err() {
+    if knytos_syscall::SyscallNumber::try_from(syscall_no).is_err() {
         early_logln!("FATAL EL0 UNKNOWN SYSCALL: ASID={} N={}", frame.asid, syscall_no);
         crate::cpu::scheduler::abort_address_space(frame.asid);
     }

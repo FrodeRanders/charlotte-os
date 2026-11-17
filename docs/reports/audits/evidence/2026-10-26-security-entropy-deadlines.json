@@ -40,7 +40,7 @@
     "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
     "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "crates/knytos-rt/src/owned/completion.rs": "c9e3db6761c685c55c71a094269fa67f12af84c2f9a3780525178f81b7782910",
-    "crates/catten-user/Cargo.toml": "14c9d30a1057a3e4009da62e0241c54d4a6bd32852465cf3d91693d3a1605de9",
+    "crates/knytos-user/Cargo.toml": "14c9d30a1057a3e4009da62e0241c54d4a6bd32852465cf3d91693d3a1605de9",
     "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
     "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "scripts/tests/test-tls-gcm-backend.py": "216d6e28e514f473804eb6d89beef974163d4b7db5179c6808235205d2837695",

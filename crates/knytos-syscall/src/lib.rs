@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use catten_syscall::*;
+//! use knytos_syscall::*;
 //!
 //! let cap = unsafe { submit(OpCode::Nop) };
 //! let (ok, result) = unsafe { wait_timeout(cap, 5000) };

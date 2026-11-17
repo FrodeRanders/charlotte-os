@@ -276,7 +276,7 @@ impl<'a> Inputs<'a> {
     // Rejection must return the complete owner without a new fallible allocation.
     #[allow(clippy::result_large_err)]
     pub fn admit(&mut self, socket: OwnedSocket<'a>) -> Result<(), (OwnedSocket<'a>, Error)> {
-        let (now, frequency) = catten_syscall::monotonic_clock();
+        let (now, frequency) = knytos_syscall::monotonic_clock();
         self.0.admit(socket, now, frequency)
     }
 
@@ -288,7 +288,7 @@ impl<'a> Inputs<'a> {
         &mut self,
         reserved: usize,
     ) -> (bool, Option<Finished<OwnedSocket<'a>>>) {
-        self.0.advance(catten_syscall::monotonic_clock().0, reserved)
+        self.0.advance(knytos_syscall::monotonic_clock().0, reserved)
     }
 
     pub fn available_bytes(&self) -> usize {
@@ -297,7 +297,7 @@ impl<'a> Inputs<'a> {
     }
 
     pub fn remaining_ms(&self) -> Option<u64> {
-        self.0.remaining(catten_syscall::monotonic_clock().0)
+        self.0.remaining(knytos_syscall::monotonic_clock().0)
     }
 }
 

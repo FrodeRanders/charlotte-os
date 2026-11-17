@@ -237,7 +237,7 @@ impl Endpoint {
     /// Wait for and receive one request with the same authenticated envelope.
     pub fn receive(&self) -> Result<IncomingMessage, ReceiveError> {
         IncomingMessage::from_kernel(kernel::ipc_recv_block(self.raw_handle()))?
-            .ok_or(ReceiveError::Status(catten_syscall::ipc_status::NO_MESSAGE))
+            .ok_or(ReceiveError::Status(knytos_syscall::ipc_status::NO_MESSAGE))
     }
 
     pub fn connect(&self, rights: IpcRights) -> Result<Connection, IpcError> {
@@ -247,7 +247,7 @@ impl Endpoint {
 
     pub fn bind_completion_queue(&self, cq: u32) -> Result<(), IpcError> {
         let status = kernel::ipc_endpoint_bind_cq(self.raw_handle(), cq);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             Err(IpcError::Status(status))
@@ -283,7 +283,7 @@ impl Endpoint {
     /// it after uncertain cleanup rather than replay a started close.
     pub fn close(mut self) -> Result<(), (Self, IpcError)> {
         let status = kernel::ipc_close(self.raw_handle());
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err((self, IpcError::Status(status)));
         }
         self.cap.take();
@@ -358,7 +358,7 @@ impl<'memory> CapabilityVector<'memory> {
     }
 
     fn validate_new_cap(&self, cap: u64) -> Result<(), IpcError> {
-        if self.items.len() >= catten_syscall::CAP_VECTOR_MAX {
+        if self.items.len() >= knytos_syscall::CAP_VECTOR_MAX {
             return Err(IpcError::TooManyVectorEntries);
         }
         if self.items.iter().any(|item| item.cap() == cap) {
@@ -402,16 +402,16 @@ impl<'memory> CapabilityVector<'memory> {
             descriptor.map_writable().map_err(|(_, error)| IpcError::DescriptorMemory(error))?;
         let bytes = mapping.as_mut_slice();
         bytes[..2].copy_from_slice(&(self.items.len() as u16).to_le_bytes());
-        let entry_size = core::mem::size_of::<catten_syscall::CapVectorEntry>();
+        let entry_size = core::mem::size_of::<knytos_syscall::CapVectorEntry>();
         for (index, item) in self.items.iter().enumerate() {
-            let entry = catten_syscall::CapVectorEntry {
+            let entry = knytos_syscall::CapVectorEntry {
                 cap: item.cap(),
                 mode: item.mode(),
                 reserved: 0,
             };
             let entry_bytes = unsafe {
                 slice::from_raw_parts(
-                    (&entry as *const catten_syscall::CapVectorEntry).cast::<u8>(),
+                    (&entry as *const knytos_syscall::CapVectorEntry).cast::<u8>(),
                     entry_size,
                 )
             };
@@ -486,7 +486,7 @@ impl<'connection> ConnectionRef<'connection> {
 
     pub fn send(self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
         let status = kernel::ipc_scalar_send(self.cap, opcode, arg0);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             Err(IpcError::Status(status))
@@ -495,7 +495,7 @@ impl<'connection> ConnectionRef<'connection> {
 
     pub fn call(self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
         let (call, status) = kernel::ipc_scalar_call_checked(self.cap, opcode, arg0);
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err(IpcError::Status(status));
         }
         PendingCall::from_kernel(call)
@@ -509,7 +509,7 @@ impl<'connection> ConnectionRef<'connection> {
     ) -> Result<PendingCall<'static>, (OwnedMemory, IpcError)> {
         let (call, status) =
             kernel::ipc_scalar_call_move_checked(self.cap, opcode, arg0, memory.raw_handle());
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err((memory, IpcError::Status(status)));
         }
         if call == 0 {
@@ -575,7 +575,7 @@ impl<'connection> ConnectionRef<'connection> {
             endpoint.raw_handle(),
             rights,
         );
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err(IpcError::Status(status));
         }
         PendingCall::from_kernel(call)
@@ -666,7 +666,7 @@ impl Connection {
 
     pub fn send(&self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
         let status = kernel::ipc_scalar_send(self.raw_handle(), opcode, arg0);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             Err(IpcError::Status(status))
@@ -685,7 +685,7 @@ impl Connection {
     ) -> Result<(), (OwnedMemory, IpcError)> {
         let status =
             kernel::ipc_scalar_send_move(self.raw_handle(), opcode, arg0, memory.raw_handle());
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err((memory, IpcError::Status(status)));
         }
         let _ = memory.cap.take().expect("owned memory capability already consumed");
@@ -704,7 +704,7 @@ impl Connection {
             arg0,
             memory.raw_handle(),
         );
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err((memory, IpcError::Status(status)));
         }
         if call == 0 {
@@ -773,7 +773,7 @@ impl Connection {
             endpoint.raw_handle(),
             rights,
         );
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err(IpcError::Status(status));
         }
         PendingCall::from_kernel(call)
@@ -813,7 +813,7 @@ impl Connection {
         };
         let status =
             kernel::ipc_vector_send(self.raw_handle(), opcode, arg0, descriptor.raw_handle());
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err((vector, IpcError::Status(status)));
         }
         let _ = descriptor.cap.take().expect("vector descriptor already consumed");
@@ -902,7 +902,7 @@ impl ReplyToken {
     pub fn reply(mut self, result: i64) -> Result<(), IpcError> {
         let cap = self.cap.take().expect("reply token already consumed");
         let status = kernel::ipc_reply(cap, result);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             let _ = kernel::ipc_close(cap);
@@ -917,7 +917,7 @@ impl ReplyToken {
     ) -> Result<(), (OwnedMemory, IpcError)> {
         let reply = self.cap.take().expect("reply token already consumed");
         let status = kernel::ipc_reply_move(reply, memory.raw_handle(), result);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             let _ = memory.cap.take().expect("owned memory capability already consumed");
             Ok(())
         } else {
@@ -934,7 +934,7 @@ impl ReplyToken {
     ) -> Result<(), IpcError> {
         let reply = self.cap.take().expect("reply token already consumed");
         let status = kernel::ipc_reply_connection(reply, endpoint.raw_handle(), rights, result);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             let _ = kernel::ipc_close(reply);
@@ -953,7 +953,7 @@ impl ReplyToken {
     ) -> Result<(), IpcError> {
         let reply = self.cap.take().expect("reply token already consumed");
         let status = kernel::ipc_reply_connection(reply, connection.cap, rights, result);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             let _ = kernel::ipc_close(reply);
@@ -998,23 +998,23 @@ impl IncomingMessage {
     /// the receive ABI. No raw call or other owner may use or release them
     /// after this adoption, including on a validation error.
     pub unsafe fn from_raw(
-        message: catten_syscall::IpcMessage,
+        message: knytos_syscall::IpcMessage,
     ) -> Result<Option<Self>, ReceiveError> {
         Self::from_kernel(message)
     }
 
-    fn from_kernel(message: catten_syscall::IpcMessage) -> Result<Option<Self>, ReceiveError> {
-        if message.status == catten_syscall::ipc_status::NO_MESSAGE
-            || message.status == catten_syscall::ipc_status::PENDING
+    fn from_kernel(message: knytos_syscall::IpcMessage) -> Result<Option<Self>, ReceiveError> {
+        if message.status == knytos_syscall::ipc_status::NO_MESSAGE
+            || message.status == knytos_syscall::ipc_status::PENDING
         {
             // A queued cancellation owns the front; it is not yet receivable.
             // Its completion re-signals endpoint/CQ readiness for later work.
             return Ok(None);
         }
-        if message.status == catten_syscall::ipc_status::ENDPOINT_CLOSED {
+        if message.status == knytos_syscall::ipc_status::ENDPOINT_CLOSED {
             return Err(ReceiveError::EndpointClosed);
         }
-        if message.status != catten_syscall::ipc_status::OK {
+        if message.status != knytos_syscall::ipc_status::OK {
             close_raw_message_capabilities(message);
             return Err(ReceiveError::Status(message.status));
         }
@@ -1052,7 +1052,7 @@ impl IncomingMessage {
     }
 }
 
-fn close_raw_message_capabilities(message: catten_syscall::IpcMessage) {
+fn close_raw_message_capabilities(message: knytos_syscall::IpcMessage) {
     if message.memory != 0 {
         let _ = kernel::memory_close(message.memory);
     }
@@ -1104,7 +1104,7 @@ impl PendingCall<'_> {
     /// Dropping it cannot silently release that borrow after failed cleanup.
     pub fn close(mut self) -> Result<(), (Self, IpcError)> {
         let status = kernel::ipc_close(self.raw_handle());
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err((self, IpcError::Status(status)));
         }
         self.cap.take();
@@ -1123,7 +1123,7 @@ impl PendingCall<'_> {
         }
         let cap = self.cap.take().expect("pending-call capability already consumed");
         close_pending_call_or_abort(cap);
-        if status != catten_syscall::ipc_status::OK {
+        if status != knytos_syscall::ipc_status::OK {
             return Err(IpcError::Status(status));
         }
         let connection = Connection::from_kernel(connection);
@@ -1144,7 +1144,7 @@ impl PendingCall<'_> {
     /// A service can wait on the same CQ as its endpoint and timers.
     pub fn bind_cq(&mut self, cq: u32) -> Result<(), IpcError> {
         let status = kernel::ipc_reply_bind_cq(self.raw_handle(), cq);
-        if status == catten_syscall::ipc_status::OK {
+        if status == knytos_syscall::ipc_status::OK {
             Ok(())
         } else {
             Err(IpcError::Status(status))
@@ -1163,7 +1163,7 @@ impl PendingCall<'_> {
     pub fn wait_timeout(&mut self, timeout_ms: u64) -> Result<Option<CallResult>, IpcError> {
         let (status, result, connection, memory) =
             kernel::ipc_reply_wait_timeout_with_memory(self.raw_handle(), timeout_ms);
-        if status == catten_syscall::ipc_status::RESOURCE_LIMIT {
+        if status == knytos_syscall::ipc_status::RESOURCE_LIMIT {
             return Err(IpcError::Status(status));
         }
         self.finish(status, result, connection, memory)
@@ -1185,7 +1185,7 @@ impl Drop for PendingCall<'_> {
 }
 
 fn close_pending_call_or_abort(cap: u64) {
-    if kernel::ipc_close(cap) != catten_syscall::ipc_status::OK {
+    if kernel::ipc_close(cap) != knytos_syscall::ipc_status::OK {
         // Returning (or unwinding) would end the Rust borrow while foreign CPU
         // mappings may still be reachable. A timeout is not a cleanup receipt.
         // Terminate the domain; do not clear a kernel claim or force-free backing.
@@ -1209,7 +1209,7 @@ pub struct ReadOperation<'buffer> {
 impl<'buffer> ReadOperation<'buffer> {
     pub fn submit(buffer: &'buffer mut [u8]) -> Result<Self, ReadError> {
         let cap = unsafe { kernel::submit_read(buffer.as_mut_ptr() as usize, buffer.len()) };
-        if cap == catten_syscall::COMPLETION_SUBMIT_FAILED {
+        if cap == knytos_syscall::COMPLETION_SUBMIT_FAILED {
             return Err(ReadError::SubmissionFailed);
         }
         Ok(Self {

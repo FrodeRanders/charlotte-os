@@ -355,7 +355,7 @@ fn persist_record(
 
 fn persist_fail_stop(error: PersistError) -> ! {
     catten_rt::logln!("[raft-store] FATAL: persistence rejected: {}", error);
-    unsafe { catten_syscall::thread_exit() }
+    unsafe { knytos_syscall::thread_exit() }
 }
 
 pub struct DiskPersistentStateStore {

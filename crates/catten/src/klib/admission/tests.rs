@@ -27,7 +27,7 @@ impl Family<1> for Bundles {
 fn catalog_observation() {
     test_observation();
     visit(|sample| {
-        if sample.id == catten_syscall::metadata_pools::Id::ObserverLists {
+        if sample.id == knytos_syscall::metadata_pools::Id::ObserverLists {
             let _guard = ObserverLists::spec().state.try_lock().expect("callback under pool guard");
         }
     });

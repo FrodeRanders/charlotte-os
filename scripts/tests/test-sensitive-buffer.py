@@ -26,8 +26,8 @@ def run():
 #![allow(dead_code, unused_attributes, unexpected_cfgs)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
-extern crate self as catten_syscall;
-#[path = "@ROOT@/crates/catten-syscall/src/lib.rs"] mod syscall_format;
+extern crate self as knytos_syscall;
+#[path = "@ROOT@/crates/knytos-syscall/src/lib.rs"] mod syscall_format;
 pub use syscall_format::*;
 #[path = "@ROOT@/crates/charlotte-lifecycle/src/resources.rs"] pub mod resources;
 #[path = "@ROOT@/crates/catten/src/resource_policy.rs"] mod resource_policy;

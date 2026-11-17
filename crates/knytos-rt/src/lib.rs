@@ -12,7 +12,7 @@
 //! #![no_main]
 //!
 //! extern crate alloc;
-//! use catten_syscall::*;
+//! use knytos_syscall::*;
 //! use catten_rt::{config, Context};
 //!
 //! fn main(ctx: Context) -> ! {
@@ -37,7 +37,7 @@ pub mod entropy;
 pub mod log;
 pub mod owned;
 /// ABI constants and register types for protocol adapters; prefer owned operations.
-pub use catten_syscall as abi;
+pub use knytos_syscall as abi;
 pub use charlotte_launch::manifest_key;
 pub use owned::NodeShutdownRequestError;
 
@@ -256,7 +256,7 @@ impl ShutdownRequest {
     /// dropped. `thread_exit` does not unwind the Rust stack.
     pub fn complete(self) -> ! {
         config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_READY);
-        unsafe { catten_syscall::thread_exit() }
+        unsafe { knytos_syscall::thread_exit() }
     }
 
     /// Mark a hardware adapter quiesced and terminate this thread.
@@ -269,7 +269,7 @@ impl ShutdownRequest {
     /// [`complete`](Self::complete) acknowledgement alone.
     pub fn complete_device_quiesced(self) -> ! {
         config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED);
-        unsafe { catten_syscall::thread_exit() }
+        unsafe { knytos_syscall::thread_exit() }
     }
 }
 
@@ -654,7 +654,7 @@ unsafe impl GlobalAlloc for HeapLock {
 
 // ---- plumbing (not user-facing) -------------------------------------------
 
-pub use catten_syscall::{
+pub use knytos_syscall::{
     domain_abort,
     thread_exit,
 };

@@ -50,7 +50,7 @@ pub fn run(
     check(matches!(
         available.call(silent, 0x5ec, 0),
         Err(Error::Admission(socket::SocketError::Ipc(IpcError::Status(
-            catten_syscall::ipc_status::QUEUE_FULL
+            knytos_syscall::ipc_status::QUEUE_FULL
         ))))
     ));
     check(matches!(
@@ -61,7 +61,7 @@ pub fn run(
     check(matches!(
         available.buffered_call(silent, 0x5ec, 0),
         Err(Error::Admission(socket::SocketError::Ipc(IpcError::Status(
-            catten_syscall::ipc_status::QUEUE_FULL
+            knytos_syscall::ipc_status::QUEUE_FULL
         ))))
     ));
     restored(allocations);

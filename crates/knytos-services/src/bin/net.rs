@@ -28,7 +28,7 @@ use catten_services::{
     publication,
     virtio,
 };
-use catten_syscall::{
+use knytos_syscall::{
     DmaDirection,
     device_irq_ack,
     device_irq_bind_cq,
@@ -374,7 +374,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 2);
     let (mmio_map_status, vaddr_bar0) = device_mmio_map_any(mmio_cap, true);
     if mmio_map_status != 0 {
-        catten_syscall::el0_log(0x4e45_5454, 0x4d4d_494f | mmio_map_status);
+        knytos_syscall::el0_log(0x4e45_5454, 0x4d4d_494f | mmio_map_status);
         startup_failed(status::StartupError::MmioMap, mmio_map_status);
     }
     MMIO_BASE.store(vaddr_bar0, core::sync::atomic::Ordering::Relaxed);
@@ -571,7 +571,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             });
             unsafe { w8(bar0 + virtio::M_DEVICE_STATUS, 0) };
             let reset = unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) == 0 };
-            if endpoint_closed && tx_drained && reset && catten_syscall::device_close(irq_cap) == 0
+            if endpoint_closed && tx_drained && reset && knytos_syscall::device_close(irq_cap) == 0
             {
                 return request;
             }
@@ -776,7 +776,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                     unsafe {
                         device_mmio_unmap(mmio_cap);
-                        catten_syscall::device_close(irq_cap);
+                        knytos_syscall::device_close(irq_cap);
                         thread_exit();
                     }
                 }

@@ -11,7 +11,7 @@ pub struct SocketOwner {
 }
 
 impl SocketOwner {
-    pub fn from_message(message: &catten_syscall::IpcMessage) -> Self {
+    pub fn from_message(message: &knytos_syscall::IpcMessage) -> Self {
         Self {
             address_space: message.sender,
             generation: message.sender_generation,

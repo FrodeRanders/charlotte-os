@@ -289,7 +289,7 @@ notifications fail loudly instead of hanging.**
   LP0 timer PPI counter no longer freezes.
 - Builds: `cargo build` (live-upgrade and default features) and `cargo clippy` clean.
 - Both `cargo fmt` (workspace) and the excluded crates (`knytos-services`,
-  `catten-user`) verified formatted.
+  `knytos-user`) verified formatted.
 
 ---
 

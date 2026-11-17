@@ -32,7 +32,7 @@ use catten_services::{
     observability,
     try_registered_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     THREAD_STATISTICS_DOMAIN_RECORD_U64S,
     THREAD_STATISTICS_HEADER_U64S,
@@ -365,7 +365,7 @@ fn snapshot_sample(system_observer: u64) -> Option<HistorySample> {
     let memory = unsafe { OwnedMemory::from_raw(memory) }.ok()?;
     let mapping = memory.map_read_only().ok()?;
     let bytes = mapping.as_slice().get(..usize::try_from(length).ok()?)?;
-    let _pools = catten_syscall::metadata_pools::from_statistics(bytes)?;
+    let _pools = knytos_syscall::metadata_pools::from_statistics(bytes)?;
     if read_word(bytes, statistics_header::MAGIC)? != THREAD_STATISTICS_MAGIC
         || read_word(bytes, statistics_header::VERSION)? != THREAD_STATISTICS_VERSION
         || read_word(bytes, statistics_header::RECORD_BYTES)?

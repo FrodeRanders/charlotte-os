@@ -12651,7 +12651,7 @@
         6
       ],
       "callee": "ipc::buffer::<CapVectorEntry>",
-      "value_type": "alloc::vec::Vec<catten_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
+      "value_type": "alloc::vec::Vec<knytos_syscall::CapVectorEntry, klib::admission::byte_allocator::ByteAllocator<klib::admission::IpcNodes>>",
       "id": "d5c9538d482de182",
       "profiles": [
         "arm-acpi-minimal",

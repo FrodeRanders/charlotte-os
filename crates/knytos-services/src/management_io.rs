@@ -87,7 +87,7 @@ fn project(anchor: Anchor, now: u64) -> Option<u64> {
 }
 impl Clock {
     fn install(&self, seconds: u64) -> Result<(), Error> {
-        let (ticks, frequency) = catten_syscall::monotonic_clock();
+        let (ticks, frequency) = knytos_syscall::monotonic_clock();
         if seconds == 0 || frequency == 0 {
             return Err(Error::Clock);
         }
@@ -105,14 +105,14 @@ impl Clock {
 }
 impl TimeProvider for Clock {
     fn current_time(&self) -> Option<UnixTime> {
-        let (now, _) = catten_syscall::monotonic_clock();
+        let (now, _) = knytos_syscall::monotonic_clock();
         let anchor = (*self.0.lock())?;
         let seconds = project(anchor, now)?;
         (seconds != 0).then(|| UnixTime::since_unix_epoch(Duration::from_secs(seconds)))
     }
 }
 fn milliseconds() -> Result<u64, Error> {
-    let (ticks, frequency) = catten_syscall::monotonic_clock();
+    let (ticks, frequency) = knytos_syscall::monotonic_clock();
     if frequency == 0 {
         return Err(Error::Clock);
     }
@@ -143,7 +143,7 @@ impl Factory {
         // Source discovery is from kernel-supported entropy, never a manifest
         // role/name classification. A missing architectural source waits for the
         // real RNG publication; it does not select deterministic fallback bytes.
-        let architectural = Zeroizing::new(catten_syscall::random_u64());
+        let architectural = Zeroizing::new(knytos_syscall::random_u64());
         let service = if architectural.is_some() {
             crate::try_registered_name_owned(names, crate::entropy::NAME)
                 .map(|(_, connection)| connection)
@@ -350,7 +350,7 @@ impl<'a> Connection<'a> {
                 }
                 Ok(Advance::Progress)
             }
-            Err(SocketError::Ipc(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))) => {
+            Err(SocketError::Ipc(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL))) => {
                 // Only rejected queue admission lacks a readiness source.
                 self.retry = Some(Deadline::after(crate::socket::ADMISSION_BACKOFF_MS));
                 Ok(Advance::Waiting)
@@ -537,7 +537,7 @@ impl<'a> Connection<'a> {
 pub fn drain(ctx: &Context) {
     let layout = ctx.completion_queue_layout();
     for _ in 0..layout.entries {
-        if unsafe { catten_syscall::cq_read(layout.base, layout.entries) }.is_none() {
+        if unsafe { knytos_syscall::cq_read(layout.base, layout.entries) }.is_none() {
             break;
         }
     }

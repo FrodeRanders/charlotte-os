@@ -113,7 +113,7 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         );
         frame.asid = asid;
 
-        if catten_syscall::SyscallNumber::try_from(svc_imm).is_err() {
+        if knytos_syscall::SyscallNumber::try_from(svc_imm).is_err() {
             early_logln!(
                 "FATAL EL0 UNKNOWN SYSCALL: ASID={} SVC={} ELR={:#x}",
                 asid,

@@ -35,7 +35,7 @@ impl MmioRegion {
 
     pub fn map(mut self, writable: bool) -> Result<MappedMmio, (Self, DeviceError)> {
         let (status, base) = kernel::device_mmio_map_any(self.raw_handle(), writable);
-        if status != catten_syscall::device_status::OK {
+        if status != knytos_syscall::device_status::OK {
             return Err((self, DeviceError::MappingFailed(status)));
         }
         let cap = self.cap.take().expect("MMIO capability already consumed");
@@ -71,7 +71,7 @@ impl MappedMmio {
     pub fn unmap(mut self) -> Result<MmioRegion, (Self, DeviceError)> {
         let cap = self.cap.expect("MMIO capability already consumed");
         let status = kernel::device_mmio_unmap(cap);
-        if status != catten_syscall::device_status::OK {
+        if status != knytos_syscall::device_status::OK {
             return Err((self, DeviceError::Status(status)));
         }
         let _ = self.cap.take();
@@ -115,7 +115,7 @@ impl Interrupt {
 
     pub fn bind_completion_queue(&self, cq: u32) -> Result<(), DeviceError> {
         let status = kernel::device_irq_bind_cq(self.raw_handle(), cq);
-        if status == catten_syscall::device_status::OK {
+        if status == knytos_syscall::device_status::OK {
             Ok(())
         } else {
             Err(DeviceError::Status(status))
@@ -124,7 +124,7 @@ impl Interrupt {
 
     pub fn acknowledge(&self) -> Result<u64, DeviceError> {
         let (status, consumed) = kernel::device_irq_ack(self.raw_handle());
-        if status == catten_syscall::device_status::OK {
+        if status == knytos_syscall::device_status::OK {
             Ok(consumed)
         } else {
             Err(DeviceError::Status(status))

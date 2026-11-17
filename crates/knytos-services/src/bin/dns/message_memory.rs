@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use catten_services::dns;
-use catten_syscall::{
+use knytos_syscall::{
     IpcMessage,
     ipc_reply,
     ipc_reply_move,

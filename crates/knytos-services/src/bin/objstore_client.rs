@@ -17,7 +17,7 @@ use catten_services::{
     objstore,
     wait_for_registered_name_owned,
 };
-use catten_syscall::{
+use knytos_syscall::{
     IpcRights,
     thread_exit,
 };

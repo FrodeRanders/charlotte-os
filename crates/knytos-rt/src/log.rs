@@ -1,6 +1,6 @@
 //! Convenient serial logging for EL0 programs.
 //!
-//! Wraps the [`catten_syscall::el0_log_str`] syscall behind a [`logln!`]
+//! Wraps the [`knytos_syscall::el0_log_str`] syscall behind a [`logln!`]
 //! macro, so services can emit human-readable lines without packing bytes
 //! into raw numbers. Output is rendered on the kernel serial log as
 //! `[EL0 LOG] lp=.. asid=.. <text>`.
@@ -45,7 +45,7 @@ impl core::fmt::Write for LogBuffer {
 
 /// Flush a filled [`LogBuffer`] to the kernel serial log.
 pub fn flush(buffer: &LogBuffer) {
-    catten_syscall::el0_log_str(buffer.as_slice().as_ptr(), buffer.len);
+    knytos_syscall::el0_log_str(buffer.as_slice().as_ptr(), buffer.len);
 }
 
 /// Format a message and emit it as a single serial log line.

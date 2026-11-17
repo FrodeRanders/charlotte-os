@@ -80,7 +80,7 @@ impl<C: Calls> Machine<C> {
                     self.calls.abort(&close.owner, Error::Binding(error));
                 }
             }
-            Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)) => {
+            Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL)) => {
                 // Rejection proves this submission did not enter IPC. Keep its
                 // original deadline and exact owner through admission backoff.
                 close.retry = Some(Deadline::at(now, frequency, ADMISSION_BACKOFF_MS));
@@ -142,7 +142,7 @@ impl<'a> Calls for Runtime<'a> {
     type Socket = ClosingSocket<'a>;
 
     fn now(&self) -> (u64, u64) {
-        catten_syscall::monotonic_clock()
+        knytos_syscall::monotonic_clock()
     }
 
     fn prepare(socket: Self::Socket) -> Self::Owner {
@@ -284,7 +284,7 @@ mod tests {
             }
             if self.rejects[id] > 0 {
                 self.rejects[id] -= 1;
-                return Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL));
+                return Err(IpcError::Status(knytos_syscall::ipc_status::QUEUE_FULL));
             }
             self.accepted[id] += 1;
             owner.accepted = true;

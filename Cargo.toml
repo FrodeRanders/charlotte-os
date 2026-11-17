@@ -10,7 +10,7 @@ default-members = [
     "crates/knytos-app",
     "crates/knytos-app-sitas",
     "crates/charlotte-protocol-grant",
-    "crates/catten-syscall",
+    "crates/knytos-syscall",
     "crates/charlotte-authorization",
     "crates/charlotte-kafka",
     "crates/charlotte-kafka-step",
@@ -48,7 +48,7 @@ overflow-checks = false
 [profile.dev.package.knytos-services]
 opt-level = "s"
 
-[profile.dev.package.catten-user]
+[profile.dev.package.knytos-user]
 opt-level = "s"
 
 [profile.release]
@@ -61,5 +61,5 @@ opt-level = 3
 [profile.release.package.knytos-services]
 opt-level = "s"
 
-[profile.release.package.catten-user]
+[profile.release.package.knytos-user]
 opt-level = "s"

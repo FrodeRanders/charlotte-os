@@ -5,7 +5,7 @@
   "scope": "DMA mapping/quarantine and SMMU walker-cache nodes share the existing IommuNodes byte/count pool and retain the immutable original domain-grant class. Hardware completion, physical table budgets, numerical limits, the 22-pool catalog and version-9 snapshot remain unchanged.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/knytos-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
     "crates/catten/src/device/admission_tests.rs": "91eb74d551511cf7b822215546d4ba47d906e783878fe04ffaf0cdc7152fa5f2",
     "crates/catten/src/device/amd_vi.rs": "88bdc2c9297cde4fc163109b335065399d444d5585ebe2a32bf40dabf7e32d59",
     "crates/catten/src/device/backend_registry/budget.rs": "8eb644fcb79bf601d186c6b2808c6d21520bb0cfb0649f96021e927afcc67644",

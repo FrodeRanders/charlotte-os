@@ -531,7 +531,7 @@ The kernel compiles these programs with `include_bytes!`, but its ordinary
 build does not rebuild them. The checked-in name-service, echo, and service
 client happened to match one release build while UART and its console client
 were older binaries with different hashes. This mixed userspace generation was
-being tested against current `knytos-rt` and `catten-syscall` code, making the
+being tested against current `knytos-rt` and `knytos-syscall` code, making the
 result look like a scheduler-dependent lifecycle failure.
 
 In a focused SMP4 boot, a coherently rebuilt bundle completed service

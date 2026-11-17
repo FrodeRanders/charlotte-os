@@ -17,7 +17,7 @@ use catten_services::{
     block,
     wait_for_registered_name_owned,
 };
-use catten_syscall::thread_exit;
+use knytos_syscall::thread_exit;
 use charlotte_launch::nvme_client_status as status;
 
 fn main(ctx: Context) -> ! {

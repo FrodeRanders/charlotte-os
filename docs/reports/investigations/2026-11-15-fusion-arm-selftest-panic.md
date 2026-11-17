@@ -87,7 +87,7 @@ reported:
 ```text
 [+     4.114962] [launch] SKIP storage: no supported MSI mechanism.
 [+     4.135911] [uart] fixture unavailable: firmware console is not a supported page-aligned PL011
-[+     4.136610] Testing EL0 sitas (Rust-compiled catten-user binary)...
+[+     4.136610] Testing EL0 sitas (Rust-compiled knytos-user binary)...
 ```
 
 No subsequent serial progress or complete self-test summary was observed before

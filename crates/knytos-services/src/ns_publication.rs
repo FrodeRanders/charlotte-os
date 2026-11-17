@@ -8,7 +8,7 @@ use catten_rt::owned::{
     Connection,
     ConnectionRef,
 };
-use catten_syscall::CqEntry;
+use knytos_syscall::CqEntry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Observation {
@@ -34,7 +34,7 @@ impl CloseWatch for Completion {
         }
         match self.poll().map_err(WatchError::Completion)? {
             None => Ok(Observation::Pending),
-            Some(catten_syscall::IPC_REPLY_ENDPOINT_CLOSED) => Ok(Observation::Closed),
+            Some(knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED) => Ok(Observation::Closed),
             Some(result) => Err(WatchError::UnexpectedResult(result)),
         }
     }

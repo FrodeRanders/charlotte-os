@@ -19,7 +19,7 @@ use catten_services::{
     name_catalog::NameCatalog,
     relmsg_transport::RelmsgRaftTransport,
 };
-use catten_syscall::{
+use knytos_syscall::{
     ipc_reply,
     submit_detached_timer,
 };
