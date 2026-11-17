@@ -4,7 +4,7 @@
 
 Baseline `62c49a3` commits the preceding snapshot-model batch. Reviewing the
 remaining source/model differences found an unsafe commit in
-[`handle_append_entries_response`](../../../crates/catten-graft/src/node.rs).
+[`handle_append_entries_response`](../../../crates/knytos-graft/src/node.rs).
 The handler rejected higher-term responses by stepping down, but still credited
 successful replies from an older term.
 
@@ -107,7 +107,7 @@ failure is recorded separately from passing checks and production regressions.
   source/local-tail checks, higher-term step-down and completed-snapshot gating.
   Existing admission promotion, election, membership and persistence tests pass.
 - Services host suite: **145 passed, zero failed**.
-- Warning-denied Clippy passes for all host `catten-graft` targets. Workspace
+- Warning-denied Clippy passes for all host `knytos-graft` targets. Workspace
   formatting, Bash syntax and diff whitespace checks pass.
 - `scripts/build-knytos-services.sh --embed` builds/signs the complete ARM bundle;
   `--check` confirms that the final source reproduces its staged signatures.

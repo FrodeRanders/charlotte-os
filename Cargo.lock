@@ -187,15 +187,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "catten-graft"
-version = "0.1.0"
-dependencies = [
- "catten-syscall",
- "prost",
- "spin 0.9.9",
-]
-
-[[package]]
 name = "catten-rt"
 version = "0.1.0"
 dependencies = [
@@ -1070,12 +1061,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "knytos-graft"
+version = "0.1.0"
+dependencies = [
+ "catten-syscall",
+ "prost",
+ "spin 0.9.9",
+]
+
+[[package]]
 name = "knytos-services"
 version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
- "catten-graft",
  "catten-rt",
  "catten-syscall",
  "charlotte-app",
@@ -1104,6 +1103,7 @@ dependencies = [
  "embedded-tls",
  "getrandom 0.4.3",
  "ghash",
+ "knytos-graft",
  "p256",
  "polyval",
  "rand_core",

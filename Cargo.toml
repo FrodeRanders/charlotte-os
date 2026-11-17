@@ -5,7 +5,7 @@ members = ["crates/*", "tools/cluster-sign", "tests/transport"]
 # every package, but do not include them in an unqualified root build.
 default-members = [
     "crates/catten",
-    "crates/catten-graft",
+    "crates/knytos-graft",
     "crates/catten-rt",
     "crates/charlotte-app",
     "crates/charlotte-app-sitas",

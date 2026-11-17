@@ -56,7 +56,7 @@ machine:
 | Host `cargo check --workspace` | Fail: the no-std kernel is built for the Mach-O host and its ELF Limine section names are invalid |
 | `cargo fmt --all -- --check` | Fail: widespread formatting drift (over 2,000 diff lines) |
 | Host `cargo test` for protocol/runtime/Raft/smoltcp crates | Fail before tests due to duplicate `core` lang items caused by the workspace build-std configuration |
-| Strict userspace-services check | Fail first in `catten-graft` on five `unused_unsafe` warnings |
+| Strict userspace-services check | Fail first in `knytos-graft` on five `unused_unsafe` warnings |
 | Fresh AArch64 QEMU TCG boot, four LPs | Boots; synchronous tests pass; deferred execution begins; see qualification below |
 
 The KVM-only virtio-net runtime path could not be executed on this host. The
@@ -69,7 +69,7 @@ The Raft findings were compared with
 `../../gautelis/raft/graft-rust` at commit `1a818d4`. All three are artifacts of
 the Knytos no-std adaptation, not defects copied from the source project.
 The relevant safeguards were already present in upstream's initial Rust commit
-`cf9de4a` (2026-06-10), before `catten-graft` was introduced by Knytos
+`cf9de4a` (2026-06-10), before `knytos-graft` was introduced by Knytos
 commit `1000cf1` (2026-07-18). Upstream's `gautelis-graft-core` tests passed
 (5/5), as did the `graft-tests` integration suite (16/16). Those tests provide a
 healthy baseline, although the current suite does not directly exercise every
@@ -100,7 +100,7 @@ Knytos integration:
 
 Validation evidence:
 
-- `catten-graft`: 7/7 host tests pass (five Raft regressions and two complete
+- `knytos-graft`: 7/7 host tests pass (five Raft regressions and two complete
   wire-format tests).
 - A clean four-LP AArch64 QEMU TCG boot reports:
   `[raft] SUCCESS: two-node cluster elected one leader (states 3/1, completions 1/1).`
@@ -139,7 +139,7 @@ The parity contract and intentional differences are maintained in
 **Provenance:** Knytos adaptation defect; not present in
 `../../gautelis/raft/graft-rust`.
 
-**Resolution (2026-07-19):** fixed in `catten-graft`. Elections now retain a
+**Resolution (2026-07-19):** fixed in `knytos-graft`. Elections now retain a
 set of distinct configured voter IDs for the current term, ignore duplicate and
 unknown responses, and recognize a single-voter self-majority. Host regression
 tests cover all of those cases.
@@ -150,7 +150,7 @@ configured voter. It does not record which peers granted votes and does not
 deduplicate responses. In a five-node cluster, one granted response therefore
 looks like five grants and immediately elects the candidate.
 
-Evidence: `crates/catten-graft/src/node.rs:184-213`.
+Evidence: `../../../crates/knytos-graft`.
 
 Impact: two candidates can each become leader without receiving a majority,
 violating Raft election safety and enabling split brain.
@@ -175,7 +175,7 @@ that aggregation with the erroneous configured-voter loop.
 **Provenance:** Knytos adaptation defect; not present in
 `../../gautelis/raft/graft-rust`.
 
-**Resolution (2026-07-19):** fixed in `catten-graft`. Commit advancement now
+**Resolution (2026-07-19):** fixed in `knytos-graft`. Commit advancement now
 counts the leader explicitly, counts only configured voting followers, scans
 only current-term entries, and immediately advances single-voter commits. Tests
 cover one-node commit and leader-plus-one commit in a three-voter cluster.
@@ -211,7 +211,7 @@ the follower-only map and indexed it using a quorum calculated from all voters.
 **Provenance:** Knytos adaptation defect; not present in
 `../../gautelis/raft/graft-rust`.
 
-**Resolution (2026-07-19):** fixed in `catten-graft`. A higher-term snapshot now
+**Resolution (2026-07-19):** fixed in `knytos-graft`. A higher-term snapshot now
 updates and persists the term and clears the vote while stepping down. A valid
 same-term snapshot also forces Candidate/Leader to Follower without clearing
 the persisted vote for that term. The higher-term path has a regression test.

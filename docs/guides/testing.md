@@ -48,7 +48,7 @@ The runner currently covers:
 | `charlotte-protocol-disco` | discovery encoding, decoding, and malformed input |
 | `charlotte-protocol-msg` | v3 framing, checked parsing, 32-bit message lengths and fragmentation offsets, typed IPC envelopes, and session fencing |
 | `charlotte-protocol-net` | NIC status decoding |
-| `catten-graft` | Raft election, membership, joining, snapshots, persistence projections, and wire format |
+| `knytos-graft` | Raft election, membership, joining, snapshots, persistence projections, and wire format |
 | `charlotte-smoltcp` | receive-queue bounds and clock progression |
 | `charlotte-launch` | checked user-address mapping ranges, alias/kernel/null rejection and overflow boundaries |
 | `knytos-services` | shared authorization/client logic, resource adapters, total monotonic deadlines and the TLS cipher owner/vector contracts |
@@ -879,7 +879,7 @@ automation.
 `catten-rt`, `catten-syscall`, and `charlotte-launch` also retain disabled
 standalone harnesses. They contain target runtime/ABI support and currently
 contain no dormant `#[test]` functions. Their host-compatible portions are
-compiled as dependencies of the `catten-graft` and `charlotte-smoltcp` suites.
+compiled as dependencies of the `knytos-graft` and `charlotte-smoltcp` suites.
 
 At the 12 August 2026 audit, `charlotte-protocol-net` was the only component
 that had an actual Rust unit test hidden by `test = false`. Its harness is now

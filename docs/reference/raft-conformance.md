@@ -1,6 +1,6 @@
 # Graft Conformance in Knytos
 
-`catten-graft` is a `no_std` adaptation of the general Graft implementation,
+`knytos-graft` is a `no_std` adaptation of the general Graft implementation,
 not an independent Raft design. Consensus behavior should remain equivalent to
 the Java, C++, and Rust implementations in the Graft repository. Knytos
 substitutes capability IPC, name-service discovery, completion queues, and the

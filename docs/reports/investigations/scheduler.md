@@ -168,7 +168,7 @@ retained on `dev` are:
 | `scheduler/system_scheduler/mod.rs` | `pick_lp_for()`, initial-only `submit_new_thread`, affinity-aware generation-checked `submit_woken_thread` |
 | `scheduler/mod.rs` | Scheduler yield and lifecycle handling |
 | `syscall/mod.rs` | Timer submission and completion ABI |
-| `catten-graft/src/node.rs` | `step_down()`, `become_leader()` (no-op entry), `handle_vote_request`, `handle_append_entries` |
+| `knytos-graft/src/node.rs` | `step_down()`, `become_leader()` (no-op entry), `handle_vote_request`, `handle_append_entries` |
 | `knytos-services/src/bin/raft.rs` | Cap-0 fix (remove `!= 0` guard) |
 | `main.rs` | Remove infinite yield loop from `probe_device_topology` |
 | `self_test/el0.rs` | Idempotent verifier teardown of the completed payload |

@@ -1,5 +1,5 @@
 [package]
-name = "catten-graft"
+name = "knytos-graft"
 version = "0.1.0"
 edition = "2024"
 description = "no_std Raft consensus core adapted for Knytos"

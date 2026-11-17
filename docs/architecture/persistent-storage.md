@@ -223,7 +223,7 @@ scopes, and AMD-Vi MSI fault delivery are not yet supported.
 
 ## 4. Disk-Backed Raft Persistent State
 
-### 4.1 Existing interface (catten-graft)
+### 4.1 Existing interface (knytos-graft)
 
 The existring crate defines two traits:
 

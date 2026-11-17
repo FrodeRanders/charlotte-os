@@ -77,7 +77,7 @@ should be updated with the implementation when those contracts change.
   admission, transactional growth, retained delegation and generation-safe
   cleanup.
 - [Raft conformance](raft-conformance.md) — required parity between
-  `catten-graft`, the other Graft implementations, and the TLA+ projections.
+  `knytos-graft`, the other Graft implementations, and the TLA+ projections.
 - [Raft persistence](raft-persistence.md) — jointly opened tagged records,
   owned object-store transport and future format-migration requirements.
 - [Observability](observability.md) — capability-preserving runtime statistics,

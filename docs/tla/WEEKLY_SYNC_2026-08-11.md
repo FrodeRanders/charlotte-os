@@ -88,7 +88,7 @@ retained when a repaired behavior has a small, useful counterexample.
   exercised the required unsafe action. These include stale catalog
   unregister, arbitrary join-anchor replication, forgotten restart admission,
   flat session collision, and receive-session regression.
-- `catten-graft` passed 24 host tests, including restart-fenced join admission,
+- `knytos-graft` passed 24 host tests, including restart-fenced join admission,
   selected-anchor rejection, snapshot correlation, and membership recovery.
 - `charlotte-protocol-msg` passed 6 host tests, including disjoint ordered
   retry/restart identities and fail-closed session exhaustion.

@@ -90,7 +90,7 @@ completion proof is introduced.
 
 ## Regressions and model
 
-The [former stale-read witness](../../../crates/catten-graft/examples/audit_receive_lease.rs)
+The [former stale-read witness](../../../crates/knytos-graft/examples/audit_receive_lease.rs)
 uses the same three-node vote/append/application history. n2 commits value 2;
 n1 then admits a new read and receives n2's delayed term-one acknowledgement of
 the old prefix. The new fence remains uncommitted and the query returns

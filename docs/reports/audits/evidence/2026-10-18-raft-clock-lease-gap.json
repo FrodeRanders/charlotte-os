@@ -204,10 +204,10 @@
     "docs/tla/check.sh": "25c915b3a925649448f716eb00cd1675f0405c9e9dd96873a6ecdb3b921d6d36"
   },
   "reviewed_source_sha256": {
-    "crates/catten-graft/src/clock.rs": "be0bce9844acab69d8a9aec71a6a2e75d98007b3b731d84f3feb47ada1b2615d",
-    "crates/catten-graft/src/lib.rs": "e8677681479871256d5a3ec63400309878521f571b7a22eedd8f649b1efeacff",
-    "crates/catten-graft/src/node.rs": "4a875e1e046f48c10d3f5c4230ebcbca34255cb6791c5f7276e08f67643b067f",
-    "crates/catten-graft/examples/audit_receive_lease.rs": "50f9f48ec8a63f6b1cccbb84d81d9b2f63f9a3547164e8be5202905306fe2e85",
+    "crates/knytos-graft/src/clock.rs": "be0bce9844acab69d8a9aec71a6a2e75d98007b3b731d84f3feb47ada1b2615d",
+    "crates/knytos-graft/src/lib.rs": "e8677681479871256d5a3ec63400309878521f571b7a22eedd8f649b1efeacff",
+    "crates/knytos-graft/src/node.rs": "4a875e1e046f48c10d3f5c4230ebcbca34255cb6791c5f7276e08f67643b067f",
+    "crates/knytos-graft/examples/audit_receive_lease.rs": "50f9f48ec8a63f6b1cccbb84d81d9b2f63f9a3547164e8be5202905306fe2e85",
     "crates/knytos-services/src/raft_clock.rs": "c559e0f87675be284a9cbe347adb898a74b09d79b9858bc8a983b2ab169c5099",
     "crates/knytos-services/src/bin/dns/reactor.rs": "b9a7c0f4001547f7eae1928821142b1e8a02bdec1ac698a30845b3bce150a1a2",
     "crates/knytos-services/src/bin/dns.rs": "1d8283e71f7550e8b93e56f8df7988defa1a51d900918bb4a7167823b30c460d",
@@ -816,7 +816,7 @@
         "",
         "---- node::tests::reactor_pause_expires_old_quorum_contact stdout ----",
         "",
-        "thread 'node::tests::reactor_pause_expires_old_quorum_contact' (19369842) panicked at crates/catten-graft/src/node.rs:1675:9:",
+        "thread 'node::tests::reactor_pause_expires_old_quorum_contact' (19369842) panicked at crates/knytos-graft/src/node.rs:1675:9:",
         "assertion failed: !node.can_serve_linearizable_read()",
         "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
         "",
@@ -852,7 +852,7 @@
   ],
   "host_validation": [
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 47,
       "failed": 0,
@@ -868,7 +868,7 @@
   ],
   "checks": {
     "clippy": {
-      "command": "cargo clippy --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
+      "command": "cargo clippy --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
       "exit_status": 0,
       "log_sha256": "04259e5f5c5e29e78d5a0d72c72a05c25106ad691a29a729db9f9fd0d5210554"
     },
@@ -917,7 +917,7 @@
     }
   ],
   "known_stale_read": {
-    "command": "cargo run --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --example audit_receive_lease (outside root Cargo configuration)",
+    "command": "cargo run --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --example audit_receive_lease (outside root Cargo configuration)",
     "exit_status": 0,
     "exit_meaning": "Zero only when the counterexample is reproduced; this is not a passing safety regression.",
     "fixture_sha256": "50f9f48ec8a63f6b1cccbb84d81d9b2f63f9a3547164e8be5202905306fe2e85",

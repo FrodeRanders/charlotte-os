@@ -412,7 +412,7 @@ remote-LP wake regression remain appropriate follow-ups.
 
 - AArch64 service bundle built successfully.
 - `charlotte-protocol-msg`: 4 tests passed.
-- `catten-graft`: 16 tests passed.
+- `knytos-graft`: 16 tests passed.
 - `charlotte-smoltcp`: 2 tests passed.
 - Workspace and standalone-service formatting checks passed.
 - Direct service Clippy found four warning groups, confirming the CI gap.
@@ -457,7 +457,7 @@ remote-LP wake regression remain appropriate follow-ups.
   The run also exposed and removed a synchronous local-cleanup wait from the
   DNS Raft reactor.
 - The 2026-08-09 follow-up completed the full deployment suite with 23/23 on
-  both two-vCPU guests. `catten-graft` passed 23 host tests,
+  both two-vCPU guests. `knytos-graft` passed 23 host tests,
   `charlotte-protocol-disco` passed 2, `charlotte-protocol-msg` passed 4, and
   `charlotte-smoltcp` passed 2. The cluster-sign metadata self-test passed,
   and both the root AArch64 workspace and standalone AArch64 services were

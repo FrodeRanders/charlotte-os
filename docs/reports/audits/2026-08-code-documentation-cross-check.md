@@ -214,7 +214,7 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   (`../../../crates/knytos-services`): answered
   from locally applied state with no read barrier or leader forwarding. The
   earlier F8 finding was closed only for `OP_LOOKUP`/`OP_CALL`.
-- **M — Raft no-op sentinel is `data.is_empty()`** (`crates/catten-graft/src/types.rs:69-71`),
+- **M — Raft no-op sentinel is `data.is_empty()`** (`../../../crates/knytos-graft`),
   so an empty client command is silently dropped.
 - **M — deploy agent hard-codes the `greet` name** (`../../../crates/knytos-services`);
   the "agent verifies the assigned artifact" claim is greet-specific.

@@ -46,7 +46,7 @@ claim. Sampling is not atomic with all subsequent service work or read admission
 ## Delayed reply: a stale read is still possible
 
 The version-controlled host witness
-[`audit_receive_lease.rs`](../../../crates/catten-graft/examples/audit_receive_lease.rs)
+[`audit_receive_lease.rs`](../../../crates/knytos-graft/examples/audit_receive_lease.rs)
 drives three actual consensus nodes and two queryable application histories:
 
 1. n1 wins term one with n2 and commits value 1. n2 acknowledges the committed
@@ -67,7 +67,7 @@ old leader n1 at 5000ms: expired contact rejects read
 COUNTEREXAMPLE: n1 at 5001ms, term=1, committed=2, returned=1 after value=2 committed
 ```
 
-Run `cargo run --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml
+Run `cargo run --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml
 --example audit_receive_lease` from outside the root Cargo configuration.
 Exit zero means the counterexample was reproduced; this is an audit witness,
 not a passing safety regression or application skeleton. It uses actual vote,
