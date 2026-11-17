@@ -146,7 +146,7 @@ embedded-io = { version = "0.7", default-features = false }
 # Reviewed upstream source plus the local signature-offer parser fix.
 embedded-tls = { path = "../embedded-tls", default-features = false, features = ["rustpki", "p256", "p384", "ed25519"] }
 embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
-# Register only required operations. Charlotte supplies RNG, erasing GCM and
+# Register only required operations. Knytos supplies RNG, erasing GCM and
 # shared SHA-256/HMAC drivers; stock registrations would duplicate their symbols.
 embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1", default-features = false, features = ["embassy-crypto-sha384", "embassy-crypto-sha512", "embassy-crypto-hmac-sha384", "embassy-crypto-p256-ecdh", "embassy-crypto-p256-ecdsa", "embassy-crypto-p384-ecdsa", "embassy-crypto-ed25519"] }
 # Retain the qualified record-cipher owners behind the Embassy driver API.

@@ -1,6 +1,6 @@
 # S3 client service
 
-CharlotteOS provides a native, capability-oriented S3 data-plane client for
+Knytos provides a native, capability-oriented S3 data-plane client for
 communicating with centrally managed object stores. The initial compatibility
 targets are RustFS and Dell EMC ECS.
 
@@ -174,7 +174,7 @@ Plain HTTP remains available only when an explicitly provisioned profile sets
 
 The opt-in runner path starts an ephemeral RustFS container with a freshly
 generated P-256 test CA and server certificate, provisions the
-`charlotte-test` bucket, then boots CharlotteOS. The in-guest smoke application
+`charlotte-test` bucket, then boots Knytos. The in-guest smoke application
 performs PUT, HEAD, GET, body verification, and DELETE through the same owned
 client API applications use:
 

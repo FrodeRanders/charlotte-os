@@ -601,7 +601,7 @@
     "Unix mode checks do not audit ACLs or qualify non-Unix private-file handling.",
     "Ordinary Drop requires execution; abort/forced termination and power loss outside observations.",
     "Existing filesystem write-error/rollback policy unchanged; no new cleanup authority or durability/custody claim.",
-    "No Charlotte capability/root operation, registry, owner family, wire/persistent-format, dependency or crypto change.",
+    "No Knytos capability/root operation, registry, owner family, wire/persistent-format, dependency or crypto change.",
     "Manual source describes full generated-key text reservation; PDF remains untouched."
   ],
   "reviewed_source_sha256": {

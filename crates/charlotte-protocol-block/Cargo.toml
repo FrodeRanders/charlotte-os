@@ -2,7 +2,7 @@
 name = "charlotte-protocol-block"
 version = "0.1.0"
 edition = "2024"
-description = "Block device protocol for CharlotteOS — endpoint IPC interface between block consumers and drivers"
+description = "Block device protocol for Knytos — endpoint IPC interface between block consumers and drivers"
 license = "AGPL-3.0-or-later"
 
 [dependencies]

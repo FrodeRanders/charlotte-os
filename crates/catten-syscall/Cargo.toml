@@ -2,7 +2,7 @@
 name = "catten-syscall"
 version = "0.1.0"
 edition = "2024"
-description = "Typed no_std wrappers for the CharlotteOS (catten) syscall ABI"
+description = "Typed no_std wrappers for the Knytos (catten) syscall ABI"
 
 [lib]
 name = "catten_syscall"

@@ -31,7 +31,7 @@ use catten_graft::{
     },
 };
 
-const IDS: [&str; 3] = ["charlotte:42e27737", "charlotte:42e278ea", "charlotte:42e27584"];
+const IDS: [&str; 3] = ["knytos:42e27737", "knytos:42e278ea", "knytos:42e27584"];
 
 enum Message {
     Request(VoteRequest),

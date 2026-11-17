@@ -43,7 +43,7 @@ See [CQ contract](../../reference/cq-wait.md) and
 
 ## Sitas dependency
 
-The backend is in the sibling repository, outside the CharlotteOS writable
+The backend is in the sibling repository, outside the Knytos writable
 workspace. A two-file patch was prepared, tested, checked and applied with the
 required filesystem approval. Local Sitas commit
 `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78` contains the source and architecture
@@ -162,7 +162,7 @@ not retrospective evidence for the failed guest.
 
 ## Validation
 
-- Final CharlotteOS host suite: **430 passed / 0 failed / 4 ignored**, plus
+- Final Knytos host suite: **430 passed / 0 failed / 4 ignored**, plus
   signing policy, boot/secure-boot result Python and syscall-emitter checks.
   New tests distinguish CQ rejection from readiness/deadline and reject retired
   numbers. Exact ABI 1/2 target rejection is covered on both architectures.

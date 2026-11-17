@@ -1,6 +1,6 @@
 # Secret-derived state lifetimes
 
-This is the current SEC-15 inventory for Charlotte's SHA-256, HMAC, SigV4,
+This is the current SEC-15 inventory for Knytos' SHA-256, HMAC, SigV4,
 SCRAM, network port selection and HPKE recipient helpers. It is a bounded part of the wider secret-copy
 review.
 The [execution report](../reports/audits/2026-10-19-security-hash-state-erasure.md)

@@ -58,7 +58,7 @@
     "publication": "Exclusive bundle.pending inside existing fresh0700 parts directory; close via file context before one os.replace at requested output name. Normal helper stages on same filesystem; no in-place fallback.",
     "success": "New named file replaces old entry, including symlink/hardlink; linked target and earlier open readers retain original bytes. Previous metadata not preserved; new-file creation/umask policy applies.",
     "failure": "Staging creation/write/close rejection precedes replacement; no cleanup unlink or automatic retry. Tested replacement rejection retains complete staging. Unexpected/ambiguous filesystem results remain unqualified.",
-    "ownership": "One local Python file context closes before publication; filesystem artifacts retained for inspection, not retry/physical-completion/custody owners. No Charlotte capabilities/roots/guards/waits/new registry or family.",
+    "ownership": "One local Python file context closes before publication; filesystem artifacts retained for inspection, not retry/physical-completion/custody owners. No Knytos capabilities/roots/guards/waits/new registry or family.",
     "unchanged": "Six signed descriptors, length-prefixed grammar, args, kernel cache admission and all signer source/output contracts."
   },
   "publication_validation": {

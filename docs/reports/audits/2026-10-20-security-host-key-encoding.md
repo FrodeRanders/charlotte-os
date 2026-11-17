@@ -33,7 +33,7 @@ persistent-record, cryptographic or kernel/userspace API change is introduced.
 The existing [C18 row](../../reference/cleanup-recovery.md) records the host
 byte owner. The previous writer already dropped its zeroizing final string in
 this context; that release and the existing filesystem rollback policy remain.
-Ordinary byte Drop adds no Charlotte capability/root cleanup, guards, waits,
+Ordinary byte Drop adds no Knytos capability/root cleanup, guards, waits,
 remote teardown, registry, recovery custody or physical completion proof. The
 manual source and signing/tool references now describe the complete record
 reservation. The PDF is left untouched.

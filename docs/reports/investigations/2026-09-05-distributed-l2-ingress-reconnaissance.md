@@ -2,13 +2,13 @@
 
 Date: 2026-09-05
 
-This note maps the existing CharlotteOS implementation onto the first
+This note maps the existing Knytos implementation onto the first
 distributed L2 ingress design. It records the source-level constraints that
 the implementation must preserve.
 
 ## Existing boundaries
 
-| Concern | Existing CharlotteOS mechanism | Ingress use |
+| Concern | Existing Knytos mechanism | Ingress use |
 |---|---|---|
 | Ethernet RX | `frouter` exclusively owns the NIC driver's deferred `net::OP_RECV` | Classify VIP frames here, before `tcpip` and smoltcp |
 | Ethernet TX | NIC `net::OP_SEND` accepts a moved memory object and is safe for multiple producers | Move remotely selected frames directly from `frouter` to the NIC |
@@ -54,7 +54,7 @@ it still selects the same backend while the policy epoch is unchanged.
 
 For a local selection, `frouter` moves the unchanged frame to the existing
 `tcpip::OP_FRAME` route. For a remote selection it adds an eight-byte
-Charlotte forwarding envelope in the received memory object and moves the
+Knytos forwarding envelope in the received memory object and moves the
 same capability to `net::OP_SEND`. The envelope preserves the external source
 MAC and EtherType, and prevents a receiving router from classifying the packet
 twice while membership snapshots converge. The backend validates the outer
@@ -98,7 +98,7 @@ local advertiser emits a gratuitous ARP.
   A later deployment controller can replicate service-specific backend and VIP
   policy without changing the packet classifier or selector.
 - The forwarding marker authenticates no bytes. Source-MAC admission checks
-  inherit Charlotte's current trusted-L2 assumption; a hostile peer capable of
+  inherit Knytos' current trusted-L2 assumption; a hostile peer capable of
   spoofing an admitted MAC requires switch isolation or a future authenticated
   cluster envelope.
 - The three-guest acceptance fixture passed with three established backend

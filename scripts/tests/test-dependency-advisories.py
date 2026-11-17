@@ -24,7 +24,7 @@ def clean_report():
 
 class Gate(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="charlotte-audit-policy-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="knytos-audit-policy-")
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         cargo = self.directory / "cargo"
@@ -116,7 +116,7 @@ class RealScanner(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-rustsec-controls-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-rustsec-controls-")
         cls.directory = Path(cls.temporary.name)
         cls.database = Path(os.environ["CATTEN_ADVISORY_TEST_DB"]).resolve()
         result = subprocess.run(["cargo", "audit", "--version"], cwd=ROOT, capture_output=True, text=True)

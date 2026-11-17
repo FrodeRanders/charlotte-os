@@ -1,4 +1,4 @@
-//! NVMe block device driver for CharlotteOS.
+//! NVMe block device driver for Knytos.
 //!
 //! Implements an NVM Express 1.4 driver as a userspace EL0 service. Discovers
 //! the controller via delegated BAR0 MMIO + interrupt grants (from the PCI

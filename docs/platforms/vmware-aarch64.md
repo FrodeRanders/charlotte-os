@@ -2,7 +2,7 @@
 
 `scripts/build-vmware-aarch64.sh` packages an experimental ARM appliance for
 VMware Fusion on Apple silicon. Image generation is separate from platform
-qualification: a generated VM is not evidence that CharlotteOS boots or runs
+qualification: a generated VM is not evidence that Knytos boots or runs
 its services under Fusion ARM. The qualified Intel Fusion appliance is
 documented [separately](vmware-x86_64.md).
 
@@ -19,11 +19,11 @@ brew install qemu mtools
 Open this file in Fusion:
 
 ```text
-os-images/vmware/CharlotteOS-AArch64-Minimal.vmwarevm/CharlotteOS.vmx
+os-images/vmware/Knytos-AArch64-Minimal.vmwarevm/Knytos.vmx
 ```
 
 The default mode is `--tests`, matching the x86 builder. It includes the native
-regression suite and writes `CharlotteOS-AArch64.vmwarevm` instead. `debug` and
+regression suite and writes `Knytos-AArch64.vmwarevm` instead. `debug` and
 `release` select optimization independently of the boot mode. `--clean` rebuilds
 cached AArch64 inputs. The builder only creates files; it does not start a VM.
 
@@ -52,7 +52,7 @@ requires ARM guests and UEFI on Apple silicon and lists SATA and NVMe disks.
   (interface `0x12`, GSI 36); the kernel selects that register contract and writes
   boot diagnostics to `charlotte-serial.log`.
 - Networking is disabled. Broadcom recommends VMXNET3 for ARM guests;
-  CharlotteOS has no VMXNET3 driver, and its AArch64 service bundle does not
+  Knytos has no VMXNET3 driver, and its AArch64 service bundle does not
   include the x86 appliance's E1000E driver.
 
 The image builder provisions development management HTTPS and the HTML dashboard

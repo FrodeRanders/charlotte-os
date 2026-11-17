@@ -1,4 +1,4 @@
-//! Offline signing and inspection for CharlotteOS cluster artifacts.
+//! Offline signing and inspection for Knytos cluster artifacts.
 //!
 //! The tool deliberately uses `charlotte-launch`'s parser, metadata encoder,
 //! SHA-256, and verifier.  Host tooling and the kernel therefore cannot drift
@@ -412,7 +412,7 @@ fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
     if !is_development_secret(&encoded) {
         #[cfg(unix)]
         {
-            // Host tooling only; no Charlotte capability is acquired here.
+            // Host tooling only; no Knytos capability is acquired here.
             let effective_uid = unsafe { libc::geteuid() };
             if metadata.uid() != effective_uid || metadata.mode() & 0o077 != 0 {
                 return Err("private-key file must be owned by this user with no group/other \
@@ -2304,7 +2304,7 @@ mod tests {
             };
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let path = env::temp_dir().join(format!(
-                "charlotte-key-test-{}-{}",
+                "knytos-key-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

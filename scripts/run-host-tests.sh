@@ -47,7 +47,7 @@ host_rustdoc="$(rustup which --toolchain "$toolchain" rustdoc)"
 host_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-host-tests.XXXXXX")"
 trap 'rmdir "$host_work_dir"' EXIT
 
-# Cargo discovers .cargo/config.toml from the invocation directory. CharlotteOS'
+# Cargo discovers .cargo/config.toml from the invocation directory. Knytos'
 # root config builds core for freestanding targets, so invoke host tests from a
 # temporary directory while retaining absolute manifest paths.
 cd "$host_work_dir"

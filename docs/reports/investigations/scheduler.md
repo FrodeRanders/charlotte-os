@@ -1,4 +1,4 @@
-# CharlotteOS Scheduler Investigation — Full Report
+# Knytos Scheduler Investigation — Full Report
 
 > **Historical investigation:** preserved as debugging evidence and design
 > rationale. See the [documentation index](../../README.md) for current status.
@@ -346,7 +346,7 @@ completion registry's `spin::RwLock`: two readers and two writers, with the
 owner no longer executing. A timer can preempt an EL1 thread holding a plain
 spin lock; a replacement EL0 thread then enters an IRQ-masked SVC, contends on
 the same lock, and can never be preempted to let the owner run. The completion
-registry and per-completion mutex now use Charlotte's interrupt-masking kernel
+registry and per-completion mutex now use Knytos' interrupt-masking kernel
 spin locks, making their critical sections locally non-preemptible. A traced
 SMP4 HVF run subsequently observed every required marker without either lock
 convoy.
@@ -419,7 +419,7 @@ LP1 block_thread:        MASTER_THREAD_TABLE write lock
 LP1 observer register:   waits for IPC registry
 ```
 
-The IPC registry now uses Charlotte's interrupt-masking kernel `RwLock`, like
+The IPC registry now uses Knytos' interrupt-masking kernel `RwLock`, like
 the completion registry. An LP therefore cannot take a timer preemption while
 it owns the IPC registry, closing the captured cycle while retaining the
 atomic observer-registration/block transition. Both target builds pass. The
@@ -439,7 +439,7 @@ a timer preempts its owner and schedules a different EL0 thread; a syscall from
 that replacement can then spin with IRQs masked and prevent the owner from ever
 running again.
 
-Four additional runtime locks were susceptible and now use Charlotte's
+Four additional runtime locks were susceptible and now use Knytos'
 interrupt-masking kernel locks:
 
 | State | Exposure |

@@ -97,13 +97,13 @@ fn nonzero(value: &[u8; 32]) -> bool {
 
 /// Derive a stable, domain-separated cluster identity from the cluster
 /// mnemonic. The mnemonic is not a secret; this digest prevents accidentally
-/// admitting an envelope sealed for another Charlotte cluster.
+/// admitting an envelope sealed for another Knytos cluster.
 pub fn cluster_id(mnemonic: &[u8]) -> Option<[u8; 32]> {
     if mnemonic.is_empty() {
         return None;
     }
     let mut hasher = crate::sha256::Sha256::new();
-    hasher.update(b"CharlotteOS cluster identity v1\0");
+    hasher.update(b"Knytos cluster identity v1\0");
     hasher.update(mnemonic);
     Some(hasher.finalize())
 }

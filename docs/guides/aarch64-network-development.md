@@ -1,6 +1,6 @@
 # AArch64 network development
 
-KVM is not a CharlotteOS networking requirement. It is an acceleration
+KVM is not a Knytos networking requirement. It is an acceleration
 backend. On macOS, QEMU's software translator (TCG) can run the complete
 AArch64 network stack by default. Add `--net-test` only to verify the PCI,
 MSI-X, SMMUv3, and EL0 virtio-net path explicitly:

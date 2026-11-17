@@ -74,7 +74,7 @@ impl Drop for Fixture {
 impl Fixture {
     fn new() -> Self {
         let directory = std::env::temp_dir().join(std::format!(
-            "charlotte-tls-interop-{}-{}",
+            "knytos-tls-interop-{}-{}",
             std::process::id(),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         ));
@@ -107,7 +107,7 @@ impl Fixture {
             "-days",
             "36500",
             "-subj",
-            "/CN=Charlotte public test root",
+            "/CN=Knytos public test root",
             "-out",
             "ca.pem",
         ]);

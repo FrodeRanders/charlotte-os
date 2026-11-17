@@ -15,10 +15,10 @@ use charlotte_kafka::{
     RecordInput,
 };
 
-const CLIENT: &[u8] = b"charlotte-host-smoke";
-const TOPIC: &[u8] = b"charlotte-events";
-const GROUP: &[u8] = b"charlotte-smoke-group";
-const TRANSACTIONAL_ID: &[u8] = b"charlotte-host-smoke-tx";
+const CLIENT: &[u8] = b"knytos-host-smoke";
+const TOPIC: &[u8] = b"knytos-events";
+const GROUP: &[u8] = b"knytos-smoke-group";
+const TRANSACTIONAL_ID: &[u8] = b"knytos-host-smoke-tx";
 
 struct Broker {
     stream: TcpStream,

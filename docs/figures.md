@@ -1,4 +1,4 @@
-A coherent CharlotteOS figure set answers thirteen different questions, from broad structure down to resource
+A coherent Knytos figure set answers thirteen different questions, from broad structure down to resource
 lifetime, external integration, and application delivery.
 
 ### 1. System layering
@@ -7,7 +7,7 @@ lifetime, external integration, and application delivery.
 flowchart BT
 HW["Hardware and firmware<br/>CPU · RAM · PCIe · NVMe · NIC · timers"]
 
-      subgraph K["CharlotteOS kernel — trusted mechanism"]
+      subgraph K["Knytos kernel — trusted mechanism"]
           PLATFORM["Boot and platform discovery"]
           SCHED["LP scheduler and address spaces"]
           MEMORY["Memory objects and mappings"]
@@ -169,7 +169,7 @@ until dependencies appear.
 
 ```mermaid
 flowchart TD
-BOOT["Firmware enters CharlotteOS"]
+BOOT["Firmware enters Knytos"]
 INIT["Initialize memory, interrupts,<br/>scheduler and secondary LPs"]
 CORE["Start node name service<br/>and observe service"]
 DISCOVER["Discover PCIe devices<br/>and protected DMA paths"]
@@ -255,7 +255,7 @@ This depicts why application code uses catten_rt::owned: Rust ownership mirrors 
 
 ```mermaid
 flowchart LR
-      subgraph A["Charlotte node A"]
+      subgraph A["Knytos node A"]
           KA["Kernel"]
           NSA["Local name service"]
           DA["disco"]
@@ -267,7 +267,7 @@ flowchart LR
           CA["Operational connector domain"]
       end
 
-      subgraph B["Charlotte node B"]
+      subgraph B["Knytos node B"]
           KB["Kernel"]
           NSB["Local name service"]
           DB["disco"]
@@ -495,12 +495,12 @@ ordering, the reuse-safe node-agent identity controls entry to the launch gate, 
 key and re-verifies every role, and `grantctl` exposes only the descriptor-authorized endpoint to the application. No
 single key or mechanism substitutes for the others.
 
-### 11. Durga-to-Charlotte application generation
+### 11. Durga-to-Knytos application generation
 
 ```mermaid
 flowchart LR
 MODEL["Durga process model<br/>activities · messages · Kafka routes"]
-GEN["Charlotte target generator"]
+GEN["Knytos target generator"]
 
       subgraph OUTPUT["Generated application package"]
           ADAPTERS["Compilable no_std<br/>activity adapters"]
@@ -515,7 +515,7 @@ GEN["Charlotte target generator"]
 
       ARTIFACTS["Signed component ELFs<br/>in central object storage"]
       RELEASE["Signed CRELEASE"]
-      CLUSTER["Charlotte cluster"]
+      CLUSTER["Knytos cluster"]
 
       MODEL --> GEN
       GEN --> ADAPTERS
@@ -537,7 +537,7 @@ GEN["Charlotte target generator"]
       RELEASE --> CLUSTER
 ```
 
-Durga now generates the Charlotte-specific scaffolding and an actionable component release plan, but it does not invent
+Durga now generates the Knytos-specific scaffolding and an actionable component release plan, but it does not invent
 business behavior: developers still implement the generated fail-closed handlers. Deployment also remains blocked until
 the retained execution-resource values have been reviewed. The present `CRELEASE` binds concrete executable deployment
 decisions. A richer semantic bundle could additionally bind the original process model, schemas, provenance,
@@ -545,7 +545,7 @@ communication graph, replica policy, affinity rules, and update strategy. Connec
 not application-visible release secrets; descriptors bind only the names and rights an application may request.
 Execution limits, replica count, every-node policy, and affinity/anti-affinity originate in the retained,
 developer-reviewed `charlotte/resources.yaml`. Durga derives the exact `CDEPLOY6` signing options and requests the CLS2
-parallel-instance blessing when needed; Charlotte enforces the execution limits and resolves the placement contract.
+parallel-instance blessing when needed; Knytos enforces the execution limits and resolves the placement contract.
 
 ### 12. Bounded cooperative domain shutdown
 

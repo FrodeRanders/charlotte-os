@@ -59,7 +59,7 @@ def sha(path):
 def capture(policy, usable_mib):
     channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     env = dict(os.environ, CATTEN_RESOURCE_POLICY_FILE=str(policy))
-    with tempfile.TemporaryDirectory(prefix="charlotte-capacity-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-capacity-") as temporary:
         directory = Path(temporary)
         library = directory / "libcatten_syscall.rlib"
         harness = directory / "capacity.rs"
@@ -105,7 +105,7 @@ def capture(policy, usable_mib):
     sources.update(SDK.parent.rglob("*.rs"))
     def identity(path):
         return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
-    return dict(schema="charlotte.resource-capacity.v2", rust_toolchain=channel, host_pointer_bits=pointer_bits,
+    return dict(schema="knytos.resource-capacity.v2", rust_toolchain=channel, host_pointer_bits=pointer_bits,
                 selected_policy=identity(policy), source_sha256={identity(p): sha(p) for p in sorted(sources)},
                 metadata_pools=pools, byte_pool_count=len(byte_pools),
                 byte_ceiling_sums=dict(total=sum(p["total"][0] for p in byte_pools),

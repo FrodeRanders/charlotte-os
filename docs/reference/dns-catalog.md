@@ -61,7 +61,7 @@ The node `/metrics` view renders:
   "state": "leader",
   "term": 1,
   "catalog": {
-    "schema": "charlotte.dns-catalog.v1",
+    "schema": "knytos.dns-catalog.v1",
     "count": 2,
     "entries": [
       {"name": "orders", "node": "node-a", "generation": 3},

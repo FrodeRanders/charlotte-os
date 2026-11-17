@@ -19,7 +19,7 @@ MARKER = b"public previous bundle must survive"
 
 class Publication(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="charlotte-fixture-publication-")
+        self.directory = tempfile.TemporaryDirectory(prefix="knytos-fixture-publication-")
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         self.parts = self.root / "parts"

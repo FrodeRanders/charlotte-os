@@ -227,7 +227,7 @@ const IDENTITY_BASE: u64 = 0x9000_0000_0000_0000;
 
 /// The node's stable, cluster-scoped identity.
 pub struct NodeIdentity {
-    /// User-chosen cluster identifier (for example, "charlotte").
+    /// User-chosen cluster identifier (for example, "knytos").
     pub mnemonic: Vec<u8>,
     /// The node's name: `{mnemonic}:{token}`.
     pub name: Vec<u8>,
@@ -403,13 +403,13 @@ mod tests {
 
     #[test]
     fn creation_loser_waits_for_canonical_owner_without_writing() {
-        let published = encoded(b"charlotte", [1; 6]).unwrap();
+        let published = encoded(b"knytos", [1; 6]).unwrap();
         let store = ScriptedStore::new(
             vec![None, Some(Vec::new()), Some(vec![0; published.len()]), Some(published.clone())],
             false,
         );
         let mut waits = 0;
-        let identity = load_from(&store, b"charlotte", Some([2; 6]), || {
+        let identity = load_from(&store, b"knytos", Some([2; 6]), || {
             waits += 1;
             waits <= 3
         })
@@ -422,7 +422,7 @@ mod tests {
             false,
         );
         assert_eq!(
-            load_from(&store, b"charlotte", None, || true).unwrap().name,
+            load_from(&store, b"knytos", None, || true).unwrap().name,
             decode(&published).unwrap().name
         );
         assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (0, 0, 0));
@@ -432,14 +432,14 @@ mod tests {
     fn only_successful_creation_writes_and_flushes_once() {
         let store = ScriptedStore::new(vec![None], true);
         let identity =
-            load_from(&store, b"charlotte", Some([3; 6]), || panic!("creator must not wait"))
+            load_from(&store, b"knytos", Some([3; 6]), || panic!("creator must not wait"))
                 .unwrap();
-        assert_eq!(identity.name, decode(&encoded(b"charlotte", [3; 6]).unwrap()).unwrap().name);
+        assert_eq!(identity.name, decode(&encoded(b"knytos", [3; 6]).unwrap()).unwrap().name);
         assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (1, 1, 1));
         let mut store = ScriptedStore::new(vec![None], true);
         store.write_ok = false;
         assert!(
-            load_from(&store, b"charlotte", Some([3; 6]), || panic!(
+            load_from(&store, b"knytos", Some([3; 6]), || panic!(
                 "failed published writer must not retry"
             ))
             .is_none()
@@ -449,15 +449,15 @@ mod tests {
 
     #[test]
     fn corrupt_foreign_and_unfinished_publication_are_not_overwritten() {
-        let mut corrupt = encoded(b"charlotte", [1; 6]).unwrap();
+        let mut corrupt = encoded(b"knytos", [1; 6]).unwrap();
         corrupt[0] ^= 1;
         for initial in [corrupt, encoded(b"other", [1; 6]).unwrap(), Vec::new()] {
             let store = ScriptedStore::new(vec![Some(initial)], false);
-            assert!(load_from(&store, b"charlotte", Some([2; 6]), || false).is_none());
+            assert!(load_from(&store, b"knytos", Some([2; 6]), || false).is_none());
             assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (0, 0, 0));
         }
         let store = ScriptedStore::new(vec![None], false);
-        assert!(load_from(&store, b"charlotte", None, || false).is_none());
+        assert!(load_from(&store, b"knytos", None, || false).is_none());
         assert_eq!(store.creates.get(), 0);
     }
 }

@@ -1,4 +1,4 @@
-# Building the CharlotteOS manual
+# Building the Knytos manual
 
 The manual embeds the architecture figures as SVG through LaTeX's `svg`
 package. The checked-in SVGs are generated from the Mermaid blocks in
@@ -35,12 +35,12 @@ rather than collecting an entire lifecycle in one box.
 Use `architecturalcomparison` for short, optional comparisons with prior art.
 Its teal, square-cornered frame and **Architectural comparison** label distinguish
 it from implementation notes, including in monochrome. Place a comparison beside
-the concept it explains. Describe the earlier mechanism fairly, the CharlotteOS
+the concept it explains. Describe the earlier mechanism fairly, the Knytos
 choice, and the resulting tradeoff or current limitation. State historical
 motivation only when the architecture notes support it; otherwise explain the
 consequence without attributing intent. Cite primary sources through the shared
 [`comparison-sources.tex`](chapters/appendices/comparison-sources.tex) bibliography
-and link to the relevant CharlotteOS contract or chapter. Local paper copies in
+and link to the relevant Knytos contract or chapter. Local paper copies in
 [`../prior/`](../prior/) are linked from those entries. Keep performance,
 verification and recovery claims within their documented scope; a comparison is
 not evidence that one system outperforms another.

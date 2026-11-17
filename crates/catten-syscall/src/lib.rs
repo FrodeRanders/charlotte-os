@@ -1,4 +1,4 @@
-//! Typed `no_std` wrappers for the CharlotteOS (catten) syscall ABI.
+//! Typed `no_std` wrappers for the Knytos (catten) syscall ABI.
 //!
 //! Each function corresponds to exactly one `svc #N` instruction.
 //!
@@ -32,7 +32,7 @@ extern crate std;
 use core::arch::asm;
 use core::ops::BitOr;
 
-/// Authoritative CharlotteOS syscall ABI numbers.
+/// Authoritative Knytos syscall ABI numbers.
 ///
 /// Both userspace wrappers and the kernel dispatcher consume this enum. Adding
 /// a variant therefore requires the kernel's exhaustive dispatch match to be

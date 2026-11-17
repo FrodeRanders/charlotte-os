@@ -1,12 +1,12 @@
 \chapter{Shards and Logical Processors}
 \label{chap:shards-and-lps}
 
-CharlotteOS separates the hardware execution context (logical processor, or LP)
+Knytos separates the hardware execution context (logical processor, or LP)
 from the userspace ownership domain (shard).
 
 \section{The logical processor (LP): the hardware unit of scheduling}
 
-An LP is CharlotteOS' representation of a schedulable hardware execution
+An LP is Knytos' representation of a schedulable hardware execution
 context. In most configurations, one LP equals one CPU core (or one hyperthread).
 The kernel shards its own state per-LP, meaning each LP has:
 
@@ -26,7 +26,7 @@ NUMA allocation policy. Page-table memory can be remote even when the data
 it translates is local. \href{https://arxiv.org/abs/1910.05398}{Mitosis} and
 \href{https://www.usenix.org/conference/atc24/presentation/gao-bin-scalable}{Hydra}
 study the benefits and coherence costs of page-table migration and replication.
-Charlotte continues to use its existing affinity policy while treating translation
+Knytos continues to use its existing affinity policy while treating translation
 metadata as a separate accounting and future placement concern. The present
 physical allocator is not NUMA-aware, and x86-64 has no PCID policy: CR3
 reloads flush non-global translations. Affinity alone therefore does not
@@ -63,7 +63,7 @@ treated as replicated rather than shared. Its prototype separates each core's
 CPU driver from a userspace monitor that coordinates with other monitors
 \cite{prior:barrelfish}.
 
-CharlotteOS uses explicit cross-LP messages and local run queues, but does not
+Knytos uses explicit cross-LP messages and local run queues, but does not
 implement that complete multikernel decomposition. Sitas gives each userspace
 shard sole mutation of its local state, but the kernel still has shared registries,
 locks and shared address-space machinery. The direct execution discipline is
@@ -151,7 +151,7 @@ every staging, producer-disposal or outer IRQ context. See
 \label{sec:per-lp}
 
 For kernel data that must be accessible from multiple LPs (including from
-interrupt context), CharlotteOS uses \rusttype{PerLp<T>}: a boxed slice of
+interrupt context), Knytos uses \rusttype{PerLp<T>}: a boxed slice of
 per-LP cells, each wrapped in a lock. Access is:
 
 \begin{lstlisting}[style=rustCode]
@@ -178,7 +178,7 @@ Use \rusttype{PerLp<T>} for data that is:
 \label{sec:shard-local}
 
 For kernel data that is accessed only from one LP and never from interrupt
-context, CharlotteOS provides \rusttype{ShardLocal<T>}: a lock-free per-LP
+context, Knytos provides \rusttype{ShardLocal<T>}: a lock-free per-LP
 container using \texttt{UnsafeCell<T>} with runtime owner-check and borrow-flag
 guard. Access is:
 

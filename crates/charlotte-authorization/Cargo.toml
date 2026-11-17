@@ -2,7 +2,7 @@
 name = "charlotte-authorization"
 version = "0.1.0"
 edition = "2024"
-description = "Authorization policy state machine for CharlotteOS capability issuance"
+description = "Authorization policy state machine for Knytos capability issuance"
 
 [lib]
 name = "charlotte_authorization"

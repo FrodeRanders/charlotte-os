@@ -1,6 +1,6 @@
 # Live service upgrade
 
-CharlotteOS has a tested reference implementation of restart-with-state.
+Knytos has a tested reference implementation of restart-with-state.
 The old service hands off one memory object; the replacement restores it,
 creates a fresh endpoint and registers it under the same service name with a
 new publication generation. Clients whose old connections have closed reacquire

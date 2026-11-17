@@ -1,10 +1,10 @@
 .encoding = "UTF-8"
 config.version = "8"
 virtualHW.version = "21"
-displayName = "CharlotteOS"
+displayName = "Knytos"
 guestOS = "other-64"
 
-# CharlotteOS boots through Limine's fallback BOOTX64.EFI. The development
+# Knytos boots through Limine's fallback BOOTX64.EFI. The development
 # bootloader is not enrolled in VMware's Secure Boot trust database.
 firmware = "efi"
 uefi.secureBoot.enabled = "FALSE"
@@ -22,21 +22,21 @@ pciBridge4.virtualDev = "pcieRootPort"
 pciBridge4.functions = "8"
 
 # Keep boot and persistent storage on distinct controllers. The boot FAT image
-# is immutable operating-system media; the NVMe disk belongs to the Charlotte
+# is immutable operating-system media; the NVMe disk belongs to the Knytos
 # object store from LBA zero onward.
 sata0.present = "TRUE"
 sata0:0.present = "TRUE"
-sata0:0.fileName = "charlotte-boot.vmdk"
+sata0:0.fileName = "knytos-boot.vmdk"
 sata0:0.deviceType = "disk"
 sata0:0.mode = "independent-nonpersistent"
 
 nvme0.present = "TRUE"
 nvme0:0.present = "TRUE"
-nvme0:0.fileName = "charlotte-data.vmdk"
+nvme0:0.fileName = "knytos-data.vmdk"
 nvme0:0.deviceType = "disk"
 
 # The protected userspace drivers require a guest-visible IOMMU. Product and
-# host support varies; CharlotteOS will refuse DMA delegation if no usable
+# host support varies; Knytos will refuse DMA delegation if no usable
 # DMAR/IVRS description is exposed.
 vvtd.enable = "TRUE"
 
@@ -44,7 +44,7 @@ vvtd.enable = "TRUE"
 # placed beside the VMX and VMDK files.
 serial0.present = "TRUE"
 serial0.fileType = "file"
-serial0.fileName = "charlotte-serial.log"
+serial0.fileName = "knytos-serial.log"
 serial0.startConnected = "TRUE"
 serial0.yieldOnMsrRead = "TRUE"
 answer.msg.serial.file.open = "Append"

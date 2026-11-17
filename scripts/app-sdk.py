@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CharlotteOS SDK command. Copied to the SDK root as `charlotte`."""
+"""Knytos SDK command. Copied to the SDK root as `charlotte`."""
 import argparse
 import hashlib
 import json
@@ -95,7 +95,7 @@ charlotte_app::entry!(run);
     (project / 'charlotte.json').write_text(json.dumps({'name': name, 'sdk': str(sdk), 'sdk_fingerprint': hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest(), 'stack_pages': 4, 'max_threads': 1, 'shutdown_grace_ms': 5000, 'grants': []}, indent=2) + '\n')
     (project / '.gitignore').write_text('/target/\n/.charlotte/\n')
     shutil.copyfile(sdk / 'Cargo.lock', project / 'Cargo.lock')
-    print(f'Created {project}; run {sdk / "charlotte"} test {project}')
+    print(f'Created {project}; run {sdk / "knytos"} test {project}')
 
 
 def main():

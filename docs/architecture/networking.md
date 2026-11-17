@@ -1,16 +1,16 @@
-# CharlotteOS Networking Architecture
+# Knytos Networking Architecture
 ## Native Capability-Based Distributed Services
 
 **Status:** Architectural Proposal
-**Audience:** CharlotteOS/Sitas developers and Codex
-**Author:** ChatGPT (based on CharlotteOS design discussions)
-**Purpose:** Define the long-term networking philosophy for CharlotteOS and provide implementation guidance for future development.
+**Audience:** Knytos/Sitas developers and Codex
+**Author:** ChatGPT (based on Knytos design discussions)
+**Purpose:** Define the long-term networking philosophy for Knytos and provide implementation guidance for future development.
 
 ---
 
 # 1. Overview
 
-In CharlotteOS, we are exploring how networking can fit the same message-passing
+In Knytos, we are exploring how networking can fit the same message-passing
 and capability model as local services.
 
 We want applications to invoke local and remote services through a common
@@ -27,7 +27,7 @@ The native networking path is built around:
 - distributed object references
 - transparent service discovery
 
-This follows the choices we are already exploring in CharlotteOS:
+This follows the choices we are already exploring in Knytos:
 
 - message passing
 - capability-based security
@@ -67,7 +67,7 @@ We want to explore a service interface suited to:
 - enterprise service architectures
 - message-oriented systems
 
-CharlotteOS is not attempting to replace TCP/IP on the Internet.
+Knytos is not attempting to replace TCP/IP on the Internet.
 
 Instead, it asks a different question:
 
@@ -79,7 +79,7 @@ The answer proposed here is **no**.
 
 # 3. Design Goals
 
-CharlotteOS networking should satisfy the following principles.
+Knytos networking should satisfy the following principles.
 
 ## 3.1 Unified IPC
 
@@ -292,14 +292,14 @@ Others include:
 - EtherCAT
 - custom protocols
 
-CharlotteOS therefore treats Ethernet as a **generic frame transport** rather
+Knytos therefore treats Ethernet as a **generic frame transport** rather
 than as "IP networking."
 
 ---
 
 # 6. Proposed Layering
 
-The native CharlotteOS networking stack becomes:
+The native Knytos networking stack becomes:
 
 ```
 Applications
@@ -459,7 +459,7 @@ send()
 recv()
 ```
 
-CharlotteOS:
+Knytos:
 
 ```rust
 let payroll = lookup("Payroll");
@@ -494,7 +494,7 @@ Host
 Port
 ```
 
-CharlotteOS:
+Knytos:
 
 ```
 Capability Directory
@@ -516,7 +516,7 @@ Notification
 
 rather than machines.
 
-**Implemented node scope.** CharlotteOS starts one userspace name-service
+**Implemented node scope.** Knytos starts one userspace name-service
 process per node. The supervisor retains the registry endpoint and delegates
 an attenuated connection to each application or service that needs discovery.
 Raft peers, the service manager, drivers, and their clients therefore observe
@@ -530,7 +530,7 @@ isolated namespaces.
 
 TCP provides byte streams.
 
-CharlotteOS instead uses discrete messages.
+Knytos instead uses discrete messages.
 
 Advantages:
 
@@ -591,7 +591,7 @@ Traditional networking authorizes using:
 - TLS certificates
 - ACLs
 
-CharlotteOS instead authorizes capabilities.
+Knytos instead authorizes capabilities.
 
 Example:
 
@@ -774,13 +774,13 @@ From the application's perspective:
 
 there is no difference.
 
-This is one of the primary architectural goals of CharlotteOS.
+This is one of the primary architectural goals of Knytos.
 
 ---
 
 # 16. Zero-Copy Communication
 
-CharlotteOS already explores page ownership transfer.
+Knytos already explores page ownership transfer.
 
 Networking naturally extends this concept.
 
@@ -832,12 +832,12 @@ without modifying the underlying transport.
 The reliable message layer, RPC layer, and capability-based service
 invocation described above are the building blocks of a **generic,
 transport-agnostic Raft consensus service** — a replicated state
-machine exported as a native CharlotteOS IPC endpoint.
+machine exported as a native Knytos IPC endpoint.
 
 > **Implementation status.** The Raft core, transport traits, shared protobuf
 > wire format, joint-consensus membership model, snapshot membership recovery,
 > and service binary all compile and load as EL0 services.
-> A two-node cluster in one CharlotteOS instance repeatedly elects one
+> A two-node cluster in one Knytos instance repeatedly elects one
 > leader over local endpoint IPC on four-LP QEMU/HVF. Election timers use
 > completion events, and verifier/test domains terminate rather than polling
 > forever; the settled system reaches the idle/WFI path. A separate
@@ -877,7 +877,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 ## 18.1 Architectural fit
 
-| Raft concern | CharlotteOS primitive | Status |
+| Raft concern | Knytos primitive | Status |
 |---|---|---|
 | Peer discovery and admission | Ethernet discovery service + replicated join | Implemented: discovery supplies identity/MAC routes; only `JOIN`/joint/finalize commands grant voter authority |
 | Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
@@ -889,7 +889,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 The precise correspondence with the general Graft implementation and the
 intentional platform substitutions are recorded in
-[Graft Conformance in CharlotteOS](../reference/raft-conformance.md).
+[Graft Conformance in Knytos](../reference/raft-conformance.md).
 
 ## 18.2 Why we use this interface for Raft
 
@@ -1004,15 +1004,15 @@ mistakes; possession is validated against the table and remains machine-local. A
 remote proxy capability must therefore name a local proxy object in this same
 table rather than treating a remote integer as authority.
 
-The Raft core remains **generic**, but CharlotteOS deliberately chooses one
+The Raft core remains **generic**, but Knytos deliberately chooses one
 operational state-machine owner: DNS. Its catalog and cluster membership are
 not separate Raft groups. Other future replicated facilities should extend or
 compose with this cluster state rather than silently creating another
-CharlotteOS membership log.
+Knytos membership log.
 
 ## 18.4 Cluster bootstrap and seed discovery
 
-Like every consensus system, Charlotte OS Raft faces a bootstrap
+Like every consensus system, Knytos Raft faces a bootstrap
 problem: a node starting with an empty peer list must contact at least
 one existing cluster member. The difference is that the seed is
 expressed in terms the OS already understands — service names and
@@ -1036,7 +1036,7 @@ consensus, and finalize commands in the DNS-owned log.
 ### Static seeds (generic fixture / future provisioning)
 
 The generic Raft binary can still accept named launch-manifest peers, but this
-is not the operational CharlotteOS cluster bootstrap path.
+is not the operational Knytos cluster bootstrap path.
 
 ```
 node-id = "r4"
@@ -1106,7 +1106,7 @@ These mechanisms are ordered by implementation complexity:
 
 # 19. Comparison
 
-| Traditional UNIX | CharlotteOS |
+| Traditional UNIX | Knytos |
 |-----------------|-------------|
 | socket | capability |
 | connect | lookup |
@@ -1127,7 +1127,7 @@ The following rules should guide future implementation.
 
 ## Architecture
 
-- Do not introduce socket APIs into native CharlotteOS components.
+- Do not introduce socket APIs into native Knytos components.
 - Networking shall extend the IPC model.
 - Applications shall invoke capabilities rather than addresses.
 
@@ -1153,7 +1153,7 @@ The following rules should guide future implementation.
 ## Compatibility
 
 - TCP/IP shall be implemented as an operating system service.
-- Native CharlotteOS components shall not depend upon sockets.
+- Native Knytos components shall not depend upon sockets.
 - Existing POSIX software shall continue to function through the compatibility subsystem.
 
 ## Long-Term Vision
@@ -1199,7 +1199,7 @@ abstraction through the same endpoint IPC that local services use.
 
 # 21. Architectural Principle
 
-The networking architecture of CharlotteOS can be summarized by a single statement:
+The networking architecture of Knytos can be summarized by a single statement:
 
 > **Remote IPC is local IPC with a different transport.**
 

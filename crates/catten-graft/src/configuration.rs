@@ -64,10 +64,10 @@ pub fn decode(bytes: &[u8]) -> Option<ConfigurationCommand> {
 fn peer_spec(peer: &Peer) -> proto::PeerSpec {
     proto::PeerSpec {
         id: peer.id.clone(),
-        // Charlotte's service name is its transport address. Keeping it in
+        // Knytos' service name is its transport address. Keeping it in
         // the shared host field lets snapshots/logs round-trip locally while
         // remaining a valid cross-language PeerSpec for a gateway to map.
-        host: format!("charlotte:{:016x}", peer.service_name),
+        host: format!("knytos:{:016x}", peer.service_name),
         port: 0,
         role: if peer.is_voter() {
             String::from("VOTER")
@@ -83,7 +83,7 @@ fn peer(spec: proto::PeerSpec) -> Option<Peer> {
     }
     let service_name = spec
         .host
-        .strip_prefix("charlotte:")
+        .strip_prefix("knytos:")
         .and_then(|value| u64::from_str_radix(value, 16).ok())
         .unwrap_or(0);
     let role = if spec.role.eq_ignore_ascii_case("LEARNER") {

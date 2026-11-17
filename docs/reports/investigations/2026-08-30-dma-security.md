@@ -1,6 +1,6 @@
 # Analysis: DMA isolation and hostile-device security
 
-Status: **OPEN** — CharlotteOS has a strong protected-DMA foundation, but the
+Status: **OPEN** — Knytos has a strong protected-DMA foundation, but the
 items identified as production blockers in Section 8 remain to be implemented
 and verified on physical hardware.
 
@@ -10,7 +10,7 @@ Date: 2026-08-30
 
 ## 1. Executive summary
 
-CharlotteOS places each delegated PCI requester stream in a private IOMMU
+Knytos places each delegated PCI requester stream in a private IOMMU
 domain. Drivers receive an I/O virtual address (IOVA), not a physical address,
 and the device can reach only memory objects explicitly mapped into that
 domain. Memory remains pinned until translation revocation is acknowledged;
@@ -50,7 +50,7 @@ This analysis considers:
 - an untrusted accelerator, coherent peripheral, chiplet, or peer SoC acting as
   a memory or interrupt requester;
 - compromised device firmware;
-- a device that correctly identifies sufficiently to select a CharlotteOS
+- a device that correctly identifies sufficiently to select a Knytos
   driver, then violates that device protocol;
 - a compromised userspace driver exercising only its delegated MMIO,
   interrupt, DMA-domain, IPC, and memory capabilities; and
@@ -96,7 +96,7 @@ SoC, accelerator, device function, or coherent fabric endpoint may attempt:
   are not represented by the conventional non-coherent DMA API.
 
 The security model must therefore place an explicit enforcement point between
-the trusted CharlotteOS compute/memory domain and every external transaction
+the trusted Knytos compute/memory domain and every external transaction
 origin:
 
 ```text
@@ -114,7 +114,7 @@ IOMMU provides the memory-translation part of that boundary. Isolation groups,
 ACS, interrupt remapping, device-TLB management, coherent-fabric controls, and
 end-to-end data integrity supply other parts.
 
-CharlotteOS currently implements the conventional PCIe/SMMU protected-DMA
+Knytos currently implements the conventional PCIe/SMMU protected-DMA
 case. It does not yet claim capability enforcement for CXL.cache, CXL.mem, or
 another cache-coherent cross-SoC protocol. Before supporting such a fabric, its
 coherence agents and protocol state transitions must be incorporated into the
@@ -130,7 +130,7 @@ participants.
 `device::grant_dma_domain` resolves a PCI requester ID to the platform stream
 ID, creates a domain, and delegates only a `DmaDomain` capability to the driver
 (`crates/catten/src/device/mod.rs:476-490`). A stream cannot be installed in two
-Charlotte domains simultaneously (`smmu.rs:514-527`, `vt_d.rs:479-530`,
+Knytos domains simultaneously (`smmu.rs:514-527`, `vt_d.rs:479-530`,
 `amd_vi.rs:388-419`). Translation tables and physical addresses remain in the
 kernel.
 
@@ -172,7 +172,7 @@ address.
 
 The kernel initializes SMMUv3 or the x86 IOMMU before constructing PCI topology
 and launching drivers (`crates/catten/src/main.rs:227-250`, `285-299`). Thus the
-Charlotte-controlled path enables DMA against a default-deny remapper rather
+Knytos-controlled path enables DMA against a default-deny remapper rather
 than an identity domain.
 
 This does not by itself prove that firmware disabled every endpoint's bus
@@ -189,7 +189,7 @@ demonstrated attacks through deliberately malformed descriptor-ring behavior,
 page-granularity exposure, stale translation windows, PCIe topology, and ATS
 even on systems that used an IOMMU.
 
-For CharlotteOS, the relevant distinction is:
+For Knytos, the relevant distinction is:
 
 ```text
 application memory capability
@@ -319,7 +319,7 @@ supported IOMMU.
 **Severity:** Critical on unvalidated physical topologies; low on a known
 single-function QEMU topology.
 
-CharlotteOS currently creates one domain per requester ID. Real PCIe topology
+Knytos currently creates one domain per requester ID. Real PCIe topology
 can reduce isolation through:
 
 - a bridge without PCIe Access Control Services (ACS), permitting peer-to-peer
@@ -347,7 +347,7 @@ fail closed.
 **Severity:** High.
 
 DMA remapping does not automatically constrain MSI/MSI-X messages. On x86,
-CharlotteOS sends MSI directly to the LAPIC and identity-maps the selected
+Knytos sends MSI directly to the LAPIC and identity-maps the selected
 LAPIC MSI page in the VT-d domain (`crates/catten/src/cpu/isa/x86_64/interrupts/device_irq.rs:212-257`,
 `crates/catten/src/device/vt_d.rs:120-145`). It does not yet configure the
 VT-d interrupt-remapping table. AMD-Vi similarly enables translation without
@@ -373,7 +373,7 @@ translation and address-space state. These can be safe only when device TLB
 invalidation, requester validation, reset, and teardown are implemented as one
 protocol.
 
-CharlotteOS does not currently implement these features, but its PCIe
+Knytos does not currently implement these features, but its PCIe
 capability code also does not enumerate and explicitly disable or reject them.
 Until complete support exists, enumeration should clear their enable bits,
 verify the resulting state, reject a device that cannot be put into that
@@ -384,10 +384,10 @@ state, and configure upstream ACS to reject inappropriate translated requests.
 **Severity:** Medium to high, depending on firmware and attachment model.
 
 The kernel initializes the IOMMU before its topology-driven launch path enables
-drivers. This protects normal Charlotte-controlled startup. Two windows remain:
+drivers. This protects normal Knytos-controlled startup. Two windows remain:
 
 1. firmware or a previous warm-boot kernel may leave an endpoint bus-mastering
-   before CharlotteOS enables default-deny translation; and
+   before Knytos enables default-deny translation; and
 2. `program_vector0` enables PCI memory decoding and bus mastering while
    programming MSI-X (`msix.rs:104-146`), whereas the supervisor creates the
    driver's DMA domain later (`service/supervisor.rs:805-821`).
@@ -569,7 +569,7 @@ For every supported system, record:
 - Linux kernel,
   [generic IOMMU binding documentation](https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/iommu/iommu.txt).
 
-Charlotte-specific lifecycle correspondence is maintained in
+Knytos-specific lifecycle correspondence is maintained in
 [`docs/tla/CONFORMANCE.md`](../../tla/CONFORMANCE.md#dma-and-smmuv3-lifecycle),
 and the current architecture summary is in
 [`docs/architecture/persistent-storage.md`](../../architecture/persistent-storage.md#36-dma).

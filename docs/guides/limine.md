@@ -1,6 +1,6 @@
 # Limine dependency and boot policy
 
-CharlotteOS uses two independently versioned Limine components:
+Knytos uses two independently versioned Limine components:
 
 - the `limine` Rust crate, which defines the kernel-side Limine Boot Protocol
   request and response types; and
@@ -155,7 +155,7 @@ Those are relevant improvements to the area identified during `sbsa-ref`
 bring-up.
 
 They do not make QEMU TCG a trustworthy VHE validation environment. The
-CharlotteOS `sbsa-ref` recipe therefore continues to have TF-A enter the UEFI
+Knytos `sbsa-ref` recipe therefore continues to have TF-A enter the UEFI
 boot chain at EL1. Removing that firmware adaptation requires a separate
 EL2-entry test on KVM or real AArch64 hardware; a successful EL1 boot is not
 evidence for that path.
@@ -164,7 +164,7 @@ evidence for that path.
 
 `limine.conf` is the normal development configuration. It deliberately does
 not claim Secure Boot: its kernel path is unhashed and the checked-in EFI
-binary has no CharlotteOS config hash or signing identity enrolled.
+binary has no Knytos config hash or signing identity enrolled.
 
 `limine-measured.conf` opts into Limine measured boot. Use it without modifying
 the repository default:

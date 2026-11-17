@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# build-external-elf.sh -- build an out-of-tree CharlotteOS EL0 ELF.
+# build-external-elf.sh -- build an out-of-tree Knytos EL0 ELF.
 #
 # The platform definition (target specification, linker script, toolchain, and
-# build-std invocation) is owned by CharlotteOS. This script is context
+# build-std invocation) is owned by Knytos. This script is context
 # sensitive:
 #
-#   * in the CharlotteOS repository it reads the platform files from
+#   * in the Knytos repository it reads the platform files from
 #     crates/catten-services;
 #   * in an exported application SDK it reads platform/<arch>/ next to itself.
 #
@@ -133,7 +133,7 @@ HOST_TRIPLE="$("${RUSTC[@]}" -vV | awk '/^host:/ {print $2}')"
 OBJCOPY="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-objcopy"
 READOBJ="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-readobj"
 if [ ! -x "$OBJCOPY" ] || [ ! -x "$READOBJ" ]; then
-    echo "error: llvm-tools is required to build a CharlotteOS ELF" >&2
+    echo "error: llvm-tools is required to build a Knytos ELF" >&2
     echo "       run: rustup component add llvm-tools rust-src" >&2
     exit 1
 fi

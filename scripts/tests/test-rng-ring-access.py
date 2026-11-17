@@ -89,7 +89,7 @@ class RngRingAccess(unittest.TestCase):
             helpers = helpers.replace(old, new)
         toolchain = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
         harness = "#![allow(dead_code)]\n" + MODEL + helpers
-        with tempfile.TemporaryDirectory(prefix="charlotte-rng-ring-") as folder:
+        with tempfile.TemporaryDirectory(prefix="knytos-rng-ring-") as folder:
             path = Path(folder)
             (path / "probe.rs").write_text(harness)
             built = subprocess.run(["rustc", "+" + toolchain, "--edition=2024", "--test", "-O",

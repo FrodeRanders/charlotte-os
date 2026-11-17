@@ -2,7 +2,7 @@
 name = "charlotte-smoltcp"
 version = "0.1.0"
 edition = "2024"
-description = "smoltcp TCP/IP stack adapter for CharlotteOS"
+description = "smoltcp TCP/IP stack adapter for Knytos"
 
 [dependencies]
 smoltcp = { version = "0.13", default-features = false, features = [

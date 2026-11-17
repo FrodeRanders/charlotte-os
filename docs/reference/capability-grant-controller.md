@@ -1,7 +1,7 @@
 # Capability-grant controller
 
 `grantctl` is the node-local mediation service between a deployed application
-and CharlotteOS service discovery. It exists so applications can use several
+and Knytos service discovery. It exists so applications can use several
 Kafka, S3, or ordinary service capabilities without receiving ambient naming
 authority or connector credentials.
 

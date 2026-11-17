@@ -22,10 +22,10 @@ use charlotte_protocol_kafka::RecordRequest;
 catten_rt::entry!(main);
 
 const INPUTS: [&[u8]; 4] = [
-    b"charlotte-step-input",
-    b"charlotte-step-retry",
-    b"charlotte-step-timeout",
-    b"charlotte-step-dlq",
+    b"knytos-step-input",
+    b"knytos-step-retry",
+    b"knytos-step-timeout",
+    b"knytos-step-dlq",
 ];
 const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main/transactional";
 

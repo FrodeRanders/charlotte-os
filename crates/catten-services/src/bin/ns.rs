@@ -1,5 +1,5 @@
 #![allow(unused_unsafe)]
-//! The CharlotteOS userspace name service.
+//! The Knytos userspace name service.
 //!
 //! Runs in its own EL0 protection domain. Maps service names to
 //! `(re-delegable connection, instance generation)`.

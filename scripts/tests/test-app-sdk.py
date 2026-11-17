@@ -42,7 +42,7 @@ class SdkTests(unittest.TestCase):
             self.assertTrue((project / 'logic/src/lib.rs').is_file())
             self.assertTrue((project / 'app/src/main.rs').is_file())
             (sdk / 'crates/charlotte-app').mkdir(parents=True)
-            (sdk / 'crates/charlotte-app/Cargo.toml').write_text('[package]\nname="charlotte-app"\n')
+            (sdk / 'crates/charlotte-app/Cargo.toml').write_text('[package]\nname="knytos-app"\n')
             sdk_cli.checked_project_sources(sdk, project)
             manifest = project / 'app/Cargo.toml'
             manifest.write_text(manifest.read_text().replace(str(sdk / 'crates/charlotte-app'), str(root / 'other-sdk/charlotte-app')))

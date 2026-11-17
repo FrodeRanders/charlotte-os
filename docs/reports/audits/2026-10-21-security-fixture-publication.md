@@ -38,7 +38,7 @@ current creation/umask policy; previous destination metadata is not preserved.
 
 The Python file context owns local close through success/error. Its filesystem
 artifacts are inspection state, without retry ownership, physical completion or
-recovery custody. No Charlotte capability/root operation, guard, wait, registry
+recovery custody. No Knytos capability/root operation, guard, wait, registry
 or owner family is added. The existing [C18 row](../../reference/cleanup-recovery.md)
 records this scope. Living Markdown and manual LaTeX are updated; the PDF is
 untouched.

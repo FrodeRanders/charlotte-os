@@ -22,7 +22,7 @@ def digest(path):
                      "boot-image integration requires mtools")
 class BootImages(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="charlotte-boot-image-")
+        self.temp = tempfile.TemporaryDirectory(prefix="knytos-boot-image-")
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         self.kernel = self.directory / "kernel-payload"

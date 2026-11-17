@@ -2,7 +2,7 @@
 name = "charlotte-app-sitas"
 version = "0.1.0"
 edition = "2024"
-description = "Owned CharlotteOS call futures on the existing Sitas shard executor"
+description = "Owned Knytos call futures on the existing Sitas shard executor"
 
 [dependencies]
 catten-rt = { path = "../catten-rt" }

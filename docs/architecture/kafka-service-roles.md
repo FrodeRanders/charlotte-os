@@ -1,6 +1,6 @@
 # Kafka service roles and procedural workers
 
-Charlotte should expose Kafka authority by role rather than make every
+Knytos should expose Kafka authority by role rather than make every
 application implement a broker loop. The roles share the same protocol codec,
 TLS transport, metadata handling, producer fencing, and owned-resource model;
 each role forms a separate authority boundary over one shared Kafka stack.
@@ -80,9 +80,9 @@ elect one active member while the others heartbeat with empty assignments as
 standbys. Group-generation and member identity fence ordinary and transactional
 offset commits. A rebalance revokes outstanding delivery authority and aborts
 an in-flight transaction before installing the new assignment. This supports
-Charlotte replicas without revealing group credentials or broker authority to
+Knytos replicas without revealing group credentials or broker authority to
 their application procedures; it does not interoperate with consumers that do
-not advertise the Charlotte assignor.
+not advertise the Knytos assignor.
 
 ## Transactional-step role
 

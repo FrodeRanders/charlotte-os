@@ -5,12 +5,12 @@ Date: 2026-10-05. Source review and design implications, not a hardware benchmar
 ## Assessment
 
 Fernando Simões's [Page table memory consumption](https://frn.sh/pagetables/)
-is relevant to Charlotte's resource accounting and future NUMA placement. It
+is relevant to Knytos' resource accounting and future NUMA placement. It
 does not call for replacing our native radix tables, capability isolation,
 LP-affine shards or cluster placement model. It reinforces the need to measure
 and admit translation metadata separately from data backing.
 
-## Memory cost in Charlotte
+## Memory cost in Knytos
 
 An address space owns its user translation tree. Shards/threads in that domain
 share the tree; independent protected domains do not share user page tables
@@ -20,7 +20,7 @@ data therefore does not eliminate destination page-table cost.
 For our 4 KiB tables with 512 eight-byte entries, a dense 1 GiB mapping needs
 512 leaf tables, or 2 MiB, plus upper levels. Mapping that same physical region
 in 512 independent domains needs roughly 1 GiB of leaf tables even though the
-data backing remains 1 GiB. This is geometry, not a Charlotte benchmark or a
+data backing remains 1 GiB. This is geometry, not a Knytos benchmark or a
 claim that such a workload is presently admitted.
 
 Sparse mappings are less favorable: 512 individual data pages placed in 512
@@ -48,13 +48,13 @@ results argue against treating replication as an unconditional optimization.
 
 Our inference: LP affinity helps avoid unnecessary private-cache and execution
 state churn, but does not by itself guarantee local page-table memory on a
-NUMA machine. Charlotte currently has a global physical allocator rather than
+NUMA machine. Knytos currently has a global physical allocator rather than
 NUMA-aware frame selection. AArch64 uses hardware ASIDs; x86-64 has no PCID
 policy and deliberately flushes non-global translations through CR3 reloads.
 Affinity therefore must not be advertised as preserving all TLB entries across
 context switches on both architectures.
 
-NUMA domains within one computer are not Charlotte cluster members. Cross-host
+NUMA domains within one computer are not Knytos cluster members. Cross-host
 application placement and Raft do not supply a coherent hardware page-table
 tree. The future intra-host policy needs LP-to-NUMA topology, placement of both
 data and translation pages, and measurements of walks/misses/remote accesses.

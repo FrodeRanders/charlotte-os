@@ -564,7 +564,7 @@ impl<'vas, Prepare: FnMut(TableScope) -> bool> Walker<'vas, Prepare> {
         }
     }
 
-    /// Translate only an EL0-writable leaf. Charlotte does not set table-level
+    /// Translate only an EL0-writable leaf. Knytos does not set table-level
     /// access restrictions, so the page/block descriptor selected here holds
     /// the effective permission.
     pub fn translate_user_writable(&mut self) -> WalkerResult<PAddr> {

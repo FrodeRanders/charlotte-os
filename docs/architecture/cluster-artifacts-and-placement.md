@@ -93,9 +93,9 @@ cluster-sign deployment-notify orders.cdep 127.0.0.1:8081
 Several generated components can be operated as one readiness wait without
 giving the generator or application object-store credentials:
 
-![Durga-to-Charlotte generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
+![Durga-to-Knytos generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
 
-Durga's Charlotte target retains execution limits, replica count,
+Durga's Knytos target retains execution limits, replica count,
 every-eligible-node selection, spread, affinity, and anti-affinity in the
 developer-owned `charlotte/resources.yaml`. It derives matching `CDEPLOY6`
 signing options and declares the CLS2 parallel-instance requirement whenever

@@ -26,7 +26,7 @@ inspector = load("object_image_inspector", "scripts/fs-inspect.py")
 
 class StoreFormat(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="charlotte-store-format-")
+        self.temp = tempfile.TemporaryDirectory(prefix="knytos-store-format-")
         self.path = Path(self.temp.name) / "store.img"
         image = writer.ImageWriter(self.path, total_blocks=128)
         self.object_id = writer.artifact_object_id("fixture")

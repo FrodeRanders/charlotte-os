@@ -17,7 +17,7 @@ RETIRED = ("CATTEN_CLUSTER_VIP", "CATTEN_CLUSTER_TCP_PORT", "CATTEN_CLUSTER_SERV
 class ToolingContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp = tempfile.TemporaryDirectory(prefix="charlotte-tooling-")
+        cls.temp = tempfile.TemporaryDirectory(prefix="knytos-tooling-")
         directory = Path(cls.temp.name)
         (directory / "boot-out").mkdir()
         channel = next(line.split('"')[1] for line in (ROOT / "rust-toolchain.toml").read_text().splitlines()

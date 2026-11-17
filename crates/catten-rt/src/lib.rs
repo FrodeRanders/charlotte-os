@@ -1,4 +1,4 @@
-//! CharlotteOS userspace runtime — the equivalent of `crt0` for EL0 programs.
+//! Knytos userspace runtime — the equivalent of `crt0` for EL0 programs.
 //!
 //! Provides:
 //! - The [`entry!`] macro that generates `_start`, `#[panic_handler]`, and `#[global_allocator]`.
@@ -73,7 +73,7 @@ macro_rules! entry {
 
 // ---- launch contract -------------------------------------------------------
 
-/// Launch-time facilities supplied to a CharlotteOS program.
+/// Launch-time facilities supplied to a Knytos program.
 ///
 /// This is the normal developer-facing startup contract. It hides canonical
 /// virtual addresses and config-page offsets; raw config access remains

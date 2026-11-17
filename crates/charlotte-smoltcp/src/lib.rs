@@ -1,6 +1,6 @@
-//! smoltcp → CharlotteOS adapter for the NIC driver protocol.
+//! smoltcp → Knytos adapter for the NIC driver protocol.
 //!
-//! Implements `smoltcp::phy::Device` over a connection to a CharlotteOS NIC
+//! Implements `smoltcp::phy::Device` over a connection to a Knytos NIC
 //! driver endpoint (`net0` via the name service).  The adapter translates
 //! smoltcp's poll-driven `receive()`/`transmit()` calls into the driver's
 //! `OP_SEND` (moved-memory transmit) and a queue of received frames.

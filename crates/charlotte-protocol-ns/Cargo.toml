@@ -2,7 +2,7 @@
 name = "charlotte-protocol-ns"
 version = "0.1.0"
 edition = "2024"
-description = "CharlotteOS exact-generation name-service records"
+description = "Knytos exact-generation name-service records"
 
 [lib]
 bench = false

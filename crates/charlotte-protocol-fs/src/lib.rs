@@ -1,4 +1,4 @@
-//! Native CharlotteOS filesystem protocol v1.
+//! Native Knytos filesystem protocol v1.
 //!
 //! Built on top of the persistent object store. Directories and files are
 //! objects; the root directory has a fixed object ID (100). Paths are

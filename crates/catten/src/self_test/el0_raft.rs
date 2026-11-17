@@ -6,10 +6,10 @@
 //!   term/vote state survives a process restart on the NVMe-backed object store, proving the
 //!   storage stack is durable.
 //!
-//! Cluster formation is intentionally not tested here. Operational CharlotteOS
+//! Cluster formation is intentionally not tested here. Operational Knytos
 //! membership belongs to the DNS-owned Raft node and is verified by the
 //! multi-guest deployment. This isolated, network-disabled process is only a
-//! storage-recovery fixture; it is not a CharlotteOS cluster member.
+//! storage-recovery fixture; it is not a Knytos cluster member.
 //!
 //! Expected outcome: the verifier logs `SUCCESS` and calls
 //! [`crate::self_test::results::pass`] for `TestId::RaftStorage`.

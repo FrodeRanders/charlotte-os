@@ -450,8 +450,8 @@ mod tests {
             commit_index: 42,
             membership_epoch: 7,
             observed_millis: 12_345,
-            leader_id: b"charlotte:a".to_vec(),
-            self_id: b"charlotte:a".to_vec(),
+            leader_id: b"knytos:a".to_vec(),
+            self_id: b"knytos:a".to_vec(),
             controller: ControllerCounters {
                 capacity_reports_accepted: 9,
                 capacity_commands_proposed: 3,

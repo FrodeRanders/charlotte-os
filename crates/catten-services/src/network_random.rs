@@ -5,7 +5,7 @@ use zeroize::{
     Zeroizing,
 };
 
-const PORT_LABEL: &[u8] = b"CharlotteOS TCP/IP ephemeral port v1";
+const PORT_LABEL: &[u8] = b"Knytos TCP/IP ephemeral port v1";
 
 pub struct NetworkRandom {
     interface_seed: u64,

@@ -47,7 +47,7 @@
     "io": "one owned TcpStream; numeric connect_timeout; remaining timeout before each partial/interrupted write and response read; completion rechecks deadline",
     "pause": "minimum of one second and remaining original operation budget; no event-readiness claim",
     "uncertainty": "errors after submitted bytes leave remote work unconfirmed; no notification replay or remote rollback",
-    "owner_family": "existing C18 host preparation and socket scope; no Charlotte root/pin/capability, registry, worker, custody or recovery family",
+    "owner_family": "existing C18 host preparation and socket scope; no Knytos root/pin/capability, registry, worker, custody or recovery family",
     "response_framing_unchanged_apart_from_visibility": true,
     "http_wire_grammar_signed_inputs_cli_positions_runtime_abi_changed": false
   },

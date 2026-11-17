@@ -46,10 +46,10 @@ extern "C" fn verify_el0_s3() {
             tls: true,
             ca_certificate_der: Some(ca_der),
             region: b"us-east-1",
-            bucket: b"charlotte-test",
+            bucket: b"knytos-test",
             prefix: b"",
-            access_key: b"charlotte-test-access",
-            secret_key: b"charlotte-test-secret-2026",
+            access_key: b"knytos-test-access",
+            secret_key: b"knytos-test-secret-2026",
             namespace: None,
             rights: charlotte_protocol_s3::RIGHT_GET
                 | charlotte_protocol_s3::RIGHT_PUT

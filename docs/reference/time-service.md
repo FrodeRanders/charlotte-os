@@ -1,6 +1,6 @@
 # UTC time service
 
-CharlotteOS applications resolve the short name `time` through the local name
+Knytos applications resolve the short name `time` through the local name
 service. The returned capability implements `charlotte-protocol-time` v1:
 
 - `OP_NOW` moves an 80-byte binary snapshot containing Unix seconds and

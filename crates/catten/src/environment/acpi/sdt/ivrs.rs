@@ -1,6 +1,6 @@
 //! Minimal, bounds-checked ACPI IVRS discovery for AMD-Vi.
 //!
-//! CharlotteOS currently drives a single IOMMU, so the parser returns the
+//! Knytos currently drives a single IOMMU, so the parser returns the
 //! register base of the first IVHD (I/O Virtualization Hardware Definition)
 //! block. The AMD-Vi device id is the PCI requester id itself, so no separate
 //! id translation table is required.

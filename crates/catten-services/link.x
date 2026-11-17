@@ -1,5 +1,5 @@
 /* Keep user permissions page-granular: executable text, read-only constants,
- * and writable data/BSS must not share a 4 KiB page. The CharlotteOS loader
+ * and writable data/BSS must not share a 4 KiB page. The Knytos loader
  * consumes PT_LOAD program headers directly and rejects overlapping LOAD pages
  * instead of manufacturing RWX mappings. */
 PHDRS

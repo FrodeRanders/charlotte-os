@@ -1,6 +1,6 @@
 # Kernel panic backtraces
 
-CharlotteOS kernel panics are fail-stop events. They do not unwind Rust frames
+Knytos kernel panics are fail-stop events. They do not unwind Rust frames
 or run destructors, and the panicking LP never re-enables interrupts. The first
 panicking LP writes the panic and a conservative raw frame-pointer backtrace
 directly to the serial device without allocating or taking its software lock.

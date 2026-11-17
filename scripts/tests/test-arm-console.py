@@ -34,7 +34,7 @@ mod memory {
 mod serial;
 '''
 
-with tempfile.TemporaryDirectory(prefix="charlotte-arm-console-") as temporary:
+with tempfile.TemporaryDirectory(prefix="knytos-arm-console-") as temporary:
     directory = Path(temporary)
     source = directory / "console.rs"
     source.write_text(SOURCE.replace("@ROOT@", str(ROOT)))

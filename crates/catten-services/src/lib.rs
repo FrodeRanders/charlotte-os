@@ -1,4 +1,4 @@
-//! Shared protocol definitions for the reference CharlotteOS services.
+//! Shared protocol definitions for the reference Knytos services.
 //!
 //! This is the userspace half of the Phase 3 name-service architecture: the
 //! kernel moves opaque capabilities, while interface ids, opcodes, names,
@@ -516,7 +516,7 @@ pub fn stage_name_owned(name: &[u8]) -> Option<catten_rt::owned::OwnedMemory> {
 ///
 /// The opcodes are deliberately aligned with the `graft` crate's message
 /// types so that the wire-level encoding stays identical across the
-/// standard-library (Tokio) and CharlotteOS builds.
+/// standard-library (Tokio) and Knytos builds.
 pub mod raft {
     pub const INTERFACE: u64 = super::name(b"RAFT");
     pub const VERSION: u32 = 1;

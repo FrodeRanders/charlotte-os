@@ -1,6 +1,6 @@
 # Native OTLP export qualification — 2026-10-31
 
-Charlotte can export current metrics directly from memory without a local
+Knytos can export current metrics directly from memory without a local
 archive. The exporter is an optional userspace service with one immutable
 HTTP/IPv4 destination, bounded memory, one attempt deadline and no disk spool.
 Sampling and cluster placement reporting continue through collector failure.

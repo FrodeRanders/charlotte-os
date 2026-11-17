@@ -35,7 +35,7 @@ use charlotte_protocol_s3::{
 
 catten_rt::entry!(main);
 
-const BODY: &[u8] = b"CharlotteOS verified S3 over TLS\n";
+const BODY: &[u8] = b"Knytos verified S3 over TLS\n";
 const KEY: &[u8] = b"smoke/round-trip.txt";
 
 fn fail(code: u32) -> ! {

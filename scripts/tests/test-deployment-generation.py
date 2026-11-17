@@ -23,7 +23,7 @@ def status(generation, state="ready"):
 
 class Generation(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="charlotte-deployment-generation-")
+        self.directory = tempfile.TemporaryDirectory(prefix="knytos-deployment-generation-")
         self.addCleanup(self.directory.cleanup)
         root = Path(self.directory.name)
         key = root / "fixture.hex"

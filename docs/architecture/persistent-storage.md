@@ -1,7 +1,7 @@
-# CharlotteOS Persistent Storage Architecture
+# Knytos Persistent Storage Architecture
 
 **Status:** Implemented prototype; power-loss atomicity remains unvalidated\
-**Audience:** CharlotteOS contributors\
+**Audience:** Knytos contributors\
 **Purpose:** Define the persistent storage subsystem: block device protocol,
 NVMe driver, and integration with Raft consensus.
 
@@ -9,7 +9,7 @@ NVMe driver, and integration with Raft consensus.
 
 ## 1. Executive Summary
 
-CharlotteOS now has a userspace NVMe driver, block protocol, object-store
+Knytos now has a userspace NVMe driver, block protocol, object-store
 prototype, and disk-backed implementations of Raft's `PersistentStateStore`
 and `LogStore`. A QEMU boot test starts a single-voter Raft process, stops and
 tears it down, then starts the same node identity again and verifies that its

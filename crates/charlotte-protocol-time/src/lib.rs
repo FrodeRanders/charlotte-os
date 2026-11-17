@@ -1,4 +1,4 @@
-//! Wire protocol for the CharlotteOS UTC time service.
+//! Wire protocol for the Knytos UTC time service.
 //!
 //! The service registers the short name `time`. `OP_NOW` returns a copied
 //! [`SNAPSHOT_LEN`]-byte memory object so applications can inspect UTC,

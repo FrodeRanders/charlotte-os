@@ -1,11 +1,11 @@
-# CharlotteOS security audit — 2026-10-03
+# Knytos security audit — 2026-10-03
 
 Follow-up: [implemented remediations, validation, and remaining work](2026-10-03-security-remediation.md).
 Findings below describe the reviewed revision, not the hardened working tree.
 
 ## Verdict
 
-CharlotteOS has meaningful security mechanisms, particularly kernel-derived
+Knytos has meaningful security mechanisms, particularly kernel-derived
 IPC identity, generation-aware capabilities, signed deployment admission,
 connector-only credentials, and DMA pinning. However, the current build is
 not ready to host mutually distrustful applications or to expose its management
@@ -244,7 +244,7 @@ requires explicit delegation and authenticated policy.
 
 **Confirmed default configuration; Critical if used for real authority/secrets.**
 
-The steady-state boot path invokes `launch_deployment_plane(&ns, b"charlotte")`
+The steady-state boot path invokes `launch_deployment_plane(&ns, b"knytos")`
 ([launch.rs:1056](../../../crates/catten/src/service/launch.rs#L1056)). That helper
 installs development admission trust and the embedded development recipient
 private key ([launch.rs:774](../../../crates/catten/src/service/launch.rs#L774)).
@@ -771,7 +771,7 @@ hardware experiments or establish that those residual concerns were resolved.
 
 The [EL2 capability-root document](../../architecture/el2-capability-root.md)
 is a research design, not an implemented protection that can be assumed here.
-Similarly, artifact signatures inside Charlotte do not demonstrate an
+Similarly, artifact signatures inside Knytos do not demonstrate an
 authenticated firmware/bootloader/kernel chain. A hostile hypervisor can also
 observe guest memory and host-provided entropy under the present deployment
 model; virtio RNG is useful entropy provisioning, not protection from its host.

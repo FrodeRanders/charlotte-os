@@ -2,7 +2,7 @@
 
 14 November 2026. Reviewed `charlotte-kafka-broker` revision
 `09798d276cc2ce8617cbc716aac487e9e56ec866`, with a clean working tree. Its
-platform pins are CharlotteOS `9f3d5203e4604c3113afb07e25b28ef6cd0db48c` and
+platform pins are Knytos `9f3d5203e4604c3113afb07e25b28ef6cd0db48c` and
 Sitas `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`; Rust is
 `nightly-2026-07-27`. The OS application foundation being evaluated is based on
 `327a50a74127229ec9d1dc6e41ac6c5aaebd7de7` plus uncommitted SDK changes.

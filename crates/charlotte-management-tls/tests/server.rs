@@ -61,7 +61,7 @@ impl Fixture {
 
     fn new() -> Self {
         let fixture = Self(std::env::temp_dir().join(format!(
-            "charlotte-management-tls-{}-{}-{}",
+            "knytos-management-tls-{}-{}-{}",
             std::process::id(),
             NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
@@ -87,7 +87,7 @@ impl Fixture {
             "-days",
             "3650",
             "-subj",
-            "/CN=Charlotte public test CA",
+            "/CN=Knytos public test CA",
             "-out",
             "ca.pem",
         ]);

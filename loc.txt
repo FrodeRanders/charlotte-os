@@ -1,4 +1,4 @@
-CharlotteOS maintained repository counts
+Knytos maintained repository counts
 Generated with cloc 2.10
 
 Scope: Git-tracked working-tree files, including current local edits.

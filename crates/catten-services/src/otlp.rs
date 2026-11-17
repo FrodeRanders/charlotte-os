@@ -116,24 +116,24 @@ pub fn metrics(
         return None;
     }
     let mut resource = Vec::new();
-    attr(&mut resource, "service.name", "charlotte-os");
+    attr(&mut resource, "service.name", "knytos");
     attr(&mut resource, "service.instance.id", instance);
     let mut scope = Vec::new();
     let mut instrumentation = Vec::new();
-    message(&mut instrumentation, 1, b"charlotte.telemetry");
+    message(&mut instrumentation, 1, b"knytos.telemetry");
     message(&mut scope, 1, &instrumentation);
     for (index, name, unit) in [
-        (r::THREADS, "charlotte.threads", "{thread}"),
-        (r::DOMAINS, "charlotte.domains", "{domain}"),
-        (r::FREE_FRAMES, "charlotte.memory.frames.free", "{frame}"),
-        (r::USABLE_FRAMES, "charlotte.memory.frames.usable", "{frame}"),
-        (r::OWNED_FRAMES, "charlotte.memory.frames.owned", "{frame}"),
-        (r::HEAP_ALLOCATED_BYTES, "charlotte.heap.allocated", "By"),
-        (r::HEAP_PEAK_BYTES, "charlotte.heap.peak", "By"),
-        (r::STACK_PAGES, "charlotte.stack.reserved", "{page}"),
-        (r::STACK_USED_HIGH_WATER, "charlotte.stack.used_high_water", "{page}"),
-        (r::THREADS_HIGH_WATER, "charlotte.threads.high_water", "{thread}"),
-        (r::LOGICAL_PROCESSORS, "charlotte.cpu.logical_processors", "{cpu}"),
+        (r::THREADS, "knytos.threads", "{thread}"),
+        (r::DOMAINS, "knytos.domains", "{domain}"),
+        (r::FREE_FRAMES, "knytos.memory.frames.free", "{frame}"),
+        (r::USABLE_FRAMES, "knytos.memory.frames.usable", "{frame}"),
+        (r::OWNED_FRAMES, "knytos.memory.frames.owned", "{frame}"),
+        (r::HEAP_ALLOCATED_BYTES, "knytos.heap.allocated", "By"),
+        (r::HEAP_PEAK_BYTES, "knytos.heap.peak", "By"),
+        (r::STACK_PAGES, "knytos.stack.reserved", "{page}"),
+        (r::STACK_USED_HIGH_WATER, "knytos.stack.used_high_water", "{page}"),
+        (r::THREADS_HIGH_WATER, "knytos.threads.high_water", "{thread}"),
+        (r::LOGICAL_PROCESSORS, "knytos.cpu.logical_processors", "{cpu}"),
     ] {
         let value = current.values[index];
         if value > i64::MAX as u64 {
@@ -151,7 +151,7 @@ pub fn metrics(
             (current.ticks - old.ticks) as f64 * current.values[r::LOGICAL_PROCESSORS] as f64;
         gauge(
             &mut scope,
-            "charlotte.cpu.utilization",
+            "knytos.cpu.utilization",
             "1",
             unix_ns,
             (busy / span).clamp(0.0, 1.0).to_bits(),
@@ -307,8 +307,8 @@ mod tests {
         let bytes = metrics("node", 123456, 1000, sample, None).unwrap();
         assert!(
             bytes
-                .windows(b"charlotte.heap.allocated".len())
-                .any(|b| b == b"charlotte.heap.allocated")
+                .windows(b"knytos.heap.allocated".len())
+                .any(|b| b == b"knytos.heap.allocated")
         );
         let mut timestamp = alloc::vec![25];
         timestamp.extend_from_slice(&123456u64.to_le_bytes());

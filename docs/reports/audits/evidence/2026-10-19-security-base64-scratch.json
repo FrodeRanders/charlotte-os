@@ -7,7 +7,7 @@
     "revision": "9be5546",
     "original_scram_sha256": "ca521cd26ab4a39eafd757a359f3247021022989a0c654840f89ba4e543123f5",
     "fixture_scram_sha256": "aab221d48edaef70f62d3b1b1efd05fb5f0d7a16116e2886b8bdda54f4176785",
-    "fixture_manifest": "[package]\nname = \"charlotte-kafka\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Bounded no_std Kafka wire protocol core for CharlotteOS\"\n\n[lib]\ntest = true\nbench = false\n\n[dependencies]\ncharlotte-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
+    "fixture_manifest": "[package]\nname = \"charlotte-kafka\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Bounded no_std Kafka wire protocol core for Knytos\"\n\n[lib]\ntest = true\nbench = false\n\n[dependencies]\ncharlotte-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
     "fixture_lockfile_sha256": "40c06e4f46f14cf51e64fc2daafc2068abe730714671a7d004199d3aef7c22ee",
     "shared_probe_path": "crates/charlotte-kafka/src/scram/erasure_tests.rs",
     "shared_probe_sha256": "c065d1d12939e89888d59f18080ba567733d9a53b6a8edab308d28b2780f383a",

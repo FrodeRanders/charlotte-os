@@ -43,7 +43,7 @@ authentication authority. See [tooling inputs](../../reference/tooling-inputs.md
 Response strings and sockets remain in their existing host scopes, with their
 original deadline and prepared request owners. Ordinary rejection closes those
 scopes without remote rollback. The [C18 row](../../reference/cleanup-recovery.md)
-records the boundary. No worker, owner family, registry, Charlotte capability/root,
+records the boundary. No worker, owner family, registry, Knytos capability/root,
 physical completion proof, custody or retry policy is added. Server output,
 HTTP grammar, signed input/receipt formats, CLI arguments and runtime ABI are
 unchanged.

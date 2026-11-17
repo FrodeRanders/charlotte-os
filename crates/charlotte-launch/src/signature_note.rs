@@ -1,4 +1,4 @@
-//! Identity-bearing signatures for CharlotteOS ELF artifacts.
+//! Identity-bearing signatures for Knytos ELF artifacts.
 //!
 //! A `SHT_NOTE` record named `charlotte` carries a fixed-width `CLS2`
 //! descriptor.  Unlike the original `CLS1` record, the signed descriptor
@@ -21,8 +21,8 @@ use ed25519_compact::{
 use super::sha256;
 
 /// ELF note owner, without the required trailing NUL byte.
-pub const NOTE_NAME: &[u8] = b"charlotte";
-/// `CLS2`: identity-bearing Charlotte cluster artifact signature.
+pub const NOTE_NAME: &[u8] = b"knytos";
+/// `CLS2`: identity-bearing Knytos cluster artifact signature.
 pub const NOTE_TYPE_SIGNATURE: u32 = 0x434c_5332;
 pub const SIGNATURE_LEN: usize = 64;
 pub const ARTIFACT_NAME_CAPACITY: usize = 48;
@@ -266,7 +266,7 @@ pub fn signature_location(image: &[u8]) -> Option<SignatureLocation> {
             }
             let owner = &image[name_start..name_end];
             if note_type == NOTE_TYPE_SIGNATURE
-                && owner == b"charlotte\0"
+                && owner == b"knytos\0"
                 && descsz == DESCRIPTOR_LEN
                 && decode_metadata(&image[desc_start..desc_end]).is_some()
             {

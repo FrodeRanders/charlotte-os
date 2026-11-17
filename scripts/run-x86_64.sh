@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build a bootable UEFI disk image for CharlotteOS / Catten (x86_64) and run it
+# Build a bootable UEFI disk image for Knytos / Catten (x86_64) and run it
 # under QEMU. This is the x86_64 counterpart of scripts/run-aarch64.sh.
 #
 # Requirements: qemu, mtools.  On macOS install via Homebrew:
@@ -433,7 +433,7 @@ if [ "$S3_TEST" = "1" ]; then
         -out "$CATTEN_RUSTFS_CERT_DIR/ca.key"
     openssl req -x509 -new -sha256 -days 2 \
         -key "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
-        -subj "/CN=CharlotteOS RustFS test CA" \
+        -subj "/CN=Knytos RustFS test CA" \
         -addext "basicConstraints=critical,CA:TRUE" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
         -out "$CATTEN_RUSTFS_CERT_DIR/ca.crt"
@@ -776,7 +776,7 @@ if [ -n "$TIMEOUT" ]; then
                 if [ "$DEPLOY_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
-                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
+                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "knytos.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
                     HTTP_PROBE_OK=1
                     break
                 fi

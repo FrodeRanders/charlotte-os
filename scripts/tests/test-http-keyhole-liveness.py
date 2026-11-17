@@ -73,7 +73,7 @@ def read_metrics(port, require_dns_catalog=False, require_ns_status=False):
         metadata_pools(document)
         if require_dns_catalog:
             catalog = document["dns"]["catalog"]
-            assert catalog["schema"] == "charlotte.dns-catalog.v1"
+            assert catalog["schema"] == "knytos.dns-catalog.v1"
             rows = catalog["entries"]
             assert isinstance(rows, list) and catalog["count"] == len(rows)
             assert all(isinstance(row["name"], str) and row["name"]

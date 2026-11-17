@@ -12,7 +12,7 @@ use alloc::{
 
 pub const IPV4_ETHERTYPE: u16 = 0x0800;
 pub const ARP_ETHERTYPE: u16 = 0x0806;
-/// Charlotte-internal L2 forwarding envelope. Frames with this EtherType must
+/// Knytos-internal L2 forwarding envelope. Frames with this EtherType must
 /// only be accepted from a MAC in the current committed member snapshot.
 pub const FORWARDED_ETHERTYPE: u16 = 0x88b8;
 pub const FORWARD_ENVELOPE_LEN: usize = 8;
@@ -51,7 +51,7 @@ pub enum FlowPolicyError {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Backend {
-    /// Stable node token derived from the committed Charlotte identity.
+    /// Stable node token derived from the committed Knytos identity.
     pub node_id: u64,
     /// Current discovery-authenticated Ethernet route for that identity.
     pub mac: [u8; 6],
@@ -248,7 +248,7 @@ pub fn service_load_balancing_epoch(
     let mut draining_nodes = draining_nodes.to_vec();
     draining_nodes.sort_unstable();
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    hash_bytes(&mut hash, b"Charlotte ingress policy v2\0");
+    hash_bytes(&mut hash, b"Knytos ingress policy v2\0");
     hash_bytes(&mut hash, &membership_epoch.to_le_bytes());
     hash_bytes(&mut hash, &(service_name.len() as u64).to_le_bytes());
     hash_bytes(&mut hash, service_name);
@@ -269,7 +269,7 @@ pub fn service_load_balancing_epoch(
 /// generation. A new projection cannot reuse a historical flow's epoch.
 pub fn availability_load_balancing_epoch(epoch: u64, generation: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    hash_bytes(&mut hash, b"Charlotte ingress availability v1\0");
+    hash_bytes(&mut hash, b"Knytos ingress availability v1\0");
     hash_bytes(&mut hash, &epoch.to_le_bytes());
     hash_bytes(&mut hash, &generation.to_le_bytes());
     avalanche(hash)
@@ -298,7 +298,7 @@ pub fn select_backend(
 
 fn rendezvous_score(service: &ServiceId, flow: &FlowKey, node_id: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    hash_bytes(&mut hash, b"Charlotte L2 rendezvous v1\0");
+    hash_bytes(&mut hash, b"Knytos L2 rendezvous v1\0");
     hash_bytes(&mut hash, &service.address);
     hash_bytes(&mut hash, &[service.protocol]);
     hash_bytes(&mut hash, &service.port.to_be_bytes());
@@ -555,7 +555,7 @@ pub fn local_advertises_vip(snapshot: Option<&BackendSnapshot>, snapshot_fresh: 
 }
 
 /// Wrap an ordinary Ethernet frame for one-hop delivery to a selected
-/// Charlotte backend. The original source MAC and EtherType are carried in a
+/// Knytos backend. The original source MAC and EtherType are carried in a
 /// compact in-frame envelope so the backend can restore the packet before
 /// passing it to its local protocol stack. The private EtherType also prevents
 /// a receiving frouter from rendezvous-selecting an already forwarded packet
@@ -580,7 +580,7 @@ pub fn encapsulate_forwarded_frame(
     Some(frame_len + FORWARD_ENVELOPE_LEN)
 }
 
-/// Remove a trusted one-hop Charlotte forwarding envelope and restore the
+/// Remove a trusted one-hop Knytos forwarding envelope and restore the
 /// Ethernet source and EtherType seen at the ingress participant. The outer
 /// destination remains the selected backend's local MAC.
 pub fn decapsulate_forwarded_frame(frame: &mut [u8], frame_len: usize) -> Option<(usize, u16)> {
@@ -598,7 +598,7 @@ pub fn decapsulate_forwarded_frame(frame: &mut [u8], frame_len: usize) -> Option
 }
 
 /// Construct an Ethernet/IPv4 gratuitous ARP reply for a newly selected VIP
-/// advertiser. The frame has no internal Charlotte metadata and remains safe
+/// advertiser. The frame has no internal Knytos metadata and remains safe
 /// for ordinary switches and hosts to consume.
 pub fn gratuitous_arp(mac: [u8; 6], vip: [u8; 4]) -> [u8; 42] {
     let mut frame = [0u8; 42];

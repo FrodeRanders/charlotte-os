@@ -11,7 +11,7 @@ fn profile<'a>() -> Profile<'a> {
         tls: true,
         ca_certificate_der: b"certificate",
         region: b"eu-north-1",
-        bucket: b"charlotte",
+        bucket: b"knytos",
         prefix: b"operations/",
         access_key: b"connector-only",
         secret_key: b"not-for-applications",

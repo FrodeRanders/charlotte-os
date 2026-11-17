@@ -1,5 +1,5 @@
 -------------------------------- MODULE CharlotteCQ ----------------------------------
-\* TLA+ model of CharlotteOS Completion Queues.
+\* TLA+ model of Knytos Completion Queues.
 \*
 \* Covers: operation lifecycle (submit/in-flight/complete/cancel/observe),
 \*          CQ rings with non-lossy backlog, CQ_WAIT/CQ_WAKE with race-free

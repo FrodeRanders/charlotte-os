@@ -34,7 +34,7 @@ class TlsGcmBackend(unittest.TestCase):
         start = source.index('#[cfg(all(target_os = "none",')
         end = source.index("\n};", start) + len("\n};")
         cls.management_guard = "#![no_std]\n" + source[start:end] + "\n"
-        cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-tls-gcm-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-tls-gcm-")
         cls.directory = Path(cls.temporary.name)
 
     @classmethod

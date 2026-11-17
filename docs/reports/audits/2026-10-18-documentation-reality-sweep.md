@@ -13,7 +13,7 @@ RPC recovery, waiting, resource admission, driver startup, executable formats,
 trust boundaries, storage and build/CI workflows. It also checked the matching
 living guides and architecture/reference pages. This is a structured source
 review, not a line-by-line proof of every manual statement or every code path.
-Research comparisons and historical lessons were checked for current Charlotte
+Research comparisons and historical lessons were checked for current Knytos
 claims; external systems and cited publications were not re-researched.
 
 Source and tests define behavior. Existing runtime reports establish only their

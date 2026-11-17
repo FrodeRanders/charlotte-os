@@ -1,4 +1,4 @@
-# CharlotteOS renewed security audit — 2026-10-05
+# Knytos renewed security audit — 2026-10-05
 
 This follows the [2026-10-03 audit](2026-10-03-security-audit.md) and its
 [remediation ledger](2026-10-03-security-remediation.md). It reviews revision

@@ -68,7 +68,7 @@ exercise the correction before final execution.
 
 ## Final validation
 
-- CharlotteOS host suite: **436 passed / 0 failed / 4 ignored**, plus existing
+- Knytos host suite: **436 passed / 0 failed / 4 ignored**, plus existing
   signing/boot/secure-boot/syscall-emitter controls, six tooling tests and **five
   object-store Python tests**. New Rust tests exercise header/extent roundtrip,
   checksum-valid invalid fields, retired/missing superblocks, mount selection,

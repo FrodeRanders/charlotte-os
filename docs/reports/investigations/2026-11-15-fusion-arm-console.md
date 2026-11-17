@@ -106,7 +106,7 @@ kernel (`d2f1aa040f6f58931e24141a32909993dd54d14637ae6e0535f67d1ec61dbda6`):
 | Display configuration | Observation |
 | --- | --- |
 | Headless | Runner passed mandatory minimal memory/storage/operational validation. |
-| Existing ramfb configuration | No CharlotteOS serial output; stopped manually while the display showed TianoCore and PC was `0x5fdf74a8`, before kernel entry. The precise firmware/bootloader boundary remains unresolved. |
+| Existing ramfb configuration | No Knytos serial output; stopped manually while the display showed TianoCore and PC was `0x5fdf74a8`, before kernel entry. The precise firmware/bootloader boundary remains unresolved. |
 | VirtIO GPU substituted at PCI slot 5 | Guest services started, but Limine supplied no framebuffer. The screen reported inactive output. This is not a display pass or an adopted replacement. |
 
 The retained [ramfb view](evidence/2026-11-15-qemu-display.png) and
@@ -121,7 +121,7 @@ with the existing runner's `release --minimal --display --smp 4` configuration,
 the same QEMU/edk2 installation and `ramfb`. It initialized an 800×600 terminal,
 scrolled ordinary boot text, and displayed `BOOT COMPLETE: validation passed;
 local storage ready; services submitted`. The authenticated reader request to
-`/` returned HTTP 200 and CharlotteOS HTML with CA verification enabled. The
+`/` returned HTTP 200 and Knytos HTML with CA verification enabled. The
 [passing framebuffer capture](evidence/2026-11-15-qemu-framebuffer-pass.png)
 and separate artifact/serial record in the evidence JSON qualify this repeat.
 No display-device or renderer change was needed. This pass does not explain

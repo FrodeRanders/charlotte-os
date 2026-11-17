@@ -31,7 +31,7 @@ fn commented_key(bytes: &[u8]) -> String {
 #[test]
 fn operational_commands_share_bounded_public_key_file_admission() {
     let path =
-        std::env::temp_dir().join(format!("charlotte-public-key-input-{}", std::process::id()));
+        std::env::temp_dir().join(format!("knytos-public-key-input-{}", std::process::id()));
     fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
     let directory = Directory(path);
     let recipient = directory.0.join("recipient.pub");

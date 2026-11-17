@@ -1,4 +1,4 @@
-//! The CharlotteOS service manager — orchestrates live service upgrades.
+//! The Knytos service manager — orchestrates live service upgrades.
 //!
 //! Bootstraps, registers as "svcmgr", and serves OP_UPGRADE requests.
 //! An upgrade drains the target service, receives its handoff state

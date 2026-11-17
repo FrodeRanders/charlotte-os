@@ -137,7 +137,7 @@ def prepare_inputs(args, directory):
     patch = subprocess.check_output(["git", "diff", "HEAD", "--"], cwd=root)
     bundle = {p.name: digest(p) for p in sorted(Path(args.bundle).glob("*.elf"))}
     manifest = {
-        "schema": "charlotte.boot-diagnostics.v1", "arch": args.arch,
+        "schema": "knytos.boot-diagnostics.v1", "arch": args.arch,
         "instance": args.instance, "cpus": args.cpus, "revision": revision,
         "dirty_paths": changes.splitlines(), "tracked_diff_sha256": hashlib.sha256(patch).hexdigest(),
         "kernel_source": str(Path(args.kernel).resolve()),

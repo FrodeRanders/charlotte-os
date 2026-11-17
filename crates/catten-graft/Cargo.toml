@@ -2,7 +2,7 @@
 name = "catten-graft"
 version = "0.1.0"
 edition = "2024"
-description = "no_std Raft consensus core adapted for CharlotteOS"
+description = "no_std Raft consensus core adapted for Knytos"
 
 [lib]
 name = "catten_graft"

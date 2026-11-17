@@ -2,7 +2,7 @@
 name = "charlotte-management-tls"
 version = "0.1.0"
 edition = "2024"
-description = "Freestanding mutually authenticated CharlotteOS management TLS"
+description = "Freestanding mutually authenticated Knytos management TLS"
 
 [dependencies]
 charlotte-launch = { path = "../charlotte-launch" }

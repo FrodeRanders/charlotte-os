@@ -17,7 +17,7 @@ The following early mechanisms remain part of the architecture:
     \item Non-lossy kernel CQ backlog.
     \item \texttt{checked CQ wait} blocking through scheduler/observer machinery.
     \item Bounded queues and explicit \texttt{WouldBlock}.
-    \item No-std Sitas split and CharlotteOS backend.
+    \item No-std Sitas split and Knytos backend.
     \item Per-shard executor model.
     \item Typed in-kernel \texttt{ShardMailbox<M>}.
     \item Closure-based \texttt{ShardLocal<T>} with restricted use.
@@ -90,7 +90,7 @@ transition.
 \subsection{Introduce memory objects before rich IPC payloads}
 
 Move/lend semantics require durable object identity rather than temporary
-pointers. CharlotteOS introduced memory-object capabilities, mapping, ownership
+pointers. Knytos introduced memory-object capabilities, mapping, ownership
 transfer, temporary lending, lifecycle revocation, and DMA integration before
 promoting rich IPC payloads.
 

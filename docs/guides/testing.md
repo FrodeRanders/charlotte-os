@@ -1,8 +1,8 @@
-# CharlotteOS test paths
+# Knytos test paths
 
-CharlotteOS has two intentionally different test environments. Pure logic
+Knytos has two intentionally different test environments. Pure logic
 should run on the development host. Kernel behavior and EL0 entry-point wiring
-must run on the CharlotteOS target, normally under QEMU.
+must run on the Knytos target, normally under QEMU.
 
 ## Minimal boot and development selection
 

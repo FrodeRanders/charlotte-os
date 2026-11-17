@@ -89,7 +89,7 @@ def resources(private, validity_controls=False, chain_controls=False):
     signing_key.write_bytes(bytes.fromhex("302e020100300506032b657004220420") + material[:32])
     signing_key.chmod(0o600)
     message = private / "ciphertext-signature-digest"
-    message.write_bytes(hashlib.sha256(b"CharlotteOS management boot resource signature v1\0" + changed[:112] + changed[176:]).digest())
+    message.write_bytes(hashlib.sha256(b"Knytos management boot resource signature v1\0" + changed[:112] + changed[176:]).digest())
     signature = private / "ciphertext-signature"
     if command(["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", signing_key,
                 "-keyform", "DER", "-in", message, "-out", signature], preparation) != 0:

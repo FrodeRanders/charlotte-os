@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a two-disk CharlotteOS VMware appliance.
+# Build a two-disk Knytos VMware appliance.
 #
 # The boot VMDK contains the FAT32 Limine/kernel image. The persistent NVMe
 # VMDK starts blank: objstore formats it on first boot and the kernel seeds
@@ -42,10 +42,10 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-APPLIANCE_DIR="${ROOT_DIR}/os-images/vmware/CharlotteOS.vmwarevm"
+APPLIANCE_DIR="${ROOT_DIR}/os-images/vmware/Knytos.vmwarevm"
 INSTANCE="vmware"
 if [ "$BOOT_MODE" = "minimal" ]; then
-    APPLIANCE_DIR="${ROOT_DIR}/os-images/vmware/CharlotteOS-Minimal.vmwarevm"
+    APPLIANCE_DIR="${ROOT_DIR}/os-images/vmware/Knytos-Minimal.vmwarevm"
     INSTANCE="vmware-minimal"
 fi
 if [ -e "$APPLIANCE_DIR" ] && [ "$REPLACE" != "1" ]; then
@@ -87,13 +87,13 @@ qemu-img convert -f raw -O vmdk \
 qemu-img convert -f raw -O vmdk \
     -o subformat=monolithicSparse,compat6,adapter_type=lsilogic \
     "$RAW_DATA" "$DATA_VMDK"
-cp "${ROOT_DIR}/vmware/charlotte-os.vmx" "${APPLIANCE_DIR}/CharlotteOS.vmx"
+cp "${ROOT_DIR}/vmware/charlotte-os.vmx" "${APPLIANCE_DIR}/Knytos.vmx"
 if [ -d "${RAW_BOOT}.management" ]; then
     cp -R "${RAW_BOOT}.management" "${APPLIANCE_DIR}/management"
 fi
 
 echo ">>> VMware appliance complete:"
-echo "    ${APPLIANCE_DIR}/CharlotteOS.vmx"
+echo "    ${APPLIANCE_DIR}/Knytos.vmx"
 echo ">>> Open that VMX in VMware Fusion/Workstation, or import/convert the"
 echo "    VMDKs for ESXi. Serial output will be written beside the VMX."
 echo ">>> The appliance includes an E1000E adapter on VMware NAT."

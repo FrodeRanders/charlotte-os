@@ -126,7 +126,7 @@ No fresh full-suite run is claimed.
 The clean Graft checkout remains at
 `1a818d416a40330bea2055e03f61580679baa9f6`, without modification. Previous source
 extracts document its differing core/runtime read paths. This batch reproduces
-Charlotte behavior only. It provides no new Graft Jepsen result, upstream failure
+Knytos behavior only. It provides no new Graft Jepsen result, upstream failure
 reproduction or mixed-implementation cluster evidence.
 
 ## Next read-safety boundary

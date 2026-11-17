@@ -6,7 +6,7 @@ propagates pressure, although not every internal queue has a hard memory bound.
 
 \section{The kernel scheduler}
 
-CharlotteOS uses a pluggable scheduler architecture. The system scheduler
+Knytos uses a pluggable scheduler architecture. The system scheduler
 (\texttt{SYSTEM\_SCHEDULER}) delegates to per-LP \texttt{LpScheduler} instances.
 The reference implementation is \texttt{RoundRobin}:
 
@@ -25,7 +25,7 @@ interface.
 \section{The block-yield-wake cycle}
 
 This cycle underlies asynchronous operations. Every async primitive in
-CharlotteOS, including \texttt{sleep()}, \texttt{wait()}, and
+Knytos, including \texttt{sleep()}, \texttt{wait()}, and
 \texttt{checked CQ wait}, is implemented through it.
 
 \subsection{Block}

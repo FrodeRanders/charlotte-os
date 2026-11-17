@@ -1,7 +1,7 @@
 \chapter{Design Philosophy}
 \label{chap:design-philosophy}
 
-In CharlotteOS, we bring together ideas from three projects.
+In Knytos, we bring together ideas from three projects.
 
 \section{Our starting point}
 
@@ -14,9 +14,9 @@ The three projects approach this design space from different directions. We
 want to keep the distinctions that make each useful and give them clear ways
 to work together.
 
-\subsection{CharlotteOS: protection, scheduling, and interrupts}
+\subsection{Knytos: protection, scheduling, and interrupts}
 
-CharlotteOS contributes the mechanisms that \emph{must} be privileged:
+Knytos contributes the mechanisms that \emph{must} be privileged:
 
 \begin{itemize}
     \item Address-space isolation through page tables and the MMU.
@@ -64,7 +64,7 @@ Sitas provides:
 \end{itemize}
 
 The Sitas discipline is enforced by Rust's type system within a single protection
-domain and CharlotteOS extends it across domains through the kernel.
+domain and Knytos extends it across domains through the kernel.
 
 \subsection{Xous: the isolated userspace service model}
 
@@ -90,7 +90,7 @@ contributes the protection-domain service model:
         server identities.
 \end{itemize}
 
-CharlotteOS adopts Xous's userspace-server model and combines it with the Sitas
+Knytos adopts Xous's userspace-server model and combines it with the Sitas
 execution discipline and an async-native kernel. The detailed co-design is
 maintained in \repofile|docs/architecture/sitas-xous.md|.
 
@@ -105,8 +105,8 @@ boundaries:
 \textbf{Layer} & \textbf{Provided by} \\
 \hline
 Shard-local async execution & Sitas \\
-Cross-domain protection and IPC & CharlotteOS kernel (Xous-inspired) \\
-Completion delivery for kernel/device ops & CharlotteOS kernel \\
+Cross-domain protection and IPC & Knytos kernel (Xous-inspired) \\
+Completion delivery for kernel/device ops & Knytos kernel \\
 Service discovery and policy & Userspace (name service, supervisor) \\
 \hline
 \end{tabular}
@@ -142,7 +142,7 @@ The layers are:
         \end{itemize}};
 
     \node[layer, below=0.4cm of service] (kernel) {%
-        \textbf{CharlotteOS kernel}\par\vspace{2pt}
+        \textbf{Knytos kernel}\par\vspace{2pt}
         \begin{itemize}
             \setlength{\itemsep}{0pt}
             \item protection domains
@@ -156,7 +156,7 @@ The layers are:
 \end{center}
 
 \architecturefigure{system-layering}
-    {CharlotteOS layering from hardware and kernel mechanism through isolated
+    {Knytos layering from hardware and kernel mechanism through isolated
     services and generated application logic to managed external systems.}
     {fig:system-layering}
 
@@ -319,7 +319,7 @@ into userspace. Task scheduling therefore remains cooperative and reviewable.
 
 \section{Safety consequences and open bounds}
 
-Every design decision in CharlotteOS traces back to one or more of the six
+Every design decision in Knytos traces back to one or more of the six
 principles from \autoref{chap:problem}:
 
 \begin{itemize}

@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 use super::PreparedBootTrust;
 
 pub(crate) const CLUSTER: &[u8] = b"boot-trust-tests";
-pub(crate) const MODULE_NAME: &str = "charlotte.boot-trust-test";
+pub(crate) const MODULE_NAME: &str = "knytos.boot-trust-test";
 pub(super) const BOOTSTRAP_PUBLIC: [u8; 32] = [
     67, 4, 107, 254, 64, 146, 179, 233, 73, 148, 234, 218, 21, 220, 194, 13, 138, 170, 7, 182, 88,
     253, 57, 84, 235, 142, 14, 251, 139, 220, 165, 222,

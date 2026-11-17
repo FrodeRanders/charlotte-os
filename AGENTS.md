@@ -1,10 +1,10 @@
-# CharlotteOS contributor instructions
+# Knytos contributor instructions
 
 These instructions apply to the entire repository.
 
 ## Preserve the capability model
 
-CharlotteOS uses linear capability ownership. In userspace services and
+Knytos uses linear capability ownership. In userspace services and
 applications, do not store an owning capability as a bare integer and do not
 build manual cleanup ladders around early returns.
 

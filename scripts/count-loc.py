@@ -197,7 +197,7 @@ def test_counts(files):
     counts = {path: values["code"] if dedicated_test(path) else 0
               for path, values in files.items()}
     pairs = {}
-    with tempfile.TemporaryDirectory(prefix="charlotte-loc-") as directory:
+    with tempfile.TemporaryDirectory(prefix="knytos-loc-") as directory:
         for index, (path, values) in enumerate(files.items()):
             if values["language"] != "Rust" or dedicated_test(path):
                 continue
@@ -260,7 +260,7 @@ def main():
     testing = sum(row[2] for row in groups.values())
     rust_testing = sum(tests[path] for path, row in files.items() if row["language"] == "Rust")
     assert total == source["SUM"]["code"]
-    lines = ["CharlotteOS maintained repository counts", "Generated with cloc " + str(source["header"]["cloc_version"]),
+    lines = ["Knytos maintained repository counts", "Generated with cloc " + str(source["header"]["cloc_version"]),
              "", "Scope: Git-tracked working-tree files, including current local edits.",
              "Excluded: ignored/untracked files, downloaded/build dependencies, bundled",
              "limine-binary/, dependency lockfiles and this report. Standard cloc duplicate",

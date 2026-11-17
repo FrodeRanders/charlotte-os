@@ -664,7 +664,7 @@
       ]
     },
     "meaning": "Read-only comparison at the recorded clean revision. No upstream tests or Jepsen suites are rerun, no upstream regression is claimed solely from handler inspection, and no upstream files are changed.",
-    "user_selected_contract": "Restore upstream catch-up behavior (automatic finalization), rather than retain Charlotte early finalization.",
+    "user_selected_contract": "Restore upstream catch-up behavior (automatic finalization), rather than retain Knytos early finalization.",
     "charlotte_early_finalization_history": {
       "revision": "4d2856df541fb51d4fd0dffde867ed1d190f995c",
       "excerpt_line": 1190,
@@ -1444,7 +1444,7 @@
     {
       "case": "retained learner remains leader",
       "exit_status": 101,
-      "meaning": "Charlotte host regression observes Leader after finalized voter-to-learner change; expected Follower.",
+      "meaning": "Knytos host regression observes Leader after finalized voter-to-learner change; expected Follower.",
       "log_sha256": "811a3886bc634af00cc82cbc77f99f3227b4e81309ad3cddcf586bae3d2b1c8c",
       "diagnostics": [
         "thread 'node::tests::finalized_learner_relinquishes_leadership_without_erasing_its_vote' (19304583) panicked at crates/catten-graft/src/node.rs:1590:9:",

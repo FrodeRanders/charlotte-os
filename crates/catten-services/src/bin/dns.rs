@@ -1498,7 +1498,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     config::write_u32_release(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
         Some(ManifestValue::Bytes(raw)) if !raw.is_empty() => raw.to_vec(),
-        _ => b"charlotte".to_vec(),
+        _ => b"knytos".to_vec(),
     };
     let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
         Some(ManifestValue::Unsigned(value)) => value,

@@ -1,4 +1,4 @@
-//! CharlotteOS sitas smoke image — runs `basic_kv`, the mailbox-index demo,
+//! Knytos sitas smoke image — runs `basic_kv`, the mailbox-index demo,
 //! a thread-join probe and a shared-CQ probe behind the crt0 contract.
 //!
 //! Results are written to the status page: `basic_kv` writes its verified key

@@ -16,7 +16,7 @@ SUCCESS = (
 
 class BootResults(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="charlotte-boot-result-")
+        self.directory = tempfile.TemporaryDirectory(prefix="knytos-boot-result-")
         self.addCleanup(self.directory.cleanup)
         self.log = Path(self.directory.name) / "serial.log"
 

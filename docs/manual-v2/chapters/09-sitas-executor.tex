@@ -174,7 +174,7 @@ trait ShardParker {
 }
 \end{lstlisting}
 
-On CharlotteOS, private shard reactors use the checked CQ wait (syscall 88),
+On Knytos, private shard reactors use the checked CQ wait (syscall 88),
 with an explicit timed flag and separate readiness, deadline and admission-rejection
 outcomes. For a queue with one waiter, the safe runtime boundary is:
 
@@ -330,7 +330,7 @@ polls the result mailbox until all three runs arrive, then verifies. A parked
 coordinator consumes no CPU, and a stolen or combined wake costs at most one
 park interval.
 
-Joining shard threads is also real on CharlotteOS now. A shard thread
+Joining shard threads is also real on Knytos now. A shard thread
 terminates itself with \texttt{thread\_exit} once its closure completes (a
 user thread has no ``returned'' trap, so the trampoline must ask the kernel
 to reap it), and the kernel's \texttt{ObserveThreadExit} syscall registers a
@@ -379,7 +379,7 @@ The mailbox index build exercises owned state, owned-value transfer, and
 lock-free cross-shard communication while the kernel provides only scheduling
 and completion primitives. The demo targets the \texttt{no\_std}
 \texttt{ShardRuntime}, so the identical code path runs on a Unix host through
-\texttt{sitas-unix} with a plain \texttt{cargo test} and on CharlotteOS through
+\texttt{sitas-unix} with a plain \texttt{cargo test} and on Knytos through
 the kernel syscall backend.
 
 \endinput

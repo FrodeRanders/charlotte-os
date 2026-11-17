@@ -129,7 +129,7 @@ const DASHBOARD: &str = r##"<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CharlotteOS</title>
+<title>Knytos</title>
 <style>
 :root{--bg:#0e1117;--card:#161b22;--border:#2a2f3a;--fg:#e6edf3;--dim:#8b949e;--accent:#58a6ff;--ok:#3fb950;--bad:#f25d3f}
 *{box-sizing:border-box}
@@ -156,7 +156,7 @@ pre{margin:0;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 </head>
 <body>
 <header>
-<h1>CharlotteOS</h1>
+<h1>Knytos</h1>
 <span class="chip">mac <b id="mac">-</b></span>
 <span class="chip">ip <b id="ip">-</b></span>
 <span class="chip"><span class="dot" id="linkdot"></span>link <b id="link">-</b></span>
@@ -195,7 +195,7 @@ const CLUSTER_DASHBOARD: &str = r##"<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CharlotteOS cluster</title>
+<title>Knytos cluster</title>
 <style>
 :root{--bg:#0e1117;--card:#161b22;--border:#30363d;--fg:#e6edf3;--dim:#8b949e;--accent:#58a6ff;--ok:#3fb950;--bad:#f85149}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -206,7 +206,7 @@ h2{margin:0 0 8px;color:var(--accent);font-size:12px;text-transform:uppercase}ta
 </style>
 </head>
 <body>
-<header><h1>CharlotteOS cluster</h1><span id="leader" class="dim">leader -</span><span id="term" class="dim">term -</span><span id="commit" class="dim">commit -</span><span id="fresh" class="bad">waiting</span><a href="/">serving node</a></header>
+<header><h1>Knytos cluster</h1><span id="leader" class="dim">leader -</span><span id="term" class="dim">term -</span><span id="commit" class="dim">commit -</span><span id="fresh" class="bad">waiting</span><a href="/">serving node</a></header>
 <main><section class="card"><h2>Nodes</h2><div id="nodes"></div></section><section class="card"><h2>Deployments</h2><div id="deployments"></div></section><section class="card"><h2>Cluster ingress</h2><div id="ingress"></div></section><section class="card"><h2>Placement controller</h2><pre id="controller"></pre></section></main>
 <script>
 function e(s){return String(s==null?"-":s).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
@@ -327,7 +327,7 @@ fn build_cluster_json(snapshot: &Snapshot, dns_conn: ConnectionRef<'_>) -> Optio
     let _ = write!(
         s,
         concat!(
-            "{{\"schema\":\"charlotte.cluster.v2\",",
+            "{{\"schema\":\"knytos.cluster.v2\",",
             "\"fresh_committed\":{},\"served_by_leader\":{},\"truncated\":{},",
             "\"raft\":{{\"state\":\"{}\",\"term\":{},\"commit_index\":{},",
             "\"membership_epoch\":{},\"observed_millis\":{},\"leader\":"
@@ -769,7 +769,7 @@ fn render_dns(snapshot: &Snapshot, s: &mut String, dns_conn: ConnectionRef<'_>) 
         {
             let _ = write!(
                 s,
-                "{{\"schema\":\"charlotte.dns-catalog.v1\",\"count\":{},\"entries\":[",
+                "{{\"schema\":\"knytos.dns-catalog.v1\",\"count\":{},\"entries\":[",
                 catalog.len()
             );
             for (index, entry) in catalog.records().enumerate() {

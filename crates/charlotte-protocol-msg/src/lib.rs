@@ -32,7 +32,7 @@
 //! ACKs from an abandoned session. ACK and payload are deliberately not
 //! combined because the one session field cannot identify both directions.
 //!
-//! ## Wire format (Ethertype 0x88B5, allocated to CharlotteOS)
+//! ## Wire format (Ethertype 0x88B5, allocated to Knytos)
 //!
 //! ```text
 //!  0..2   EtherType = 0x88B5
@@ -56,7 +56,7 @@
 #[cfg(test)]
 extern crate std;
 
-/// CharlotteOS reliable-message EtherType (IANA unassigned, chosen for
+/// Knytos reliable-message EtherType (IANA unassigned, chosen for
 /// internal use until registration).
 pub const MSG_ETHERTYPE: u16 = 0x88b5;
 pub const WIRE_VERSION: u16 = 3;

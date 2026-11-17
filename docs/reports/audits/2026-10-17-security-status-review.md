@@ -6,7 +6,7 @@ No kernel, runtime, service or test source was changed by this review.
 
 ## Assessment
 
-The security work is substantive, but CharlotteOS remains an experimental
+The security work is substantive, but Knytos remains an experimental
 system with explicit production blockers. The current ledger's **38 findings:
 29 corrected within their documented scope, six partial and three open** is
 consistent with the sampled source. This review does not change dispositions

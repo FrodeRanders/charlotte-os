@@ -1,6 +1,6 @@
 # Application SDK and userspace ergonomics qualification
 
-14 November 2026. Source base: CharlotteOS `327a50a7`, plus the application
+14 November 2026. Source base: Knytos `327a50a7`, plus the application
 foundation changes accompanying this report. Toolchain: `nightly-2026-07-27`.
 This checkpoint qualifies the application helpers and their integration; it does
 not close kernel cleanup gates or qualify every connector operation.

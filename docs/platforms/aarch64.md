@@ -1,6 +1,6 @@
 # AArch64 Port Status
 
-> Status of the CharlotteOS / Catten kernel AArch64 (ARM64) port.
+> Status of the Knytos / Catten kernel AArch64 (ARM64) port.
 > Goal context: run the kernel on an Apple Silicon (M2) Mac under virtualization
 > (QEMU `virt` machine).
 
@@ -48,7 +48,7 @@ The default (headless) build uses `--no-default-features --features acpi`, so th
 PL011 serial console is the log sink and the flanterm C dependency is avoided; it
 creates a FAT EFI image with `mtools` (no sudo / loopback mounts) and launches
 `qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a710`. The runner attaches
-a virtio NIC on QEMU user networking by default. Charlotte then starts its
+a virtio NIC on QEMU user networking by default. Knytos then starts its
 network stack, obtains a DHCP lease, launches discovery and cluster services,
 and starts the NTP-backed time service. Pass `--no-network` only for an isolated
 boot.

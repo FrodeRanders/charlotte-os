@@ -11,9 +11,9 @@ directly against a new kernel interface would make the platform impractical.
 
 This chapter develops a proposed answer. A process-oriented generator such as
 Durga (\url{https://github.com/FrodeRanders/durga}) can mediate between
-application intent and the Charlotte execution environment. Developers describe
+application intent and the Knytos execution environment. Developers describe
 a process in BPMN and implement business rules against a narrow generated
-contract. A Charlotte backend supplies executable wrappers, capability
+contract. A Knytos backend supplies executable wrappers, capability
 requirements, communication structure, and cluster desired state. The tools and
 domain model absorb most platform-specific knowledge.
 
@@ -26,8 +26,8 @@ metadata for each BPMN component. A developer-owned
 regeneration, and must be reviewed before deployment output becomes usable. The
 same reviewed values drive descriptor-signing options.
 
-Generated adapters compile into Charlotte ELFs. After CI builds, signs, and
-uploads them, Charlotte admits their descriptors atomically in a signed
+Generated adapters compile into Knytos ELFs. After CI builds, signs, and
+uploads them, Knytos admits their descriptors atomically in a signed
 \texttt{CRELEASE}, resolves replica placement through Raft, fetches artifacts
 from central S3, mediates grants, launches isolated domains, and reports
 exact-generation readiness. Business handlers and schemas remain
@@ -36,7 +36,7 @@ model, schemas, and provenance, together with a production release controller,
 remains the next boundary.
 
 \architecturewidefigure{durga-charlotte-generation}
-    {Durga turns process intent into Charlotte-native adapters, capability and
+    {Durga turns process intent into Knytos-native adapters, capability and
     connector requirements, signed release inputs, and cluster desired state.}
     {fig:durga-charlotte-generation}
 
@@ -46,7 +46,7 @@ The conventional response to a new operating system is to reproduce a familiar
 application interface. POSIX compatibility, a C library, sockets, a filesystem
 hierarchy, dynamic linking, language runtimes, and ports of common packages
 provide a path for existing programs. This effective compatibility also
-recreates execution assumptions from which Charlotte is trying
+recreates execution assumptions from which Knytos is trying
 to depart: ambient access to a machine-like namespace, software assembled from
 mutable packages, and a process API designed around one host.
 
@@ -58,7 +58,7 @@ The alternative considered here is compatibility at a higher level:
 ]
     \node[box] (b) {business process\\+ business rules};
     \node[box, below=0.6cm of b] (g) {generator};
-    \node[box, below=0.6cm of g] (n) {native Charlotte\\application};
+    \node[box, below=0.6cm of g] (n) {native Knytos\\application};
     \draw[->] (b) -- (g);
     \draw[->] (g) -- (n);
 \end{tikzpicture}
@@ -77,8 +77,8 @@ The resulting thesis complements \autoref{chap:cluster-vision}:
 \begin{quote}
 A constrained execution environment need not imply a difficult application
 environment when infrastructure code is generated from a higher-level model.
-CharlotteOS need not expose a familiar operating-system API if familiar tools
-can generate Charlotte-native applications.
+Knytos need not expose a familiar operating-system API if familiar tools
+can generate Knytos-native applications.
 \end{quote}
 
 The scope is deliberately narrower than all applications or existing software:
@@ -106,7 +106,7 @@ to one implementation language:
         binaries under \texttt{src/bin}, with common code in a generated
         library and shared Durga runtime support.
 
-    \item The prototype Charlotte target generates minimal \texttt{no\_std}
+    \item The prototype Knytos target generates minimal \texttt{no\_std}
         activity adapters and a deployment plan. Kafka broker credentials stay
         in separately named connector profiles, while applications receive only
         granted service endpoints.
@@ -114,7 +114,7 @@ to one implementation language:
 
 The Java and Rust targets use the same process-event wire model and topic
 layout, so their components interoperate through the generated protocol. The
-Charlotte target consumes the same process topology and generates Kafka
+Knytos target consumes the same process topology and generates Kafka
 connector intent. Its current adapters establish the platform and deployment
 boundary, but the complete process-event runtime is the next semantic layer. The
 process model can therefore remain stable while code generation changes the
@@ -127,14 +127,14 @@ limits, environment configuration, and deployment scripts. Scaling combines
 application replicas with Kafka consumer groups and topic partitions. In an
 OpenShift environment, image policy, registry access, security context,
 network policy, routes, secrets, monitoring integration, and organizational
-admission policy normally add further deployment concerns. The Charlotte
+admission policy normally add further deployment concerns. The Knytos
 target instead emits platform build and deployment-planning inputs, while operating
 the release remains outside Durga.
 
 These mechanisms supply real isolation, durability, routing, scaling, recovery,
 and operational control for conventional applications on general-purpose
 hosts. Their distance from the original business process motivates a more
-direct generated representation for Charlotte.
+direct generated representation for Knytos.
 
 \section{Three distinct languages}
 
@@ -149,9 +149,9 @@ failures, and process completion. Handwritten code supplies domain behavior
 such as validating an invoice, calculating an entitlement, or selecting a
 payment route.
 
-This layer should remain largely independent of Charlotte. A developer should
+This layer should remain largely independent of Knytos. A developer should
 understand the business domain, the supported BPMN subset, and the Durga task
-contract. Charlotte-specific message buffers, deployment calls, signing notes,
+contract. Knytos-specific message buffers, deployment calls, signing notes,
 and capability handles should not leak into ordinary rule code unless the
 application deliberately requests a platform-specific facility.
 
@@ -176,14 +176,14 @@ durability, repeated execution, acknowledgement, and recovery of a partially
 completed external side effect require additional explicit policy.
 
 The semantic model must therefore be a real intermediate representation rather
-than a renaming of Kafka topics. A Charlotte backend should consume concepts
+than a renaming of Kafka topics. A Knytos backend should consume concepts
 such as activity, event, correlation, retry, and durable boundary.
 
 \subsection{The execution platform}
 
 The lower layer realizes the semantic model. The established Durga backends use
-Java or Rust workers and Kafka communication. The prototype Charlotte target
-starts to use Charlotte execution objects, capabilities, names, and cluster
+Java or Rust workers and Kafka communication. The prototype Knytos target
+starts to use Knytos execution objects, capabilities, names, and cluster
 desired state, while using an external event log where its semantics are
 required. Supervision and the complete process runtime remain target work.
 
@@ -198,7 +198,7 @@ The intended relationship is therefore:
 
     \node[box, below left=1.2cm and 1.4cm of mid] (java) {Java/Kafka};
     \node[box, below=1.2cm of mid] (rust) {Rust/Kafka};
-    \node[box, below right=1.2cm and 1.4cm of mid] (char) {Charlotte\\backend};
+    \node[box, below right=1.2cm and 1.4cm of mid] (char) {Knytos\\backend};
 
     \draw[->] (root) -- (mid);
     \coordinate (m) at ([yshift=-0.5cm]mid.south);
@@ -215,13 +215,13 @@ platform does not provide a required behavior, the generator uses a suitable ser
 such as Kafka or rejects the build. Moving bytes between activities is only one
 part of backend correctness.
 
-\section{The Charlotte backend and its target architecture}
+\section{The Knytos backend and its target architecture}
 
 The working generator establishes the source, build, authority, connector, and
 deployment skeleton described at the start of this chapter. The target
 architecture fills that skeleton with completed business-rule bindings and a
 semantic process runtime, then adds bundle-level admission, resource-aware
-rolling placement, lifecycle supervision, and rollback. Charlotte's existing
+rolling placement, lifecycle supervision, and rollback. Knytos' existing
 release path already supplies fixed replica sets and exact-generation DSR
 readiness below that semantic layer.
 
@@ -236,7 +236,7 @@ fn calculate_entitlement(
 \end{lstlisting}
 
 We have not settled the Rust interface or implemented this ABI. Around that
-function, the Charlotte backend could generate a wrapper that:
+function, the Knytos backend could generate a wrapper that:
 
 \begin{enumerate}
     \item receives a typed activity invocation through a delegated endpoint;
@@ -253,7 +253,7 @@ function, the Charlotte backend could generate a wrapper that:
         protocols.
 \end{enumerate}
 
-The generated wrapper owns platform mechanics: receiving Charlotte messages,
+The generated wrapper owns platform mechanics: receiving Knytos messages,
 accepting capabilities, allocating shared memory, re-registering after
 replacement, responding to endpoint closure, and attaching telemetry. The
 developer-facing business contract remains suitable for unit tests on an
@@ -261,12 +261,12 @@ ordinary development host.
 
 The source layout enforces the same boundary. Regeneration replaces generated
 files and preserves developer-owned business modules. Specialized services may
-use explicit escape hatches, while ordinary rules remain free of raw Charlotte
+use explicit escape hatches, while ordinary rules remain free of raw Knytos
 handles.
 
 \subsection{A deliberately narrow runtime interface}
 
-The generated runtime would target a small Charlotte service interface rather
+The generated runtime would target a small Knytos service interface rather
 than POSIX. A candidate operation set might include:
 
 \begin{itemize}
@@ -282,13 +282,13 @@ than POSIX. A candidate operation set might include:
 This list is proposed. The experiment should discover the minimum viable
 interface rather than declare it in advance. In particular, external protocols,
 TLS, databases, object storage, and durable logs will require trusted connectors
-or Charlotte-native services. Code generation cannot make those integrations
+or Knytos-native services. Code generation cannot make those integrations
 disappear, but it can make authority to use them explicit and can keep their
 mechanics outside the business rule.
 
 \section{From process graph to capability graph}
 
-Charlotte workloads begin with no ambient authority and receive only delegated
+Knytos workloads begin with no ambient authority and receive only delegated
 capabilities. Durga has information from which a first capability request can be
 generated: which activity receives which input, which activity can send to
 which successor, which participant communicates with which other participant,
@@ -325,7 +325,7 @@ the backend could derive a graph in which:
         administration capability.
 \end{itemize}
 
-The process communication graph can thus become an input to the Charlotte
+The process communication graph can thus become an input to the Knytos
 capability graph. BPMN message flows, pools, participants, and explicitly
 annotated external interactions are particularly useful because they already
 express architectural boundaries. A message between a claims pool and a
@@ -385,7 +385,7 @@ contain:
 \begin{itemize}
     \item the original BPMN model and a canonical digest of the model;
     \item the Durga semantic intermediate representation and its version;
-    \item one or more Charlotte-native executable artifacts;
+    \item one or more Knytos-native executable artifacts;
     \item immutable identities and signatures for every executable;
     \item input, output, event, and state schemas with stable identities;
     \item the execution, communication, and requested capability graphs;
@@ -412,9 +412,8 @@ file once and never overwrites it during regeneration. Operations may approve
 or reject the reviewed values when signing the deployment, but should not have
 to guess them from the ELF or silently rewrite them.
 
-Charlotte's
-\texttt{CDEPLOY6} descriptor signs all three values and placement policy, and Durga
-derives the corresponding signing options and adds the CLS2 parallel-instance
+Knytos' \texttt{CDEPLOY6} descriptor signs all three values and placement policy,
+and Durga derives the corresponding signing options and adds the CLS2 parallel-instance
 requirement whenever the policy permits concurrent instances.
 
 The kernel gives every thread
@@ -485,7 +484,7 @@ parallel-safety declaration, artifact identities, stack limits, capabilities,
 and placement constraints before committing desired state to the replicated
 manifest.
 
-The Charlotte manifest accepts signed singleton, fixed-replica, and
+The Knytos manifest accepts signed singleton, fixed-replica, and
 \emph{every eligible node} policy. The \texttt{PlacementPolicy} contract
 described in \autoref{chap:cluster-vision} is stored in \texttt{CDEPLOY6}, and a
 leader-side controller resolves it and commits concrete replica sets. A
@@ -515,7 +514,7 @@ Durga knows useful structure before execution begins:
         external events.
 \end{itemize}
 
-A Charlotte backend can translate this into an initial placement hypothesis.
+A Knytos backend can translate this into an initial placement hypothesis.
 Frequently adjacent activities may receive a common affinity group, while replicas of
 one parallel-safe activity may receive anti-affinity or minimum-failure-domain
 rules. Similarly, an activity using a restricted service may be constrained to the same
@@ -527,7 +526,7 @@ all its time in an external service, and one process definition may serve
 different data distributions. Runtime evidence must refine incomplete or
 incorrect resource estimates and expected frequencies.
 
-Charlotte's observation tools can refine it. Runtime identities generated
+Knytos' observation tools can refine it. Runtime identities generated
 from the process model allow the cluster to measure message counts, bytes,
 latency, queue pressure, CPU time, memory pressure, failures, and retry rates per
 activity and edge. A future placement controller can compare declared structure
@@ -540,12 +539,12 @@ This gives the process compiler and cluster different roles:
 
 \begin{verbatim}
 Durga model       -> initial graph and declared constraints
-Charlotte runtime -> measured graph and resource evidence
+Knytos runtime -> measured graph and resource evidence
 placement policy  -> admissible movement and replication
 controller        -> assignments in replicated cluster state
 \end{verbatim}
 
-Charlotte already resolves declared replica and affinity policy into automatic
+Knytos already resolves declared replica and affinity policy into automatic
 assignments. The proposed feedback loop adds cluster-wide observation and uses
 sustained runtime evidence to refine those assignments.
 
@@ -553,7 +552,7 @@ sustained runtime evidence to refine those assignments.
 
 BPMN describes logical units of work independently of protection domains,
 operating-system processes, containers, or scheduled artifacts. The current
-Rust generator maps activities and gateways to binaries. A Charlotte backend
+Rust generator maps activities and gateways to binaries. A Knytos backend
 may instead choose physical granularity from authority, durability, placement,
 and performance constraints.
 
@@ -606,11 +605,11 @@ change.
 
 Kafka presently supplies more than byte transport to Durga. It offers durable
 logs, replay, partition ordering, consumer groups, offset tracking, integration
-with external producers and consumers, and transactional options. A Charlotte
+with external producers and consumers, and transactional options. A Knytos
 message endpoint must not be treated as equivalent merely because it can carry
 the same payload.
 
-CharlotteOS now has an implemented, capability-scoped Kafka compatibility
+Knytos now has an implemented, capability-scoped Kafka compatibility
 service (\autoref{sec:kafka-service}). A provisioned instance exposes an
 explicit broker allow-list, a fixed consume partition, up to 64 allow-listed produce routes, a
 group, transactional identity, and separately named authority endpoints. Its
@@ -648,9 +647,9 @@ stored, replayable, independently consumable record. Kafka or another durable
 event-log service may remain the right platform. An internal instruction
 such as ``activity A completed, so make B runnable'' may need only the delivery,
 deduplication, and recovery guarantees of the Durga runtime and could use native
-Charlotte messaging.
+Knytos messaging.
 
-A proposed Charlotte deployment may therefore be hybrid:
+A proposed Knytos deployment may therefore be hybrid:
 
 \begin{center}
 \begin{tikzpicture}[
@@ -663,7 +662,7 @@ A proposed Charlotte deployment may therefore be hybrid:
     \node[act, below=1.2cm of log] (c) {C};
     \node[act, left=0.5cm of c] (b) {B};
     \node[act, left=0.5cm of b] (a) {A};
-    \node[align=center, right=0.25cm of c] (note) {Native\\Charlotte\\messages};
+    \node[align=center, right=0.25cm of c] (note) {Native\\Knytos\\messages};
 
     \node[draw, left=0.0cm of a, dashed, rounded corners, fit=(a)(b)(c)(note), inner sep=8pt] (group) {};
 
@@ -681,7 +680,7 @@ while avoiding a broker round trip for every internal transition. It also makes
 the durable boundary visible in the process bundle and capability request.
 
 The present Kafka adapter is intentionally narrower than a general client. It
-uses a profile-fixed partition and a Charlotte fixed-partition group assignor
+uses a profile-fixed partition and a Knytos fixed-partition group assignor
 while routing among an explicit broker allow-list. It supports group join,
 heartbeat, standby failover, and generation-fenced ordinary and transactional
 offset commits, but not conventional/cooperative assignor interoperability,
@@ -691,15 +690,15 @@ connector-only SCRAM-SHA-256 authentication, and connector-only P-256 mTLS,
 independently or together. A generated deployment
 would therefore need either to accept that bounded profile, extend the adapter
 under equally explicit authority, or keep a conventional connector outside
-Charlotte for requirements the native service cannot satisfy.
+Knytos for requirements the native service cannot satisfy.
 
 The distinction cannot be inferred reliably from sequence flow alone. The
 process author or policy must declare durability, ordering, replay, retention,
-and delivery requirements. The Charlotte runtime must define how it recovers an
+and delivery requirements. The Knytos runtime must define how it recovers an
 in-flight process when a node fails, when an acknowledgement is lost, or when a
 business rule completes twice. If native messaging does not yet satisfy those
 requirements, the backend must keep Kafka for that edge. Removing Kafka from
-internal paths is optional, so the Charlotte backend can keep it where needed.
+internal paths is optional, so the Knytos backend can keep it where needed.
 
 \section{Preserving application intent}
 
@@ -710,7 +709,7 @@ network endpoints. Those objects are operationally useful, but they carry
 little explanation of why two components communicate or what a latency
 measurement means to the business process.
 
-Durga and Charlotte together could preserve an identity chain:
+Durga and Knytos together could preserve an identity chain:
 
 \begin{center}
 \begin{tikzpicture}[
@@ -748,7 +747,7 @@ This allows questions at several levels to share one evidence chain:
 \end{itemize}
 
 Durga already emits lifecycle events and uses the BPMN model as the background
-for process monitoring. Charlotte already exposes executor observations and
+for process monitoring. Knytos already exposes executor observations and
 service registrations with explicit generations. Joining those identities and
 feeding the result into cluster placement is proposed future work.
 
@@ -778,29 +777,29 @@ BPMN + rules
     -> Linux isolation and resource mechanisms
 \end{verbatim}
 
-In the proposed Charlotte path:
+In the proposed Knytos path:
 
 \begin{verbatim}
 BPMN + rules
     -> Durga semantic model
     -> signed process bundle
-    -> Charlotte desired state
-    -> Charlotte cluster
+    -> Knytos desired state
+    -> Knytos cluster
 \end{verbatim}
 
-The shorter Charlotte path assigns each concern to the operating system, the
+The shorter Knytos path assigns each concern to the operating system, the
 signed bundle, or an explicit external service:
 
 \begin{itemize}
-    \item An OCI filesystem image may become a signed, self-contained Charlotte
+    \item An OCI filesystem image may become a signed, self-contained Knytos
         execution artifact. Artifact storage, distribution, verification, and
         rollback remain necessary.
 
-    \item A Kubernetes Deployment may become Charlotte replicated desired state
+    \item A Kubernetes Deployment may become Knytos replicated desired state
         plus replica and placement policy. Reconciliation, failure recovery,
         rollout, and admission remain necessary.
 
-    \item A Service and service account may become a Charlotte name and
+    \item A Service and service account may become a Knytos name and
         explicitly delegated invocation capability. Naming, routing, identity,
         and key management remain necessary.
 
@@ -813,31 +812,30 @@ signed bundle, or an explicit external service:
         that is slow, blocked, failed, or safe to restart.
 
     \item Pod affinity may begin as a generated process communication graph and
-        later be refined by Charlotte observation. Scheduling and failure-domain
+        later be refined by Knytos observation. Scheduling and failure-domain
         policy remain necessary.
 
-    \item Charlotte may not need a container runtime or container-specific
+    \item Knytos may not need a container runtime or container-specific
         Linux policy. Namespaces, cgroups, and seccomp may also be absent because
-        Charlotte starts with separate address spaces and delegated authority.
+        Knytos starts with separate address spaces and delegated authority.
         Equivalent memory, CPU, and device accounting must nevertheless exist
         natively.
 
     \item Kafka topics used only for internal execution plumbing may become
-        Charlotte message endpoints. Kafka remains where durable event-log and
+        Knytos message endpoints. Kafka remains where durable event-log and
         integration semantics are required.
 \end{itemize}
 
 OpenShift also supplies mature multi-tenancy, policy, secrets management,
 operators, ingress, storage integration, observability, upgrades, ecosystem
-compatibility, and operational practice. Charlotte must build corresponding
+compatibility, and operational practice. Knytos must build corresponding
 operational maturity where its use cases require it. The research question is
 which mechanisms become smaller or more direct when the OS already has the
 desired trust and execution model.
 
 Durga can generate Kubernetes manifests, container builds, and policy as well as
-Charlotte artifacts. Charlotte's proposed advantage is a
-direct target of native cluster and capability objects, avoiding the
-intermediate machine-like Linux userspace.
+Knytos artifacts. Knytos' proposed advantage is a direct target of native cluster
+and capability objects, avoiding the intermediate machine-like Linux userspace.
 
 \section{Developer experience and the compatibility boundary}
 
@@ -855,7 +853,7 @@ If successful, the ordinary developer would work with:
 The generator and platform team would own:
 
 \begin{itemize}
-    \item the Charlotte ABI and generated wrappers;
+    \item the Knytos ABI and generated wrappers;
     \item serialization, schema evolution, correlation, and retry protocols;
     \item capability-request generation and policy integration;
     \item signing, provenance, and process-bundle construction;
@@ -879,7 +877,7 @@ explicit, and unsupported dependencies visible at build time.
 \section{Current implementation and next experiment}
 
 The infrastructure experiment is complete enough to generate minimal
-Charlotte-native activities, build signed ELFs, admit a multi-component release
+Knytos-native activities, build signed ELFs, admit a multi-component release
 atomically, resolve replica placement, pull artifacts through RustFS-backed S3,
 and observe exact-generation readiness. The next experiment adds one complete
 typed business-rule path and one transactional Kafka step, then binds their
@@ -898,7 +896,7 @@ Use a small BPMN process containing:
 \end{itemize}
 
 The handwritten Rust module should implement one pure or nearly pure business
-function. It must not call a Charlotte syscall or manually construct an IPC
+function. It must not call a Knytos syscall or manually construct an IPC
 message.
 
 \subsection{Generated output}
@@ -908,7 +906,7 @@ The next \texttt{charlotte} increment should add:
 \begin{enumerate}
     \item stable request and response schema identities with serialization code;
     \item a typed business-handler contract used unchanged by host-side unit
-        tests and the generated Charlotte wrapper;
+        tests and the generated Knytos wrapper;
     \item process-instance, activity, correlation, and attempt identities in
         calls and observations;
     \item a transactional-step binding that invokes the handler without
@@ -934,7 +932,7 @@ The experiment should verify the following end-to-end properties:
         rule.
 
     \item The generated ELF is signed, name-bound, digest-pinned, loaded in a
-        fresh Charlotte address space, and invocable through the distributed
+        fresh Knytos address space, and invocable through the distributed
         name service.
 
     \item The activity receives only the generated capabilities. An attempted
@@ -955,9 +953,9 @@ The experiment should verify the following end-to-end properties:
         provenance.
 \end{enumerate}
 
-The experiment should also record the amount and kind of Charlotte-specific
+The experiment should also record the amount and kind of Knytos-specific
 code that remains handwritten. Its success criterion is a developer-owned
-business rule with no Charlotte programming, surrounded by a generated and
+business rule with no Knytos programming, surrounded by a generated and
 trusted runtime layer small enough to inspect and verify.
 
 \subsection{Questions the experiment should answer}
@@ -965,7 +963,7 @@ trusted runtime layer small enough to inspect and verify.
 The experiment is intended to expose design facts early:
 
 \begin{itemize}
-    \item What is the minimum Charlotte ABI needed by a generated activity?
+    \item What is the minimum Knytos ABI needed by a generated activity?
     \item Which capability requirements can be inferred, and which require an
         explicit annotation or policy decision?
     \item Which parts of Durga's current semantic contract accidentally depend
@@ -974,7 +972,7 @@ The experiment is intended to expose design facts early:
         boundary?
     \item How should a business failure differ from a wrapper, transport, or
         node failure?
-    \item Can host-side tests and Charlotte execution use the same rule code
+    \item Can host-side tests and Knytos execution use the same rule code
         without conditional platform logic?
     \item Which identities are required to map runtime telemetry back to the
         BPMN model and signed build?
@@ -999,7 +997,7 @@ Substantial work remains in both projects:
         lifecycle integration. Typed activity invocation, schema evolution,
         process observation, and durable recovery still need stable contracts.
 
-    \item The Charlotte backend generates reviewable S3/Kafka profile requests
+    \item The Knytos backend generates reviewable S3/Kafka profile requests
         without embedding credentials in developer-owned business code. Secret
         delivery, trust-anchor rotation, and profile replacement still need a
         production provisioning path.
@@ -1012,13 +1010,13 @@ Substantial work remains in both projects:
     \item Process-bundle format, signatures, artifact and schema identity,
         provenance, and reproducible generation remain to be designed.
 
-    \item The Charlotte cluster now has shared central-S3 artifact fetching and
+    \item The Knytos cluster now has shared central-S3 artifact fetching and
         replica-set rollout observation and DSR routing. It still needs
         production administration authority, resource-aware placement,
         cluster-wide telemetry, and rolling update/rollback control
         (\autoref{chap:cluster-vision}).
 
-    \item Native Charlotte messaging needs defined delivery, back-pressure,
+    \item Native Knytos messaging needs defined delivery, back-pressure,
         cancellation, deduplication, and recovery semantics before it can
         replace Kafka on any process edge that depends on them.
 
@@ -1028,7 +1026,7 @@ Substantial work remains in both projects:
 
     \item Debugging, local simulation, test fixtures, incident analysis, and
         operational explanations must be usable without requiring application
-        teams to understand Charlotte internals.
+        teams to understand Knytos internals.
 \end{itemize}
 
 The integration makes these questions testable one layer at a time while

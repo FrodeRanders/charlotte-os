@@ -1,6 +1,6 @@
 # TLA+ to Rust Conformance Map
 
-This document records which CharlotteOS implementation behavior each TLA+
+This document records which Knytos implementation behavior each TLA+
 action represents. “Direct” means the action follows the current Rust state
 transition while omitting data irrelevant to the checked invariant.
 “Abstract” means several concrete operations are deliberately collapsed.
@@ -708,7 +708,7 @@ establish that the existing receive-time contact lease is linearizable.
 
 The [Graft comparison and correction](../reports/audits/2026-10-18-raft-membership-parity.md)
 records upstream revision `1a818d416a40330bea2055e03f61580679baa9f6`, narrow
-source extracts and the Charlotte regression. Three negative controls cover
+source extracts and the Knytos regression. Three negative controls cover
 automatic finalization before catch-up, retaining a learner as leader and
 committing FINALIZE with only the old quorum. The source regression preserves
 its existing-term vote; the membership model does not model durable voting.
@@ -968,7 +968,7 @@ store, evaluates default-deny rules, delegates only requested rights, and
 records bounded audit entries. The design contract is in
 [`../architecture/authorization-policy.md`](../architecture/authorization-policy.md).
 
-| TLA+ action | Intended CharlotteOS implementation | Correspondence |
+| TLA+ action | Intended Knytos implementation | Correspondence |
 |---|---|---|
 | `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. `OP_UNREGISTER` requires an authenticated service-manager sender. `OP_UNREGISTER_GENERATION` requires the authenticated sender's stable principal to match the principal recorded at registration, or a service-manager sender. Public bootstrap registration shares policy-store generation bookkeeping, but NS records its separate publication class: public lookup cannot resolve an authorized entry, authorized lookup of either class still requires its policy decision, and public replacement requires the same stable registrar and cannot displace an authorized publication. That class distinction and fallible endpoint-death watch admission are outside this model. Distributed policy replication is not implemented. |
 | `SetPolicy` | `PolicyStore::set_policy`, `ns::OP_SET_POLICY` | Direct for authenticated administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. State and its bounded audit are currently volatile. |
@@ -987,7 +987,7 @@ decisions; and minting cannot amplify rights.
 `CharlotteStackGrowth.tla` models the resource accounting the guard-fault paths
 implement. The mapping below is implemented on both architectures.
 
-| TLA+ action | CharlotteOS implementation | Correspondence |
+| TLA+ action | Knytos implementation | Correspondence |
 |---|---|---|
 | `Fault` | A lower-EL fault whose faulting address lies in the thread's stack region below its committed pages | Direct: the AArch64 `sync_dispatcher` classifies translation faults (`cpu/isa/aarch64/interrupts/mod.rs`); the x86-64 `#PF` handler classifies not-present user-mode data faults (`cpu/isa/x86_64/interrupts/fixed/exceptions/mod.rs`). |
 | `Grow` | Map the faulting page(s) under the address-space table lock and retry the instruction | Direct for accounting: `ThreadContext::grow_user_stack` first checks that the complete multi-page growth fits both the per-thread budget and `free_frames - ReserveFrames`, then commits each page so a partial allocation failure leaves an exact count. The model collapses that loop into one transition. |

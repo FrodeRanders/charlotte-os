@@ -62,7 +62,7 @@ pub const MAX_ENVELOPE_LEN: usize = HEADER_LEN + MAX_PROFILE_NAME_LEN + MAX_PROF
 pub const PROFILE_KIND_S3: u16 = 1;
 pub const PROFILE_KIND_KAFKA: u16 = 2;
 
-const INFO: &[u8] = b"CharlotteOS COPSENC1 HPKE base mode";
+const INFO: &[u8] = b"Knytos COPSENC1 HPKE base mode";
 
 const CLUSTER_ID_OFFSET: usize = 44;
 const RELEASE_DIGEST_OFFSET: usize = 76;
@@ -185,7 +185,7 @@ pub fn encoded_len(fields: &EnvelopeFields<'_>, profile_len: usize) -> Result<us
 
 fn context_digest(bytes: &[u8], profile_name: &[u8]) -> [u8; 32] {
     let mut hash = sha256::Sha256::new();
-    hash.update(b"CharlotteOS COPSENC1 context\0");
+    hash.update(b"Knytos COPSENC1 context\0");
     hash.update(&bytes[..ENCAPSULATED_KEY_OFFSET]);
     hash.update(profile_name);
     hash.finalize()

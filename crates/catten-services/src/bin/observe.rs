@@ -1,4 +1,4 @@
-//! CharlotteOS observability service.
+//! Knytos observability service.
 //!
 //! Exposes machine-wide scheduler statistics through endpoint IPC. It also
 //! samples a bounded, in-memory resource history so operators can see trends

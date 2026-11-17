@@ -9,7 +9,7 @@ Production trust remains disabled.
 ## Implemented
 
 `charlotte-management-tls` is a workspace member with a `no_std`, socket-independent
-Rustls `0.23.46` server engine. The provider adapts Charlotte's existing pinned
+Rustls `0.23.46` server engine. The provider adapts Knytos' existing pinned
 Embassy SHA-256/HMAC/P-256 operations and erasing RustCrypto AES-128-GCM family.
 Rustls owns the standard TLS handshake, transcript, record sequencing and
 possession proof. Only TLS 1.3, AES-128-GCM/SHA-256, P-256 ECDH and
@@ -67,7 +67,7 @@ receipts. Negative authentication controls expose no application event.
 Fixtures create independent temporary public test credentials per test and
 remove them through their owner. No production entropy or trust slot is replaced.
 
-An initial ring-native experiment compiled on AArch64 but rejected Charlotte's
+An initial ring-native experiment compiled on AArch64 but rejected Knytos'
 x86 soft-float target because ring requires `target_feature="sse"` and `"sse2"`.
 That provider was replaced, without enabling SIMD or changing the context-save
 contract. The final native provider compiles on both **actual** service targets;

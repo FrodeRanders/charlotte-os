@@ -2,7 +2,7 @@
 name = "charlotte-kafka"
 version = "0.1.0"
 edition = "2024"
-description = "Bounded no_std Kafka wire protocol core for CharlotteOS"
+description = "Bounded no_std Kafka wire protocol core for Knytos"
 
 [lib]
 test = true

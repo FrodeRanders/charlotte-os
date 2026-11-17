@@ -1,10 +1,10 @@
-# CharlotteOS for production operations
+# Knytos for production operations
 
 Bullet outline for an IT, platform-engineering, SRE, operations, and security
 audience. The implementation statements describe this repository. Production
 claims are deliberately separated from the research direction.
 
-## Slide 1: CharlotteOS for production operations
+## Slide 1: Knytos for production operations
 
 **Cluster-level execution, authority, and managed-service connectivity**
 
@@ -13,7 +13,7 @@ claims are deliberately separated from the research direction.
 
 ## Slide 2: The offering
 
-- CharlotteOS runs isolated services across a set of replaceable nodes.
+- Knytos runs isolated services across a set of replaceable nodes.
 - The cluster control plane manages signed software, placement, readiness, and
   lifecycle state.
 - Each component receives only the capabilities granted by its signed
@@ -84,7 +84,7 @@ placed, which generation became ready, and which authority did it receive?
 - Sign the environment-specific operational binding with a separate authority.
 - Remain outside application signing keys and application memory.
 
-**CharlotteOS**
+**Knytos**
 
 - Verify both authorities and intersect their policy.
 - Place the release and launch the selected connector and application
@@ -240,14 +240,14 @@ of machine histories, copied secrets, and administrator actions.
 - Kubernetes and OpenShift operate a broad Linux application ecosystem and
   provide mature controllers, networking, storage, policy, and operational
   integrations.
-- CharlotteOS starts with a smaller, purpose-built userspace and makes
+- Knytos starts with a smaller, purpose-built userspace and makes
   capabilities, deployment identity, and cluster placement native operating
   system concepts.
 - The narrower contract can shorten the chain between policy and enforcement.
 - The cost is application adaptation, new tooling, and a much smaller hardware
   and software ecosystem.
 - Durga explores code generation from process models so business logic can
-  remain conventional while generated adapters handle Charlotte mechanics.
+  remain conventional while generated adapters handle Knytos mechanics.
 
 The research question is whether a narrower cluster operating system can reduce
 configuration drift and ambiguous authority enough to justify that tradeoff.
@@ -261,7 +261,7 @@ configuration drift and ambiguous authority enough to justify that tradeoff.
 - This lowers the cost of evaluating a clean-break platform for applications
   whose source and behavior the organisation controls.
 - Durga provides an early concrete example: a process model and business
-  procedure can generate Charlotte adapters, capability requirements, build
+  procedure can generate Knytos adapters, capability requirements, build
   inputs, resource declarations, and deployment metadata.
 - Generated output still requires reproducible builds, review, provenance,
   security analysis, and runtime validation.
@@ -272,7 +272,7 @@ For operations, the question can move from “does the existing binary run
 unchanged?” toward “can the required behavior be transformed into a governed,
 verifiable service contract at acceptable cost?”
 
-*Suggested visual: [Durga to Charlotte generation](../manual-v2/figures/durga-charlotte-generation.svg).*
+*Suggested visual: [Durga to Knytos generation](../manual-v2/figures/durga-charlotte-generation.svg).*
 
 ## Slide 16: Current implementation and production gap
 
@@ -303,7 +303,7 @@ verifiable service contract at acceptable cost?”
 
 - Select one non-critical stateless service whose data plane already uses
   managed Kafka or S3.
-- Keep the business procedure small and place connectivity in Charlotte
+- Keep the business procedure small and place connectivity in Knytos
   connectors.
 - Establish separate development and operations identities in a non-production
   KMS.

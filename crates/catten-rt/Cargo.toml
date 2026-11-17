@@ -2,7 +2,7 @@
 name = "catten-rt"
 version = "0.1.0"
 edition = "2024"
-description = "Minimal runtime (crt0) for CharlotteOS userspace programs"
+description = "Minimal runtime (crt0) for Knytos userspace programs"
 
 [lib]
 name = "catten_rt"

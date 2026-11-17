@@ -1,6 +1,6 @@
 # Observability
 
-CharlotteOS now has a small, capability-preserving foundation for runtime
+Knytos now has a small, capability-preserving foundation for runtime
 statistics. It is intentionally split into three layers:
 
 1. The kernel records integer statistics at scheduler context switches.
@@ -170,7 +170,7 @@ word first. The constants in `catten-syscall` are the authoritative ABI.
 ## Security and aggregation
 
 Observability does not imply ambient inspection authority. A normal service can
-inspect only its own protection domain. This is consistent with CharlotteOS'
+inspect only its own protection domain. This is consistent with Knytos'
 capability model and prevents an arbitrary process from learning the activity
 of unrelated services.
 

@@ -1,4 +1,4 @@
-//! Wire protocol for the CharlotteOS S3 data-plane service.
+//! Wire protocol for the Knytos S3 data-plane service.
 //!
 //! An S3 service instance is configured for exactly one endpoint, bucket,
 //! key prefix, credential identity, and operation policy. Possession of its

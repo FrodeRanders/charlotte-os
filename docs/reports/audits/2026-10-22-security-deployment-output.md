@@ -95,7 +95,7 @@ Rust formatting, shell syntax and diff whitespace checks pass. The existing
 manual PDF remains unchanged; Markdown and LaTeX sources carry this update.
 
 The first AArch64 security run expired its 300-second guest budget with no
-Charlotte kernel output. The capture ends in UEFI diagnostics; CPU0 PC is
+Knytos kernel output. The capture ends in UEFI diagnostics; CPU0 PC is
 `0x5fdf74ac`, and the three secondary PCs are zero. This failed run is retained
 separately from the fresh-storage repeat. It did not exercise the changed
 services, and the passing repeat does not identify or resolve its cause. No

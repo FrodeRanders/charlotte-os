@@ -6,7 +6,7 @@ This note identifies operating-systems and distributed-systems research related 
 
 - [Networking architecture](../architecture/networking.md)
 - [Sitas and Xous co-design](../architecture/sitas-xous.md)
-- [The CharlotteOS manual](../manual-v2/charlotte.pdf), especially the service,
+- [The Knytos manual](../manual-v2/charlotte.pdf), especially the service,
   networking, consensus, storage, cluster, and application-generation chapters
 - [Cluster-native research lineages](cluster-native-lineages.md), which maps
   the strengthened cluster implementation to prior and current work
@@ -27,7 +27,7 @@ These do not descend from one research tradition and combine ideas from:
 
 The closest overall characterization is:
 
-> CharlotteOS combines Xous-style isolated IPC and memory lending,
+> Knytos combines Xous-style isolated IPC and memory lending,
 > Seastar-style shard-local execution, seL4/EROS-style authority,
 > Barrelfish-style explicit message passing, Amoeba-style distributed
 > capability invocation, Borg/Kubernetes-style reconciliation, and
@@ -105,7 +105,7 @@ Its model consists of:
 - RPC as the native operation mechanism;
 - location-independent communication.
 
-This closely matches the implemented CharlotteOS sequence:
+This closely matches the implemented Knytos sequence:
 
 ```text
 service lookup
@@ -132,7 +132,7 @@ service lookup
 - How are duplicated, delayed, or replayed requests detected?
 - What delivery and execution guarantees does an invocation provide?
 
-#### Present CharlotteOS answers
+#### Present Knytos answers
 
 These questions now have bounded local and distributed answers, while a
 general transferable network capability remains open:
@@ -140,7 +140,7 @@ general transferable network capability remains open:
 | Question | Current answer |
 |---|---|
 | Capability identity | A local handle names a tagged kernel object in one address space. Policy-controlled lookup or `grantctl` yields a connection capability. Distributed naming keeps logical service identity separate from the active owner and generation. A freely transferable cryptographic capability format is not implemented. |
-| Forgery resistance | Local handles are opaque, monotonically allocated, non-reused indices checked against caller identity, object type, and rights. Remote invocation enters through an already delegated local connection and a policy-checked DNS proxy; CharlotteOS does not place raw local handles on the network. Cryptographic bearer capabilities remain open. |
+| Forgery resistance | Local handles are opaque, monotonically allocated, non-reused indices checked against caller identity, object type, and rights. Remote invocation enters through an already delegated local connection and a policy-checked DNS proxy; Knytos does not place raw local handles on the network. Cryptographic bearer capabilities remain open. |
 | Attenuation | Connection delegation intersects `SEND`/`CALL` rights. Signed deployment grants, per-principal name policy, and named Kafka/S3 access points further narrow remote and external-service authority. General derivation trees and arbitrary distributed attenuation are not implemented. |
 | Revocation | Endpoint closure, address-space teardown, borrow cancellation, generation replacement, committed placement, and exact-generation readiness withdraw authority at their respective boundaries. Selective transitive revocation of an arbitrary delegation graph remains open. |
 | Service restart | Local and remote paths carry generations. Old local connections close, stale remote generations fail, and clients re-resolve. Outcome recovery for effects completed immediately before a partition remains protocol-specific. |
@@ -177,7 +177,7 @@ EROS demonstrates that:
 We follow this tradition by treating authority, work, readiness, notification,
 and completion as separate concepts.
 
-CharlotteOS’ monotonic, non-reused handles prevent a stale handle from accidentally
+Knytos’ monotonic, non-reused handles prevent a stale handle from accidentally
 naming a later local object. That is useful, but several problems remain:
 
 - capability derivation;
@@ -187,7 +187,7 @@ naming a later local object. That is useful, but several problems remain:
 - distributed revocation;
 - authority recovery after service restart.
 
-These systems provide a useful framework for deciding how much derivation information CharlotteOS must retain.
+These systems provide a useful framework for deciding how much derivation information Knytos must retain.
 
 ---
 
@@ -382,7 +382,7 @@ the reply arrives. No abstraction layer can always determine which occurred.
 
 ### Implemented refinement
 
-CharlotteOS now follows the safer architectural principle:
+Knytos now follows the safer architectural principle:
 
 > Local and remote services use a common capability-oriented protocol model,
   while remote invocation explicitly exposes latency, cancellation, retry,
@@ -503,7 +503,7 @@ waiting mechanism.
 - Who owns cleanup after the submitting process dies?
 - Which operations require separately delegable operation capabilities?
 
-### Present CharlotteOS answers
+### Present Knytos answers
 
 | Question | Current answer |
 |---|---|
@@ -524,9 +524,9 @@ projection.
 
 ## 6. Userspace services, drivers, and recovery
 
-### 6.1 What CharlotteOS already provides
+### 6.1 What Knytos already provides
 
-The CharlotteOS manual substantially narrows the open questions in this
+The Knytos manual substantially narrows the open questions in this
 area. Chapters 11 and 16 describe two related but distinct lifecycle paths:
 
 1. **Crash restart**, which starts a fresh service instance without inheriting
@@ -597,7 +597,7 @@ handoff time, and production crash consistency remain future work.
 
 ### 6.2 What remains a protocol-level problem
 
-CharlotteOS therefore already defines local resource reclamation and stale
+Knytos therefore already defines local resource reclamation and stale
 connection behavior. We still need to understand how each service protocol
 recovers its externally observable state after a restart.
 
@@ -629,7 +629,7 @@ MINIX 3 is highly relevant to:
 - failure containment;
 - reincarnation and reconnection.
 
-Its central lesson reinforces the distinction already present in CharlotteOS:
+Its central lesson reinforces the distinction already present in Knytos:
 mechanical component restart can be generic, while application-specific state
 recovery cannot.
 
@@ -638,7 +638,7 @@ recovery cannot.
 - Francis M. David et al., [CuriOS: Improving Reliability through Operating System Structure](https://www.usenix.org/legacy/event/osdi08/tech/full_papers/david/david_html/)
 
 CuriOS studies fault containment and recovery for operating-system services.
-It is directly relevant to CharlotteOS’ supervisor and service-generation model.
+It is directly relevant to Knytos’ supervisor and service-generation model.
 
 ### 6.5 Pebble
 
@@ -707,7 +707,7 @@ moderation, and batching.
 Arrakis gives applications direct access to virtualized I/O while
 retaining kernel-enforced control-plane policy.
 
-CharlotteOS takes a different approach: it delegates devices to isolated
+Knytos takes a different approach: it delegates devices to isolated
 driver services rather than directly to ordinary applications. Arrakis is
 nevertheless valuable for:
 
@@ -746,7 +746,7 @@ An early analysis of these tradeoffs is:
 
 - B. Murphy, S. Zeadally, and C. J. Adams, [An Analysis of Process and Memory Models to Support High-Speed Networking in a UNIX Environment](https://www.usenix.org/conference/usenix-1996-annual-technical-conference/analysis-process-and-memory-models-support-high)
 
-CharlotteOS’ explicit transfer modes provide a promising way to manage
+Knytos’ explicit transfer modes provide a promising way to manage
 that complexity, provided their state transitions remain precise across
 failure paths.
 
@@ -754,7 +754,7 @@ failure paths.
 
 ## 8. Backpressure and queueing
 
-Bounded queues appear throughout the CharlotteOS design:
+Bounded queues appear throughout the Knytos design:
 
 - endpoint queues;
 - shard mailboxes;
@@ -796,7 +796,7 @@ Useful questions include:
 - Can request/reply cycles deadlock when all bounded queues are full?
 - How are priority and backpressure propagated through chains of services?
 
-### Present CharlotteOS answers
+### Present Knytos answers
 
 | Question | Current answer |
 |---|---|
@@ -820,7 +820,7 @@ the composed system.
 
 Capsicum shows how capability-oriented confinement can coexist with UNIX compatibility.
 
-It is particularly relevant to CharlotteOS’ decision to provide POSIX and
+It is particularly relevant to Knytos’ decision to provide POSIX and
 TCP/IP as compatibility services rather than native authority models.
 
 The major risk is reintroducing ambient authority behind capability-looking
@@ -831,9 +831,9 @@ namespaces merely because legacy APIs expect them.
 ### 9.2 CHERI
 
 CHERI provides hardware-enforced memory capabilities. It is complementary
-to CharlotteOS rather than a replacement for its object capabilities:
+to Knytos rather than a replacement for its object capabilities:
 
-- CharlotteOS object capabilities authorize kernel-mediated operations;
+- Knytos object capabilities authorize kernel-mediated operations;
 - CHERI capabilities constrain memory references.
 
 The combination could reduce trusted unsafe code around:
@@ -858,7 +858,7 @@ The combination could reduce trusted unsafe code around:
 
 ## 10. Namespaces and discovery
 
-CharlotteOS separates naming from authority:
+Knytos separates naming from authority:
 
 ```text
 name
@@ -891,7 +891,7 @@ The main design dimensions are:
 - caching and invalidation;
 - bootstrap trust.
 
-CharlotteOS’ node-local name service, distributed DNS catalog, signed grant
+Knytos’ node-local name service, distributed DNS catalog, signed grant
 descriptors, and attenuated discovery connections preserve this discipline.
 A globally visible name remains routing metadata. A caller still needs an
 already delegated local connection, and policy checks bind the remote call to
@@ -901,7 +901,7 @@ an authenticated principal and service generation.
 
 ## 11. Distributed consistency and replicated services
 
-CharlotteOS uses Raft for replicated metadata and directory services:
+Knytos uses Raft for replicated metadata and directory services:
 
 - Diego Ongaro and John Ousterhout, [In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
 
@@ -930,9 +930,9 @@ capability service must still define:
 Distributed locks and mutable leases should use fencing tokens so that a
 former holder cannot continue operating after its lease has expired.
 
-### Present CharlotteOS answers
+### Present Knytos answers
 
-CharlotteOS now contains a `no_std` adaptation of the separately tested Graft
+Knytos now contains a `no_std` adaptation of the separately tested Graft
 Raft implementation rather than only an architectural proposal. It implements
 durable term/vote/log state, leader no-op entries, current-term commit rules,
 learners, joint consensus, automatic finalization after a catch-up fence,
@@ -1105,7 +1105,7 @@ For architecture refinement, the most useful reading order is:
 
 ## 14. Overall assessment
 
-The CharlotteOS architecture is well aligned with several durable
+The Knytos architecture is well aligned with several durable
 research conclusions:
 
 - authority should be explicit;
@@ -1138,7 +1138,7 @@ That synthesis is coherent, but its success depends on treating lifecycle
 and failure semantics as foundational parts of the interface rather than
 transport-level implementation details.
 
-CharlotteOS now carries that discipline from local service lifecycle into a
+Knytos now carries that discipline from local service lifecycle into a
 bounded cluster path: signed release admission, remote invocation, deterministic
 replica placement, central artifact pickup, capability grants, readiness-gated
 DSR ingress, encrypted connector profiles, and cooperative retirement.
@@ -1304,12 +1304,12 @@ moving toward standardisation
 Neither replaces object capabilities: Capsicum primarily confines Unix
 resources, and CHERI primarily constrains memory references.
 
-**What CharlotteOS took.** CharlotteOS adopts the strong version locally:
+**What Knytos took.** Knytos adopts the strong version locally:
 opaque object capabilities are authority, have explicit rights and object
 types, can be attenuated on delegation, and are separate from names,
 notifications, and completions. Reply tokens are linear authority. Device,
 DMA, memory, observer, and bootstrap access are explicitly delegated. Unlike
-EROS or seL4, however, CharlotteOS does not yet retain a general capability
+EROS or seL4, however, Knytos does not yet retain a general capability
 derivation tree or prove confinement and information flow. Unlike CHERI, its
 capabilities do not make arbitrary Rust or unsafe pointer accesses memory-safe.
 
@@ -1335,10 +1335,10 @@ ownership types and message-oriented runtimes became much more familiar.
 **Xous.** Xous is a working Rust
 microkernel for embedded devices, with userspace servers and explicit scalar,
 `Send`, `Lend`, and mutable-lend messages
-([Xous kernel documentation](https://xous.dev/kernel/)). It is CharlotteOS'
+([Xous kernel documentation](https://xous.dev/kernel/)). It is Knytos'
 most direct IPC ancestor.
 
-**What CharlotteOS took.** CharlotteOS adopts Xous-style isolated servers and
+**What Knytos took.** Knytos adopts Xous-style isolated servers and
 the distinction between scalar and memory-bearing IPC. It adopts
 Singularity's ownership-moving discipline, but enforces it with capabilities,
 page mappings, teardown state machines, and DMA rules rather than a managed
@@ -1372,12 +1372,12 @@ libraries and frameworks on Linux rather than a new operating system.
 completion became operating-system interfaces, without turning IPC,
 readiness, notification, and authority into one abstraction.
 
-**What CharlotteOS took.** Sitas is the direct execution discipline and is
+**What Knytos took.** Sitas is the direct execution discipline and is
 Seastar-like: one owner per shard, cooperative futures, bounded cross-shard
 messages, and deliberate placement. Barrelfish supplies the architectural
 analogy for explicit cross-core coordination. IX, DPDK, and Arrakis inform
 batched queues, userspace drivers, IOMMU protection, and buffer ownership.
-CharlotteOS rejects Arrakis's ordinary-application fast path: a device is
+Knytos rejects Arrakis's ordinary-application fast path: a device is
 delegated to an isolated driver service rather than directly to every
 application.
 Its completion queues retain terminal operation records and remain distinct
@@ -1395,10 +1395,10 @@ can be restarted transparently is much less general: hardware, DMA, persistent
 state, and already-visible external effects all require component-specific
 reconciliation.
 
-**What CharlotteOS took.** Drivers and services run in separate protection
+**What Knytos took.** Drivers and services run in separate protection
 domains. A supervisor can revoke their capabilities and borrows, reset a
 device, reconcile operations and DMA, create a fresh generation, and make
-clients re-resolve it. CharlotteOS deliberately promises deterministic failure
+clients re-resolve it. Knytos deliberately promises deterministic failure
 and recovery boundaries rather than transparent continuation. Stateful live
 upgrade is an explicit handoff protocol rather than inherited process memory.
 
@@ -1447,7 +1447,7 @@ Uptane is now a versioned standard under Linux Foundation governance
 ([Uptane history](https://uptane.org/learn-more/about)). Sigstore and
 Notary/Cosign made artifact identity and provenance part of cloud deployment.
 
-**What CharlotteOS took.** Locally, names resolve to delegated connection
+**What Knytos took.** Locally, names resolve to delegated connection
 capabilities; a string is never authority. The `dns` catalog is a Raft state
 machine and remote calls have request identity, generation fencing, duplicate
 handling, retries, deadlines, and an explicit uncertain outcome. Signed
@@ -1462,22 +1462,22 @@ failure-domain-aware scheduling, health-driven replacement, rolling policy,
 production key rotation and custody, general stateful migration, and
 derivation-based distributed capability revocation remain open.
 
-### 16.6 CharlotteOS' synthesis, stated precisely
+### 16.6 Knytos' synthesis, stated precisely
 
 The inheritance is easiest to understand by strength:
 
-| Relationship | Source ideas | CharlotteOS status |
+| Relationship | Source ideas | Knytos status |
 |---|---|---|
-| **Direct design source** | Xous server/connection and memory-message model; Sitas shard ownership and async execution | Implemented locally, with CharlotteOS-specific capabilities, memory objects, completion queues, and teardown semantics |
+| **Direct design source** | Xous server/connection and memory-message model; Sitas shard ownership and async execution | Implemented locally, with Knytos-specific capabilities, memory objects, completion queues, and teardown semantics |
 | **Mechanism adopted and changed** | EROS/seL4 authority; Singularity ownership transfer; Barrelfish explicit messages; MINIX service recovery; completion-ring I/O | Implemented in bounded local forms; not a compatibility claim or refinement of those systems |
 | **Focused protocol adopted** | Raft replication; rendezvous placement; Ed25519/SHA-256 artifact verification; RFC 9180 HPKE | Implemented and tested in bounded forms across catalog replication, replica placement, DSR ingress, and role-separated connector launch |
 | **Architecture informed by** | Amoeba distributed invocation; IX/DPDK/Arrakis fast paths; Borg/Kubernetes reconciliation; Maglev/CRUSH stable placement; Nix/TUF/Uptane/in-toto trust and artifacts; SPIFFE workload identity | Implemented cluster foundations with production-scale policy, recovery, and trust lifecycle still open |
 | **Explicitly rejected or narrowed** | Failure-transparent remote calls; arbitrary transparent process migration; language-only isolation; direct device access by ordinary applications | Remote uncertainty is visible; migration is protocol-specific; MMU/IOMMU and capabilities enforce isolation; drivers retain device authority |
 
-The distinctive CharlotteOS idea is therefore not any single borrowed
+The distinctive Knytos idea is therefore not any single borrowed
 mechanism. It is the attempt to make **authority, data ownership, execution
 ownership, completion, service lifecycle, and distributed failure remain
 separate but composable**. Earlier projects often made one of those dimensions
-beautifully uniform. CharlotteOS takes their strongest local ideas while
+beautifully uniform. Knytos takes their strongest local ideas while
 trying not to inherit the transparency claims that history showed to be
 fragile.

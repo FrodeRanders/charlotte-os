@@ -1,6 +1,6 @@
 # Signing and development trust
 
-Current CharlotteOS images use publicly known development fixtures. Build
+Current Knytos images use publicly known development fixtures. Build
 output and the kernel boot log identify that fact. Do not place real Kafka,
 S3 or other credentials under the development recipient key, even if their
 envelope is signed and encrypted.

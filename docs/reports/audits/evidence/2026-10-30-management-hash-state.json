@@ -1,7 +1,7 @@
 {
   "date": "2026-10-30",
   "base_revision": "b3d811ceb05bd8036317c7cd0936a511c9789a5d",
-  "scope": "Management TLS provider SHA-256/HMAC state uses Charlotte erasing owners. The existing one-shot HMAC delegates to the same incremental implementation. No cipher, handshake, wire, deadline or capability change; no finding closure.",
+  "scope": "Management TLS provider SHA-256/HMAC state uses Knytos erasing owners. The existing one-shot HMAC delegates to the same incremental implementation. No cipher, handshake, wire, deadline or capability change; no finding closure.",
   "source_sha256": {
     "crates/charlotte-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30",
     "crates/charlotte-launch/tests/sha256.rs": "35f540fdbebb5976f7f3606557e0833f08abcb3b897dea3a2bb0d11bf0fce9bb",

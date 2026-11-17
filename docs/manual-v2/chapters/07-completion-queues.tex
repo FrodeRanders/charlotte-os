@@ -82,14 +82,14 @@ The overflow counter is pressure telemetry: it tells the consumer that it is
 falling behind.
 
 In a critical system, a lost completion for a disk write or a timer
-expiry is a correctness bug with potentially severe consequences. CharlotteOS
+expiry is a correctness bug with potentially severe consequences. Knytos
 treats each completion as a datum that must be delivered at least once.
 
 \begin{architecturalcomparison}{Readiness, completion rings and retained owners}
 Linux \texttt{epoll} reports that I/O may be possible, so the application must
 still perform the operation. Linux \texttt{io\_uring} instead accepts operation
 descriptions and reports results through a shared completion ring
-\cite{prior:epoll,prior:io-uring}. CharlotteOS uses the latter
+\cite{prior:epoll,prior:io-uring}. Knytos uses the latter
 submission/completion idea for kernel operations, while keeping endpoint
 calls as a separate protocol. Its CQ can also carry readiness notifications:
 an IRQ entry tells a driver to inspect the device, not that a DMA buffer is

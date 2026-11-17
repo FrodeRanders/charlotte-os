@@ -1,6 +1,6 @@
-# CharlotteOS userspace development
+# Knytos userspace development
 
-CharlotteOS Rust programs use `catten-rt` as their small userspace runtime.
+Knytos Rust programs use `catten-rt` as their small userspace runtime.
 The [application SDK guide](application-sdk.md) describes the smaller
 `charlotte-app` library, owned operation helpers, returning entry wrapper and
 independent project workflow. The [architecture note](../architecture/userspace-ergonomics.md)
@@ -196,7 +196,7 @@ use the x86-64 runner or the
 [VMware appliance builder](../platforms/vmware-x86_64.md). The x86 runner has
 no HVF option, and native Intel Linux can select KVM with `--kvm`.
 
-These build scripts use Charlotte's AArch64 target specification and linker
+These build scripts use Knytos' AArch64 target specification and linker
 script and validate the generated ELF layout. Generated AArch64 programs are
 staged under `target/embedded-services/aarch64-unknown-none/`, and they are not
 source files and are not version-controlled. `scripts/run-aarch64.sh` exports
@@ -242,7 +242,7 @@ the cluster:
    script, and `-Z json-target-spec`/`-Z build-std`. It generates a build-local
    target specification with an absolute path to the linker script, strips the
    result, and rejects writable-executable or page-overlapping LOAD segments.
-   The application is responsible for pinning the same CharlotteOS revision in
+   The application is responsible for pinning the same Knytos revision in
    its Cargo dependencies.
 2. **Sign.** `cluster-sign elf-sign` adds the CLS2 note with the application's
    chosen name, class, version, rollback counter, flags, and provenance. The
@@ -268,7 +268,7 @@ scripts/export-app-sdk.sh --output /tmp/charlotte-app-sdk.tar.gz
 The tarball contains `build-external-elf.sh`, both architecture platform
 definitions, a standalone `cluster-sign` workspace, the publicly known
 development keys, and a `VERSION` file recording the OS revision and pinned
-toolchain. A project unpacks it and builds against it without a CharlotteOS
+toolchain. A project unpacks it and builds against it without a Knytos
 checkout.
 
 The `charlotte-kafka-broker` repository is the reference out-of-tree project:

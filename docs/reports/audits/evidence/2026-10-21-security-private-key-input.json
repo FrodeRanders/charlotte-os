@@ -13,7 +13,7 @@
     "contract_change": "normalize_key_text installs Zeroizing<String> before copying and returns it directly; original private-key caller immediately wrapped its former String result.",
     "read_algorithm": "Unchanged 4097-byte reservation, Read::take bound and read_to_end under Zeroizing<Vec<u8>>; extracted for direct production-helper tests.",
     "admission": "Captured regular descriptor, no-follow/nonblocking Unix flags, 4096-byte file limit, real-key mode/owner gate, public fixture exemption, UTF-8/exact hex validation unchanged.",
-    "ownership": "Same C18 host file/byte-owner scope; no Charlotte capability/root, guard, wait, registry, custody, cleanup/retry or physical authority change.",
+    "ownership": "Same C18 host file/byte-owner scope; no Knytos capability/root, guard, wait, registry, custody, cleanup/retry or physical authority change.",
     "wire_or_cli_change": false
   },
   "baseline": {

@@ -19,7 +19,7 @@ def main():
                  POLICY="crates/catten/src/resource_policy.rs", ADMISSION="crates/catten/src/klib/admission.rs")
     for name, path in paths.items():
         source = source.replace("= " + name + "]", "= " + json.dumps(str(ROOT / path)) + "]")
-    with tempfile.TemporaryDirectory(prefix="charlotte-frame-tracking-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-frame-tracking-") as temporary:
         directory = Path(temporary)
         harness = directory / "harness.rs"
         binary = directory / "tests"

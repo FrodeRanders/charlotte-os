@@ -1,4 +1,4 @@
-//! CharlotteOS Sitas integration demo — exercises the full async runtime.
+//! Knytos Sitas integration demo — exercises the full async runtime.
 //!
 //! Creates a `CharlotteReactor` (implements Sitas' `ReactorBackend`),
 //! uses it to submit an operation via the kernel's COMPLETION_SUBMIT syscall,

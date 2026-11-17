@@ -22,7 +22,7 @@ SUCCESS = (b"SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x1 "
 
 class BootDiagnostics(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="charlotte-diagnostic-test-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="knytos-diagnostic-test-")
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         self.log = self.directory / "input.log"

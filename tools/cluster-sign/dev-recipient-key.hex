@@ -1,4 +1,4 @@
-# CharlotteOS development X25519 recipient private key.
+# Knytos development X25519 recipient private key.
 #
 # This key matches DEVELOPMENT_RECIPIENT_PUBLIC_KEY and is a test fixture for
 # the future privileged decryptor. It is not embedded in the OS yet and must

@@ -2,7 +2,7 @@
 name = "charlotte-protocol-time"
 version = "0.1.0"
 edition = "2024"
-description = "CharlotteOS internal UTC time-service protocol"
+description = "Knytos internal UTC time-service protocol"
 
 [lib]
 test = true

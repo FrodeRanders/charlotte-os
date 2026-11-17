@@ -201,7 +201,7 @@ Kernel side: \texttt{write(cap, result)}. Consumer side:
 
 \subsection{The launch contract}
 
-A CharlotteOS userspace program is a \texttt{no\_std} ELF binary. It uses
+A Knytos userspace program is a \texttt{no\_std} ELF binary. It uses
 the \texttt{catten-rt} crate (the CRT, or C runtime) and the \texttt{entry!}
 macro:
 
@@ -348,10 +348,10 @@ an unbounded queue.
 
 \subsection{Sitas integration}
 
-When writing code that uses Sitas on CharlotteOS:
+When writing code that uses Sitas on Knytos:
 
 \begin{itemize}
-    \item A Sitas shard is an LP-affine CharlotteOS user thread.
+    \item A Sitas shard is an LP-affine Knytos user thread.
     \item \texttt{CharlotteReactor::new(lp\_id)} binds a reactor to the calling
         shard's LP.
     \item Async operations return kernel-owned completion handles. A completion

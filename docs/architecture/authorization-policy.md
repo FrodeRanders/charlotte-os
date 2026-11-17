@@ -1,6 +1,6 @@
 # Authorization policy direction
 
-CharlotteOS should treat authorization as **controlled capability issuance**.
+Knytos should treat authorization as **controlled capability issuance**.
 The name catalog answers where a service is and which generation is current.
 The policy engine answers whether an authenticated principal may receive a
 capability, and with which rights. The kernel then enforces the issued

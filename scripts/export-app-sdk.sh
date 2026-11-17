@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# export-app-sdk.sh -- package the CharlotteOS application SDK.
+# export-app-sdk.sh -- package the Knytos application SDK.
 #
-# The tarball contains everything a new out-of-tree CharlotteOS project needs
-# to build an EL0 ELF and sign/deploy artifacts, without a CharlotteOS
+# The tarball contains everything a new out-of-tree Knytos project needs
+# to build an EL0 ELF and sign/deploy artifacts, without a Knytos
 # checkout:
 #
 #   build-external-elf.sh   platform build wrapper (context sensitive)
@@ -105,9 +105,9 @@ toolchain=$TOOLCHAIN
 EOF
 
 cat > "$SDK/README.md" <<'EOF'
-# CharlotteOS application SDK
+# Knytos application SDK
 
-This bundle is exported from a CharlotteOS revision and contains the platform
+This bundle is exported from a Knytos revision and contains the platform
 inputs for out-of-tree application builds. It does not include the kernel or
 any service binary.
 

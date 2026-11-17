@@ -1,7 +1,7 @@
-//! Rustls provider over Charlotte's existing portable crypto operations.
+//! Rustls provider over Knytos' existing portable crypto operations.
 //!
 //! Only TLS 1.3 AES-128-GCM/SHA-256, P-256 ECDH and P-256/SHA-256 ECDSA.
-//! Hash/HMAC state uses Charlotte's erasing owners. The embedding domain
+//! Hash/HMAC state uses Knytos' erasing owners. The embedding domain
 //! supplies the pinned Embassy P-256/RNG drivers.
 //! RNG callbacks are infallible: the domain's existing entropy owner must abort
 //! on unavailable entropy, never invent bytes or replay accepted work.
@@ -292,7 +292,7 @@ impl ActiveKeyExchange for Exchange {
 struct Keys;
 impl KeyProvider for Keys {
     fn load_private_key(&self, der: PrivateKeyDer<'static>) -> Result<Arc<dyn SigningKey>, Error> {
-        // Keep the typed curve/OID checks used by Charlotte's client. The
+        // Keep the typed curve/OID checks used by Knytos' client. The
         // generic Embassy SEC1 parser alone accepts mismatched curve OIDs.
         let key = match &der {
             PrivateKeyDer::Pkcs8(bytes) => {

@@ -411,7 +411,7 @@ fn binding_authorization_digest(
     let target_len = u16::try_from(target_artifact.len()).ok()?;
     let object_len = u16::try_from(object_key.len()).ok()?;
     let mut hash = sha256::Sha256::new();
-    hash.update(b"CharlotteOS COPSBND2 compact binding\0");
+    hash.update(b"Knytos COPSBND2 compact binding\0");
     hash.update(&sequence.to_le_bytes());
     hash.update(cluster_id);
     hash.update(release_digest);

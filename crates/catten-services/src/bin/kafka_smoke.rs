@@ -26,10 +26,10 @@ use charlotte_protocol_kafka::RecordRequest;
 
 catten_rt::entry!(main);
 
-const INPUT: &[u8] = b"charlotte-input";
-const OUTPUT: &[u8] = b"charlotte-output";
-const ROUTED_OUTPUT: &[u8] = b"charlotte-routed-output";
-const ABORTED: &[u8] = b"charlotte-aborted";
+const INPUT: &[u8] = b"knytos-input";
+const OUTPUT: &[u8] = b"knytos-output";
+const ROUTED_OUTPUT: &[u8] = b"knytos-routed-output";
+const ABORTED: &[u8] = b"knytos-aborted";
 const PRODUCER_NAME: &[u8] = b"kafka/selftest/main/producer";
 const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
 

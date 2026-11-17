@@ -1,4 +1,4 @@
-//! Transport-independent S3 data-plane support for CharlotteOS.
+//! Transport-independent S3 data-plane support for Knytos.
 //!
 //! This crate deliberately performs no I/O and owns no capabilities. It
 //! canonicalizes S3 paths and queries, signs requests with AWS Signature

@@ -13,7 +13,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 def run():
     channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     rustc = subprocess.check_output(["rustup", "which", "--toolchain", channel, "rustc"], text=True).strip()
-    with tempfile.TemporaryDirectory(prefix="charlotte-boot-edges-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-boot-edges-") as temporary:
         directory = Path(temporary)
         dependency = ROOT / "crates/flanterm-bindings"
         cc = os.environ.get("CC", "cc")

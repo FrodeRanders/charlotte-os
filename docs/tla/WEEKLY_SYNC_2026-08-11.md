@@ -63,7 +63,7 @@ retained when a repaired behavior has a small, useful counterexample.
    behavior instead of overstating availability.
 
 5. **Dynamic admission could forget its authority fence on restart.** The
-   selected anchor and joining posture were process-local. CharlotteOS now
+   selected anchor and joining posture were process-local. Knytos now
    persists the anchor plus the pre-admission snapshot index before accepting
    the anchor's log, restores election suppression on restart, and snapshots
    admitted membership before clearing the fence. Auto-join is disabled when

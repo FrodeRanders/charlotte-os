@@ -59,7 +59,7 @@ def run():
     start = messages.index("extension_group! {\n    pub enum CertificateRequestExtension")
     end = messages.index("\n}\n", start) + 3
     preamble = PREAMBLE.replace("@EXTENSION_TYPE@", extension_type).replace("@REQUEST_EXTENSIONS@", messages[start:end])
-    with tempfile.TemporaryDirectory(prefix="charlotte-tls-signatures-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="knytos-tls-signatures-") as temporary:
         directory = Path(temporary)
         (directory / "src").mkdir()
         (directory / "Cargo.toml").write_text(

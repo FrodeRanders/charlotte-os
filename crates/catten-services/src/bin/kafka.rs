@@ -59,7 +59,7 @@ use zeroize::Zeroizing;
 
 catten_rt::entry!(main);
 
-const CLIENT_ID: &[u8] = b"charlotte-os";
+const CLIENT_ID: &[u8] = b"knytos-os";
 const SEND_ATTEMPTS: usize = 1_000;
 const SEND_RETRY_MS: u64 = 10;
 const RECEIVE_ATTEMPTS: usize = 1_500;

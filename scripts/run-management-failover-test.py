@@ -83,7 +83,7 @@ def topology(snapshots, expected_members, old_leader=None, previous_term=0):
     leaders = set()
     membership = None
     for value in snapshots.values():
-        if not isinstance(value, dict) or value.get("schema") != "charlotte.cluster.v2" or value.get("truncated") or not value.get("fresh_committed"):
+        if not isinstance(value, dict) or value.get("schema") != "knytos.cluster.v2" or value.get("truncated") or not value.get("fresh_committed"):
             return None
         raft = value["raft"]
         if raft["term"] <= previous_term or not raft["leader"] or raft["leader"] == old_leader:

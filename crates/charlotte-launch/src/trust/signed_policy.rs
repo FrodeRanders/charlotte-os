@@ -24,7 +24,7 @@ pub const SIGNATURE_LEN: usize = 64;
 pub const ENCODED_LEN: usize = SIGNATURE_OFFSET + SIGNATURE_LEN;
 const KEY_ID_OFFSET: usize = 16;
 const PREDECESSOR_OFFSET: usize = 48;
-const SIGNING_CONTEXT: &[u8] = b"CharlotteOS bootstrap trust policy v1\0";
+const SIGNING_CONTEXT: &[u8] = b"Knytos bootstrap trust policy v1\0";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PolicyError {

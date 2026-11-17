@@ -35,7 +35,7 @@ This chapter gives the current build, boot, test, and code-reading workflow.
 
 \section{Build targets}
 
-CharlotteOS has custom target JSON specs for three architectures in
+Knytos has custom target JSON specs for three architectures in
 \repodir|target_specs|:
 
 \begin{longtable}{|p{5.8cm}|p{6.4cm}|}
@@ -111,7 +111,7 @@ needs the corresponding bundle environment variable shown above.
 The boot entry points are \repofile|scripts/boot-smp1.sh|,
 \repofile|scripts/boot-smp2.sh|, and \repofile|scripts/run-aarch64.sh|.
 
-Both architecture runners attach a NIC by default. Charlotte acquires a DHCP
+Both architecture runners attach a NIC by default. Knytos acquires a DHCP
 lease and launches discovery, cluster, TCP/IP, HTTP, and time services without
 a test option. The \texttt{*-test} switches only register additional verifiers, while
 \texttt{--no-network} is the explicit opt-out for an isolated boot.
@@ -182,7 +182,7 @@ then converts the FAT boot image and a blank data image to VMware VMDKs:
 \end{verbatim}
 
 Open
-\texttt{os-images/vmware/CharlotteOS.vmwarevm/CharlotteOS.vmx} in VMware
+\texttt{os-images/vmware/Knytos.vmwarevm/Knytos.vmx} in VMware
 Fusion or Workstation. The SATA boot disk is nonpersistent, while the NVMe data disk
 is persistent. On first boot the guest formats that disk and installs the
 missing signed x86-64 service artifacts. Later boots keep valid artifacts,
@@ -203,7 +203,7 @@ unqualified. The complete setup and qualification record is in
 \section{Expected boot output}
 
 \begin{verbatim}
-CharlotteOS booting...
+Knytos booting...
 [init] BSP initialization complete.
 [init] Secondary CPUs brought online.
 [init] Starting scheduler...

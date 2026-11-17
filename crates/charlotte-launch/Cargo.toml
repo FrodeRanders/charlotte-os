@@ -2,7 +2,7 @@
 name = "charlotte-launch"
 version = "0.1.0"
 edition = "2024"
-description = "Shared fixed-width CharlotteOS userspace launch ABI"
+description = "Shared fixed-width Knytos userspace launch ABI"
 
 [lib]
 name = "charlotte_launch"

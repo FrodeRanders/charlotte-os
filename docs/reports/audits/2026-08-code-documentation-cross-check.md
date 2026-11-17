@@ -1,4 +1,4 @@
-# CharlotteOS Code/Documentation Cross-Check Audit — August 2026
+# Knytos Code/Documentation Cross-Check Audit — August 2026
 
 > **Historical report:** this is point-in-time evidence and may describe
 > defects or document paths that were later corrected. See the

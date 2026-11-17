@@ -13,7 +13,7 @@ kernel resource.
 The corrected client ignores complete unknown offer values, validates the whole
 vector, retains the server's actual client-signature offer and signs only with
 an offered, TLS-1.3-valid scheme. Unknown or legacy certificate-only algorithms
-selected in `CertificateVerify` reject. RSA remains disabled in Charlotte's
+selected in `CertificateVerify` reject. RSA remains disabled in Knytos'
 client; no SM2 provider, insecure verifier, protocol downgrade or retry is added.
 
 The complete host suite passes, including 268 service tests. Final four-CPU
@@ -69,7 +69,7 @@ The 42-byte signature vector has 21 entries. P-256 is `04 03`; the final `07 08`
 is unknown to this client. The 25-element known-scheme storage is not full.
 The old parser calls `read_list(..., SignatureScheme::parse)`, which turns an
 unknown scheme into `ParseError::InvalidData`. Extension decoding converts that
-to `TlsError::DecodeError`, then Charlotte reports numeric code 32.
+to `TlsError::DecodeError`, then Knytos reports numeric code 32.
 
 Exact ciphertext consumed/written is retained as
 [server-to-client hex](evidence/2026-11-01-tls-signature-offers/failed-server-to-client.tls.hex)
@@ -119,7 +119,7 @@ requires an allowed handshake signature; the original PKCS#1 v1.5 code points
 may appear in certificate-signature offers but not CertificateVerify.
 [RFC 9963](https://www.rfc-editor.org/rfc/rfc9963.html) adds separate opt-in
 legacy client-signature codes (`0420`, `0520`, `0620`); these are not implemented
-or advertised by Charlotte. RSA remains disabled here. The
+or advertised by Knytos. RSA remains disabled here. The
 shared predicate and selected-signature parser explicitly reject PKCS#1 v1.5,
 SHA-1 and SHA-224 handshake signatures. Certificate, hostname, dates, transcript
 and Finished verification remain required.
@@ -131,7 +131,7 @@ contain documented workspace lint accommodations. The other 45 source files
 match the recorded upstream hashes. The local manifest exposes qualified
 configurations without importing unused RSA/KEM dependencies or upstream's
 conflicting `all` test-driver registrations. Enabled dependency versions and
-Charlotte's erasing crypto drivers remain unchanged.
+Knytos' erasing crypto drivers remain unchanged.
 
 ## Validation and retained limitations
 

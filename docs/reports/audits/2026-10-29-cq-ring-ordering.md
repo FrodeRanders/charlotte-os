@@ -1,8 +1,8 @@
 # CQ cursor ordering and consumer ownership audit — 2026-10-29
 
-The remaining shared-CQ ordering gap is fixed in the CharlotteOS SDK and kernel.
+The remaining shared-CQ ordering gap is fixed in the Knytos SDK and kernel.
 Sitas' safe reader serialization and atomic cursors were already implemented in
-`6d63266eb52492c1958c45f3ed71c8c7a451489a`. CharlotteOS' raw SDK reader was
+`6d63266eb52492c1958c45f3ed71c8c7a451489a`. Knytos' raw SDK reader was
 already `unsafe` and required one consumer; this audit makes that requirement
 explicit for mixed SDK/Sitas readers and fixes the matching producer protocol.
 
@@ -90,7 +90,7 @@ Qualified inputs and artifacts (SHA-256):
 
 | Input/artifact | Identity |
 | --- | --- |
-| CharlotteOS base revision | `2ae4f97d98c3f71e887d5d03320c96a350f56464`, with this CQ patch and the existing working-tree edits |
+| Knytos base revision | `2ae4f97d98c3f71e887d5d03320c96a350f56464`, with this CQ patch and the existing working-tree edits |
 | Sitas revision | `6d63266eb52492c1958c45f3ed71c8c7a451489a`, clean working tree |
 | Debug AArch64 kernel ELF, 77,561,328 bytes | `e17c0207b545a0bbc1a49adeea659cf6a94405e6e024eabd84250df74b61da7c` |
 | Signed staged Sitas ELF, 165,064 bytes | `499b3f652c80bc1218ec3df7d505e12f3d30f247f4a054f7b078820174664f14` |

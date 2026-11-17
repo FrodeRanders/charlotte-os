@@ -1,5 +1,5 @@
 //! Fixed public vectors generated with Python hashlib/hmac, independently
-//! of Charlotte's implementation. Boundary lengths exercise padding and block
+//! of Knytos' implementation. Boundary lengths exercise padding and block
 //! transitions; every split must match the same reference digest.
 use charlotte_launch::sha256::{
     HmacSha256,

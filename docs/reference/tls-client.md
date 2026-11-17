@@ -130,12 +130,12 @@ authentication. Missing/duplicate signature-algorithm extensions and trailing
 request bytes reject. Both synchronous and asynchronous client paths require the
 actual key's scheme to be offered and valid for TLS 1.3 before sending the
 identity or signing. An unknown or legacy scheme selected in CertificateVerify
-rejects. RSA remains disabled in Charlotte's client: recognizing RSA values in
+rejects. RSA remains disabled in Knytos' client: recognizing RSA values in
 an external offer does not activate a provider. The original PKCS#1 v1.5
 code points are certificate-only under
 [sections 4.2.3 and 4.4.3](https://www.rfc-editor.org/rfc/rfc8446.html#section-4.4.3).
 [RFC 9963](https://www.rfc-editor.org/rfc/rfc9963.html) defines distinct, opt-in
-legacy client-signature codes; Charlotte does not implement them. This client
+legacy client-signature codes; Knytos does not implement them. This client
 rejects PKCS#1 v1.5, SHA-1 and SHA-224 in CertificateVerify.
 
 The [wire investigation](../reports/audits/2026-11-01-tls-signature-offers.md)

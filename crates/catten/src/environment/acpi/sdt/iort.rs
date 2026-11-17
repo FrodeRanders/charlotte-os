@@ -1,6 +1,6 @@
 //! Minimal, bounds-checked ACPI IORT discovery for Arm SMMUv3.
 //!
-//! CharlotteOS currently supports PCI root-complex mappings to one SMMUv3
+//! Knytos currently supports PCI root-complex mappings to one SMMUv3
 //! node. The parser deliberately preserves the requester-ID translation
 //! instead of assuming that PCI BDF and SMMU StreamID are identical.
 

@@ -3,7 +3,7 @@
 
 A capability is the answer to one question: \textbf{``May I perform this
 operation?''} It grants permission to act. Operations describe the work.
-CharlotteOS capabilities cannot be forged. They can be passed to another domain,
+Knytos capabilities cannot be forged. They can be passed to another domain,
 and their rights can be reduced.
 
 \section{What a capability is}
@@ -72,14 +72,14 @@ rights being transferred.
 Capsicum brings capability confinement to existing Unix applications. Its
 capability mode restricts access to global namespaces, while file descriptors
 carry rights that can be reduced and passed to another process
-\cite{prior:capsicum}. CharlotteOS follows the same rule: possession grants
-authority, and delegation cannot increase rights. In CharlotteOS, the capability
+\cite{prior:capsicum}. Knytos follows the same rule: possession grants
+authority, and delegation cannot increase rights. In Knytos, the capability
 domain is the starting execution environment: a new
 application receives explicit bootstrap grants and acquires further service
 connections through policy-controlled delegation.
 
 The difference is where compatibility enters the design. Capsicum preserves
-Unix APIs and offers a way to add isolation gradually. CharlotteOS
+Unix APIs and offers a way to add isolation gradually. Knytos
 requires applications and service libraries to express their dependencies
 through its native object and IPC model. Software that assumes Unix namespaces
 and process facilities needs adaptation. Services still enforce protocol

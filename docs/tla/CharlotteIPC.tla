@@ -1,5 +1,5 @@
 -------------------------------- MODULE CharlotteIPC --------------------------------
-\* TLA+ model of CharlotteOS IPC state machines.
+\* TLA+ model of Knytos IPC state machines.
 \*
 \* Covers: endpoints, connections, scalar send/call/receive/reply, reply tokens,
 \*          pending calls, memory transfer (move/borrow-read/borrow-write),
@@ -171,7 +171,7 @@ vars == <<capTable, endpoints, replyTokens, pendingCalls, memObjects,
 \* -----------------------------------------------------------------------------
 
 \* Capability identifiers are drawn from one monotonic system-wide namespace,
-\* matching CharlotteOS' unified object-capability handles.  The table remains
+\* matching Knytos' unified object-capability handles.  The table remains
 \* indexed by ASID because possession is address-space local.
 CanAllocCaps(count) ==
     /\ count > 0

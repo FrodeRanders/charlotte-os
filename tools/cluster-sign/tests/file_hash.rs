@@ -114,7 +114,7 @@ mod cli {
         fn new() -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let path = std::env::temp_dir().join(format!(
-                "charlotte-file-hash-{}-{}",
+                "knytos-file-hash-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

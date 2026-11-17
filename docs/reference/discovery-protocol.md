@@ -1,6 +1,6 @@
 # Current discovery protocol
 
-CharlotteOS discovery uses EtherType `0x88B6` and version 1. There is one
+Knytos discovery uses EtherType `0x88B6` and version 1. There is one
 complete advertisement grammar for broadcast probes and unicast responses.
 Discovery supplies transient identity-to-MAC routes and cluster posture;
 it does not authenticate a peer or grant voting, deployment or capability

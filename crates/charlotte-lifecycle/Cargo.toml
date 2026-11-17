@@ -2,7 +2,7 @@
 name = "charlotte-lifecycle"
 version = "0.1.0"
 edition = "2024"
-description = "Pure lifecycle decisions shared by the CharlotteOS kernel and userspace"
+description = "Pure lifecycle decisions shared by the Knytos kernel and userspace"
 
 [lib]
 name = "charlotte_lifecycle"

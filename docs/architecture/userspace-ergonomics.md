@@ -1,7 +1,7 @@
 # Userspace development ergonomics
 
 **Status:** Application foundation implemented following the 14 November 2026
-source review of CharlotteOS `327a50a7`. Current interfaces and commands are in
+source review of Knytos `327a50a7`. Current interfaces and commands are in
 [the application SDK guide](../guides/application-sdk.md). Validation limits and
 remaining extensions are listed below. The
 [broker consumer review](../reports/audits/2026-11-14-broker-sdk-review.md)

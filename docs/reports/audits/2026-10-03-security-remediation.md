@@ -3,7 +3,7 @@
 This records implementation passes following the
 [security audit](2026-10-03-security-audit.md) of revision
 `42183c57ce4c0b32a6010246f6eee1b6262ebb4e`. It is not a declaration that the
-audit is closed or that CharlotteOS is ready for hostile production workloads.
+audit is closed or that Knytos is ready for hostile production workloads.
 Implementation and validation span 2026-10-03–05 local time.
 
 Evidence was consolidated into these reports on 2026-10-09. Relevant results,
@@ -2296,7 +2296,7 @@ ran. The deployment restrictions and other open audit findings are unchanged.
 
 ELF/runtime admission was committed as `fe455867`. The requested page-table
 article and its primary Mitosis/Hydra references reinforce existing accounting
-and locality directions; they do not require changing Charlotte's capability
+and locality directions; they do not require changing Knytos' capability
 domains or LP-affinity architecture. The investigation distinguishes shared
 backing from per-address-space translation cost, dense from sparse mappings,
 LP affinity from NUMA placement, and measurement from speculative replication.

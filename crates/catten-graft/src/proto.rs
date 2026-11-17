@@ -149,7 +149,7 @@ pub struct InstallSnapshotResponse {
     #[prost(int64, tag = "4")]
     pub last_included_index: i64,
     /// Receiver's next expected byte offset. Tags 5 and 6 are a
-    /// backwards-compatible Charlotte extension: older peers decode their
+    /// backwards-compatible Knytos extension: older peers decode their
     /// protobuf defaults and therefore safely retry from offset zero.
     #[prost(int64, tag = "5")]
     pub next_offset: i64,

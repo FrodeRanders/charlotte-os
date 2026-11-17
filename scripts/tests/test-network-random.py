@@ -26,7 +26,7 @@ class NetworkRandom(unittest.TestCase):
         for name, version in (("zeroize", "1.9.0"),):
             if not any(p["name"] == name and p["version"] == version for p in packages):
                 raise ValueError(f"Requalify the network-random control for {name} {version}")
-        cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-network-random-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-network-random-")
         cls.directory = Path(cls.temporary.name)
 
     @classmethod
@@ -85,7 +85,7 @@ fn main() {{
         expected = []
         for counter in range(1024):
             digest = hmac.new(bytes(range(8, 40)),
-                              b"CharlotteOS TCP/IP ephemeral port v1" + counter.to_bytes(8, "little"),
+                              b"Knytos TCP/IP ephemeral port v1" + counter.to_bytes(8, "little"),
                               hashlib.sha256).digest()
             expected.append(49152 + (int.from_bytes(digest[:2], "little") & 0x3fff))
         self.assertEqual(list(map(int, result.stdout.splitlines())), expected)

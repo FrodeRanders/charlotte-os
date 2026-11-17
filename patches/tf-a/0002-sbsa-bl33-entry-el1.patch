@@ -8,7 +8,7 @@ index 60acb25..4cac938 100644
  
 -	/* Figure out what mode we enter the non-secure world in */
 -	mode = (el_implemented(2) != EL_IMPL_NONE) ? MODE_EL2 : MODE_EL1;
-+	/* CharlotteOS: hand the bootloader (BL33) off at EL1.
++	/* Knytos: hand the bootloader (BL33) off at EL1.
 +	 * QEMU TCG EL2 is unreliable and the kernel targets EL1/EL0. */
 +	mode = MODE_EL1;
  

@@ -1,4 +1,4 @@
-//! Wire protocol for the CharlotteOS Kafka data-plane service.
+//! Wire protocol for the Knytos Kafka data-plane service.
 //!
 //! One service profile grants authority to a bounded broker-destination
 //! allow-list, one fixed consume topic/partition, an allow-listed set of

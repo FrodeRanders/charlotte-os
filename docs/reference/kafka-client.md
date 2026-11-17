@@ -1,6 +1,6 @@
 # Kafka client service
 
-CharlotteOS has a native, capability-oriented Kafka data-plane client. It can
+Knytos has a native, capability-oriented Kafka data-plane client. It can
 produce idempotently, consume with `read_committed` isolation, and atomically
 commit produced records together with consumed offsets in a Kafka transaction.
 It does not embed a general-purpose hosted Kafka library.
@@ -264,7 +264,7 @@ current metadata age and consumer lag plus one cumulative produced-record
 counter per profile route. Monitoring derives rates from the per-route
 counters; the connector does not maintain an unbounded time series.
 
-This fixed-partition protocol is for Charlotte connector members. A conventional
+This fixed-partition protocol is for Knytos connector members. A conventional
 Kafka consumer that does not advertise `charlotte-fixed-v1` cannot join the same
 group. It is deliberately smaller than Kafka's subscription assignors: topic
 discovery and arbitrary partition selection remain deployment-controller work.

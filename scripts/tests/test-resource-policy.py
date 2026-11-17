@@ -17,7 +17,7 @@ LARGER = POLICY.parent / "resource_policy/larger.rs"
 class ResourcePolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-resource-policy-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-resource-policy-")
         cls.directory = Path(cls.temporary.name)
         cls.harness = cls.directory / "harness.rs"
         cls.harness.write_text(f'#[path = {json.dumps(str(POLICY), ensure_ascii=False)}]\nmod resource_policy;\n')

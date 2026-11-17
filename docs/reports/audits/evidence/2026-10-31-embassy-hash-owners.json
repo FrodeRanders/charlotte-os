@@ -1,7 +1,7 @@
 {
   "date": "2026-10-31",
   "base_revision": "e54c115906dfda34fef93b9aaa898c80113e36a6",
-  "scope": "One shared Embassy SHA-256/HMAC-SHA-256 registration uses existing erasing Charlotte hash owners for connector TLS as well as management certificate fingerprints. Stock registrations are removed from normal and management-test dependency graphs. No cryptographic algorithm, wire format, entropy authority, deadline or capability policy change.",
+  "scope": "One shared Embassy SHA-256/HMAC-SHA-256 registration uses existing erasing Knytos hash owners for connector TLS as well as management certificate fingerprints. Stock registrations are removed from normal and management-test dependency graphs. No cryptographic algorithm, wire format, entropy authority, deadline or capability policy change.",
   "source_sha256": {
     "crates/catten-services/Cargo.toml": "02e082905b64c053534c233fecb957797c999b00fca86b8df04c965dfc485f27",
     "crates/catten-services/src/bin/security_probe.rs": "215a160c8fe6b81c3d33c7b492e41cda9b20291cf82f36b5fa42ecb958859aa4",

@@ -32,11 +32,11 @@ use charlotte_protocol_kafka::DeliveredRecord;
 catten_rt::entry!(main);
 
 const NAME: u64 = catten_services::name(b"kproc");
-const INPUT: &[u8] = b"charlotte-step-input";
-const RETRY_INPUT: &[u8] = b"charlotte-step-retry";
-const TIMEOUT_INPUT: &[u8] = b"charlotte-step-timeout";
-const DLQ_INPUT: &[u8] = b"charlotte-step-dlq";
-const OUTPUT: &[u8] = b"charlotte-step-output";
+const INPUT: &[u8] = b"knytos-step-input";
+const RETRY_INPUT: &[u8] = b"knytos-step-retry";
+const TIMEOUT_INPUT: &[u8] = b"knytos-step-timeout";
+const DLQ_INPUT: &[u8] = b"knytos-step-dlq";
+const OUTPUT: &[u8] = b"knytos-step-output";
 
 enum Action {
     Retry,

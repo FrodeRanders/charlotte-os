@@ -1,6 +1,6 @@
 # Userspace resource ownership
 
-CharlotteOS application code uses Rust ownership to mirror kernel capability
+Knytos application code uses Rust ownership to mirror kernel capability
 ownership. Every closeable resource has exactly one owning Rust value. Normal
 error propagation then performs cleanup automatically.
 

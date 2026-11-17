@@ -19,7 +19,7 @@ pub unsafe fn vectors() {}
 
 class X86UserspaceAbi(unittest.TestCase):
     def compile(self, target, source=SOURCE, avx=False):
-        with tempfile.TemporaryDirectory(prefix="charlotte-x86-abi-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="knytos-x86-abi-") as temporary:
             directory = Path(temporary)
             (directory / "src").mkdir()
             (directory / "src/lib.rs").write_text(source)

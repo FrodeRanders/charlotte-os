@@ -1,4 +1,4 @@
-# CharlotteOS cluster development signing key.
+# Knytos cluster development signing key.
 #
 # This is the *private* key of the version-controlled development keypair
 # (the demo key from `cluster-sign generate`); the matching public key is

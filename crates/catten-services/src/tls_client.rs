@@ -93,7 +93,7 @@ const _: () = {
 // The verifier's static clock is admitted for exactly one handshake. Entropy
 // authority is installed once and owned for this domain's lifetime.
 static HANDSHAKE_CLOCK: HandshakeClock = HandshakeClock::new();
-/// Bounds used while adapting message-oriented CharlotteOS sockets to a byte
+/// Bounds used while adapting message-oriented Knytos sockets to a byte
 /// stream. A timeout is reported as a transport failure to embedded-tls.
 #[derive(Clone, Copy)]
 pub struct SocketBounds {
@@ -261,7 +261,7 @@ struct TransportError;
 
 impl core::fmt::Display for TransportError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str("CharlotteOS socket transport error")
+        formatter.write_str("Knytos socket transport error")
     }
 }
 

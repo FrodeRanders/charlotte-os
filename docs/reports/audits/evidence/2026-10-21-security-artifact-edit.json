@@ -87,7 +87,7 @@
       "release_apply"
     ],
     "shared_reader_note": "Underlying admission/bounded-read helpers factored to borrow File; no private-key/profile changes.",
-    "host_scope": "No Charlotte capability/root cleanup,guard,wait,new registry/custody or physical/replay authority."
+    "host_scope": "No Knytos capability/root cleanup,guard,wait,new registry/custody or physical/replay authority."
   },
   "host_validation": {
     "debug": {

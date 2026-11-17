@@ -1,4 +1,4 @@
-//! Native filesystem service for CharlotteOS.
+//! Native filesystem service for Knytos.
 //!
 //! Built on top of the persistent object store. Directories and files are
 //! stored as objects. The root directory is object ID 100.

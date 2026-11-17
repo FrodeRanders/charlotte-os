@@ -2,7 +2,7 @@
 \label{chap:endpoints}
 
 An endpoint answers: \textbf{``Who am I communicating with?''} It is
-CharlotteOS' primary primitive for calls between protection domains.
+Knytos' primary primitive for calls between protection domains.
 
 \section{Server and connection model}
 
@@ -24,7 +24,7 @@ service normally delegates them after an access check.
 Xous supplies the direct precedent for isolated servers and distinct scalar,
 owned-memory and borrowed-memory messages. In its documented IPC interface,
 blocking scalar calls and memory borrows suspend the calling thread until the
-server responds or returns the memory \cite{prior:xous}. CharlotteOS makes
+server responds or returns the memory \cite{prior:xous}. Knytos makes
 a distinction between sending a small control message and transferring or
 lending page-backed data. However, it represents an outstanding call with an
 owned \texttt{PendingCall} and gives the server a one-shot \texttt{ReplyToken}.

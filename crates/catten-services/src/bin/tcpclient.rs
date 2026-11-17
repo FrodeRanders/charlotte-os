@@ -35,7 +35,7 @@ use charlotte_launch::tcpclient_status as status;
 use charlotte_protocol_net::decode_status;
 
 const SENTINEL: u32 = 0x5345_4e54;
-const PAYLOAD: &[u8] = b"CharlotteOS tcpip cross-node";
+const PAYLOAD: &[u8] = b"Knytos tcpip cross-node";
 const PORT: u16 = 8080;
 const ACCEPT_POLL_MS: u64 = 100;
 const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");

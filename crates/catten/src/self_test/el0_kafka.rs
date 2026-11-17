@@ -33,8 +33,8 @@ const FENCER_PRODUCER_NAME: &[u8] = b"kafka/selftest/fencer/producer";
 const FENCER_CONSUMER_NAME: &[u8] = b"kafka/selftest/fencer/consumer";
 #[cfg(feature = "kafka_fencing_test")]
 const FENCER_TRANSACTION_NAME: &[u8] = b"kafka/selftest/fencer/transactional";
-const GROUP_ID: &[u8] = b"charlotte-qemu-smoke-group";
-const TRANSACTIONAL_ID: &[u8] = b"charlotte-qemu-smoke-transaction-0";
+const GROUP_ID: &[u8] = b"knytos-qemu-smoke-group";
+const TRANSACTIONAL_ID: &[u8] = b"knytos-qemu-smoke-transaction-0";
 
 pub fn test_el0_kafka() {
     logln!("Testing EL0 Kafka idempotent and transactional data plane...");
@@ -87,18 +87,18 @@ extern "C" fn verify_el0_kafka() {
             ],
             tls: true,
             ca_certificate_der: Some(ca_der),
-            topic: b"charlotte-events",
+            topic: b"knytos-events",
             partition: 0,
             produce_routes: &[KafkaProduceRoute {
-                topic: b"charlotte-results",
+                topic: b"knytos-results",
                 partition: 0,
             }],
             max_produce_routes: 64,
             group: GROUP_ID,
             transactional_id: TRANSACTIONAL_ID,
             authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
-                username: b"charlotte",
-                password: b"charlotte-kafka-test",
+                username: b"knytos",
+                password: b"knytos-kafka-test",
                 certificate_der: client_certificate_der,
                 private_key_der: client_private_key_der,
             },
@@ -454,18 +454,18 @@ fn verify_producer_fencing(
             ],
             tls: true,
             ca_certificate_der: Some(ca_der),
-            topic: b"charlotte-events",
+            topic: b"knytos-events",
             partition: 0,
             produce_routes: &[KafkaProduceRoute {
-                topic: b"charlotte-results",
+                topic: b"knytos-results",
                 partition: 0,
             }],
             max_produce_routes: 64,
-            group: b"charlotte-qemu-fencer-group",
+            group: b"knytos-qemu-fencer-group",
             transactional_id: TRANSACTIONAL_ID,
             authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
-                username: b"charlotte",
-                password: b"charlotte-kafka-test",
+                username: b"knytos",
+                password: b"knytos-kafka-test",
                 certificate_der: client_certificate_der,
                 private_key_der: client_private_key_der,
             },

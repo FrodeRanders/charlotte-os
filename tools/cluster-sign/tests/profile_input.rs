@@ -173,7 +173,7 @@ fn file_adapter_rejects_unsafe_sources_and_cli_preserves_envelope_contract() {
             fs::remove_dir_all(&self.0).unwrap();
         }
     }
-    let path = std::env::temp_dir().join(format!("charlotte-profile-input-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("knytos-profile-input-{}", std::process::id()));
     fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
     let directory = Directory(path);
     let input = directory.0.join("profile");

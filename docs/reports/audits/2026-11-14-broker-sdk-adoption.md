@@ -1,7 +1,7 @@
 # Broker SDK adoption and manual client review
 
 14 November 2026. This follows the [consumer review](2026-11-14-broker-sdk-review.md).
-The broker demo is adapted to CharlotteOS's existing ownership/reactor model.
+The broker demo is adapted to Knytos's existing ownership/reactor model.
 Kafka wire behavior, pure partition state and dispatch remain application code.
 This checkpoint does not expand the broker's production or Kafka feature claims.
 

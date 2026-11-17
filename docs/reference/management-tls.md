@@ -16,7 +16,7 @@ This is separate from TLS/input/output deadlines and from flood fairness. See
 
 Rustls `0.23.46` implements the handshake, transcript, record sequence, peer
 possession proof and TLS state machine. Its explicit custom provider uses
-Charlotte's erasing SHA-256 and incremental HMAC-SHA-256 owners, pinned Embassy
+Knytos' erasing SHA-256 and incremental HMAC-SHA-256 owners, pinned Embassy
 P-256 operations and the erasing RustCrypto AES-128-GCM family. The supported suite is
 TLS_AES_128_GCM_SHA256 with P-256 ECDH and ECDSA/SHA-256 certificates and
 handshake signatures. There is no RSA, alternate cipher, TLS 1.2, insecure
@@ -28,7 +28,7 @@ domain-owned entropy drivers. An infallible crypto RNG callback
 must abort on entropy failure; it cannot fabricate bytes or replay an accepted
 request. Host fixtures register host entropy only in their test binary. Ring is
 used by the independent host test client, **not by the native server**: its
-SSE2 requirement conflicts with Charlotte's x86 service target. No SIMD feature
+SSE2 requirement conflicts with Knytos' x86 service target. No SIMD feature
 or context-save contract was changed to make it compile.
 
 `Config::new` consumes a server certificate chain/private-key owner, client CA

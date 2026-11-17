@@ -1,6 +1,6 @@
 //! Allocation-free preparation of complete MCFG regions before ECAM mapping.
 //!
-//! Validation adapted from upstream CharlotteOS 74def27ce686a07aaec621f15ef786b546c54f20.
+//! Validation adapted from upstream Knytos 74def27ce686a07aaec621f15ef786b546c54f20.
 pub(crate) use crate::device_management::drivers::busses::pci_express::topology::enumeration::MAX_REGIONS;
 const HEADER_BYTES: usize = 44;
 const ENTRY_BYTES: usize = 16;

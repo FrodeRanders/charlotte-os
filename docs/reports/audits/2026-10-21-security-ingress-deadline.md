@@ -70,7 +70,7 @@ leaves work unconfirmed; no notification is replayed. Errors close the socket
 through ordinary ownership and do not roll back remote work. Prepared public
 inputs, admitted generation pairs and borrowed names remain in their existing
 containing scopes. The [C18 row](../../reference/cleanup-recovery.md) records this
-host context. No worker thread, Charlotte capability/root/pin, registry, recovery
+host context. No worker thread, Knytos capability/root/pin, registry, recovery
 family, custody or physical completion proof is added.
 
 Standalone notify commands and ingress-policy status use a single 30-second

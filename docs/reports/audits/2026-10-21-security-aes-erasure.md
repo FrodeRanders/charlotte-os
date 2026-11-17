@@ -34,7 +34,7 @@ does not require a new buffer, registry, wire grammar or runtime ABI.
 
 The existing [C18 row](../../reference/cleanup-recovery.md) records local
 cipher-field erasure in the existing transport scope. AES Drop introduces no
-Charlotte capability/root cleanup, allocator, guard, wait, remote teardown,
+Knytos capability/root cleanup, allocator, guard, wait, remote teardown,
 custody or physical completion/retry authority. No cached dependency source is
 edited or vendored.
 

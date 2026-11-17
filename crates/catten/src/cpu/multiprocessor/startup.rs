@@ -79,7 +79,7 @@ const MAX_TRACKED_LPS: usize = crate::cpu::scheduler::system_scheduler::MAX_TRAC
 #[cfg(target_arch = "aarch64")]
 const UNKNOWN_MPIDR: u64 = u64::MAX;
 
-/// Hardware affinity indexed by Charlotte's scheduler-local LP id.
+/// Hardware affinity indexed by Knytos' scheduler-local LP id.
 ///
 /// Secondary processors enter concurrently, so their logical ids need not
 /// match MPIDR.Aff0. GIC routing must translate rather than assume equality.

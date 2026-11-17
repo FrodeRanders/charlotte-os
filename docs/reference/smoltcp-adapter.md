@@ -1,13 +1,13 @@
-# smoltcp → CharlotteOS Adapter
+# smoltcp → Knytos Adapter
 
 ## The fit
 
 smoltcp is the industry-standard embedded TCP/IP stack: `no_std` + `alloc`,
 poll-driven, no threads, ~30 KiB of code. It already runs on bare-metal
 microcontrollers through an Ethernet `Device` trait that looks almost
-identical to what a CharlotteOS NIC driver exports:
+identical to what a Knytos NIC driver exports:
 
-| smoltcp `Device` | CharlotteOS NIC protocol |
+| smoltcp `Device` | Knytos NIC protocol |
 |---|---|
 | `receive() → Option<RxToken>` | frame queue fed by the frouter's `OP_FRAME` ingress |
 | `transmit() → Option<TxToken>` | `OP_SEND` (call with a moved memory object holding the frame) |

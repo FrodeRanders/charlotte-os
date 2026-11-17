@@ -1,6 +1,6 @@
 # Adaptive resource policy
 
-This note frames how CharlotteOS should adapt resource sizes to the machine it
+This note frames how Knytos should adapt resource sizes to the machine it
 finds itself on and to the work it is running, and it records the first
 implemented step. It is deliberately split into observation (safe, no behavior
 change), boot-time derivation, creation-time feedback, and in-life adaptation,

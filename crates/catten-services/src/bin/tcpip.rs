@@ -1,4 +1,4 @@
-//! The CharlotteOS TCP/IP service (smoltcp-powered).
+//! The Knytos TCP/IP service (smoltcp-powered).
 //!
 //! Bootstraps, looks up the NIC driver ("net0"), initialises a smoltcp
 //! interface, registers a "tcpip" endpoint with the name service, and

@@ -113,7 +113,7 @@ pub fn wrap_snapshot_payload_with_membership_epoch(
                     "LEARNER"
                 };
                 format!(
-                    "{{\"id\":{},\"role\":\"{role}\",\"address\":{{\"host\":\"charlotte:{:016x}\",\
+                    "{{\"id\":{},\"role\":\"{role}\",\"address\":{{\"host\":\"knytos:{:016x}\",\
                      \"port\":0}}}}",
                     quote_json(&peer.id),
                     peer.service_name
@@ -173,7 +173,7 @@ fn member_ids(value: &str, field: &str) -> Option<Vec<Peer>> {
         let (id, consumed) = parse_json_string(&array[cursor..])?;
         let role = string_field(object, "role").unwrap_or("VOTER");
         let service_name = string_field(object, "host")
-            .and_then(|host| host.strip_prefix("charlotte:"))
+            .and_then(|host| host.strip_prefix("knytos:"))
             .and_then(|value| u64::from_str_radix(value, 16).ok())
             .unwrap_or(0);
         members.push(Peer {

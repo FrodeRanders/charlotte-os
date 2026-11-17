@@ -1,7 +1,7 @@
 \chapter{Consensus and Replication}
 \label{chap:consensus}
 
-CharlotteOS exposes distributed consensus as a capability service: a replicated
+Knytos exposes distributed consensus as a capability service: a replicated
 state machine reached through the same endpoint IPC used by local services.
 
 Validation covers several scales. Unit tests exercise quorum accounting with
@@ -31,7 +31,7 @@ administration end to end through one concrete state machine and log.
 \section{Raft as a capability service}
 
 The Raft consensus protocol provides a replicated, fault-tolerant state machine
-across a cluster of nodes. In CharlotteOS, the operational Raft node is owned
+across a cluster of nodes. In Knytos, the operational Raft node is owned
 by the per-node DNS EL0 process, which:
 
 \begin{itemize}
@@ -61,7 +61,7 @@ trait RaftTransport {
 }
 \end{lstlisting}
 
-The operational CharlotteOS implementation uses the reliable message layer
+The operational Knytos implementation uses the reliable message layer
 between DNS replicas. The consensus core does not change.
 
 \section{Intended properties relative to socket-based Raft}
@@ -170,7 +170,7 @@ and continued cluster operation. None of these fixture sizes bounds membership.
 
 \section{Cluster bootstrap: the seed problem}
 
-A new node must contact at least one existing cluster member. CharlotteOS
+A new node must contact at least one existing cluster member. Knytos
 expresses the seed as a service name or capability rather than an IP address.
 
 \subsection{Ethernet discovery and deterministic admission (current)}
@@ -327,7 +327,7 @@ while !timeout_elapsed() {
 }
 \end{lstlisting}
 
-CharlotteOS uses detached timer completion cookies and a checked CQ watchdog.
+Knytos uses detached timer completion cookies and a checked CQ watchdog.
 Endpoint readiness and completion notifications release the same reactor wait:
 
 \begin{lstlisting}[style=rustCode]

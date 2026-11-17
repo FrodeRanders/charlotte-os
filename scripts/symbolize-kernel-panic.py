@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Symbolize CharlotteOS raw kernel panic backtraces offline."""
+"""Symbolize Knytos raw kernel panic backtraces offline."""
 
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def print_source_locations(kernel: pathlib.Path, frames: list[tuple[str, int]]) 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Map CharlotteOS panic return addresses to kernel functions."
+        description="Map Knytos panic return addresses to kernel functions."
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--kernel", type=pathlib.Path, help="matching unstripped catten ELF")

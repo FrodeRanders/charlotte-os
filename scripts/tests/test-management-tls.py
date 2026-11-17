@@ -118,7 +118,7 @@ def main():
                         default=Path(__file__).resolve().parents[2] / "target/debug/cluster-sign")
     parser.add_argument("--vip")
     parser.add_argument("--monitor", type=Path)
-    parser.add_argument("--netdev", default="charlotte-net")
+    parser.add_argument("--netdev", default="knytos-net")
     args = parser.parse_args()
     for port, payload, code in [(args.status_port, OBSERVE, 200),
                                 (args.deployment_port, STATUS, 404)]:

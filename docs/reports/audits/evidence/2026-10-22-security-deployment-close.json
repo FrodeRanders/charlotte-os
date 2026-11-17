@@ -285,10 +285,10 @@
         "elapsed_seconds": 240.02453687484376
       },
       "selected_diagnostics": [
-        "No Charlotte kernel output; UEFI diagnostics only.",
+        "No Knytos kernel output; UEFI diagnostics only.",
         "CPU0 PC=0x000000005fdf74ac; secondary PCs=0x0,0x0,0x0."
       ],
-      "source_qualification": "Final source bundle; no Charlotte kernel output or SELFTEST. CPU0 PC=0x5fdf74ac; secondary PCs zero. Firmware message Image type X64 cannot be loaded also occurs before passing boots; no causal attribution. Passing repeat does not resolve intermittence."
+      "source_qualification": "Final source bundle; no Knytos kernel output or SELFTEST. CPU0 PC=0x5fdf74ac; secondary PCs zero. Firmware message Image type X64 cannot be loaded also occurs before passing boots; no causal attribution. Passing repeat does not resolve intermittence."
     },
     {
       "id": "final_arm_http",

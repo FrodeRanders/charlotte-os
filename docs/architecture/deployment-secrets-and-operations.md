@@ -1,6 +1,6 @@
 # Deployment secrets and the development/operations boundary
 
-CharlotteOS should let development teams define and sign application behavior
+Knytos should let development teams define and sign application behavior
 without learning production infrastructure credentials. The operations team
 should be able to bind that behavior to managed Kafka and object-store services
 without being able to replace the application executable. The cluster is the
@@ -141,7 +141,7 @@ service API.
 
 An operational envelope binds the SHA-256 of an exact, already signed
 `CRELEASE`. Putting the operational-envelope digest back into that same release
-would create a cryptographic cycle. CharlotteOS therefore does not extend
+would create a cryptographic cycle. Knytos therefore does not extend
 `CRELEASE1` with secret-profile references.
 
 `charlotte_launch::operations_bundle` instead defines `COPSBND2`, a separate

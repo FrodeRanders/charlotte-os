@@ -70,7 +70,7 @@ test, but this campaign does not independently check same-term vote retention
 across a VM crash. It does not prove arbitrary application data survives every
 crash point.
 
-These guests use Charlotte capability IPC/relmsg and its native catalog. They do
+These guests use Knytos capability IPC/relmsg and its native catalog. They do
 not form a mixed cluster with Graft's Java/C++/Rust TCP runtimes. No new TLA+
 execution, throughput result or management TLS availability result is claimed.
 Existing management failover limitations remain in their own reports.

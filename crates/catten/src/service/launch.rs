@@ -72,7 +72,7 @@ pub struct NetworkAppliance {
     pub httpd: ServiceDomain,
 }
 
-/// A TCP service exposed through Charlotte's distributed L2 ingress.
+/// A TCP service exposed through Knytos' distributed L2 ingress.
 /// Platform launch policy supplies this descriptor to both the frame router
 /// (classification/forwarding), TCP/IP service (local VIP acceptance), and
 /// DNS (placement/readiness-derived backend eligibility).

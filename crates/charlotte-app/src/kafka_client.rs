@@ -1,4 +1,4 @@
-//! Owned application-side client for the CharlotteOS Kafka service.
+//! Owned application-side client for the Knytos Kafka service.
 //!
 //! Broker sockets, credentials, producer epochs, and sequence numbers remain
 //! in `kafka.elf`. Applications own only service-scoped consumer, delivery,

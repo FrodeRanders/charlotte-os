@@ -1,4 +1,4 @@
-//! Bounded Kafka wire-protocol primitives for CharlotteOS.
+//! Bounded Kafka wire-protocol primitives for Knytos.
 //!
 //! This crate deliberately implements a small, stable set of legacy request
 //! versions understood by modern brokers. `ApiVersions` is still negotiated
@@ -843,7 +843,7 @@ pub fn parse_find_coordinator(frame: &[u8], correlation: i32) -> Result<Coordina
     Ok(coordinator)
 }
 
-pub const FIXED_ASSIGNOR: &[u8] = b"charlotte-fixed-v1";
+pub const FIXED_ASSIGNOR: &[u8] = b"knytos-fixed-v1";
 const FIXED_SUBSCRIPTION_MAGIC: i32 = 0x4346_5831; // "CFX1"
 
 pub fn fixed_subscription(topic: &[u8], partition: i32) -> Result<Vec<u8>, Error> {
@@ -1848,7 +1848,7 @@ mod tests {
 
     #[test]
     fn request_length_and_header_are_big_endian() {
-        let request = metadata_request(0x0102_0304, b"charlotte", b"events").unwrap();
+        let request = metadata_request(0x0102_0304, b"knytos", b"events").unwrap();
         assert_eq!(
             i32::from_be_bytes(request[..4].try_into().unwrap()) as usize,
             request.len() - 4
@@ -1860,7 +1860,7 @@ mod tests {
     #[test]
     fn metadata_request_batches_topics() {
         let topics: &[&[u8]] = &[b"events", b"results"];
-        let request = metadata_request_many(7, b"charlotte", topics).unwrap();
+        let request = metadata_request_many(7, b"knytos", topics).unwrap();
         assert!(request.ends_with(&[
             0, 0, 0, 2, 0, 6, b'e', b'v', b'e', b'n', b't', b's', 0, 7, b'r', b'e', b's', b'u',
             b'l', b't', b's',
@@ -1869,7 +1869,7 @@ mod tests {
 
     #[test]
     fn sasl_requests_and_responses_use_bounded_kafka_framing() {
-        let handshake = sasl_handshake_request(7, b"charlotte", scram::MECHANISM).unwrap();
+        let handshake = sasl_handshake_request(7, b"knytos", scram::MECHANISM).unwrap();
         assert_eq!(&handshake[4..6], &api::SASL_HANDSHAKE.to_be_bytes());
         assert!(handshake.ends_with(b"SCRAM-SHA-256"));
 
@@ -1886,7 +1886,7 @@ mod tests {
         assert_eq!(parsed.error, NO_ERROR);
         assert_eq!(parsed.mechanisms, ["SCRAM-SHA-256"]);
 
-        let request = sasl_authenticate_request(8, b"charlotte", b"n,,n=user,r=nonce").unwrap();
+        let request = sasl_authenticate_request(8, b"knytos", b"n,,n=user,r=nonce").unwrap();
         assert_eq!(&request[4..6], &api::SASL_AUTHENTICATE.to_be_bytes());
     }
 

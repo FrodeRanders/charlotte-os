@@ -396,7 +396,7 @@ impl NameCatalog {
         Self::new_with_control_plane_trust(
             bootstrap_deployment_key,
             bootstrap_deployment_key,
-            charlotte_launch::trust::cluster_id(b"charlotte").expect("static cluster name"),
+            charlotte_launch::trust::cluster_id(b"knytos").expect("static cluster name"),
         )
     }
 

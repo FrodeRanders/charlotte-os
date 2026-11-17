@@ -1,6 +1,6 @@
 //! Minimal, bounds-checked ACPI DMAR discovery for Intel VT-d.
 //!
-//! CharlotteOS currently drives a single DMA remapping unit. The parser
+//! Knytos currently drives a single DMA remapping unit. The parser
 //! returns the first DRHD (DMA Remapping Hardware unit Definition) and can
 //! determine whether that unit covers a directly attached PCI requester from
 //! either INCLUDE_PCI_ALL or its endpoint device scopes. The VT-d source id is
@@ -89,7 +89,7 @@ pub fn discover_vtd() -> Option<DmarConfig> {
     None
 }
 
-/// Whether `config`'s DRHD covers a PCI source ID. CharlotteOS currently has
+/// Whether `config`'s DRHD covers a PCI source ID. Knytos currently has
 /// no PCI bridge-routing model for DMAR paths, so only a one-hop endpoint path
 /// is accepted here. INCLUDE_PCI_ALL remains the general case.
 pub fn covers_requester(config: DmarConfig, requester_id: u16) -> bool {

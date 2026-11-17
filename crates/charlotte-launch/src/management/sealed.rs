@@ -46,7 +46,7 @@ const VERSION: u16 = 1;
 const SUITE: u16 = 1; // RFC 9180 X25519 / HKDF-SHA256 / ChaCha20Poly1305.
 const TAG_OFFSET: usize = 96;
 const SIGNATURE_OFFSET: usize = 112;
-const INFO: &[u8] = b"CharlotteOS management boot resource HPKE v1\0";
+const INFO: &[u8] = b"Knytos management boot resource HPKE v1\0";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -76,7 +76,7 @@ impl PreparedProfile {
 pub fn policy_digest(trust: &AdmissionTrust) -> Result<[u8; 32], Error> {
     let encoded = trust.encode().ok_or(Error::WrongPolicy)?;
     let mut hash = sha256::Sha256::new();
-    hash.update(b"CharlotteOS management boot policy v1\0");
+    hash.update(b"Knytos management boot policy v1\0");
     hash.update(&encoded);
     Ok(hash.finalize())
 }
@@ -99,7 +99,7 @@ fn decode(bytes: &[u8]) -> Result<&[u8], Error> {
 pub fn signature_digest(bytes: &[u8]) -> Result<[u8; 32], Error> {
     decode(bytes)?;
     let mut hash = sha256::Sha256::new();
-    hash.update(b"CharlotteOS management boot resource signature v1\0");
+    hash.update(b"Knytos management boot resource signature v1\0");
     hash.update(&bytes[..SIGNATURE_OFFSET]);
     hash.update(&bytes[HEADER_LEN..]);
     Ok(hash.finalize())

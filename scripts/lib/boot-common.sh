@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for CharlotteOS boot and image tooling.
+# Shared helpers for Knytos boot and image tooling.
 # Source this file; do not execute it directly.
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -154,7 +154,7 @@ catten_boot_init() {
     local root_dir="$1"
 
     if [ ! -d "$root_dir/limine-binary" ] || [ ! -x "$root_dir/scripts/verify-limine.sh" ]; then
-        echo "error: invalid CharlotteOS root: ${root_dir}" >&2
+        echo "error: invalid Knytos root: ${root_dir}" >&2
         return 1
     fi
 
@@ -281,7 +281,7 @@ catten_boot_write_kernel_symbols() {
 
     temporary_map="$(mktemp "${symbol_map}.tmp.XXXXXX")" || return 1
     if ! {
-        printf '# CharlotteOS kernel symbol map v1\n'
+        printf '# Knytos kernel symbol map v1\n'
         printf '# kernel-sha256: %s\n' "$kernel_sha256"
         printf '# columns: address size type demangled-symbol\n'
         "$llvm_nm" --defined-only --numeric-sort --print-size --demangle "$kernel"
