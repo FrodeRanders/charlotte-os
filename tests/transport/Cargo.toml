@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# Keep host integration tests above both layers. Testing catten-services as the
+# Keep host integration tests above both layers. Testing knytos-services as the
 # selected package also builds its freestanding service entry points.
 [[test]]
 name = "receive_erasure"
@@ -15,7 +15,7 @@ name = "s3_response_erasure"
 path = "s3_response_erasure.rs"
 
 [dev-dependencies]
-catten-services = { path = "../../crates/catten-services" }
+knytos-services = { path = "../../crates/knytos-services" }
 charlotte-kafka = { path = "../../crates/charlotte-kafka" }
 charlotte-s3 = { path = "../../crates/charlotte-s3" }
 embedded-io = { version = "0.7", default-features = false }

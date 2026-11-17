@@ -45,9 +45,9 @@ mkdir -p "$SDK/platform/aarch64" "$SDK/platform/x86_64" "$SDK/signer/tools" \
 install -m 0755 "$ROOT/scripts/build-external-elf.sh" "$SDK/build-external-elf.sh"
 
 for arch in aarch64 x86_64; do
-    install -m 0644 "$ROOT/crates/catten-services/$arch-unknown-none.json" \
+    install -m 0644 "$ROOT/crates/knytos-services/$arch-unknown-none.json" \
         "$SDK/platform/$arch/target.json"
-    install -m 0644 "$ROOT/crates/catten-services/link.x" \
+    install -m 0644 "$ROOT/crates/knytos-services/link.x" \
         "$SDK/platform/$arch/link.x"
 done
 

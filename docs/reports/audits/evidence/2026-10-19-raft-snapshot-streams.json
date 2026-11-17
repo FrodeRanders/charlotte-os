@@ -218,9 +218,9 @@
     "crates/catten-graft/src/node.rs": "2dd05e31c5c026af322520cd56488ebea5b723af65bf7ac0c19eb8b9217a56c5",
     "crates/catten-graft/src/log_store.rs": "ea710c8fd7725a8f3e0d9a732865b34f669fb1cf9b7d0f5c6e3c02a099a95b72",
     "crates/catten-graft/src/snapshot_codec.rs": "e439fa7536859d4f990ee273ee5f30fdcc2cfebcbb078596518bf57681f36060",
-    "crates/catten-services/src/disk_raft.rs": "82936a9fba9f5b98dc5c178350692b2760870dab9576778fa150f88483664263",
-    "crates/catten-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
-    "crates/catten-services/src/bin/raft.rs": "b705bdf0f700838cec9c6fee1f68878b2fe2328f8afc3b3862aee3c527b5d288"
+    "crates/knytos-services/src/disk_raft.rs": "82936a9fba9f5b98dc5c178350692b2760870dab9576778fa150f88483664263",
+    "crates/knytos-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
+    "crates/knytos-services/src/bin/raft.rs": "b705bdf0f700838cec9c6fee1f68878b2fe2328f8afc3b3862aee3c527b5d288"
   },
   "tooling": {
     "release": "TLA+ Tools v1.7.4",
@@ -527,8 +527,8 @@
   },
   "verified_bundle": {
     "command_sequence": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services.sh --check",
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services.sh --check",
       "paired native run with CATTEN_SKIP_EMBED_BUILD=1"
     ],
     "staged_file_count": 41,
@@ -710,7 +710,7 @@
   "final_checks": {
     "workspace_fmt": "cargo fmt --all -- --check: passed",
     "diff_whitespace": "git diff --check: passed",
-    "shell_syntax": "bash -n docs/tla/check.sh scripts/build-catten-services.sh scripts/run-aarch64.sh: passed",
+    "shell_syntax": "bash -n docs/tla/check.sh scripts/build-knytos-services.sh scripts/run-aarch64.sh: passed",
     "source_model_document_and_staged_bundle_hashes_rechecked": true,
     "local_documentation_targets_checked": 638,
     "upstream_checkout_still_clean": true

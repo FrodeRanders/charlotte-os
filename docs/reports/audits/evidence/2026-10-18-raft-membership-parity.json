@@ -202,7 +202,7 @@
     "crates/catten-graft/src/membership.rs": "0157bd75f9051072d97dd99169e0a7c5f2d2376ce9432828077d467927f8b540",
     "crates/catten-graft/src/transport.rs": "354b62c5d62ec429c2a9ee14ea241a62c360ad99b36c6c76e3f51868f226b99e",
     "crates/catten-graft/src/charlotte.rs": "e46e4e2a7aa41dc62143ad91bd4a9ffe9df6c855361296ffd6282e845d5b00f4",
-    "crates/catten-services/src/relmsg_transport.rs": "771136f16d833b5449977de6837b354695f01652e6e26ec7c27a89e6119c6178"
+    "crates/knytos-services/src/relmsg_transport.rs": "771136f16d833b5449977de6837b354695f01652e6e26ec7c27a89e6119c6178"
   },
   "upstream_comparison": {
     "upstream_revision": "1a818d416a40330bea2055e03f61580679baa9f6",
@@ -1432,7 +1432,7 @@
       ]
     },
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-services/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 145,
       "failed": 0,
@@ -1478,13 +1478,13 @@
       "log_sha256": "9904357a402326d96b5eeb94097ca4e987c5d13faf5675a18dc16dc5f43f05b1"
     },
     "bundle_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "ecf548e43266acb0ca9be10f98060b259c6de6b12e104a9fd8e6d911e7d06326"
     },
     "format": "cargo fmt --all -- --check passes",
     "bundle_check": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "8728f9520552fac04d37920a6ff1cb2d3b68dbb013bbac3e5d7e0eef893f6fc7",
       "result": "Staged AArch64 service bundle signatures verified."

@@ -101,7 +101,7 @@ separate validation work.
 | Check | Result |
 | --- | --- |
 | `scripts/run-host-tests.sh` | Passed, including 23 slot tests, scratch ownership, runtime/services/protocol, signing and boot-result suites. |
-| `scripts/build-catten-services.sh --embed` | Passed; staged/signed AArch64 service bundle. |
+| `scripts/build-knytos-services.sh --embed` | Passed; staged/signed AArch64 service bundle. |
 | x86/AArch64 kernel Clippy | Both custom targets, `--locked`, `-D warnings`: passed after the DMA guard and fixtures. |
 | Formatting/whitespace | `cargo fmt --all -- --check` and `git diff --check`: passed. |
 | Final four-LP x86 guest | **15 passed, 0 failed, 0 pending**, including DMA-pinned loan fixtures and deferred device retirement. |

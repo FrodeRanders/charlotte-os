@@ -21,7 +21,7 @@
       "aes-gcm": [
         "zeroize"
       ],
-      "catten-services": [
+      "knytos-services": [
         "aes-gcm",
         "ghash",
         "polyval"
@@ -43,14 +43,14 @@
           "--offline",
           "--locked",
           "-p",
-          "catten-services",
+          "knytos-services",
           "-e",
           "features",
           "-i",
           "aes-gcm"
         ],
         "exit_status": 0,
-        "graph": "aes-gcm v0.10.3\n\u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502   \u251c\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n\u2502   \u2502   \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n"
+        "graph": "aes-gcm v0.10.3\n\u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n\u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n"
       },
       "ghash": {
         "command": [
@@ -61,14 +61,14 @@
           "--offline",
           "--locked",
           "-p",
-          "catten-services",
+          "knytos-services",
           "-e",
           "features",
           "-i",
           "ghash"
         ],
         "exit_status": 0,
-        "graph": "ghash v0.5.1\n\u2514\u2500\u2500 aes-gcm v0.10.3\n    \u251c\u2500\u2500 aes-gcm feature \"aes\"\n    \u2502   \u251c\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n    \u2502   \u2502   \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n    \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n    \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n    \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n    \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n    \u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n    \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n    \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n        \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2514\u2500\u2500 ghash feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n"
+        "graph": "ghash v0.5.1\n\u2514\u2500\u2500 aes-gcm v0.10.3\n    \u251c\u2500\u2500 aes-gcm feature \"aes\"\n    \u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n    \u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n    \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n    \u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n    \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n    \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n        \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2514\u2500\u2500 ghash feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n"
       },
       "polyval": {
         "command": [
@@ -79,14 +79,14 @@
           "--offline",
           "--locked",
           "-p",
-          "catten-services",
+          "knytos-services",
           "-e",
           "features",
           "-i",
           "polyval"
         ],
         "exit_status": 0,
-        "graph": "polyval v0.6.2\n\u251c\u2500\u2500 polyval feature \"default\"\n\u2502   \u2514\u2500\u2500 ghash v0.5.1\n\u2502       \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502           \u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2502   \u251c\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n\u2502           \u2502   \u2502   \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n\u2502           \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2502           \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n\u2502               \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u2514\u2500\u2500 ghash feature \"zeroize\"\n\u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2514\u2500\u2500 polyval feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n"
+        "graph": "polyval v0.6.2\n\u251c\u2500\u2500 polyval feature \"default\"\n\u2502   \u2514\u2500\u2500 ghash v0.5.1\n\u2502       \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502           \u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n\u2502           \u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502           \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2502           \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n\u2502               \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u2514\u2500\u2500 ghash feature \"zeroize\"\n\u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2514\u2500\u2500 polyval feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n"
       }
     },
     "source_sha256": {
@@ -173,7 +173,7 @@
   },
   "host_validation": {
     "debug": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline -p catten-services --lib",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline -p knytos-services --lib",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
@@ -202,7 +202,7 @@
       "counting": "150 service-library cases plus 110 Kafka/S3/transport runtime cases. Last two transport result lines are 3 Kafka and 6 S3 compile-fail doctests."
     },
     "release": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p catten-services --lib --quiet",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-services --lib --quiet",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
@@ -239,7 +239,7 @@
   },
   "checks": {
     "clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
       "exit_status": 0
     },
     "format": {
@@ -251,16 +251,16 @@
       "exit_status": 0
     },
     "arm_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0
     },
     "arm_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "diagnostic": ">>> Staged AArch64 service bundle signatures verified."
     },
     "x86_build": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0
     },
     "native_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)"
@@ -506,8 +506,8 @@
   },
   "reviewed_source_sha256": {
     "Cargo.lock": "f2c731aebc1171ec6c68dd763be14ca669acd12faa7e86984716e06aac266499",
-    "crates/catten-services/Cargo.toml": "a468a021accd393f02cf0ee9512345eb0b46ececb3310900fad507d3352271a7",
-    "crates/catten-services/src/tls_client.rs": "4469540fbfd833543fdefb208234404bd79a8d1db4d580800bd1ad639b5744bf",
+    "crates/knytos-services/Cargo.toml": "a468a021accd393f02cf0ee9512345eb0b46ececb3310900fad507d3352271a7",
+    "crates/knytos-services/src/tls_client.rs": "4469540fbfd833543fdefb208234404bd79a8d1db4d580800bd1ad639b5744bf",
     "docs/guides/testing.md": "84dea502d3d422f92a76a0dca0290f4421dc49780e648777497268bea73d8f52",
     "docs/manual-v2/chapters/13-networking.tex": "2ce14bdfcdc02061997163ee0168536783fe00dcd1ede86b5be238d38c75c5cf",
     "docs/reference/cleanup-recovery.md": "a089e9bba6c934f35dc1fffc7adc438eee0b5be44ba71f8e6cd528a78e0e6e24",

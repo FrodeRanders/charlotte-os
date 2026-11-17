@@ -2,7 +2,7 @@
 # Build, stage, and sign the x86_64 EL0 service bundle embedded by the kernel.
 #
 # Usage:
-#   scripts/build-catten-services-x86_64.sh [--clean] [--mode minimal|test]
+#   scripts/build-knytos-services-x86_64.sh [--clean] [--mode minimal|test]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,16 +21,16 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-MANIFEST="crates/catten-services/Cargo.toml"
-TARGET="crates/catten-services/x86_64-unknown-none.json"
-OUTPUT="crates/catten-services/target/x86_64-unknown-none/release"
+MANIFEST="crates/knytos-services/Cargo.toml"
+TARGET="crates/knytos-services/x86_64-unknown-none.json"
+OUTPUT="crates/knytos-services/target/x86_64-unknown-none/release"
 catten_service_bundle x86_64 "$BUNDLE_MODE" "$ROOT"
 BUNDLE_PARENT="$(dirname "$BUNDLE")"
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning x86_64 service target artifacts..."
     cargo clean --manifest-path "$MANIFEST" --target "$TARGET" \
-        --target-dir crates/catten-services/target
+        --target-dir crates/knytos-services/target
     rm -rf "$BUNDLE"
 fi
 
@@ -41,7 +41,7 @@ done
 
 echo ">>> Building x86_64 EL0 services..."
 cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
-    --target-dir crates/catten-services/target \
+    --target-dir crates/knytos-services/target \
     --release -Z build-std=core,alloc "${SERVICE_FEATURE_ARGS[@]}" "${build_bins[@]}"
 
 mkdir -p "$BUNDLE_PARENT"

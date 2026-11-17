@@ -244,17 +244,17 @@
   },
   "builds": {
     "arm_services": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "697e329ce759e3c8cf376a1ca118d730cd477cbe5ba7c49cd38a11b718343a69"
     },
     "x86_services": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0,
       "log_sha256": "e805a79c870120658ca0ea611d3ac01d41ebf2be3939b018e7e505f208a26d92"
     },
     "arm_source_signature_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "85c8dbac64ed6a362d668bf3988686e26e947620bb15cfdbe2e999a0ff8261b2"
     }
@@ -956,8 +956,8 @@
   "validation_harness_sha256": {
     "scripts/run-secure-boot-test.py": "31c4379313b4c89b39ee2f62a2e7f339b3e4190274becc6ed80195df0aac01be",
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "scripts/check-kernel-asm-sections.py": "21943e564c4be97a474f53e97c1db79e43f8507ee92a1f7a3b9f5027a0a85ac4"
   },
   "final_checks": {

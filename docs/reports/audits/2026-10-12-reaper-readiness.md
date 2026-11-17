@@ -97,8 +97,8 @@ allocator/destructor context.
 ## Validation and artifacts
 
 Both service bundles were rebuilt before guest execution with
-`scripts/build-catten-services.sh --embed` and
-`scripts/build-catten-services-x86_64.sh`. `scripts/run-host-tests.sh` passed:
+`scripts/build-knytos-services.sh --embed` and
+`scripts/build-knytos-services-x86_64.sh`. `scripts/run-host-tests.sh` passed:
 **384 passed, 0 failed, 3 ignored**. Formatting and diff checks passed.
 Strict `-D warnings` Clippy passed for bundled services, ARM
 security/HTTP/DHCP kernel and x86 HTTP/DHCP kernel. No failed guest run occurred

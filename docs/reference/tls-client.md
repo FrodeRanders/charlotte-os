@@ -189,7 +189,7 @@ constant-time execution or complete physical-memory erasure.
 ## Compile-time capacities
 
 The related constants are grouped at the top of
-[`tls_client.rs`](../../crates/catten-services/src/tls_client.rs):
+[`tls_client.rs`](../../crates/knytos-services/src/tls_client.rs):
 
 | Setting | Default bytes | Consequences of adjustment |
 | --- | --- | --- |
@@ -199,7 +199,7 @@ The related constants are grouped at the top of
 The separate entropy request budget travels in startup's `EntropyConfig` and
 can be supplied through that Rust API. Bundled S3/Kafka and TCP/IP currently
 select the one `EntropyLimits::DEFAULT` in
-[`entropy_client.rs`](../../crates/catten-services/src/tls_client/entropy_client.rs).
+[`entropy_client.rs`](../../crates/knytos-services/src/tls_client/entropy_client.rs).
 Changing that default rebuilds services; no launch-profile/config-page field,
 boot-module parser or live update is added. A longer budget also retains the
 source checkout, pending metadata, output borrow and possible reply/mapping

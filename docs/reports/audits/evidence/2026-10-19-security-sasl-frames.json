@@ -116,17 +116,17 @@
   },
   "builds": {
     "arm_services": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "246aad25607bb5bc8a227e792c16296d28a3b806bb7cec9d640b518b6a2205b4"
     },
     "x86_services": {
-      "command": "scripts/build-catten-services-x86_64.sh",
+      "command": "scripts/build-knytos-services-x86_64.sh",
       "exit_status": 0,
       "log_sha256": "0458154ea5ef5cea2b1672c43eb5f028c712ee5e293a73c870116031c7271085"
     },
     "arm_source_signature_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "348840005cb1fb69117075188fb15b87cb0044c24274b8ed15edb97da977ef8f"
     }
@@ -486,7 +486,7 @@
     "Production remains disabled; protected enrollment/state/recipient custody remains separate SEC-04 work."
   ],
   "reviewed_source_sha256": {
-    "crates/catten-services/src/bin/kafka.rs": "c2497efc2709b67de8db489c06e610fe76de91938a2a229c834da6ea52e06cae",
+    "crates/knytos-services/src/bin/kafka.rs": "c2497efc2709b67de8db489c06e610fe76de91938a2a229c834da6ea52e06cae",
     "crates/charlotte-kafka/src/lib.rs": "ddcb88ee312f3a761584a6897f1f85811254977e967aec60ce433262b2838102",
     "crates/charlotte-kafka/tests/sasl_ownership.rs": "682756e88f0ec78fbc184487058ae90442a98979fce6644ae295fbe989b3c216",
     "docs/reference/api-simplification.md": "b03d83efabb1e774fcc198cb122347064113d0f71c98d96ed2d2052caec12167",

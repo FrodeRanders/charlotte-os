@@ -413,9 +413,9 @@ image whose contents may be replaced.
 
 1. Create `charlotte-protocol-block` crate with the interface constants,
    opcodes, error codes, and helper functions.
-2. Add `block` module to `catten-services/src/lib.rs` with protocol
+2. Add `block` module to `knytos-services/src/lib.rs` with protocol
    constants.
-3. Create NVMe driver binary `catten-services/src/bin/nvme.rs` as a
+3. Create NVMe driver binary `knytos-services/src/bin/nvme.rs` as a
    skeleton that registers with the name service and enters the unified
    shard wait — no NVMe hardware interaction yet.
 4. Add the NVMe PCI device class matching and topology lookup to the

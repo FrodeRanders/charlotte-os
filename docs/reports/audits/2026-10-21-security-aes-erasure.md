@@ -18,7 +18,7 @@ compile out their round-key wiping statements. A destructor's presence alone
 does not establish erasure. This is a source-confirmed missing defense, without
 a demonstrated cross-domain secret read or a new retained-storage measurement.
 
-`catten-services` now directly requires AES with `zeroize` enabled. The locked
+`knytos-services` now directly requires AES with `zeroize` enabled. The locked
 package versions and checksums stay unchanged; the lockfile adds two dependency
 edges. Feature unification supplies that same AES package to embedded-tls.
 Production constant trait checks require `ZeroizeOnDrop` for `Aes128`,

@@ -1,5 +1,5 @@
 [package]
-name = "catten-services"
+name = "knytos-services"
 version = "0.1.0"
 edition = "2024"
 description = "Reference EL0 service programs: name service, echo service, client"

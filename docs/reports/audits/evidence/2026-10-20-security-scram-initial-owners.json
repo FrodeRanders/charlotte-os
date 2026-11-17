@@ -496,7 +496,7 @@
       "diagnostics": [
         ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
       ],
-      "command": "scripts/build-catten-services.sh --embed"
+      "command": "scripts/build-knytos-services.sh --embed"
     },
     "arm_freshness": {
       "exit_status": 0,
@@ -504,7 +504,7 @@
       "diagnostics": [
         ">>> Staged AArch64 service bundle signatures verified."
       ],
-      "command": "scripts/build-catten-services.sh --check"
+      "command": "scripts/build-knytos-services.sh --check"
     },
     "x86_services": {
       "exit_status": 0,
@@ -512,7 +512,7 @@
       "diagnostics": [
         ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/x86_64-unknown-none."
       ],
-      "command": "scripts/build-catten-services-x86_64.sh"
+      "command": "scripts/build-knytos-services-x86_64.sh"
     }
   },
   "bundles": {
@@ -926,12 +926,12 @@
     "crates/charlotte-kafka/Cargo.toml": "5ccff11eb5bbf83468ef57063d7cc7d76c47c0046684f623dd7330ecee92d102",
     "crates/charlotte-kafka/src/lib.rs": "67ba75ec1ec790d12783da70c5b943aec55d0207c1db1109653844a19590e82f",
     "crates/charlotte-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9",
-    "crates/catten-services/src/bin/kafka.rs": "cdd8bec341ab969c4d1ebd202182a01be991f47ed611c49b90f257e6bc7583cd",
+    "crates/knytos-services/src/bin/kafka.rs": "cdd8bec341ab969c4d1ebd202182a01be991f47ed611c49b90f257e6bc7583cd",
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "docker/kafka-test/compose.yaml": "4f33ab72c1a548d2f72d0a9a95e186e9b71d41c0c25fc8690e4537e4e47c3d12",
-    "crates/catten-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17"
+    "crates/knytos-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17"
   },
   "final_checks": {
     "json_parse": "pass",

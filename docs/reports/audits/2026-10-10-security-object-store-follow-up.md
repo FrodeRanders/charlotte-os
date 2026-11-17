@@ -121,8 +121,8 @@ Commands used for the final executions:
 
 ```sh
 scripts/run-host-tests.sh
-scripts/build-catten-services.sh --embed
-scripts/build-catten-services-x86_64.sh
+scripts/build-knytos-services.sh --embed
+scripts/build-knytos-services-x86_64.sh
 
 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18974 CATTEN_DEPLOY_HOST_PORT=18274 \
   scripts/run-aarch64.sh --security-test --instance security-followup-complete-20261010 \
@@ -160,9 +160,9 @@ Corrected-source SHA-256 values:
 
 | File | SHA-256 |
 | --- | --- |
-| `crates/catten-services/src/bin/objstore.rs` | `a55a2ce7afdc40795378cefb681dfa2ffcda0d17f8aa526eb05d08fe73abe21c` |
-| `crates/catten-services/src/bin/objstore_client.rs` | `275a8d8e72557571a49ac8a588f5206164e85d14d5a0cbb0cd987f06079d546a` |
-| `crates/catten-services/src/lib.rs` | `7c459aba4cf814621ffe1eebcf5e955a2853d2e94bf2f3a97fb7c580b119098b` |
+| `../../../crates/knytos-services` | `a55a2ce7afdc40795378cefb681dfa2ffcda0d17f8aa526eb05d08fe73abe21c` |
+| `../../../crates/knytos-services` | `275a8d8e72557571a49ac8a588f5206164e85d14d5a0cbb0cd987f06079d546a` |
+| `../../../crates/knytos-services` | `7c459aba4cf814621ffe1eebcf5e955a2853d2e94bf2f3a97fb7c580b119098b` |
 | `crates/catten/src/cpu/multiprocessor/spin/mutex.rs` | `605bd7e64889a559319c156e4e4e8af890482a92186d0b26cc4ebde2508c64d6` |
 | `crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs` | `9e9984fb1e93c872fc799f6ce103230c30616a12b5f0adb9aa610e92bed26c96` |
 | `crates/catten/src/self_test/el0_nvme.rs` | `4d6560ea0c544c599ab4897df5974a3632c15b59744ed71b4676c79b2510a564` |

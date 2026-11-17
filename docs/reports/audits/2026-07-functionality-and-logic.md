@@ -268,7 +268,7 @@ failure. Protocol tests exercise malformed headers and oversized lengths.
 
 The reliable-message service parses an untrusted 16-bit `payload_len` and then
 copies that many bytes from offset 16 of a one-page mapping into another
-one-page mapping (`crates/catten-services/src/bin/relmsg.rs:121-190`). It does not
+one-page mapping (`../../../crates/knytos-services`). It does not
 validate `payload_len <= 4096 - 16`, does not know the actual inbound object
 length, and ignores mapping failures. A payload length up to 65,535 can walk
 well beyond both mappings. The same unbounded length is later used by
@@ -517,7 +517,7 @@ explicit emergency bypass whose possible interleaving is documented.
 
 **Resolution (2026-07-19):** the five service-lifecycle fixtures embedded by
 the kernel (`ns`, `echo`, `client`, `uart`, and `cclient`) are now rebuilt and
-refreshed as one bundle. A new `scripts/build-catten-services.sh --embed`
+refreshed as one bundle. A new `scripts/build-knytos-services.sh --embed`
 command provides a single reproducible path for doing so.
 
 **Follow-up (2026-07-28):** generated ELFs are no longer checked into the

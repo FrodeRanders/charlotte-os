@@ -8,7 +8,7 @@ not close kernel cleanup gates or qualify every connector operation.
 ## Result and scope
 
 - `charlotte-app` has no dependency on platform service implementations.
-  `catten-services` reexports its single grant/socket/Kafka/S3 client
+  `knytos-services` reexports its single grant/socket/Kafka/S3 client
   implementations. Grant wire data lives in `charlotte-protocol-grant`.
 - Runtime helpers retain existing owners: bounded queue-pressure admission,
   deadline/wait-rejection observations, bounded payload preparation and exact
@@ -42,7 +42,7 @@ These host seams do not qualify native capability revocation or CQ delivery.
 `cargo fmt --all -- --check` and Clippy with all features/targets and denied
 warnings passed for `catten-rt`, `charlotte-app` and `charlotte-app-sitas`.
 The bundled AArch64 services built and signed through
-`scripts/build-catten-services.sh`. The reconnecting-client and echo-service
+`scripts/build-knytos-services.sh`. The reconnecting-client and echo-service
 examples compiled for AArch64 and x86_64. The echo helper itself was compiled,
 not independently deployed in this checkpoint.
 

@@ -468,7 +468,7 @@
       "diagnostics": [
         ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
       ],
-      "command": "scripts/build-catten-services.sh --embed"
+      "command": "scripts/build-knytos-services.sh --embed"
     },
     "arm_freshness": {
       "exit_status": 0,
@@ -476,7 +476,7 @@
       "diagnostics": [
         ">>> Staged AArch64 service bundle signatures verified."
       ],
-      "command": "scripts/build-catten-services.sh --check"
+      "command": "scripts/build-knytos-services.sh --check"
     },
     "x86_services": {
       "exit_status": 0,
@@ -484,7 +484,7 @@
       "diagnostics": [
         ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/x86_64-unknown-none."
       ],
-      "command": "scripts/build-catten-services-x86_64.sh"
+      "command": "scripts/build-knytos-services-x86_64.sh"
     }
   },
   "bundles": {
@@ -872,7 +872,7 @@
   ],
   "reviewed_source_sha256": {
     "Cargo.lock": "6178667dfd8cbf773f3909e7b1e4ad9383a5b392421de0bd371ad02ef70a44c6",
-    "crates/catten-services/src/bin/s3.rs": "5a7a97e1cebe2c2af8839e28e0b85cd13b3b35c63f29cd275061595eee20e7ab",
+    "crates/knytos-services/src/bin/s3.rs": "5a7a97e1cebe2c2af8839e28e0b85cd13b3b35c63f29cd275061595eee20e7ab",
     "crates/catten/src/service/launch.rs": "f276f3f6847a8c017706ce6dda6724c25a69ed4a813d68e3074b66fddbfd6a9b",
     "crates/charlotte-protocol-s3/Cargo.toml": "ff77e9d3aa5134b0c586d1d7247d9908f7e275e1ebb9fbcab51f8f4dbc73bc26",
     "crates/charlotte-protocol-s3/src/lib.rs": "f33c2475e8847fc1a408262adb76b5295c2bcc2987726c0d62a1b624bede1526",
@@ -895,14 +895,14 @@
   },
   "unchanged_inputs_sha256": {
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "docker/rustfs-s3-test/compose.yaml": "b1e6cad61cf875ca1718c90c66d84769cdf3ac4a28b2c94db5dfe5164b105d42",
     "crates/charlotte-s3/Cargo.toml": "8320bf96e78a2d338c56f8adc7ce19bbfa20831dc3e196073a110b9650bac6bd",
     "crates/charlotte-s3/src/http.rs": "3f01c29deee11b6a2724ccce3e4ef183b2e186cc2ead296b053ff0086c004eda",
     "crates/charlotte-s3/src/sigv4.rs": "bae9009743e6a78e5306fab708c7bc180add067592bb2c62ed2a3c277bb07441",
     "crates/charlotte-s3/src/request.rs": "cee65dbcfb9659dc4875acd53a9bfce109c38e5903c7d7d6567ec4a3d5793cf0",
-    "crates/catten-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17",
+    "crates/knytos-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17",
     "tests/transport/support.rs": "744cafafdae8cbc4883483fc24e12e5188038d90afa1f57af24dbf2adb518e0d"
   },
   "final_checks": {

@@ -169,14 +169,14 @@ retained on `dev` are:
 | `scheduler/mod.rs` | Scheduler yield and lifecycle handling |
 | `syscall/mod.rs` | Timer submission and completion ABI |
 | `catten-graft/src/node.rs` | `step_down()`, `become_leader()` (no-op entry), `handle_vote_request`, `handle_append_entries` |
-| `catten-services/src/bin/raft.rs` | Cap-0 fix (remove `!= 0` guard) |
+| `knytos-services/src/bin/raft.rs` | Cap-0 fix (remove `!= 0` guard) |
 | `main.rs` | Remove infinite yield loop from `probe_device_topology` |
 | `self_test/el0.rs` | Idempotent verifier teardown of the completed payload |
 | `self_test/el0_demo.rs` | Idempotent verifier teardown of the completed coordinator |
 | `debug_trace.rs` | Lock-free in-memory trace buffer (development tool, no-op stub on dev) |
 | `docs/reference/scheduler-state-machines.md` | Formal state machine reference |
 | `scripts/run-aarch64.sh` | Always rebuild EL0 services before kernel build |
-| `scripts/build-catten-services.sh` | `--clean` flag |
+| `scripts/build-knytos-services.sh` | `--clean` flag |
 
 ## Follow-up: quantum ownership and migration boundary (2026-07-22)
 

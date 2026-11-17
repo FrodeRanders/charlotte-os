@@ -19,14 +19,14 @@ worktree. SEC-36, SEC-37 and SEC-38 are not addressed here and remain open.
 ## SEC-31: reassembly admission before state and allocation
 
 The reassembly struct, the admission predicate and the assembler now live in
-the host-tested [`relmsg_reassembly`](../../../crates/catten-services/src/lib.rs#L1422)
-module. [`fragment_within_ceiling`](../../../crates/catten-services/src/lib.rs#L1451)
+the host-tested [`relmsg_reassembly`](../../../crates/knytos-services/src/lib.rs#L1422)
+module. [`fragment_within_ceiling`](../../../crates/knytos-services/src/lib.rs#L1451)
 requires `total <= MAX_MSG` and `offset + payload_len <= total`, and
-[`assemble`](../../../crates/catten-services/src/lib.rs#L1463) rejects any
+[`assemble`](../../../crates/knytos-services/src/lib.rs#L1463) rejects any
 total above the ceiling before reserving its output with `try_reserve_exact`.
 
 The service
-([relmsg.rs:364](../../../crates/catten-services/src/bin/relmsg.rs#L359))
+([relmsg.rs:364](../../../crates/knytos-services/src/bin/relmsg.rs#L359))
 computes the predicate first; only an admitted fragment creates or updates
 reassembly state, and the assembler is reached only under that gate. An
 over-ceiling fragment is ignored without touching existing state, so a
@@ -120,7 +120,7 @@ query. The live-upgrade and scoped-launch guest paths continue to pass.
 
 ## Validation
 
-- `scripts/build-catten-services.sh --embed`: passed; the AArch64 bundle was
+- `scripts/build-knytos-services.sh --embed`: passed; the AArch64 bundle was
   staged and signed with the fixed `relmsg`, `tcpip`, `agent` and
   `catten-syscall` code.
 - `scripts/run-host-tests.sh`: passed, **340 tests, zero failures** (was 336;

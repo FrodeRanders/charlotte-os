@@ -137,7 +137,7 @@ def main():
             save()
         for architecture in args.architectures:
             if not args.reuse_bundle:
-                builder = [ROOT / "scripts/build-catten-services.sh", "--embed"] if architecture == "aarch64" else [ROOT / "scripts/build-catten-services-x86_64.sh"]
+                builder = [ROOT / "scripts/build-knytos-services.sh", "--embed"] if architecture == "aarch64" else [ROOT / "scripts/build-knytos-services-x86_64.sh"]
                 if command(builder, output / (architecture + "-bundle.log"), timeout=args.build_timeout) != 0:
                     raise RuntimeError("service bundle build failed")
             for case in args.cases:

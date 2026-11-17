@@ -25,7 +25,7 @@ DMA and quiescence obligations.
 | [`charlotte-protocol-grant`](../../crates/charlotte-protocol-grant) and other protocol crates | Wire data and codecs; no live capability ownership. |
 | [`charlotte-app`](../../crates/charlotte-app) | Borrowed application context, returning entry wrapper, synchronous serving scope and scalar test seam. Optional socket, Kafka and S3 clients are extracted implementations, independent of platform service code. |
 | [`charlotte-app-sitas`](../../crates/charlotte-app-sitas) | Bounded task registration and owned call futures on the existing Sitas reactor/executor. |
-| [`catten-services`](../../crates/catten-services) | Platform services, catalog policy, broker-facing transports, hardware adapters and reexports of the shared application clients. |
+| [`knytos-services`](../../crates/knytos-services) | Platform services, catalog policy, broker-facing transports, hardware adapters and reexports of the shared application clients. |
 | [SDK exporter](../../scripts/export-app-sdk.sh) and [CLI](../../scripts/app-sdk.py) | Exact input snapshot, target/build tools, starter workspace, host business tests and explicit artifact signing. |
 
 ```mermaid
@@ -39,7 +39,7 @@ flowchart TD
     Async --> Sitas[Existing Sitas executor and backend]
 ```
 
-No application/client implementation depends back on `catten-services`.
+No application/client implementation depends back on `knytos-services`.
 Extraction removes its unconditional network/catalog/TLS implementation
 package from an application's dependency graph. Binary size, build latency and
 runtime overhead still need measurement; shorter source and dependency

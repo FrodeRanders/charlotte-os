@@ -87,20 +87,20 @@ jobs:
           mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
-          scripts/build-catten-services.sh --embed
+          scripts/build-knytos-services.sh --embed
           scripts/build-catten-user.sh --embed
           export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
           cargo clippy --locked --workspace \
-            --exclude catten-services --exclude catten-user --exclude cluster-sign \
+            --exclude knytos-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/aarch64-unknown-none-catten.json \
             -- -D warnings
           cargo clippy --locked -p catten \
             --target target_specs/aarch64-unknown-none-catten.json \
             --no-default-features --features acpi -- -D warnings
-          scripts/build-catten-services-x86_64.sh
+          scripts/build-knytos-services-x86_64.sh
           export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           cargo clippy --locked --workspace \
-            --exclude catten-services --exclude catten-user --exclude cluster-sign \
+            --exclude knytos-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/x86_64-unknown-none-catten.json \
             --no-default-features --features acpi \
             -- -D warnings
@@ -108,8 +108,8 @@ jobs:
             --target target_specs/x86_64-unknown-none-catten.json \
             --no-default-features --features acpi,kernel_tests -- -D warnings
           cargo clippy --locked \
-            --manifest-path crates/catten-services/Cargo.toml \
-            --target crates/catten-services/aarch64-unknown-none.json \
+            --manifest-path crates/knytos-services/Cargo.toml \
+            --target crates/knytos-services/aarch64-unknown-none.json \
             --release -Z build-std=core,alloc \
             -- -D warnings
           cd /tmp
@@ -189,7 +189,7 @@ jobs:
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
-          scripts/build-catten-services.sh
+          scripts/build-knytos-services.sh
 
   build:
     name: Build (${{ matrix.target }})
@@ -222,12 +222,12 @@ jobs:
             features=acpi
             if [ "$mode" = test ]; then features=acpi,kernel_tests; fi
             if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
-              scripts/build-catten-services.sh --embed --mode "$mode"
+              scripts/build-knytos-services.sh --embed --mode "$mode"
               if [ "$mode" = test ]; then scripts/build-catten-user.sh --embed; fi
               catten_service_bundle aarch64 "$mode" "$GITHUB_WORKSPACE"
               export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
             else
-              scripts/build-catten-services-x86_64.sh --mode "$mode"
+              scripts/build-knytos-services-x86_64.sh --mode "$mode"
               catten_service_bundle x86_64 "$mode" "$GITHUB_WORKSPACE"
               export CATTEN_X86_64_SERVICE_BUNDLE="$BUNDLE"
             fi

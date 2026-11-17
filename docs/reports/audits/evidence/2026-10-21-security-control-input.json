@@ -286,7 +286,7 @@
       "diagnostics": [
         ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
       ],
-      "command": "scripts/build-catten-services.sh --embed"
+      "command": "scripts/build-knytos-services.sh --embed"
     },
     "arm_freshness": {
       "exit_status": 0,
@@ -294,7 +294,7 @@
       "diagnostics": [
         ">>> Staged AArch64 service bundle signatures verified."
       ],
-      "command": "scripts/build-catten-services.sh --check"
+      "command": "scripts/build-knytos-services.sh --check"
     }
   },
   "bundles": {
@@ -626,7 +626,7 @@
     "crates/charlotte-launch/src/shutdown.rs": "ccdbbb2a1216fc52b3d87a38dca0493d28965bc7b30d7f59ac0db2e704925160",
     "crates/charlotte-launch/src/ingress_policy.rs": "b8a215ab3babd9998255812c792860910b9bbed22dfb0209b3ab2d56c5187fdd",
     "crates/charlotte-launch/src/ingress.rs": "e929ad9906786d2cee4b0cb0efb847b5ebf99c4dcb22f1985b894e430b66da25",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
     "scripts/sign-service-elfs.sh": "eda741bca1321a069831e1ca051478bd77bee5067507bd1e44f7a503bed0515f",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243"
   },

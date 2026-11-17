@@ -125,7 +125,7 @@ counterexamples**, with **168 model/config/harness hashes** retained in evidence
   zero failed**.
 - Warning-denied Clippy passes for all host Raft targets. Workspace formatting,
   Bash syntax and diff whitespace checks pass.
-- `scripts/build-catten-services.sh --embed` builds and signs the ARM bundle;
+- `scripts/build-knytos-services.sh --embed` builds and signs the ARM bundle;
   `--check` confirms its staged signatures match the final source.
 - The final two-node ARM DNS run exits zero on both nodes: **20 passed / zero
   failed / zero pending each**, bitmap `0xfffff`. Both report discovery success,

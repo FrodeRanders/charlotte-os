@@ -20,7 +20,7 @@ SIGN_TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT/rust-toolchain.t
 BUNDLE="${1:?usage: sign-service-elfs.sh <bundle-dir> [service-name ...]}"
 shift
 BUNDLE="$(cd "$BUNDLE" && pwd)"
-POLICY="$ROOT/crates/catten-services/artifact-policy.tsv"
+POLICY="$ROOT/crates/knytos-services/artifact-policy.tsv"
 
 KEY_FILE="$(catten_signing_key_file "$ROOT")"
 echo ">>> DEVELOPMENT signing: fixture-root images are not suitable for production."

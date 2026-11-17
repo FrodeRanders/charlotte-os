@@ -5,7 +5,7 @@
   "source_dirty": true,
   "source_sha256": {
     "crates/catten-graft/src/node.rs": "83f689d84c05413c475814b7823fb843e95d0f112283882f66832e0b51422f71",
-    "crates/catten-services/src/bin/raft.rs": "ff76f59a361a7b7133df82e0cca141f654c5b6d9e9f98c30029d22b0274d46df"
+    "crates/knytos-services/src/bin/raft.rs": "ff76f59a361a7b7133df82e0cca141f654c5b6d9e9f98c30029d22b0274d46df"
   },
   "fixtures": [
     {

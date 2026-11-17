@@ -176,34 +176,34 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
 ### 3.5 Storage (M/L)
 
 - **M — 32-bit truncations**: NVMe device size (`nsze as u32`,
-  `crates/catten-services/src/bin/nvme.rs:738`) and directory generation
-  (`u32`, `crates/catten-services/src/bin/objstore.rs:375`) wrap after 2^32,
+  `../../../crates/knytos-services`) and directory generation
+  (`u32`, `../../../crates/knytos-services`) wrap after 2^32,
   breaking geometry/generation-selection.
 - **M — `make-nvme-image.py` directory-slot collision** (`scripts/make-nvme-image.py:213-218`):
   slot derived from only 8 bits of the FNV hash, so distinct artifacts colliding
   in those bits silently overwrite a directory entry.
 - **L — block `OP_WRITE` documented as "Move" but implemented as "BorrowRead"**
-  (`docs/manual-v2/chapters/17-storage.tex:73-75,119` vs `crates/catten-services/src/bin/nvme.rs:910-959`).
+  (`docs/manual-v2/chapters/17-storage.tex:73-75,119` vs `../../../crates/knytos-services`).
 - **L — `charlotte-protocol-objstore` crate docstring is a version behind**
   ("v2", "512-entry directory", "one extent" vs v3, device-scaled, ≤16 extents).
 
 ### 3.6 Networking (M/L)
 
 - **M — `relmsg` trusts caller-supplied length without checking object size**
-  (`crates/catten-services/src/bin/relmsg.rs:534-571`): a 4 KiB moved object with
+  (`../../../crates/knytos-services`): a 4 KiB moved object with
   a 65535-byte length causes a 64 KiB out-of-bounds read.
 - **M — `tcpip`/`httpd` dereference a possibly-invalid mapping**
-  (`crates/catten-services/src/bin/tcpip.rs:354,484`; `httpd.rs:64,242,470-483`):
+  (`../../../crates/knytos-services`; `httpd.rs:64,242,470-483`):
   `memory_map_any` status is discarded, and httpd reads some entries from a
   hardcoded scratch address instead of the returned mapping.
 - **L — `dns` `OP_CATALOG` count field overstates the number of emitted entries**
-  (`crates/catten-services/src/bin/dns.rs:1958-1965`) for catalogs > ~4 KB.
+  (`../../../crates/knytos-services`) for catalogs > ~4 KB.
 - **L — per-peer Raft outbound queue unbounded + `Vec::remove(0)`**
-  (`crates/catten-services/src/relmsg_transport.rs:246-311`).
+  (`../../../crates/knytos-services`).
 
 ### 3.7 Consensus / authorization / deployment (H/M)
 
-- **H — unauthenticated DNS mutation endpoints** (`crates/catten-services/src/bin/dns.rs`).
+- **H — unauthenticated DNS mutation endpoints** (`../../../crates/knytos-services`).
   `OP_DEPLOY`/`OP_REGISTER`/`OP_UNREGISTER` accept any caller holding a
   connection, allowing a client to overwrite the replicated deployment manifest
   or hijack a name. This is *acknowledged*
@@ -211,12 +211,12 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   `19-cluster-vision.tex`) and deferred pending a separately delegated
   administrator capability — open security debt, **not fixed** this session.
 - **M — deployment/key/catalog reads bypass the Graft read barrier**
-  (`crates/catten-services/src/bin/dns.rs:1799-1822,1855-1864,1934-2002`): answered
+  (`../../../crates/knytos-services`): answered
   from locally applied state with no read barrier or leader forwarding. The
   earlier F8 finding was closed only for `OP_LOOKUP`/`OP_CALL`.
 - **M — Raft no-op sentinel is `data.is_empty()`** (`crates/catten-graft/src/types.rs:69-71`),
   so an empty client command is silently dropped.
-- **M — deploy agent hard-codes the `greet` name** (`crates/catten-services/src/bin/agent.rs:196-205`);
+- **M — deploy agent hard-codes the `greet` name** (`../../../crates/knytos-services`);
   the "agent verifies the assigned artifact" claim is greet-specific.
 - **L — live-upgrade design doc describes a dead code path**: the
   endpoint-takeover + multi-state rollback helper (`supervisor::spawn_upgrade`)

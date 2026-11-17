@@ -64,7 +64,7 @@ and
 \begin{verbatim}
 BUNDLES="$PWD/target/embedded-services"
 # AArch64 (headless, serial console only):
-scripts/build-catten-services.sh --embed
+scripts/build-knytos-services.sh --embed
 scripts/build-catten-user.sh --embed
 export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLES/aarch64-unknown-none"
 cargo build --package catten \
@@ -72,7 +72,7 @@ cargo build --package catten \
   --no-default-features --features acpi
 
 # x86-64:
-scripts/build-catten-services-x86_64.sh
+scripts/build-knytos-services-x86_64.sh
 export CATTEN_X86_64_SERVICE_BUNDLE="$BUNDLES/x86_64-unknown-none"
 cargo build --package catten \
   --target target_specs/x86_64-unknown-none-catten.json \
@@ -90,10 +90,10 @@ build-std. The helpers build, sign and stage the bundles consumed by the kernel:
 
 \begin{verbatim}
 # AArch64 EL0 service programs:
-scripts/build-catten-services.sh --embed
+scripts/build-knytos-services.sh --embed
 
 # x86-64 ring-3 service programs:
-scripts/build-catten-services-x86_64.sh
+scripts/build-knytos-services-x86_64.sh
 
 # Sitas user binary (requires external sitas crates):
 scripts/build-catten-user.sh --embed
@@ -362,7 +362,7 @@ For new contributors, the recommended reading order:
         bootstrap.
     \item \repodir|crates/catten/src/device_management|: device driver
         framework.
-    \item \repodir|crates/catten-services/src/bin|: reference EL0 services.
+    \item \repodir|crates/knytos-services/src/bin|: reference EL0 services.
     \item \repofile|crates/catten-rt/src/lib.rs|: userspace runtime.
 \end{enumerate}
 

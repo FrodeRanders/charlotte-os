@@ -5,8 +5,8 @@
   "scope": "Independent requested-byte/count backing admission for pending-call and reply-token node layouts. The complete existing node owns this reservation alongside its later-bound logical record charge through preparation, publication, claims, detached cleanup and actual deallocation. Connection/capability and endpoint payload layouts and nested buffers remain separate.",
   "source_sha256": {
     "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
-    "crates/catten-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
-    "crates/catten-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
+    "crates/knytos-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
+    "crates/knytos-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
     "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
     "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
     "crates/catten-syscall/src/metadata_pools/tests.rs": "3099f7bbcd50916d34a1106660c6acda1b417ffedf6a1ca2b712b83eaf298531",

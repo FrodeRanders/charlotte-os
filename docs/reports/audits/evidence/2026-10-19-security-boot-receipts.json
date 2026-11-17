@@ -91,11 +91,11 @@
   },
   "failed_runs": [
     {
-      "command": "scripts/build-catten-services-x86_64.sh --embed",
+      "command": "scripts/build-knytos-services-x86_64.sh --embed",
       "exit_status": 1,
       "log_sha256": "64f80cd18e0b8d726bc2700f1a5c09e1c4774791f5249e034f6f9ca6e227a81a",
       "diagnostics": [
-        "usage: scripts/build-catten-services-x86_64.sh [--clean]"
+        "usage: scripts/build-knytos-services-x86_64.sh [--clean]"
       ],
       "meaning": "Unsupported guide argument; rejected before building. Corrected guide/command omit --embed."
     },
@@ -1251,7 +1251,7 @@
   "final_checks": {
     "workspace_fmt": "cargo fmt --all -- --check: passed",
     "diff_whitespace": "git diff --check: passed",
-    "shell_syntax": "bash -n scripts/prepare-secure-boot-tools.sh scripts/build-catten-services-x86_64.sh scripts/build-catten-services.sh docs/tla/check.sh: passed",
+    "shell_syntax": "bash -n scripts/prepare-secure-boot-tools.sh scripts/build-knytos-services-x86_64.sh scripts/build-knytos-services.sh docs/tla/check.sh: passed",
     "python_syntax": "ast.parse of changed runner and parser tests: passed",
     "source_model_document_and_bundled_artifact_fingerprints_rechecked": true,
     "local_documentation_targets_checked": 404,

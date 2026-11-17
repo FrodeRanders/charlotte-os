@@ -5,19 +5,19 @@
   "source_sha256": {
     ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
     "Cargo.lock": "1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa",
-    "crates/catten-services/Cargo.toml": "f30579afbc8aa5e6deb60186b8a6ca7b320618384ba8e58bf31fa01cbec2b522",
-    "crates/catten-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc",
-    "crates/catten-services/src/bin/deployd.rs": "20afbb24477530361b7de034738ed3b83ce63ff28177e6fe63559f2a130cf90f",
-    "crates/catten-services/src/bin/httpd.rs": "26c7bb8ffe6879de8d65034f650e6ec48c0118acf0fdd89b4571d80edb482d05",
-    "crates/catten-services/src/bin/security_probe.rs": "a4fc7bcb3da24d77ba9843d0933d2f589bebff0561ec5e30d8586c1d06aa36d4",
-    "crates/catten-services/src/deployment_close.rs": "74f8dcff639592b9b6bb815fc6d1d47a00c6e980652f06d67efd86923fb877bb",
-    "crates/catten-services/src/deployment_control.rs": "139c218a3ea7dc4be5b63e9435ce683dfaf799b8fe0c6a3e860255491538500e",
-    "crates/catten-services/src/deployment_http.rs": "585dfdf05f8197191f764f5a0889ade4973557631388d49d4bec78a77c5f07a7",
-    "crates/catten-services/src/deployment_input.rs": "5329794c5569ff15cb8a6b899b3c23604aefd366bdd7487b640f644c75d8526d",
-    "crates/catten-services/src/deployment_output.rs": "d5777beba9eb638483e13b6d2df4cba51f79a6685715298c0fa30b069106788a",
-    "crates/catten-services/src/lib.rs": "01d4d3615b518add987e5059b3e41ae1fc49f813ff9967ba7f1830e2609e56d2",
-    "crates/catten-services/src/management_io.rs": "dc43c883ad0695a136565e055e529e6528c1145a785d42a8bdac7ffd99917e53",
-    "crates/catten-services/x86_64-unknown-none.json": "2b0725bd2ac5562f68b110a420e5f780df3e3f5f407abecb02ea7f86b82f7a59",
+    "crates/knytos-services/Cargo.toml": "f30579afbc8aa5e6deb60186b8a6ca7b320618384ba8e58bf31fa01cbec2b522",
+    "crates/knytos-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc",
+    "crates/knytos-services/src/bin/deployd.rs": "20afbb24477530361b7de034738ed3b83ce63ff28177e6fe63559f2a130cf90f",
+    "crates/knytos-services/src/bin/httpd.rs": "26c7bb8ffe6879de8d65034f650e6ec48c0118acf0fdd89b4571d80edb482d05",
+    "crates/knytos-services/src/bin/security_probe.rs": "a4fc7bcb3da24d77ba9843d0933d2f589bebff0561ec5e30d8586c1d06aa36d4",
+    "crates/knytos-services/src/deployment_close.rs": "74f8dcff639592b9b6bb815fc6d1d47a00c6e980652f06d67efd86923fb877bb",
+    "crates/knytos-services/src/deployment_control.rs": "139c218a3ea7dc4be5b63e9435ce683dfaf799b8fe0c6a3e860255491538500e",
+    "crates/knytos-services/src/deployment_http.rs": "585dfdf05f8197191f764f5a0889ade4973557631388d49d4bec78a77c5f07a7",
+    "crates/knytos-services/src/deployment_input.rs": "5329794c5569ff15cb8a6b899b3c23604aefd366bdd7487b640f644c75d8526d",
+    "crates/knytos-services/src/deployment_output.rs": "d5777beba9eb638483e13b6d2df4cba51f79a6685715298c0fa30b069106788a",
+    "crates/knytos-services/src/lib.rs": "01d4d3615b518add987e5059b3e41ae1fc49f813ff9967ba7f1830e2609e56d2",
+    "crates/knytos-services/src/management_io.rs": "dc43c883ad0695a136565e055e529e6528c1145a785d42a8bdac7ffd99917e53",
+    "crates/knytos-services/x86_64-unknown-none.json": "2b0725bd2ac5562f68b110a420e5f780df3e3f5f407abecb02ea7f86b82f7a59",
     "crates/catten/Cargo.toml": "a918f899d634066beab46dea971ebf9c2fadfdc89805bf00d340d35f6ff667e1",
     "crates/catten/build.rs": "f6df076f6bbe65eeaa56b18142a4abc4ad5f50d272a819f32cfb24ce0f9ff64d",
     "crates/catten/src/self_test/el0_dhcp.rs": "8ff330572336f3114e079e8dbb3c6696e3e3db0e05bbcc436126dc3f87c3996a",
@@ -76,7 +76,7 @@
       "-p",
       "charlotte-management-tls",
       "-p",
-      "catten-services",
+      "knytos-services",
       "-p",
       "cluster-sign",
       "--lib",
@@ -710,12 +710,12 @@
   "validation": {
     "service_clippy": {
       "aarch64": {
-        "target": "crates/catten-services/aarch64-unknown-none.json",
+        "target": "crates/knytos-services/aarch64-unknown-none.json",
         "mode": "release, all bins, -D warnings",
         "exit_status": 0
       },
       "x86_64": {
-        "target": "crates/catten-services/x86_64-unknown-none.json",
+        "target": "crates/knytos-services/x86_64-unknown-none.json",
         "mode": "release, all bins, -D warnings",
         "exit_status": 0
       }

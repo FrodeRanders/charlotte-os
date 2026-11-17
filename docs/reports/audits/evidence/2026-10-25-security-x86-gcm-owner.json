@@ -19,9 +19,9 @@
   },
   "source_sha256": {
     ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
-    "crates/catten-services/src/bin/security_probe.rs": "0bb15f24c4d1b93ac587c71fa26bcbaf8d0a8c44996b8e892e32ce8910a3570b",
-    "crates/catten-services/src/tls_client.rs": "f8895d56ef9bea49a36c9dcebcbf8682cd4a6f6712f071b368a47d2cb882e619",
-    "crates/catten-services/src/tls_client/gcm_contract.rs": "b6afac957b1776e29a062cc963e72b0b0c63d215e69fc3be3d4e170e99025060",
+    "crates/knytos-services/src/bin/security_probe.rs": "0bb15f24c4d1b93ac587c71fa26bcbaf8d0a8c44996b8e892e32ce8910a3570b",
+    "crates/knytos-services/src/tls_client.rs": "f8895d56ef9bea49a36c9dcebcbf8682cd4a6f6712f071b368a47d2cb882e619",
+    "crates/knytos-services/src/tls_client/gcm_contract.rs": "b6afac957b1776e29a062cc963e72b0b0c63d215e69fc3be3d4e170e99025060",
     "scripts/run-host-tests.sh": "9f3f6da58418bb12ef83c558c9c7cca6f7f0694d11974a9295ff09bfec11f642",
     "scripts/tests/test-tls-gcm-backend.py": "216d6e28e514f473804eb6d89beef974163d4b7db5179c6808235205d2837695"
   },
@@ -68,7 +68,7 @@
     "cached_dependency_sources_edited_or_vendored": false
   },
   "isolated_controls": {
-    "target": "crates/catten-services/x86_64-unknown-none.json",
+    "target": "crates/knytos-services/x86_64-unknown-none.json",
     "guard": "#![no_std]\n#[cfg(any(target_arch = \"aarch64\", all(target_arch = \"x86_64\", target_os = \"none\")))]\nconst _: () = {\n    assert!(core::mem::needs_drop::<polyval::Polyval>());\n    assert!(core::mem::needs_drop::<ghash::GHash>());\n};\n",
     "guard_sha256": "1c44b3e68dc3fb700b35dd44279a3442b592023900822fcfbbf517a70d35945b",
     "controls": [
@@ -84,7 +84,7 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
           "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
         ],
@@ -104,7 +104,7 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
           "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
         ],
@@ -128,7 +128,7 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
           "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
         ],
@@ -145,7 +145,7 @@
   "checks": {
     "targeted_host_suites": {
       "packages": [
-        "catten-services",
+        "knytos-services",
         "charlotte-kafka",
         "charlotte-s3"
       ],

@@ -10,7 +10,7 @@ build-catten-docs arch="x86_64" profile="debug" features="":
 
 # Build and sign the architecture-qualified bundle used by the boot runners.
 build-el0-services mode="test":
-    ./scripts/build-catten-services.sh --embed --mode "{{mode}}"
+    ./scripts/build-knytos-services.sh --embed --mode "{{mode}}"
 
 # Complete image workflows; debug/release is independent of test selection.
 boot-minimal arch="aarch64" profile="release":
@@ -74,4 +74,4 @@ check arch="aarch64":
 
 # Build and check raft service binary
 check-raft:
-    RUSTFLAGS="-D warnings" cargo check --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json
+    RUSTFLAGS="-D warnings" cargo check --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json

@@ -80,7 +80,7 @@ fn publication_has_no_intermediate_index() {
 
 class RngRingAccess(unittest.TestCase):
     def control(self, mutation=None, test_filter=None):
-        source = (ROOT / "crates/catten-services/src/bin/rng.rs").read_text()
+        source = (ROOT / "crates/knytos-services/src/bin/rng.rs").read_text()
         helpers = "\n".join(function(source, name) for name in
                             ("ring_write", "ring_write_u16", "ring_read_u16"))
         if mutation:

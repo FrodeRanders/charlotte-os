@@ -152,7 +152,7 @@ class BootProfiles(unittest.TestCase):
 
     def test_invalid_heartbeat_setting_rejects_before_building(self):
         for script in ("run-aarch64.sh", "run-x86_64.sh",
-                       "build-catten-services.sh", "build-catten-services-x86_64.sh"):
+                       "build-knytos-services.sh", "build-knytos-services-x86_64.sh"):
             for value in ("", "true", "2"):
                 with self.subTest(script=script, value=value):
                     result = subprocess.run(

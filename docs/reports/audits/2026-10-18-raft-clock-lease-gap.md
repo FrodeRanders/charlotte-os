@@ -110,7 +110,7 @@ No fresh full-suite run is claimed.
   zero failed**. The separate counterexample executable reproduces the gap.
 - Warning-denied host Raft Clippy, workspace formatting, shell syntax, local
   documentation targets and diff whitespace checks pass.
-- The ARM service bundle builds/signs with `scripts/build-catten-services.sh
+- The ARM service bundle builds/signs with `scripts/build-knytos-services.sh
   --embed`; `--check` verifies staged signatures against the final source.
 - Fresh-storage two-node ARM DNS integration: both runners exit zero with
   **20 passed / zero failed / zero pending**, bitmap `0xfffff`. Discovery,

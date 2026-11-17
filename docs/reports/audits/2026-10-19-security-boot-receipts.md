@@ -91,7 +91,7 @@ and mutable VM images are removed by the existing containing owner.
 
 The guide also passed an unsupported `--embed` argument to the x86 builder.
 That initial command exited with usage before building. The corrected command
-and guide use `scripts/build-catten-services-x86_64.sh` without that argument.
+and guide use `scripts/build-knytos-services-x86_64.sh` without that argument.
 
 The normal ARM development boot passes **17/0/0**, bitmap `0x1ffff`, including
 the migrated common handoff tests. It exercises development selection and local

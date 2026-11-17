@@ -11,7 +11,7 @@ import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "crates/catten-services/src/network_random.rs"
+SOURCE = ROOT / "crates/knytos-services/src/network_random.rs"
 
 
 class NetworkRandom(unittest.TestCase):

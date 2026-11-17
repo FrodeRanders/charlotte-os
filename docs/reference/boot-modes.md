@@ -120,8 +120,8 @@ diagnosis; it is not a regression suite.
 Build bundles separately with:
 
 ```sh
-scripts/build-catten-services.sh --embed --mode minimal
-scripts/build-catten-services-x86_64.sh --mode minimal
+scripts/build-knytos-services.sh --embed --mode minimal
+scripts/build-knytos-services-x86_64.sh --mode minimal
 # --mode test is the default for both builders.
 ```
 
@@ -134,7 +134,7 @@ CATTEN_SERVICE_HEARTBEATS=0 scripts/run-x86_64.sh --tests
 ```
 
 Both runners and standalone service builders accept this build-time setting;
-empty or other values reject. It selects the `catten-services` Cargo feature
+empty or other values reject. It selects the `knytos-services` Cargo feature
 `service-heartbeats` (`--no-default-features` disables it for direct Cargo
 builds). It gates the periodic `hb` lines from `net`, `e1000e`, `frouter`,
 `tcpip` and `time`, including their logging-only counters and socket summaries.

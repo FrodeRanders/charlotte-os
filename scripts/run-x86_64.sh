@@ -469,7 +469,7 @@ SERVICE_BUNDLE="$BUNDLE"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged x86_64 service bundle."
 else
-    "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh" --mode "$BOOT_MODE"
+    "${ROOT_DIR}/scripts/build-knytos-services-x86_64.sh" --mode "$BOOT_MODE"
 fi
 catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
@@ -537,11 +537,11 @@ fi
 
 if [ "$EL0_SMOKE" = "1" ]; then
     echo ">>> Building and signing the x86_64 smoke service ELF..."
-    cargo build --locked --manifest-path crates/catten-services/Cargo.toml \
-        --target crates/catten-services/x86_64-unknown-none.json \
-        --target-dir crates/catten-services/target \
+    cargo build --locked --manifest-path crates/knytos-services/Cargo.toml \
+        --target crates/knytos-services/x86_64-unknown-none.json \
+        --target-dir crates/knytos-services/target \
         --release -Z build-std=core,alloc --bin smoke
-    cp crates/catten-services/target/x86_64-unknown-none/release/smoke \
+    cp crates/knytos-services/target/x86_64-unknown-none/release/smoke \
         "$SERVICE_BUNDLE/smoke.elf"
     "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
     export CATTEN_X86_64_SMOKE_ELF="$SERVICE_BUNDLE/smoke.elf"

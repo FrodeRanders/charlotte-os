@@ -105,7 +105,7 @@ No fresh full-suite invocation is claimed.
   zero failed**.
 - Warning-denied Clippy passes for all host Raft targets. Workspace formatting,
   Bash syntax, local documentation targets and diff whitespace checks pass.
-- `scripts/build-catten-services.sh --embed` builds and signs the ARM bundle;
+- `scripts/build-knytos-services.sh --embed` builds and signs the ARM bundle;
   `--check` confirms the final source matches its staged signatures.
 - Fresh-storage two-node ARM DNS integration: both runners exit zero with
   **20 passed / zero failed / zero pending**, bitmap `0xfffff`. Discovery,

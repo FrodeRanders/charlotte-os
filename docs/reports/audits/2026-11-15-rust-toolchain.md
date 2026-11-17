@@ -131,7 +131,7 @@ its exact fingerprint identifies that export, not signed release provenance.
 | Final root Cargo.lock | `c516b44bd41c5aa77f4df60e3e6249f2019df65ae19675e83911b2a85f08524a` |
 
 The native campaigns rebuild/sign their service bundles (ARM through
-`scripts/build-catten-services.sh`) and enforce ELF assembly permissions and
+`scripts/build-knytos-services.sh`) and enforce ELF assembly permissions and
 test/minimal bundle selection. Commands use fresh, named instances:
 
 ```sh

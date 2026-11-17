@@ -59,7 +59,7 @@ the previously unlisted October 7 remediation batches.
 - Direct `CATTEN_TRUST_MODE=production` kernel check: rejected by the expected
   build-script trust gate, confirmed by its specific diagnostic. The new
   candidate API does not bypass production refusal.
-- Bundled AArch64 services: `scripts/build-catten-services.sh --embed`: passed.
+- Bundled AArch64 services: `scripts/build-knytos-services.sh --embed`: passed.
 - x86 kernel Clippy, `--locked`, `-D warnings`, with its required service-bundle
   environment: passed. An initial invocation omitted that environment and failed
   at the existing `include_bytes!` paths; the configured rerun passed.

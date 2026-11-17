@@ -81,7 +81,7 @@ kernel images differ because each uses freshly prepared disposable material.
 The [tracked evidence](2026-10-27-security-ingress-availability-evidence.json)
 contains concise observations, receipts, projection rows, TCP metadata and
 source/resource/ELF hashes, without temporary-log dependencies. Reproduce using
-`scripts/build-catten-services.sh --embed` followed by
+`scripts/build-knytos-services.sh --embed` followed by
 `python3 scripts/run-management-failover-test.py --firmware /path/to/ARM-UEFI.fd --trace-tcp --trace-limit 4096`.
 
 ## Persistence, tests and scope

@@ -32,8 +32,8 @@ persisted, revocable policy at the store boundary.
   `SCOPE_OBJECT_ID` (`0xffff_0000_0000_0002`) through the store's own write
   path and re-applied at mount. A missing table means no grants; a malformed
   persisted table fails closed with a diagnostic log.
-- Enforcement: `may_mutate_scoped`/`may_read_scoped` (`catten-services`
-  [objstore module](../../../crates/catten-services/src/lib.rs#L1408)) combine
+- Enforcement: `may_mutate_scoped`/`may_read_scoped` (`knytos-services`
+  [objstore module](../../../crates/knytos-services/src/lib.rs#L1408)) combine
   ownership, sharing and the table for `OP_READ`, `OP_INFO`, `OP_DELETE`,
   `OP_SET_SIZE` and `OP_WRITE`. Scope grants never extend the reserved
   artifact/executable allowlist.
@@ -73,7 +73,7 @@ Kernel SHA-256:
 
 An initial x86 run failed all scope checks because the kernel embedded a
 stale `x86_64` service bundle (only the AArch64 bundle had been rebuilt);
-after `scripts/build-catten-services-x86_64.sh` the same revised kernel
+after `scripts/build-knytos-services-x86_64.sh` the same revised kernel
 passed. That was a build-invocation mistake, not a store regression. Embedded
 kernel bundles are per-architecture and must both be rebuilt for cross-target
 validation.

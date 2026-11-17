@@ -100,7 +100,7 @@ full-suite run is claimed.
   all host Raft targets. Four new tests cover continuation identity, successful
   restart/replacement, preserving rejection and election/term invalidation.
 - The signed ARM service bundle builds with
-  `scripts/build-catten-services.sh --embed`; `--check` verifies final-source
+  `scripts/build-knytos-services.sh --embed`; `--check` verifies final-source
   freshness and staged signatures before native execution.
 - Fresh-storage ARM DNS/Raft pair: **20 passed / zero failed / zero pending
   on each guest**, bitmap `0xfffff`. Full-name invocation, local placement

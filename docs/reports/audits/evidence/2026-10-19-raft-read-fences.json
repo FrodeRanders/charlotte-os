@@ -209,12 +209,12 @@
     "crates/catten-graft/src/lib.rs": "e34421e29bd9b7c16e1d353525194b855857800229e9466c7d67d0f147cc6f1a",
     "crates/catten-graft/src/types.rs": "f2fc38634bcf9053fac2f48cf474e985075fa4519ea52b152ec1c88829fa1565",
     "crates/catten-graft/examples/audit_receive_lease.rs": "e59137394edaa3e0228ea4ddcb52531c71247921eb491d11fc861b7471032afb",
-    "crates/catten-services/src/lib.rs": "992a683244b1d223575eb712e59266fbaea63a2ab80fa8a4c10e8831fecf4e36",
-    "crates/catten-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
-    "crates/catten-services/src/bin/dns/reads.rs": "6342ca7dc9626035c669a3b058dd0608bae5ffa6fd88a51da8b644472002eba3",
-    "crates/catten-services/src/bin/dns/state.rs": "e8b41cbd4341c2ed76c0a45310a3cf40f6496f294758b29e49ce9350c12e1436",
-    "crates/catten-services/src/bin/dns/reactor.rs": "d2484787b6db6b46186f81fbe5962b88ee2cfbf429efb6b7136c9c7f63d12913",
-    "crates/catten-services/src/bin/dns/catalog.rs": "8950192fe079bf6180dee9e0e695dfe030028fe6405fa3ba87f096dd54061b15",
+    "crates/knytos-services/src/lib.rs": "992a683244b1d223575eb712e59266fbaea63a2ab80fa8a4c10e8831fecf4e36",
+    "crates/knytos-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
+    "crates/knytos-services/src/bin/dns/reads.rs": "6342ca7dc9626035c669a3b058dd0608bae5ffa6fd88a51da8b644472002eba3",
+    "crates/knytos-services/src/bin/dns/state.rs": "e8b41cbd4341c2ed76c0a45310a3cf40f6496f294758b29e49ce9350c12e1436",
+    "crates/knytos-services/src/bin/dns/reactor.rs": "d2484787b6db6b46186f81fbe5962b88ee2cfbf429efb6b7136c9c7f63d12913",
+    "crates/knytos-services/src/bin/dns/catalog.rs": "8950192fe079bf6180dee9e0e695dfe030028fe6405fa3ba87f096dd54061b15",
     "crates/catten/src/self_test/el0_dns.rs": "158a9dfb24d3d887b6939a7ed13e3690092bd27f7900931c7c8b45326be94782"
   },
   "cases": [
@@ -1275,7 +1275,7 @@
         "    |     ^^^^^^^^^^^^",
         "",
         "error[E0599]: no method named `borrow` found for reference `&Connection` in the current scope",
-        "   --> crates/catten-services/src/bin/dns/reads.rs:423:48",
+        "   --> crates/knytos-services/src/bin/dns/reads.rs:423:48",
         "    |",
         "423 | ...                   connection.borrow(),",
         "    |                                  ^^^^^^",
@@ -1291,14 +1291,14 @@
         "    |                                                      ++++",
         "",
         "error[E0599]: no method named `map_read_write` found for struct `OwnedMemory` in the current scope",
-        "   --> crates/catten-services/src/bin/dns/reads.rs:445:34",
+        "   --> crates/knytos-services/src/bin/dns/reads.rs:445:34",
         "    |",
         "445 |         let mut mapping = memory.map_read_write().map_err(|_| dns::ERR_RESOURCE_LIMIT)?;",
         "    |                                  ^^^^^^^^^^^^^^ method not found in `OwnedMemory`",
         "",
         "For more information about this error, try `rustc --explain E0599`.",
-        "warning: `catten-services` (bin \"dns\") generated 2 warnings",
-        "error: could not compile `catten-services` (bin \"dns\") due to 2 previous errors; 2 warnings emitted",
+        "warning: `knytos-services` (bin \"dns\") generated 2 warnings",
+        "error: could not compile `knytos-services` (bin \"dns\") due to 2 previous errors; 2 warnings emitted",
         "warning: build failed, waiting for other jobs to finish..."
       ]
     },
@@ -1320,10 +1320,10 @@
       "exit_status": 1,
       "log_sha256": "e7684a57aa5bc9d948f30a9bc597de2969caebd29a2f7d12c88668225c9b57b4",
       "diagnostics": [
-        "   Compiling catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)",
+        "   Compiling knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)",
         "    Finished `release` profile [optimized] target(s) in 9.83s",
         "error: staged AArch64 dns.elf is stale",
-        "run scripts/build-catten-services.sh --embed"
+        "run scripts/build-knytos-services.sh --embed"
       ]
     },
     {
@@ -1376,7 +1376,7 @@
       "log_sha256": "281c5ddd99a775bf49e582547fce61c2b7ff88bb218ad40bab09c39ce425b563"
     },
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-services/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 145,
       "failed": 0,
@@ -1390,17 +1390,17 @@
       "log_sha256": "f0fc9d73bd1156a769bcdb7c7a804eea9d6fdac26721bf40acd6ac22fa841230"
     },
     "dns_clippy": {
-      "command": "cargo clippy --locked --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin dns -- -D warnings",
+      "command": "cargo clippy --locked --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin dns -- -D warnings",
       "exit_status": 0,
       "log_sha256": "593b8ed4ebe78b855391f7cb3e2b4af354260ec69daa9679436d4a1ce3a6d778"
     },
     "bundle_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "c22b5b8bd9482a2484e7f3066e8cedd1d9253c6b027f934ab3addd661aa37e25"
     },
     "bundle_check": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "a3f09908c72ace651ed29df0893777f32c07cd3148e8926c737ca81a1172a7da"
     }
@@ -1528,7 +1528,7 @@
   },
   "delegation_source_contracts": [
     {
-      "path": "crates/catten-services/src/bin/ns.rs",
+      "path": "crates/knytos-services/src/bin/ns.rs",
       "sha256": "f5e006e802eb977f8c2ee8d0c3c37a75a7daa72614e9a41ec7b0b8ec15dc59ea",
       "first_line": 316,
       "last_line": 327,
@@ -1656,8 +1656,8 @@
   },
   "verified_bundle": {
     "command_sequence": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services.sh --check",
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services.sh --check",
       "paired native run with CATTEN_SKIP_EMBED_BUILD=1"
     ],
     "sequence": "The failed stale-ELF check was followed by a sequential build/sign/check before this final native repeat. Every staged file still matches this captured verified manifest after both runs.",
@@ -1776,7 +1776,7 @@
   "final_checks": {
     "workspace_fmt": "cargo fmt --all -- --check: passed",
     "diff_whitespace": "git diff --check: passed",
-    "shell_syntax": "bash -n docs/tla/check.sh scripts/build-catten-services.sh scripts/run-aarch64.sh: passed",
+    "shell_syntax": "bash -n docs/tla/check.sh scripts/build-knytos-services.sh scripts/run-aarch64.sh: passed",
     "source_and_model_fingerprints_rechecked": true,
     "staged_bundle_fingerprints_rechecked": true,
     "upstream_checkout_still_clean": true

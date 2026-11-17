@@ -20,7 +20,7 @@ same for its reversed and transformed key copies. POLYVAL's software state
 destructor is compiled out. These are source-confirmed gaps, without a new
 private-field memory probe or demonstrated cross-domain read.
 
-`catten-services` now enables all three features directly. The lockfile adds
+`knytos-services` now enables all three features directly. The lockfile adds
 six dependency edges; package versions and checksums are unchanged. The
 resolved graph supplies the same packages to embedded-tls. AES-GCM and GHASH
 clear their named construction temporaries after copying them into their

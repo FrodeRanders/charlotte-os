@@ -338,13 +338,13 @@
   ],
   "checks": {
     "service_builds": [
-      "scripts/build-catten-services.sh --embed",
-      "scripts/build-catten-services-x86_64.sh"
+      "scripts/build-knytos-services.sh --embed",
+      "scripts/build-knytos-services-x86_64.sh"
     ],
     "strict_clippy": [
       "host charlotte-management-tls --all-targets",
-      "catten-services httpd/deployd on crates/catten-services/aarch64-unknown-none.json",
-      "catten-services httpd/deployd on crates/catten-services/x86_64-unknown-none.json"
+      "knytos-services httpd/deployd on crates/knytos-services/aarch64-unknown-none.json",
+      "knytos-services httpd/deployd on crates/knytos-services/x86_64-unknown-none.json"
     ],
     "native_assembly_sections": "both exact final kernels passed runner validation",
     "workspace_fmt": "passed",
@@ -443,7 +443,7 @@
     "crates/charlotte-management-tls/src/session.rs": "0dc7f110a8062cea21963211468be4edbdcaba7afcfb1b9dd48ae07da94e10ea",
     "crates/charlotte-management-tls/src/policy.rs": "f2c9ea126ad5690c4bd2f994906aa9275b830aee3b6182ed0b2e2e70325b3e8b",
     "crates/charlotte-management-tls/tests/server.rs": "f9a7e5563155d3e4722bf5b4be0d8d4bfb002568e053e3d71870c257355d8eee",
-    "crates/catten-services/src/management_io.rs": "4cbde63cfff75f9e1d463295e0c929c5ce444c98c05b90049aa9df4e39d8990c",
+    "crates/knytos-services/src/management_io.rs": "4cbde63cfff75f9e1d463295e0c929c5ce444c98c05b90049aa9df4e39d8990c",
     "scripts/prepare-management-tls-fixture.py": "05ff3661865afafdd7317d2cf6fcf392b9c5dcdd4796ead5b2d40bdaf796a2d1",
     "scripts/run-management-startup-tests.py": "18debdb38ae3e7196ce24979bc8841586867ebfab1a568ab5f8c3891cbe8dd84",
     "scripts/run-management-rotation-test.py": "152ae4a3a3d7172f43f5033f6333721b28ca85123f0eb75279d662276ed60bdc",

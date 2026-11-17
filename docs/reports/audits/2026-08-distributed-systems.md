@@ -40,7 +40,7 @@ capability/name-service contract.
 
 ### F1 — DNS uses volatile Raft state (critical)
 
-`catten-services/src/bin/dns.rs` constructs its `RaftNode` with
+`knytos-services/src/bin/dns.rs` constructs its `RaftNode` with
 `InMemoryLogStore` and `InMemoryPersistentStateStore`. A restarted DNS replica
 forgets its term and vote and can vote twice in one term. This invalidates the
 durable-vote assumption used by Raft election safety and by
@@ -274,14 +274,14 @@ Follow-up:
 
 ### F12 — Service linting and TLA+ are outside CI (medium)
 
-`catten-services` is excluded from the root workspace, while CI runs Clippy
+`knytos-services` is excluded from the root workspace, while CI runs Clippy
 only with `--workspace`. Direct AArch64 service Clippy currently reports
 warnings in `relmsg`, `tcpip`, and `raft`. The executable TLA+ suite also
 requires a manually supplied TLC jar and has no CI job.
 
 Follow-up:
 
-- add a standalone `catten-services` Clippy command to CI;
+- add a standalone `knytos-services` Clippy command to CI;
 - pay the current warning debt;
 - add a pinned/checksummed TLC dependency and model-check job;
 - retain required-action coverage checks so accidentally dead model actions

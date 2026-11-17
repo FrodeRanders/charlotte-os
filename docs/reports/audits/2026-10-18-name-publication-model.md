@@ -28,16 +28,16 @@ that direction accurately; lookup behavior is unchanged.
 
 ## Implementation correspondence
 
-- [`ns.rs`](../../../crates/catten-services/src/bin/ns.rs): `register`, immediate
+- [`ns.rs`](../../../crates/knytos-services/src/bin/ns.rs): `register`, immediate
   and deferred public lookup, authorization helpers, `retire_closed`, exact
   generation retirement, serialized CQ/request reactor and fail-closed aborts.
-- [`ns_publication.rs`](../../../crates/catten-services/src/ns_publication.rs):
+- [`ns_publication.rs`](../../../crates/knytos-services/src/ns_publication.rs):
   complete connection/watch preparation, live quota predicate, current owned
   completion observation and watch-before-source field disposal.
 - [`charlotte-authorization`](../../../crates/charlotte-authorization/src/lib.rs):
   checked service publication and retained generation tombstones. Role checks
   happen in policy publication, after candidate watch preparation.
-- [`publication_generation.rs`](../../../crates/catten-services/src/publication_generation.rs)
+- [`publication_generation.rs`](../../../crates/knytos-services/src/publication_generation.rs)
   and [`charlotte-protocol-ns`](../../../crates/charlotte-protocol-ns/src/lib.rs):
   retirement authorization and the positive signed generation record range.
 - [`loader.rs`](../../../crates/catten/src/service/loader.rs): trusted NS
@@ -128,7 +128,7 @@ The authorization crate passes 16 tests, including both new boundary controls;
 the complete host suite passes **519 tests, zero failed**. Strict Clippy passes
 for that crate's host targets and the NS service on ARM/x86, and workspace
 formatting passes. AArch64 services were rebuilt and signed through
-`scripts/build-catten-services.sh --embed`.
+`scripts/build-knytos-services.sh --embed`.
 
 A fresh-store, no-network ARM/SMMUv3 QEMU boot of that bundle, four LPs and a
 180-second budget, exited 0 with **17 deferred tests passed, zero failed or

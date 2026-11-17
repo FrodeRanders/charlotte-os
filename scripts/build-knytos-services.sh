@@ -28,15 +28,15 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-MANIFEST="crates/catten-services/Cargo.toml"
-TARGET="crates/catten-services/aarch64-unknown-none.json"
-OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
+MANIFEST="crates/knytos-services/Cargo.toml"
+TARGET="crates/knytos-services/aarch64-unknown-none.json"
+OUTPUT="crates/knytos-services/target/aarch64-unknown-none/release"
 catten_service_bundle aarch64 "$BUNDLE_MODE" "$ROOT"
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
     cargo clean --manifest-path "$MANIFEST" --target "$TARGET" \
-        --target-dir crates/catten-services/target 2>/dev/null || true
+        --target-dir crates/knytos-services/target 2>/dev/null || true
     rm -rf "$BUNDLE"
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
@@ -45,7 +45,7 @@ build_bins=()
 for service in "${SERVICES[@]}"; do build_bins+=(--bin "$service"); done
 
 cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
-    --target-dir crates/catten-services/target \
+    --target-dir crates/knytos-services/target \
     --release -Z build-std=core,alloc "${SERVICE_FEATURE_ARGS[@]}" "${build_bins[@]}"
 
 if [ "$MODE" = "embed" ]; then
@@ -95,7 +95,7 @@ elif [ "$MODE" = "check" ]; then
         fi
     done
     if [ "$stale" -ne 0 ]; then
-        echo "run scripts/build-catten-services.sh --embed" >&2
+        echo "run scripts/build-knytos-services.sh --embed" >&2
         exit 1
     fi
     echo ">>> Staged AArch64 service bundle signatures verified."

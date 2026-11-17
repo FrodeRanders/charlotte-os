@@ -233,7 +233,7 @@ Drivers must therefore:
 - never follow a device-supplied host pointer.
 
 VirtIO net already bounds returned descriptor IDs and lengths before copying
-received data (`crates/catten-services/src/bin/net.rs:243-304`). Its producer
+received data (`../../../crates/knytos-services`). Its producer
 delta and in-flight ownership rules should nevertheless be reviewed under a
 malicious, rather than merely faulty, device model. The same audit is required
 for E1000E, VirtIO block, AHCI, RNG, and NVMe.
@@ -243,7 +243,7 @@ for E1000E, VirtIO block, AHCI, RNG, and NVMe.
 **Severity:** High.
 
 NVMe obtains `cid` directly from the device-written CQE
-(`crates/catten-services/src/bin/nvme.rs:688-710`). `take_pending` converts that
+(`../../../crates/knytos-services`). `take_pending` converts that
 untrusted value to an array index with `% MAX_PENDING`
 (`nvme.rs:319-325`). A forged or duplicate CID can therefore consume another
 operation's reply token, PRP list, and data mapping. The driver may reply to the

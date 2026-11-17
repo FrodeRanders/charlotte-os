@@ -54,12 +54,12 @@ describes the layout/operations and should gain the current isolation contract.
 **Medium, conditional on a transient metadata-read failure.** Introduced by
 `c3eb996c`; still present at the reviewed head.
 
-[`ObjStore::metadata`](../../../crates/catten-services/src/bin/objstore.rs#L640)
+[`ObjStore::metadata`](../../../crates/knytos-services/src/bin/objstore.rs#L640)
 returns `None` for both a missing object and header-read/validation failure.
 The dispatcher at
-[`objstore.rs:1401`](../../../crates/catten-services/src/bin/objstore.rs#L1401)
+[`objstore.rs:1401`](../../../crates/knytos-services/src/bin/objstore.rs#L1401)
 converts either into `(owner=0, attributes=0)`. The
-[`may_read`](../../../crates/catten-services/src/lib.rs#L1398) policy makes
+[`may_read`](../../../crates/knytos-services/src/lib.rs#L1398) policy makes
 owner-zero objects publicly readable for legacy compatibility. `OP_READ` then
 calls `read_and_reply`, which reads the header again without checking the
 recovered owner. If the second read succeeds, the foreign private payload is
@@ -81,7 +81,7 @@ authorized reads separately.
 The allocator collision predates today's changes, but ownership enforcement
 does not close it.
 
-[`ObjStore::create`](../../../crates/catten-services/src/bin/objstore.rs#L428)
+[`ObjStore::create`](../../../crates/knytos-services/src/bin/objstore.rs#L428)
 checks existing IDs only in its `Some(id)` branch. `None` consumes `next_id`
 without checking the directory, while `CREATE_AT` does not advance that counter.
 Both ordinary creation operations are public. On a fresh store:
@@ -131,9 +131,9 @@ CONFIRMED: automatic creation aliases an existing foreign-owned ID; cache owner 
 
 Reviewed-source SHA-256:
 
-- `crates/catten-services/src/bin/objstore.rs`:
+- `../../../crates/knytos-services`:
   `7627d6093d138801949b873a42e4d9d2120a5bc336ed242381118ab3874d06de`
-- `crates/catten-services/src/lib.rs`:
+- `../../../crates/knytos-services`:
   `184fa0e7dbfad8c92a2326f77703411ae0d53d3d32bd1ae23194e3f3d4328dd1`
 - Historical reproduction:
   `38c5a67d42a9dd64e62da2041ff5da7a0ebf9524ae261edc07849130dbcb1115`

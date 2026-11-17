@@ -25,7 +25,7 @@ and structures sized by constants.
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | Memory-object backing | Generation-scoped page/object sponsorship, node pool derived from usable RAM, and platform/physical progress reserves | `crates/catten/src/memory/budget.rs`, `crates/charlotte-lifecycle/src/resources.rs` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
-| Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `crates/catten-services`, `charlotte-protocol-*` |
+| Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `../../crates/knytos-services`, `charlotte-protocol-*` |
 
 Frame availability alone does not size every metadata structure. The kernel
 heap has a RAM-derived growth reserve and domain heaps adapt between

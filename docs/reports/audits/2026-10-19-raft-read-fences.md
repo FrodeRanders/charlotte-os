@@ -143,7 +143,7 @@ fingerprints**. No fresh full-suite run is claimed.
 - Warning-denied Clippy passes for all host Raft targets and the ARM DNS target.
   Workspace formatting, shell syntax, local documentation targets and diff
   whitespace checks pass.
-- The ARM service bundle builds/signs with `scripts/build-catten-services.sh
+- The ARM service bundle builds/signs with `scripts/build-knytos-services.sh
   --embed`; `--check` verifies the staged signatures against final source.
 - Fresh-storage two-node ARM DNS integration checks catalog lookup, invocation
   routing and generation-fenced endpoint-death retirement. The final fixture

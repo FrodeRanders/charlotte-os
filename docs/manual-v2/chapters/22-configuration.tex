@@ -41,7 +41,7 @@ The following inputs have different authorities and lifetimes:
         the kernel and remains fixed throughout that boot.
     \item[Service console heartbeats.] Service build input
         \path{CATTEN_SERVICE_HEARTBEATS} accepts 0 or 1, selecting the
-        \texttt{catten-services} Cargo feature \texttt{service-heartbeats}.
+        \texttt{knytos-services} Cargo feature \texttt{service-heartbeats}.
         Runners and service builders default it off for minimal bundles and on
         for test bundles. It controls periodic \texttt{hb} console diagnostics
         from the network drivers, frame router, TCP/IP and time services.
@@ -165,7 +165,7 @@ separate work. See
 \subsection{Rebuild service capacities with their consumers}
 
 TLS record and certificate capacities are grouped build constants in
-\repofiletext|crates/catten-services/src/tls_client.rs|{the shared TLS adapter}.
+\repofiletext|crates/knytos-services/src/tls_client.rs|{the shared TLS adapter}.
 Each stream owns two
 \texttt{16640}-byte record buffers, while the verifier admits a complete Certificate
 message up to \texttt{16384} bytes. These values are compile-time adjustable,
@@ -299,7 +299,7 @@ an accepted request's original deadline. See
 
 The frame router's shared refresh interval is 1000 milliseconds, selected by
 \texttt{SNAPSHOT\_REFRESH\_MS} in
-\repofile|crates/catten-services/src/lib.rs|. Route refresh, ingress projection
+\repofile|crates/knytos-services/src/lib.rs|. Route refresh, ingress projection
 queries and source freshness share that interval, while the local VIP admission lease
 is five intervals. Backend eligibility uses replication contact no older than
 the source-freshness interval, with an acknowledged current-term log entry.

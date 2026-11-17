@@ -182,7 +182,7 @@ def main():
             if startup.command(arguments, preparation, environment, args.build_timeout):
                 raise RuntimeError("fixture preparation command failed")
         if not args.reuse_bundle:
-            run([ROOT / "scripts/build-catten-services.sh", "--embed"])
+            run([ROOT / "scripts/build-knytos-services.sh", "--embed"])
         run([ROOT / "scripts/verify-limine.sh"])
         credentials = private / "credentials"
         fixture.prepare(credentials, addresses=("10.0.2.42",))

@@ -185,7 +185,7 @@ For AArch64, build and stage the service and Sitas bundles before invoking the
 runner:
 
 ```sh
-scripts/build-catten-services.sh --embed
+scripts/build-knytos-services.sh --embed
 scripts/build-catten-user.sh --embed
 scripts/run-aarch64.sh debug --hvf --no-network --timeout 10
 ```

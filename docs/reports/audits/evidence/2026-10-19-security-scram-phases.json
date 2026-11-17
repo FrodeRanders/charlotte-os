@@ -4,7 +4,7 @@
   "reviewed_revision": "caee4ac",
   "classification": "SEC-15 partial; exchange-local lifetime and ordering correction",
   "reviewed_source_sha256": {
-    "crates/catten-services/src/bin/kafka.rs": "6da08920c611b5109c670768ea60b18d102cac76cf0ad0e5de575221b5092188",
+    "crates/knytos-services/src/bin/kafka.rs": "6da08920c611b5109c670768ea60b18d102cac76cf0ad0e5de575221b5092188",
     "crates/charlotte-kafka/src/scram.rs": "ca521cd26ab4a39eafd757a359f3247021022989a0c654840f89ba4e543123f5",
     "docs/manual-v2/chapters/13-networking.tex": "4d141076d5c6dfb679271e55da74a436a840aab1bb28771f183922de1521a3ef",
     "docs/reference/api-simplification.md": "775b8d14b234aa3bdff6a8254de7a8c270c4dc7712c4095eff79414767984b3a",

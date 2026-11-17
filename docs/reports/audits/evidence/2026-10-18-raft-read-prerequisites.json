@@ -204,8 +204,8 @@
   "reviewed_source_sha256": {
     "crates/catten-graft/src/node.rs": "f886aaf11c0fb40346ed362a423db4012a0bb8b9116df125f66d2fede384314d",
     "crates/catten-graft/src/log_store.rs": "ea710c8fd7725a8f3e0d9a732865b34f669fb1cf9b7d0f5c6e3c02a099a95b72",
-    "crates/catten-services/src/bin/dns/catalog.rs": "ce13dbd0ad44081fe44497d613bd663af5f10d9f4561f4664eba15743f08bb56",
-    "crates/catten-services/src/bin/dns.rs": "7160cd8adda23dd7aeb2b6cdf8527c21baa271987c4fff2406b210a578ebb935"
+    "crates/knytos-services/src/bin/dns/catalog.rs": "ce13dbd0ad44081fe44497d613bd663af5f10d9f4561f4664eba15743f08bb56",
+    "crates/knytos-services/src/bin/dns.rs": "7160cd8adda23dd7aeb2b6cdf8527c21baa271987c4fff2406b210a578ebb935"
   },
   "cases": [
     {
@@ -633,7 +633,7 @@
       "log_sha256": "55a74ccb29a295ce474e6cee0846ffe950e8bb833b453c2b3782a64a39b1eceb"
     },
     {
-      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "command": "cargo test --locked --manifest-path <repo>/crates/knytos-services/Cargo.toml --lib (outside root Cargo configuration)",
       "exit_status": 0,
       "passed": 145,
       "failed": 0,
@@ -647,7 +647,7 @@
       "log_sha256": "363026d4997cd8d1095f3809faf86cb6061e14a14bde36a8348706dad9707148"
     },
     "bundle_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "log_sha256": "dc28655dc1ed050475a06bfb729bcbae564218ff84febeba5a5047dd16e38bce"
     },
@@ -660,7 +660,7 @@
       "scope": "Changed Markdown documents and new report; anchors not validated."
     },
     "bundle_check": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "log_sha256": "a6ecadc194310affa64f068498b1c898a28b971dc6f9c65432399db4137c5d1c",
       "result": "Staged AArch64 service bundle signatures verified. Final test/comment-only edits preserve the release artifacts used by the native run."

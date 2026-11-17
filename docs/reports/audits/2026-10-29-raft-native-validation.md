@@ -35,7 +35,7 @@ required `SELFTEST COMPLETE` with zero failed and pending tests.
 ## Reproduction
 
 Build the current signed development bundle with
-`scripts/build-catten-services.sh --embed`. Use new instance names to preserve
+`scripts/build-knytos-services.sh --embed`. Use new instance names to preserve
 existing disks. The baseline invocation was:
 
 ```sh

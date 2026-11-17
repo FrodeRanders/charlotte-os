@@ -3284,7 +3284,7 @@ Final validation:
   `ba5c791d2be7f7619b5b34bd308e5911be5ecae803da503a0cf975bb5ed22f94`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy,
   `cargo fmt --all -- --check`, and `git diff --check` pass. Bundled AArch64
-  services were rebuilt by `scripts/build-catten-services.sh` through the runner.
+  services were rebuilt by `scripts/build-knytos-services.sh` through the runner.
   x86 guest execution remains pending.
 
 Scope remains partial: replies returning memory/connection capabilities and
@@ -3345,7 +3345,7 @@ Validation:
 - Kernel SHA-256:
   `5478e97f37d1829cec20e48a0d1c9000bab0fc69cb399b8e15db26b284d68064`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass.
-  Bundled AArch64 services were rebuilt through `scripts/build-catten-services.sh`.
+  Bundled AArch64 services were rebuilt through `scripts/build-knytos-services.sh`.
   Formatting and diff checks pass; x86 guest execution remains pending.
 
 SEC-18 remains partial. Returned-memory source escrow/backing and cancellation's
@@ -3417,7 +3417,7 @@ Validation:
   `a920f42025b8ae8dac02718f6640acd5bd8e89bd86c61cf5a89790a2b83e2e75`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass,
   as do `cargo fmt --all -- --check` and `git diff --check`. Bundled AArch64
-  services were rebuilt through `scripts/build-catten-services.sh` by the runner.
+  services were rebuilt through `scripts/build-knytos-services.sh` by the runner.
   No x86 guest execution is claimed.
 
 SEC-18 remains partial. Cancellation's own revocation and its best-effort failed
@@ -3504,7 +3504,7 @@ Validation:
   new claim/readiness/physical-failure race under real multi-LP concurrency.
 - Kernel SHA-256:
   `c3e715515eeea6ec9b9329e0accb57ee82f1b5c98d2ba3b1c3cb4961129d6b44`.
-- Bundled AArch64 services are rebuilt through `scripts/build-catten-services.sh`.
+- Bundled AArch64 services are rebuilt through `scripts/build-knytos-services.sh`.
   Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy, formatting
   and diff checks pass. No x86 guest, real fatal-domain execution, independent CQ
   edge stress, real failed IPI delivery or CPU/DMA quiescence proof is claimed.

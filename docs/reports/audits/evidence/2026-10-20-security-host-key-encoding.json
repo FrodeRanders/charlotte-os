@@ -282,7 +282,7 @@
       "diagnostics": [
         ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
       ],
-      "command": "scripts/build-catten-services.sh --embed"
+      "command": "scripts/build-knytos-services.sh --embed"
     },
     "arm_freshness": {
       "exit_status": 0,
@@ -290,7 +290,7 @@
       "diagnostics": [
         ">>> Staged AArch64 service bundle signatures verified."
       ],
-      "command": "scripts/build-catten-services.sh --check"
+      "command": "scripts/build-knytos-services.sh --check"
     },
     "x86_services": {
       "exit_status": 0,
@@ -298,7 +298,7 @@
       "diagnostics": [
         ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/x86_64-unknown-none."
       ],
-      "command": "scripts/build-catten-services-x86_64.sh"
+      "command": "scripts/build-knytos-services-x86_64.sh"
     }
   },
   "bundles": {
@@ -625,8 +625,8 @@
     "tools/cluster-sign/src/trust_policy.rs": "c9044ca223b5198008492e84beb8c941e04d166ea79711c54bde2fd007221354",
     "tests/transport/support.rs": "00a124eb9a91991514d7198a116ac634145bb5486a9736958dd0ef671a97e0bb",
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "scripts/sign-service-elfs.sh": "eda741bca1321a069831e1ca051478bd77bee5067507bd1e44f7a503bed0515f",
     "scripts/lib/signing-policy.sh": "1213035da8ddd4ecdf2530eda8153ec185bda70031fd1a4601f4d1ee70a81d28"
   },

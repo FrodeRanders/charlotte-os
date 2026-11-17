@@ -32,10 +32,10 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "689f175c8b27dabca1d524af0fcf447dee356a853321db4b2be1be55ad8bbb60",
-    "crates/catten-services/src/bin/security_probe.rs": "8889d1bed1d143493474f5185e0ca189f14d43579accb51c9a2a5ee4e08d6182",
-    "crates/catten-services/src/deployment_listener.rs": "2ab80b26ceb94213193ca9fe5f2facbd3b0939a15270d2e6cb61d1ccaa49e4f1",
-    "crates/catten-services/src/lib.rs": "29376fd14699e90bd23685dd616735635de3b11f1961a4f2f6339ea369446e55",
+    "crates/knytos-services/src/bin/deployd.rs": "689f175c8b27dabca1d524af0fcf447dee356a853321db4b2be1be55ad8bbb60",
+    "crates/knytos-services/src/bin/security_probe.rs": "8889d1bed1d143493474f5185e0ca189f14d43579accb51c9a2a5ee4e08d6182",
+    "crates/knytos-services/src/deployment_listener.rs": "2ab80b26ceb94213193ca9fe5f2facbd3b0939a15270d2e6cb61d1ccaa49e4f1",
+    "crates/knytos-services/src/lib.rs": "29376fd14699e90bd23685dd616735635de3b11f1961a4f2f6339ea369446e55",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "f9bba703359ca80331b95038e8dd5ef7458998d15f2c165aab07e96186e580f2",
     "docs/manual-v2/chapters/21-formal-safeguards.tex": "8866d293ef9b05810384aca6a3190c3e0ffd7815092d7a8647690c450cfd1d1e",
     "docs/reference/cleanup-recovery.md": "9d2559a0288a55983cda6af977d13d0475c41f6b16a05fb5de5494e7ab810fc8",
@@ -289,7 +289,7 @@
     }
   },
   "host_tests": {
-    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib",
+    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib",
     "passed": 214,
     "failed": 0,
     "new_listener_tests": 10,
@@ -312,16 +312,16 @@
       "outcome": "fails on five inherited findings",
       "selected_diagnostics": [
         "error: items after a test module",
-        "   --> crates/catten-services/src/socket_state.rs:300:1",
+        "   --> crates/knytos-services/src/socket_state.rs:300:1",
         "error: unused \"map closure\" when calling `Result::map_or_else` value",
-        "   --> crates/catten-services/src/deployment_control.rs:677:24",
+        "   --> crates/knytos-services/src/deployment_control.rs:677:24",
         "error: can be more succinctly written as a byte str",
-        "   --> crates/catten-services/src/disk_raft.rs:833:25",
+        "   --> crates/knytos-services/src/disk_raft.rs:833:25",
         "error: items after a test module",
-        "    --> crates/catten-services/src/operations_admission.rs:570:1",
+        "    --> crates/knytos-services/src/operations_admission.rs:570:1",
         "error: equality checks against false can be replaced by a negation",
-        "    --> crates/catten-services/src/lib.rs:2050:21",
-        "error: could not compile `catten-services` (lib test) due to 5 previous errors"
+        "    --> crates/knytos-services/src/lib.rs:2050:21",
+        "error: could not compile `knytos-services` (lib test) due to 5 previous errors"
       ],
       "capture_sha256": "a19dc0a605e790221472f2c14436916babfb05086fe2ad66968cf4822e30c7f5",
       "qualification": "All five source snippets confirmed present at HEAD outside the listener changes. No source suppressions or unrelated lint fixes. Qualified rerun uses -D warnings -A clippy::items-after-test-module -A clippy::unnecessary-result-map-or-else -A clippy::byte-char-slices -A clippy::bool-comparison."

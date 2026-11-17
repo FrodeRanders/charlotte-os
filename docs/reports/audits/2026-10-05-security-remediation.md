@@ -145,7 +145,7 @@ See [entropy](../../reference/entropy.md).
 - `scripts/run-host-tests.sh`: passed. New coverage includes nine socket/random
   tests and the application stack-arena exclusion test; existing owned-runtime,
   protocol, authorization, signing, retirement-slot and scratch tests pass.
-- `scripts/build-catten-services.sh --embed`: passed; the signed bundle includes
+- `scripts/build-knytos-services.sh --embed`: passed; the signed bundle includes
   the corrected syscall emitter and renewed EL0 probe.
 - Workspace Clippy with `-D warnings`, excluding service/user/host-tool packages,
   passed for both custom AArch64 and x86 kernel targets. Bundled AArch64 service

@@ -22,7 +22,7 @@ production trust remains disabled.
 ## Selected dependency path
 
 The current path is crypto-bigint 0.5.5 → elliptic-curve 0.13.8 → P-256/P-384 →
-embedded-tls 0.19.0 → catten-services. There is also a direct P-256/signature
+embedded-tls 0.19.0 → knytos-services. There is also a direct P-256/signature
 dependency in the Knytos TLS adapter. Updating a transitive lockfile entry
 alone cannot cross these API families. RustSec's
 [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html) lists
@@ -185,8 +185,8 @@ cp docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/Cargo.toml.in targe
 cp docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/Cargo.lock.txt target/crypto-migration/reproduce/Cargo.lock
 cp docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/lib.rs target/crypto-migration/reproduce/src/lib.rs
 cargo fetch --locked --manifest-path target/crypto-migration/reproduce/Cargo.toml
-cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build
-cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/catten-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build
+cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build
+cargo check --locked --offline --manifest-path target/crypto-migration/reproduce/Cargo.toml --target crates/knytos-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build
 cargo audit --db target/security-audit/advisory-db --url https://github.com/RustSec/advisory-db.git --file target/crypto-migration/reproduce/Cargo.lock --json --deny warnings
 cd /private/tmp
 cargo +nightly-2026-07-27 test --locked --offline --manifest-path "$migration_root/target/crypto-migration/reproduce/Cargo.toml" --target-dir "$migration_root/target/crypto-migration/host-build"

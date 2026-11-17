@@ -464,11 +464,11 @@
       "exit_status": 0
     },
     "arm_services": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0
     },
     "arm_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "diagnostic": "Staged AArch64 service bundle signatures verified."
     },
@@ -774,8 +774,8 @@
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "scripts/run-aarch64.sh": "d3a1e6123786ac9e880f79f577520d5f59378d98e909de647ba9260b6829d901",
     "scripts/run-x86_64.sh": "aadaf04b63519e457dcbf23ab91e2087483398076f4705900c4ad6f6f395612e",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291"
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291"
   },
   "reviewed_source_sha256": {
     "docs/architecture/cluster-artifacts-and-placement.md": "f0efb356f4080cbbdb319f9aee4fabae9dfc015b9c40aa6b9a59d46cf77260d8",

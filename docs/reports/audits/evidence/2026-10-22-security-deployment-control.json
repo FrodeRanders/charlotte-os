@@ -40,11 +40,11 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "91b4f60045e235937afc23c5c3d57c141c6844645c221e3c0607b59179568e35",
-    "crates/catten-services/src/bin/security_probe.rs": "1edba663f3c423edc1c0b4a7272ceba96a64f3c6a16808ad2f1875d787b192a9",
-    "crates/catten-services/src/deployment_control.rs": "cb7e5f37b7628cb9d43499af07988682c1cf6b618e2d9ffdc30199a7e6dd5752",
-    "crates/catten-services/src/deployment_input.rs": "d7b2ba2627e74c1b5adc075c483f6079a749a3bafded67e4e579a3cde20e9673",
-    "crates/catten-services/src/lib.rs": "613d807e87d354d04dacf1dfa2d3974e0ff791e4981ccbb9d46ef5fbf8bf68b5",
+    "crates/knytos-services/src/bin/deployd.rs": "91b4f60045e235937afc23c5c3d57c141c6844645c221e3c0607b59179568e35",
+    "crates/knytos-services/src/bin/security_probe.rs": "1edba663f3c423edc1c0b4a7272ceba96a64f3c6a16808ad2f1875d787b192a9",
+    "crates/knytos-services/src/deployment_control.rs": "cb7e5f37b7628cb9d43499af07988682c1cf6b618e2d9ffdc30199a7e6dd5752",
+    "crates/knytos-services/src/deployment_input.rs": "d7b2ba2627e74c1b5adc075c483f6079a749a3bafded67e4e579a3cde20e9673",
+    "crates/knytos-services/src/lib.rs": "613d807e87d354d04dacf1dfa2d3974e0ff791e4981ccbb9d46ef5fbf8bf68b5",
     "crates/catten/src/self_test/el0_security.rs": "acbe9a7a2f78cc470c09bf9594eb078a536f3b3a3705badd5ebc5a6b1a8ac9b0",
     "docs/guides/testing.md": "7f8bab8e46d453ffce38d183e5f9b60c762565b8ebeab8a40c445e854801c8c6",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "8e0012f4801380fe44aa025c39644ebf6bd70e02989a5bd053e33b1fb9483db8",
@@ -478,7 +478,7 @@
     "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec06-control CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-control-deploy --fresh-storage --timeout 300"
   ],
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib (cwd /private/tmp)",
     "result": "170 passed; 0 failed",
     "log_sha256": "17f6dc74b3bd433b7ceb3512f42f27d8d13b4052e24b16706bd425cd2d1ffefd",
     "qualification": "Transport adapters model rejection and Drop order; binding abort adapter checks owners before host unwind. Native actual mapping/binding rejection is not fault-injected."
@@ -487,12 +487,12 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings (cwd /private/tmp)",
-    "native_clippy": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe -- -D warnings",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings (cwd /private/tmp)",
+    "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe -- -D warnings",
     "host_clippy_log_sha256": "df512d036b94910b5b3a5c45672aeee1da44df09f2bf2a1bf033cdc6253a0ae9",
     "native_clippy_log_sha256": "ce663f05dd18e3beea69f7ac693b03f19fa1c532ed6aef489cc7f1f36ab5eaeb",
-    "bundles": "scripts/build-catten-services.sh --embed; scripts/build-catten-services-x86_64.sh",
-    "arm_reproduction": "scripts/build-catten-services.sh --check: signed bundle matches current source"
+    "bundles": "scripts/build-knytos-services.sh --embed; scripts/build-knytos-services-x86_64.sh",
+    "arm_reproduction": "scripts/build-knytos-services.sh --check: signed bundle matches current source"
   },
   "fixture_budget_correction": {
     "scope": "self_test/el0_security.rs adversarial application complete-check observer only",

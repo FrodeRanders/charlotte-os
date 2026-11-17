@@ -3,7 +3,7 @@
   "base_revision": "029357412744a7d5422342ffed4d5de3674a8313",
   "scope": "Restore query-name grammar rejection ERR_TOO_LARGE (-3) in the shared controller relay while notification validation retains ERR_UNTRUSTED_DESCRIPTOR (-13). Existing grammar, signature/permission gates, deadlines and owned cleanup remain unchanged.",
   "source_sha256": {
-    "crates/catten-services/src/clusterctl_relay.rs": "a2300194ef12e64e1a5a5419efab7c798a9489055cf4ea8d8fa5242c0825c8bb",
+    "crates/knytos-services/src/clusterctl_relay.rs": "a2300194ef12e64e1a5a5419efab7c798a9489055cf4ea8d8fa5242c0825c8bb",
     "crates/catten/src/self_test/el0_clusterctl.rs": "09a97bc59f1208b8a569c1dc19c44ee090b06a3fb33cbfeb68833ef511236374"
   },
   "source_confirmed_cause": "The shared validate helper treated invalid unsigned query names as an untrusted descriptor. It rejected the request locally, but returned the wrong contract code. Both native fixtures stopped on the same exact assertion; no authority bypass was observed.",

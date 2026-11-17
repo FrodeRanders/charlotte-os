@@ -40,7 +40,7 @@ class X86UserspaceAbi(unittest.TestCase):
                 cwd=ROOT, env=env, capture_output=True, text=True)
 
     def test_userspace_accepts_sse2_and_sysv_float_abi(self):
-        result = self.compile("crates/catten-services/x86_64-unknown-none.json")
+        result = self.compile("crates/knytos-services/x86_64-unknown-none.json")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("future incompatib", result.stderr)
 

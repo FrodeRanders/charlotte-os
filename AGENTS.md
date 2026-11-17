@@ -45,7 +45,7 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 - Use `cargo fmt` rather than hand-adjusting rustfmt output. Prefer raw strings,
   named constants, or `concat!` for long protocol/HTML literals that otherwise
   depend on line-continuation whitespace.
-- Build bundled AArch64 services with `scripts/build-catten-services.sh`.
+- Build bundled AArch64 services with `scripts/build-knytos-services.sh`.
 - Scope `global_asm!` sections with `.pushsection`/`.popsection`; blocks share
   assembler state within a codegen unit. Native kernel trampolines must remain
   in executable, read-only ELF sections and load segments. Boot runners enforce

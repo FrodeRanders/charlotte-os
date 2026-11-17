@@ -104,14 +104,14 @@ The reliable-message service stores the fragment's advertised
 calls the assembler unconditionally. The assembler allocates the advertised
 total with an infallible allocation:
 
-- [relmsg.rs:386](../../../crates/catten-services/src/bin/relmsg.rs#L386):
+- [relmsg.rs:386](../../../crates/knytos-services/src/bin/relmsg.rs#L386):
   a new `Reassembly` is created with `total: total_message_len` when the
   fragment sequence is expected.
-- [relmsg.rs:395](../../../crates/catten-services/src/bin/relmsg.rs#L395):
+- [relmsg.rs:395](../../../crates/knytos-services/src/bin/relmsg.rs#L395):
   `within_ceiling` is computed afterwards and only gates fragment buffering.
-- [relmsg.rs:423](../../../crates/catten-services/src/bin/relmsg.rs#L423):
+- [relmsg.rs:423](../../../crates/knytos-services/src/bin/relmsg.rs#L423):
   `try_assemble` runs even when `within_ceiling` is false.
-- [relmsg.rs:116](../../../crates/catten-services/src/bin/relmsg.rs#L116):
+- [relmsg.rs:116](../../../crates/knytos-services/src/bin/relmsg.rs#L116):
   `Vec::with_capacity(total)` before any fragment-presence check.
 
 The protocol permits the advertised total: a `SYN|FRAG|MORE` frame with
@@ -120,10 +120,10 @@ The protocol permits the advertised total: a `SYN|FRAG|MORE` frame with
 ([charlotte-protocol-msg/src/lib.rs:344](../../../crates/charlotte-protocol-msg/src/lib.rs#L344)).
 The frame router dispatches non-IP frames to the registered EtherType route
 without a destination-MAC check
-([frouter.rs:1104](../../../crates/catten-services/src/bin/frouter.rs#L1104),
-[1106–1145](../../../crates/catten-services/src/bin/frouter.rs#L1106)); the
+([frouter.rs:1104](../../../crates/knytos-services/src/bin/frouter.rs#L1104),
+[1106–1145](../../../crates/knytos-services/src/bin/frouter.rs#L1106)); the
 victim MAC is discoverable from discovery traffic. `relmsg::MAX_MSG` is 1 MiB
-([lib.rs:1402](../../../crates/catten-services/src/lib.rs#L1402)), so the
+([lib.rs:1402](../../../crates/knytos-services/src/lib.rs#L1402)), so the
 advertised total is far beyond any feasible service heap.
 
 **Impact:** the first such frame aborts `relmsg`; the DNS/Raft transport over
@@ -156,9 +156,9 @@ exactly `len` bytes:
   zero-length slice and panics. `emit_ip` writes further into the same buffer.
 - The transmit path allocates the scratch object from the service's own
   per-domain object budget:
-  [tcpip receive path](../../../crates/catten-services/src/bin/tcpip.rs#L769)
+  [tcpip receive path](../../../crates/knytos-services/src/bin/tcpip.rs#L769)
   allocates one object per delivered chunk and
-  [moves it to the client](../../../crates/catten-services/src/bin/tcpip.rs#L794).
+  [moves it to the client](../../../crates/knytos-services/src/bin/tcpip.rs#L794).
   The creating generation sponsors the allocation for its entire lifetime
   ([memory/budget.rs](../../../crates/catten/src/memory/budget.rs#L1)); the
   per-domain object count ceiling is 1024
@@ -209,8 +209,8 @@ mandatory-launch wrapper that panics on any admission failure:
   ([supervisor.rs:331](../../../crates/catten/src/service/supervisor.rs#L331)).
 
 The deployment agent's legacy branch launches descriptor-less records through
-this syscall ([agent.rs:518](../../../crates/catten-services/src/bin/agent.rs#L518),
-[agent.rs:526](../../../crates/catten-services/src/bin/agent.rs#L526)). Any
+this syscall ([agent.rs:518](../../../crates/knytos-services/src/bin/agent.rs#L518),
+[agent.rs:526](../../../crates/knytos-services/src/bin/agent.rs#L526)). Any
 running application can create memory/thread pressure; a legacy deployment
 performed under that pressure then stops an LP instead of returning an error.
 The scoped `SpawnArtifactScoped` path already uses the fallible wrapper and is
@@ -243,7 +243,7 @@ manual AArch64 `svc3` emitter table has no arm for 77, so the wrapper panics:
   appears nowhere in the crate.
 - The deployment agent reaches it through
   [catten-rt owned ipc](../../../crates/catten-rt/src/owned/ipc.rs#L113) and
-  [agent.rs:646](../../../crates/catten-services/src/bin/agent.rs#L646), and
+  [agent.rs:646](../../../crates/knytos-services/src/bin/agent.rs#L646), and
   is built for AArch64.
 
 **Impact:** every operational-connector deployment on AArch64 aborts the
@@ -300,10 +300,10 @@ Discovery inserts a peer record for every accepted frame, keyed by the
 *source MAC in the payload*, without a volume bound and without comparing it
 to the frame's real Ethernet source:
 
-- [disco.rs:502](../../../crates/catten-services/src/bin/disco.rs#L502)
+- [disco.rs:502](../../../crates/knytos-services/src/bin/disco.rs#L502)
   calls `learn_peer` for every decoded frame whose advertised cluster id
   matches; only the `FLAG_PROBE` response path is conditional.
-- [disco.rs:446–469](../../../crates/catten-services/src/bin/disco.rs#L446)
+- [disco.rs:446–469](../../../crates/knytos-services/src/bin/disco.rs#L446)
   inserts unconditionally into a `BTreeMap` holding three `Vec`s per entry;
   no `MAX_PEERS` equivalent is used.
 - The key comes from payload bytes
@@ -311,8 +311,8 @@ to the frame's real Ethernet source:
   shown as `frame[18..24]`), which the sender controls; the cluster id is
   broadcast in every probe.
 - The discovered raft ids propagate into the raft transport peer map
-  ([raft.rs:778–791](../../../crates/catten-services/src/bin/raft.rs#L778),
-  [relmsg_transport.rs:206](../../../crates/catten-services/src/relmsg_transport.rs#L206)).
+  ([raft.rs:778–791](../../../crates/knytos-services/src/bin/raft.rs#L778),
+  [relmsg_transport.rs:206](../../../crates/knytos-services/src/relmsg_transport.rs#L206)).
 
 **Impact:** an L2 peer can grow `disco` (and the DNS/Raft transport maps)
 until heap exhaustion aborts the service, without spoofing the real Ethernet
@@ -336,13 +336,13 @@ Authorized registrations are stored with `access_key = 0`, and the legacy
 lookup path treats zero as “no key required”, returning a `SEND|CALL`
 connection without any policy decision or audit record:
 
-- [ns.rs:908–933](../../../crates/catten-services/src/bin/ns.rs#L908)
+- [ns.rs:908–933](../../../crates/knytos-services/src/bin/ns.rs#L908)
   publishes through `OP_REGISTER_AUTHORIZED` with `access_key` 0.
-- [ns.rs:617–640](../../../crates/catten-services/src/bin/ns.rs#L617)
+- [ns.rs:617–640](../../../crates/knytos-services/src/bin/ns.rs#L617)
   (`lookup_or_defer`) denies only when `access_key != 0` and mismatched, then
-  [reply_connection_or_error](../../../crates/catten-services/src/bin/ns.rs#L229)
+  [reply_connection_or_error](../../../crates/knytos-services/src/bin/ns.rs#L229)
   delegates `SEND|CALL`.
-- [ns.rs:786](../../../crates/catten-services/src/bin/ns.rs#L786) routes the
+- [ns.rs:786](../../../crates/knytos-services/src/bin/ns.rs#L786) routes the
   public `OP_LOOKUP` opcode here with caller key 0.
 
 The [authorization policy](../../architecture/authorization-policy.md)
@@ -400,7 +400,7 @@ This is not a certification that every acceptance case has been exercised.
 | SEC-02 | Corrected in the documented scope; prior evidence retained. Scoped grants are checked at the controller ([tests pass](#validation-performed)); not re-reviewed line by line. |
 | SEC-03 | Corrected; **re-verified at the dispatch boundary**. Mailbox endpoints are per-ASID namespaces with exact root/identity capture ([mailbox_publication.rs:178](../../../crates/catten/src/syscall/mailbox_publication.rs#L178)), and capability lookups check owner, kind and live state ([capability.rs:607](../../../crates/catten/src/capability.rs#L607)). |
 | SEC-04 | Partial/open as recorded. The boot path still installs the explicit development fixture ([launch.rs:956](../../../crates/catten/src/service/launch.rs#L956)); production admission has no adapter and remains disabled. Signed-policy tooling and the one-shot handoff exist; protected provisioning/custody do not. |
-| SEC-05 | Partial; **re-verified**. Raw ingress remains gated on the designated router, but socket `bind`/`listen` still accepts arbitrary local IPv4 addresses and ports ([tcpip.rs:255](../../../crates/catten-services/src/bin/tcpip.rs#L255)), so a signed app can claim a service VIP. |
+| SEC-05 | Partial; **re-verified**. Raw ingress remains gated on the designated router, but socket `bind`/`listen` still accepts arbitrary local IPv4 addresses and ports ([tcpip.rs:255](../../../crates/knytos-services/src/bin/tcpip.rs#L255)), so a signed app can claim a service VIP. |
 | SEC-06 | Partial. The TCP/IP reactor is bounded to 16 requests and one ring per cycle ([lib.rs:58](../../../crates/charlotte-smoltcp/src/lib.rs#L58)); SEC-32 shows an abort path in the same service; flood fairness for management remains open. |
 | SEC-07 | Partial. The admission-owner inventory is broad, but SEC-32 and SEC-36 identify concrete unbounded/incorrectly-lifetimed allocations; R7-1–R7-5 are not met. |
 | SEC-08 | Open; **re-verified** as the precondition for SEC-36. L2 peer identity is still spoofable, and discovery has no volume bound. |

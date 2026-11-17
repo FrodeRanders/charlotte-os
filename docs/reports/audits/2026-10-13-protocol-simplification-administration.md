@@ -54,8 +54,8 @@ remain intact. This is compatibility removal, not removal of safety compensation
   tests, and syscall-emitter verification. The new host ABI test rejects 64 and
   retains scoped number 76. No direct retired-syscall EL0 execution was added;
   its domain-abort route is source-reviewed and compiled on both architectures.
-- Rebuilt and signed ARM services with `scripts/build-catten-services.sh --embed`
-  and x86 services with `scripts/build-catten-services-x86_64.sh` (41/37 images).
+- Rebuilt and signed ARM services with `scripts/build-knytos-services.sh --embed`
+  and x86 services with `scripts/build-knytos-services-x86_64.sh` (41/37 images).
 - Strict `cargo clippy ... -- -D warnings` passed for services on both JSON
   targets and both kernels with features
   `acpi,virtio_net_test,disco_net_test,disco_cross_node_test,dns_net_test,deploy_net_test,clusterctl_test`.

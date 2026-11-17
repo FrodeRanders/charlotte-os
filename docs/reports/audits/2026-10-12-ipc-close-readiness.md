@@ -242,8 +242,8 @@ the fixture errors corrected above and remains open in the living ledger.
 ## Final validation and artifacts
 
 Both service bundles were rebuilt before guests with
-`scripts/build-catten-services.sh --embed` and
-`scripts/build-catten-services-x86_64.sh`. Host suite: **384 passed, 0 failed,
+`scripts/build-knytos-services.sh --embed` and
+`scripts/build-knytos-services-x86_64.sh`. Host suite: **384 passed, 0 failed,
 3 ignored**. Formatting and diff checks passed. Strict `-D warnings` Clippy
 passed for bundled services and final-source ARM security/HTTP/DHCP and x86
 HTTP/DHCP kernels.

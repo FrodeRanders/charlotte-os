@@ -653,10 +653,10 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged AArch64 EL0 bundle."
 elif [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
-    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --clean --mode "$BOOT_MODE"
+    "${ROOT_DIR}/scripts/build-knytos-services.sh" --embed --clean --mode "$BOOT_MODE"
 else
     echo ">>> Rebuilding embedded EL0 service bundle..."
-    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --mode "$BOOT_MODE"
+    "${ROOT_DIR}/scripts/build-knytos-services.sh" --embed --mode "$BOOT_MODE"
 fi
 if [ "$BOOT_MODE" = "test" ] && [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
     "${ROOT_DIR}/scripts/build-catten-user.sh" --embed

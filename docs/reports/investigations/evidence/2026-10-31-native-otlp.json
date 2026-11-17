@@ -260,7 +260,7 @@
     }
   },
   "host_tests": {
-    "catten-services": 267,
+    "knytos-services": 267,
     "charlotte-launch": 14,
     "charlotte-s3": 9,
     "boot-profile": 8,

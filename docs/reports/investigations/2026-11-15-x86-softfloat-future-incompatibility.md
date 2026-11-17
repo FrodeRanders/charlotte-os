@@ -20,7 +20,7 @@ and any production target migration are unqualified by this investigation.
 | Service x86 target SHA-256 | `2b0725bd2ac5562f68b110a420e5f780df3e3f5f407abecb02ea7f86b82f7a59` |
 | Kernel x86 target SHA-256 | `201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f` |
 
-The service target is `crates/catten-services/x86_64-unknown-none.json`;
+The service target is `../../../crates/knytos-services`;
 the independent kernel target is `target_specs/x86_64-unknown-none-catten.json`.
 Both specify `rustc-abi: softfloat` and disable baseline SIMD while enabling
 `+soft-float`. The AArch64 service target has a different ABI/feature selection.

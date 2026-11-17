@@ -18,19 +18,19 @@ that commit (`f66f793c`) and the reviewed revision
 ## SEC-36: bounded discovery state
 
 The discovery service now refuses new peer MACs past
-[`disco::MAX_DISCOVERED_PEERS`](../../../crates/catten-services/src/lib.rs#L1563)
+[`disco::MAX_DISCOVERED_PEERS`](../../../crates/knytos-services/src/lib.rs#L1563)
 (64, with known MACs still refreshing in place) through
-[`peer_learning_admitted`](../../../crates/catten-services/src/lib.rs#L1567)
+[`peer_learning_admitted`](../../../crates/knytos-services/src/lib.rs#L1567)
 and its host test. `handle_frame` additionally requires the frame's advertised
 identity (the disco header source at bytes 18..24) to equal its real Ethernet
 source (bytes 6..12), so one host cannot populate the table with invented MACs
 under a single frame source
-([disco.rs:497](../../../crates/catten-services/src/bin/disco.rs#L503)).
+([disco.rs:497](../../../crates/knytos-services/src/bin/disco.rs#L503)).
 
 The Raft transport applies the same bound to routes learned from discovery:
-[`MAX_PEER_ROUTES`](../../../crates/catten-services/src/relmsg_transport.rs#L71)
+[`MAX_PEER_ROUTES`](../../../crates/knytos-services/src/relmsg_transport.rs#L71)
 (64) is enforced in
-[`add_peer`](../../../crates/catten-services/src/relmsg_transport.rs#L210),
+[`add_peer`](../../../crates/knytos-services/src/relmsg_transport.rs#L210),
 refusing new identities at capacity while refreshing known ones.
 `learned_routes_are_bounded_and_refresh_in_place` covers the refusal, the
 unchanged count and the in-place refresh.
@@ -48,11 +48,11 @@ SEC-08/10 work.
 The legacy lookup helpers now deny any live registration whose `authorized`
 flag is set:
 
-- immediate [`lookup_or_defer`](../../../crates/catten-services/src/bin/ns.rs#L653)
-  and [`try_lookup`](../../../crates/catten-services/src/bin/ns.rs#L696)
+- immediate [`lookup_or_defer`](../../../crates/knytos-services/src/bin/ns.rs#L653)
+  and [`try_lookup`](../../../crates/knytos-services/src/bin/ns.rs#L696)
   entry points;
 - the deferred fulfillment arm in
-  [`register`](../../../crates/catten-services/src/bin/ns.rs#L583), with the
+  [`register`](../../../crates/knytos-services/src/bin/ns.rs#L583), with the
   caller's kernel-authenticated identity retained in
   `PendingLookup::Legacy`.
 

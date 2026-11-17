@@ -10,7 +10,7 @@ Sitas `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`; Rust is
 The broker is an appropriate application acceptance case. Its pure core, wire,
 engine and shard-runtime layers already support an independent host loop.
 Build/sign tooling consumes platform inputs without staging the broker into an
-OS bundle. The EL0 adapter still uses the older `catten-services` client surface
+OS bundle. The EL0 adapter still uses the older `knytos-services` client surface
 and local platform scripts; it has not adopted `charlotte-app` or the new CLI.
 The foundation needs the concrete extensions below before this concurrent TCP
 server becomes a complete example of the new SDK.

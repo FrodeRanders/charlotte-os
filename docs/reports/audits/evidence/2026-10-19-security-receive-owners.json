@@ -34,13 +34,13 @@
     ],
     "expected_negative_controls": 4,
     "baseline_source_sha256": {
-      "crates/catten-services/src/tls_client.rs": "733600d99ff44ddb8ac522b9f16fb3c77c95345c3894b0524f57397a69705a1a",
-      "crates/catten-services/src/bin/kafka.rs": "c2497efc2709b67de8db489c06e610fe76de91938a2a229c834da6ea52e06cae"
+      "crates/knytos-services/src/tls_client.rs": "733600d99ff44ddb8ac522b9f16fb3c77c95345c3894b0524f57397a69705a1a",
+      "crates/knytos-services/src/bin/kafka.rs": "c2497efc2709b67de8db489c06e610fe76de91938a2a229c834da6ea52e06cae"
     },
     "adapter_source": "\n// Baseline adapters retain the byte operations of the reviewed receive methods;\n// socket/session access is replaced by the same injected producer contract.\nfn read_owned_chunk(reader: &mut impl embedded_io::Read, len: usize)\n -> Result<Vec<u8>, catten_services::tls_client::StreamError> {\n use catten_services::tls_client::StreamError;\n let mut bytes = vec![0; len];\n let len = reader.read(&mut bytes).map_err(|_| StreamError)?;\n if len == 0 { return Err(StreamError); }\n bytes.truncate(len); Ok(bytes)\n}\nstruct FrameReceiver { received: Vec<u8> }\nimpl FrameReceiver {\n fn new() -> Self { Self { received: Vec::new() } }\n fn reset(&mut self) { self.received.clear(); }\n fn read_frame<E>(&mut self, mut receive: impl FnMut() -> Result<Zeroizing<Vec<u8>>, E>)\n  -> Result<Vec<u8>, ReceiveError<E>> {\n  let result = self.read_inner(&mut receive);\n  if result.is_err() { self.received.clear(); }\n  result\n }\n fn read_inner<E>(&mut self, receive: &mut impl FnMut() -> Result<Zeroizing<Vec<u8>>, E>)\n  -> Result<Vec<u8>, ReceiveError<E>> {\n  loop {\n   if self.received.len() >= 4 {\n    let payload = i32::from_be_bytes(self.received[..4].try_into().unwrap());\n    if payload < 4 || payload as usize > wire::MAX_FRAME_LEN {\n     return Err(ReceiveError::Protocol(wire::Error::Invalid));\n    }\n    let len = payload as usize + 4;\n    if self.received.len() >= len {\n     let rest = self.received.split_off(len);\n     return Ok(core::mem::replace(&mut self.received, rest));\n    }\n   }\n   self.received.extend_from_slice(&receive().map_err(ReceiveError::Transport)?);\n   if self.received.len() > wire::MAX_FRAME_LEN + 4 { return Err(ReceiveError::ChunkTooLarge); }\n  }\n }\n}\n",
     "adapter_sha256": "b6858470c58c18d412d05081214ea03438b3fb9cf3a5b6b7526cdc04e7048cba",
     "test_bridge_sha256": "8d4df18da09b2f1d76e1bfe30d7c767bae5c4851041fc152ece4f03acfebe4cf",
-    "manifest": "[package]\nname = \"transport-baseline-control\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n# Keep host integration tests above both layers. Testing catten-services as the\n# selected package also builds its freestanding service entry points.\n[[test]]\nname = \"receive_erasure\"\npath = \"receive_erasure.rs\"\n\n[dev-dependencies]\ncatten-services = { path = \"/Users/froran/Projects/private/charlotte-os/crates/catten-services\" }\ncharlotte-kafka = { path = \"/Users/froran/Projects/private/charlotte-os/crates/charlotte-kafka\" }\nembedded-io = { version = \"0.7\", default-features = false }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
+    "manifest": "[package]\nname = \"transport-baseline-control\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n# Keep host integration tests above both layers. Testing knytos-services as the\n# selected package also builds its freestanding service entry points.\n[[test]]\nname = \"receive_erasure\"\npath = \"receive_erasure.rs\"\n\n[dev-dependencies]\nknytos-services = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-services\" }\ncharlotte-kafka = { path = \"/Users/froran/Projects/private/charlotte-os/crates/charlotte-kafka\" }\nembedded-io = { version = \"0.7\", default-features = false }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
     "reproduction": "Copy the tracked tests/transport/receive_erasure.rs, remove read_owned_chunk and FrameReceiver imports, append adapter_source, then run cargo test --offline --manifest-path <isolated>/Cargo.toml --test receive_erasure erases_. The manifest uses current library dependencies only for the unchanged error/constants/owned-chunk vocabulary; the byte operations are the baseline adapters. Run outside repository build-std configuration.",
     "scope": "Private live transport methods are represented by explicit byte-operation adapters; no baseline guest execution or actual TLS partial-write error reproduction is claimed."
   },
@@ -195,40 +195,40 @@
         "   = note: second definition in the local crate (`cclient`)",
         "   = note: this error originates in the macro `catten_rt::entry` (in Nightly builds, run with -Z macro-backtrace for more info)",
         "For more information about this error, try `rustc --explain E0152`.",
-        "error: could not compile `catten-services` (bin \"shutdown_probe\") due to 1 previous error",
-        "error: could not compile `catten-services` (bin \"frouter\") due to 1 previous error",
+        "error: could not compile `knytos-services` (bin \"shutdown_probe\") due to 1 previous error",
+        "error: could not compile `knytos-services` (bin \"frouter\") due to 1 previous error",
         "error[E0152]: found duplicate lang item `panic_impl`",
         "82 | catten_rt::entry!(main);",
         "   = note: the lang item is first defined in crate `std` (which `ed25519_compact` depends on)",
         "   = note: second definition in the local crate (`s3`)",
         "   = note: this error originates in the macro `catten_rt::entry` (in Nightly builds, run with -Z macro-backtrace for more info)",
-        "error: could not compile `catten-services` (bin \"cclient\") due to 1 previous error",
-        "error: could not compile `catten-services` (bin \"httpd\") due to 1 previous error",
+        "error: could not compile `knytos-services` (bin \"cclient\") due to 1 previous error",
+        "error: could not compile `knytos-services` (bin \"httpd\") due to 1 previous error",
         "error[E0152]: found duplicate lang item `panic_impl`",
         "875 | catten_rt::entry!(main);",
         "    = note: the lang item is first defined in crate `std` (which `ed25519_compact` depends on)",
         "    = note: second definition in the local crate (`disco`)",
         "    = note: this error originates in the macro `catten_rt::entry` (in Nightly builds, run with -Z macro-backtrace for more info)",
-        "error: could not compile `catten-services` (bin \"time\") due to 1 previous error",
-        "error: could not compile `catten-services` (bin \"s3\") due to 1 previous error",
-        "error: could not compile `catten-services` (bin \"disco\") due to 1 previous error"
+        "error: could not compile `knytos-services` (bin \"time\") due to 1 previous error",
+        "error: could not compile `knytos-services` (bin \"s3\") due to 1 previous error",
+        "error: could not compile `knytos-services` (bin \"disco\") due to 1 previous error"
       ],
-      "cause": "Selecting catten-services integration tests also built freestanding service entry points alongside std. The workspace host harness selects library dependencies instead."
+      "cause": "Selecting knytos-services integration tests also built freestanding service entry points alongside std. The workspace host harness selects library dependencies instead."
     },
     "initial_arm_response_type": {
       "exit_status": 101,
       "log_sha256": "ab9a8382685036a4c1bde74255fe013873965823aba64415e1a997e4e6320fa6",
       "diagnostics": [
         "error[E0308]: mismatched types",
-        "    --> crates/catten-services/src/bin/kafka.rs:1029:37",
+        "    --> crates/knytos-services/src/bin/kafka.rs:1029:37",
         "     |                                ---- ^^^^^^^^ expected `Vec<u8>`, found `Zeroizing<Vec<u8>>`",
         "     = note: expected struct `Vec<_>`",
         "                found struct `Zeroizing<Vec<_>>`",
         "help: the type constructed contains `Zeroizing<Vec<u8>>` due to the type of the argument passed",
-        "    --> crates/catten-services/src/bin/kafka.rs:1029:32",
+        "    --> crates/knytos-services/src/bin/kafka.rs:1029:32",
         "    --> /Users/froran/.rustup/toolchains/nightly-2026-07-27-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs:606:5",
         "For more information about this error, try `rustc --explain E0308`.",
-        "error: could not compile `catten-services` (bin \"kafka\") due to 1 previous error"
+        "error: could not compile `knytos-services` (bin \"kafka\") due to 1 previous error"
       ],
       "cause": "exchange_coordinator retained Option<Vec<u8>> while exchange_node returned an owned zeroizing response. Corrected to Option<Zeroizing<Vec<u8>>>.",
       "limit": "Initial source snapshot was not separately archived; the original diagnostic is retained, with passing current-source builds below."
@@ -851,9 +851,9 @@
   "reviewed_source_sha256": {
     "Cargo.lock": "11083db8cb413bf148709f57705e057da45a5a11378b85653e53c9a75d4f30e4",
     "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
-    "crates/catten-services/src/bin/kafka.rs": "cdd8bec341ab969c4d1ebd202182a01be991f47ed611c49b90f257e6bc7583cd",
-    "crates/catten-services/src/bin/s3.rs": "04f5d5d2aa077406b9d385e48838108d018594ed5086e4c19f28f46d82966c68",
-    "crates/catten-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17",
+    "crates/knytos-services/src/bin/kafka.rs": "cdd8bec341ab969c4d1ebd202182a01be991f47ed611c49b90f257e6bc7583cd",
+    "crates/knytos-services/src/bin/s3.rs": "04f5d5d2aa077406b9d385e48838108d018594ed5086e4c19f28f46d82966c68",
+    "crates/knytos-services/src/tls_client.rs": "e5b84f15bf05bf7a28a344c34cf1c2bf517d39d1ede4b7db0ace99e360878f17",
     "crates/charlotte-kafka/src/frame.rs": "3944134cca5a691c718b7b81078a67d8bd04f681c9445b09adb764940277dbb9",
     "crates/charlotte-kafka/src/lib.rs": "67ba75ec1ec790d12783da70c5b943aec55d0207c1db1109653844a19590e82f",
     "docs/reference/api-simplification.md": "fa564778a85f565509ef3cc8d2c2fffff7150bdf15b51bceed8279e0b2950054",
@@ -869,8 +869,8 @@
   },
   "unchanged_inputs_sha256": {
     "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
-    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
     "docker/kafka-test/compose.yaml": "4f33ab72c1a548d2f72d0a9a95e186e9b71d41c0c25fc8690e4537e4e47c3d12",
     "docker/rustfs-s3-test/compose.yaml": "b1e6cad61cf875ca1718c90c66d84769cdf3ac4a28b2c94db5dfe5164b105d42",
     "crates/charlotte-kafka/Cargo.toml": "5ccff11eb5bbf83468ef57063d7cc7d76c47c0046684f623dd7330ecee92d102"

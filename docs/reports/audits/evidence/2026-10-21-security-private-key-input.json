@@ -171,12 +171,12 @@
       "exit_status": 0
     },
     "arm_build": {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit_status": 0,
       "diagnostic": "Staged and signed AArch64 EL0 service bundle."
     },
     "arm_freshness": {
-      "command": "scripts/build-catten-services.sh --check",
+      "command": "scripts/build-knytos-services.sh --check",
       "exit_status": 0,
       "diagnostic": ">>> Staged AArch64 service bundle signatures verified."
     },

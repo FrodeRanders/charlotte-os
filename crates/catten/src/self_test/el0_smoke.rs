@@ -7,7 +7,7 @@
 //! service supervisor uses on AArch64: signature verification, `PT_LOAD`
 //! segment mapping, runtime-page setup, and the `catten-rt` entry trampoline.
 //!
-//! The image is the `smoke` service (`crates/catten-services/src/bin/smoke.rs`),
+//! The image is the `smoke` service (`crates/knytos-services/src/bin/smoke.rs`),
 //! which writes a sentinel to the status page, emits one kernel log line
 //! through the syscall ABI, and exits. The verifier polls the status page via
 //! its HHDM alias and reports success once the sentinel appears.

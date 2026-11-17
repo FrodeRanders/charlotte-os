@@ -56,8 +56,8 @@ Reproduction uses the normal development fixture keys and fresh instance disks:
 
 ```text
 scripts/run-host-tests.sh
-scripts/build-catten-services.sh --embed
-scripts/build-catten-services-x86_64.sh
+scripts/build-knytos-services.sh --embed
+scripts/build-knytos-services-x86_64.sh
 ```
 
 For each central-store run, set `CATTEN_SKIP_EMBED_BUILD=1`, use the ARM

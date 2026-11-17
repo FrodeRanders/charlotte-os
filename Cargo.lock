@@ -207,49 +207,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "catten-services"
-version = "0.1.0"
-dependencies = [
- "aes",
- "aes-gcm",
- "catten-graft",
- "catten-rt",
- "catten-syscall",
- "charlotte-app",
- "charlotte-authorization",
- "charlotte-kafka",
- "charlotte-kafka-step",
- "charlotte-launch",
- "charlotte-management-tls",
- "charlotte-protocol-block",
- "charlotte-protocol-disco",
- "charlotte-protocol-dns",
- "charlotte-protocol-grant",
- "charlotte-protocol-kafka",
- "charlotte-protocol-msg",
- "charlotte-protocol-net",
- "charlotte-protocol-ns",
- "charlotte-protocol-objstore",
- "charlotte-protocol-s3",
- "charlotte-protocol-time",
- "charlotte-s3",
- "charlotte-smoltcp",
- "ed25519-compact",
- "embassy-crypto",
- "embassy-crypto-rustcrypto",
- "embedded-io",
- "embedded-tls",
- "getrandom 0.4.3",
- "ghash",
- "p256",
- "polyval",
- "rand_core",
- "smoltcp",
- "spin 0.12.3",
- "zeroize",
-]
-
-[[package]]
 name = "catten-syscall"
 version = "0.1.0"
 
@@ -466,10 +423,10 @@ dependencies = [
 name = "charlotte-transport-tests"
 version = "0.1.0"
 dependencies = [
- "catten-services",
  "charlotte-kafka",
  "charlotte-s3",
  "embedded-io",
+ "knytos-services",
  "zeroize",
 ]
 
@@ -1110,6 +1067,49 @@ checksum = "53b44bfcdb3f8d5837a46dae1ca9660a837176eee74a28b229bc626816589102"
 dependencies = [
  "cfg-if",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "knytos-services"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "catten-graft",
+ "catten-rt",
+ "catten-syscall",
+ "charlotte-app",
+ "charlotte-authorization",
+ "charlotte-kafka",
+ "charlotte-kafka-step",
+ "charlotte-launch",
+ "charlotte-management-tls",
+ "charlotte-protocol-block",
+ "charlotte-protocol-disco",
+ "charlotte-protocol-dns",
+ "charlotte-protocol-grant",
+ "charlotte-protocol-kafka",
+ "charlotte-protocol-msg",
+ "charlotte-protocol-net",
+ "charlotte-protocol-ns",
+ "charlotte-protocol-objstore",
+ "charlotte-protocol-s3",
+ "charlotte-protocol-time",
+ "charlotte-s3",
+ "charlotte-smoltcp",
+ "ed25519-compact",
+ "embassy-crypto",
+ "embassy-crypto-rustcrypto",
+ "embedded-io",
+ "embedded-tls",
+ "getrandom 0.4.3",
+ "ghash",
+ "p256",
+ "polyval",
+ "rand_core",
+ "smoltcp",
+ "spin 0.12.3",
+ "zeroize",
 ]
 
 [[package]]

@@ -53,7 +53,7 @@ Validated on 2026-10-13 from `aa8c7ae4` plus this batch:
   documentation examples. The five new protocol tests account for the change
   from 392. Signing-policy, boot-result and syscall-emitter probes and signing
   tool self-tests also passed.
-- `scripts/build-catten-services.sh --embed` rebuilt and signed 41 ARM ELFs.
+- `scripts/build-knytos-services.sh --embed` rebuilt and signed 41 ARM ELFs.
   The x86 runner's build-only mode rebuilt and signed 37 ELFs and compiled the
   DNS/discovery kernel. The ARM DNS/discovery kernel also compiled. Strict
   AArch64 service Clippy and `cargo fmt --all -- --check` passed.

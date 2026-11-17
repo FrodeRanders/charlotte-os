@@ -25,9 +25,9 @@
     "corrected_suffix_output_sha256": "f1cdf72b1c7c75866facea8e0717bd442b7c6185519c901e295d79f0c521a0f1"
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/ns.rs": "f5e006e802eb977f8c2ee8d0c3c37a75a7daa72614e9a41ec7b0b8ec15dc59ea",
-    "crates/catten-services/src/ns_publication.rs": "c3a2f9c566c463f00e0d043b5c1d9ae59ad849278472d453310672d4a3035625",
-    "crates/catten-services/src/publication_generation.rs": "9c622776792c39b677f812be5bc7ab043b1a86f1e1da42c88f9823c41d4d623d",
+    "crates/knytos-services/src/bin/ns.rs": "f5e006e802eb977f8c2ee8d0c3c37a75a7daa72614e9a41ec7b0b8ec15dc59ea",
+    "crates/knytos-services/src/ns_publication.rs": "c3a2f9c566c463f00e0d043b5c1d9ae59ad849278472d453310672d4a3035625",
+    "crates/knytos-services/src/publication_generation.rs": "9c622776792c39b677f812be5bc7ab043b1a86f1e1da42c88f9823c41d4d623d",
     "crates/charlotte-authorization/src/lib.rs": "3667d0733d1698cc693a37a463fb32c4e5f2b99c941a5595efbca8da7f98e75c",
     "crates/charlotte-protocol-ns/src/lib.rs": "0bd514f7eae177ef607105fe31e6c5da82d0a8c07d844f2cc6594cabf4303f11",
     "crates/catten/src/service/loader.rs": "761ec0c018ce830cf805f48b7e01587eabeb64d45ea32a86237607b164b36610",
@@ -274,17 +274,17 @@
       "failed_tests": 0
     },
     {
-      "command": "cargo clippy --locked -p catten-services --bin ns --target crates/catten-services/aarch64-unknown-none.json --release -Z build-std=core,alloc -- -D warnings",
+      "command": "cargo clippy --locked -p knytos-services --bin ns --target crates/knytos-services/aarch64-unknown-none.json --release -Z build-std=core,alloc -- -D warnings",
       "exit": 0,
       "output_sha256": "3a0b1f831c9d46b5794ad31244c3862231eb38be3d9045ea166ac0d346c65aff"
     },
     {
-      "command": "cargo clippy --locked -p catten-services --bin ns --target crates/catten-services/x86_64-unknown-none.json --release -Z build-std=core,alloc -- -D warnings",
+      "command": "cargo clippy --locked -p knytos-services --bin ns --target crates/knytos-services/x86_64-unknown-none.json --release -Z build-std=core,alloc -- -D warnings",
       "exit": 0,
       "output_sha256": "4c855e7b378276b08df5512a9e25de79f9fca8eb17e22f02f2cc86c21bef89c9"
     },
     {
-      "command": "scripts/build-catten-services.sh --embed",
+      "command": "scripts/build-knytos-services.sh --embed",
       "exit": 0,
       "output_sha256": "27477fa0a4189546fd6d1b8fc6e2524fbde312603e0e0fdbc937d77a151c62a4"
     },

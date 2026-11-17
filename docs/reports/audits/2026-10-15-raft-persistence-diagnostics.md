@@ -86,8 +86,8 @@ client. Existing runtime owner tests run in the same suite. The native runs
 below exercise the real successful adapter and process/disk recovery paths.
 
 Both complete service bundles rebuilt and signed through
-`scripts/build-catten-services.sh --embed` and
-`scripts/build-catten-services-x86_64.sh`. Strict service Clippy (`--bins --lib`,
+`scripts/build-knytos-services.sh --embed` and
+`scripts/build-knytos-services-x86_64.sh`. Strict service Clippy (`--bins --lib`,
 `--release`, `-Z build-std=core,alloc`, `-- -D warnings`) passes on both custom
 targets. Workspace rustfmt and diff whitespace pass. Native runners verify
 executable/read-only kernel assembly sections.

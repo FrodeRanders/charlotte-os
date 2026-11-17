@@ -13,7 +13,7 @@ QEMU x86 with Secure Boot edk2 code and a matching empty vars template, mtools
 and the repository Rust toolchain. Stage the usual x86 service bundle first:
 
 ```sh
-scripts/build-catten-services-x86_64.sh
+scripts/build-knytos-services-x86_64.sh
 scripts/prepare-secure-boot-tools.sh
 
 python3 scripts/run-secure-boot-test.py \
@@ -77,7 +77,7 @@ permit boot against the old snapshot.
 The management restart/rotation campaign uses the same signed-chain preparation:
 
 ```sh
-scripts/build-catten-services-x86_64.sh
+scripts/build-knytos-services-x86_64.sh
 python3 scripts/run-management-rotation-test.py \
   --firmware-code /path/to/secure-code.fd --vars-template /path/to/vars.fd
 ```

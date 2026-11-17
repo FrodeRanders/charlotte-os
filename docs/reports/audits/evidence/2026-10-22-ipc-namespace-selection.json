@@ -286,7 +286,7 @@
       "x86": "4a6c037966209741ac30a2c2220bc46c02071a050102f28381b1329766882a5b",
       "arm": "dc527e0905c1004926b5cec048f1f903b67f68a7c57b1a6fbd32bd69731515f1"
     },
-    "bundle_reproduction": "scripts/build-catten-services.sh --check; current-source signed bytes and signatures verified",
+    "bundle_reproduction": "scripts/build-knytos-services.sh --check; current-source signed bytes and signatures verified",
     "bundle_reproduction_capture_sha256": "fe1fa93cedb2cac73e99ba14d6379d5e3f56351f83043ee874a4df94205af0f2",
     "host_tests": "Kernel-only implementation. Actual kernel owner/registry controls run on both native targets; no unrelated host suite rerun claimed."
   },

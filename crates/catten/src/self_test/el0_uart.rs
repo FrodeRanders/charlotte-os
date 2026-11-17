@@ -103,7 +103,7 @@ struct TestState {
 #[cfg(target_arch = "aarch64")]
 const KCLIENT_ASID: usize = ipc::namespace::fixture_id(0x7200);
 
-/// Console protocol opcodes mirrored from `catten-services`.
+/// Console protocol opcodes mirrored from `knytos-services`.
 #[cfg(target_arch = "aarch64")]
 const NAME_UART: u64 = packed_name(b"uart");
 #[cfg(target_arch = "aarch64")]

@@ -27,14 +27,14 @@
     ]
   },
   "source_sha256": {
-    "crates/catten-services/src/bin/deployd.rs": "015ef2d2a84154859c40a42b16b2a78a9b7f5ca517ae8c723146030f1f86643f",
-    "crates/catten-services/src/bin/httpd.rs": "a44f492703da0170408c9adc7a059eae6c235d18c33187f4fc3e2fdd2ca9402d",
-    "crates/catten-services/src/bin/tcpclient.rs": "d93971a9547b789fac3749f96e4adff42712bbfb2a87961ebf14347f35444ecf",
-    "crates/catten-services/src/bin/tcpip.rs": "a7bfe7181d01e39ba1fd49e7e01c2c3f3d871d7fca32a6e0cac00bf1619ee8a6",
-    "crates/catten-services/src/deployment_http.rs": "6f8319f7d0fa8bf24690bc39d1446ec1a3abed0c2253fecdd05e5a48141cddc7",
-    "crates/catten-services/src/deployment_input.rs": "1ae4be793cb2479a04d015b4f638dbc20901ddb8fd1b8e7ab7805f77663cad64",
-    "crates/catten-services/src/lib.rs": "6b0ad146eadd6687c3615b2098bc0a55cdc2532e6b12ef2d25a71ab2f0e60abe",
-    "crates/catten-services/src/socket_state.rs": "a755e75efed1f3d6d2e834b2e9bebf9003069780d996cf03199b51b4b0c48857",
+    "crates/knytos-services/src/bin/deployd.rs": "015ef2d2a84154859c40a42b16b2a78a9b7f5ca517ae8c723146030f1f86643f",
+    "crates/knytos-services/src/bin/httpd.rs": "a44f492703da0170408c9adc7a059eae6c235d18c33187f4fc3e2fdd2ca9402d",
+    "crates/knytos-services/src/bin/tcpclient.rs": "d93971a9547b789fac3749f96e4adff42712bbfb2a87961ebf14347f35444ecf",
+    "crates/knytos-services/src/bin/tcpip.rs": "a7bfe7181d01e39ba1fd49e7e01c2c3f3d871d7fca32a6e0cac00bf1619ee8a6",
+    "crates/knytos-services/src/deployment_http.rs": "6f8319f7d0fa8bf24690bc39d1446ec1a3abed0c2253fecdd05e5a48141cddc7",
+    "crates/knytos-services/src/deployment_input.rs": "1ae4be793cb2479a04d015b4f638dbc20901ddb8fd1b8e7ab7805f77663cad64",
+    "crates/knytos-services/src/lib.rs": "6b0ad146eadd6687c3615b2098bc0a55cdc2532e6b12ef2d25a71ab2f0e60abe",
+    "crates/knytos-services/src/socket_state.rs": "a755e75efed1f3d6d2e834b2e9bebf9003069780d996cf03199b51b4b0c48857",
     "docs/guides/testing.md": "c88eddff22627e641a7c0b9632a4e4bb76534590ea046d7a895c0e47ff831371",
     "docs/manual-v2/chapters/13-networking.tex": "ef5fe32dcd3e6f1c361cadfe7c5fe84826f41a5e42f75631e1c9cf2cfd713bc9",
     "docs/manual-v2/chapters/19-cluster-vision.tex": "c8d37e013bd54eeadf7a7c732dff2a5b675535c03e1c7c7e6a512bccd13a15e2",
@@ -748,7 +748,7 @@
     }
   },
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib (cwd /private/tmp)",
     "result": "160 passed; 0 failed",
     "log_sha256": "38161ceb61ee4a6e8b86aadd37055e1ee6aad5b330ddd9e2682607ec24a11199",
     "qualification": "New pool tests use modeled transport/ownership adapters. Native EOF and receive success covered separately; actual mapping/bind rejection are source reviewed."
@@ -757,11 +757,11 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "python": "python3 -m py_compile scripts/tests/test-deployment-http-liveness.py",
-    "clippy_host": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings",
-    "clippy_native": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip -- -D warnings",
+    "clippy_host": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
+    "clippy_native": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip -- -D warnings",
     "native_lint_initial": "collapsible_if rejected the accept completion branch; corrected to equivalent let-chain; final strict check passes",
-    "arm_reproduction": "scripts/build-catten-services.sh --check: all signed ELFs match final source after lint correction",
-    "x86_reproduction": "scripts/build-catten-services-x86_64.sh; all 37 signed ELF hashes identical to loaded final pool bundle after lint correction"
+    "arm_reproduction": "scripts/build-knytos-services.sh --check: all signed ELFs match final source after lint correction",
+    "x86_reproduction": "scripts/build-knytos-services-x86_64.sh; all 37 signed ELF hashes identical to loaded final pool bundle after lint correction"
   },
   "formal": {
     "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",

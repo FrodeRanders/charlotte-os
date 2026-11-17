@@ -109,7 +109,7 @@ failure is recorded separately from passing checks and production regressions.
 - Services host suite: **145 passed, zero failed**.
 - Warning-denied Clippy passes for all host `catten-graft` targets. Workspace
   formatting, Bash syntax and diff whitespace checks pass.
-- `scripts/build-catten-services.sh --embed` builds/signs the complete ARM bundle;
+- `scripts/build-knytos-services.sh --embed` builds/signs the complete ARM bundle;
   `--check` confirms that the final source reproduces its staged signatures.
 - ARM base boot: **17 passed / zero failed / zero pending**, bitmap `0x1ffff`.
   NVMe Raft term/vote restart passes. Kernel SHA-256

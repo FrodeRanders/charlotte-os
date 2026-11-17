@@ -256,7 +256,7 @@
       "diagnostics": [
         ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
       ],
-      "command": "scripts/build-catten-services.sh --embed"
+      "command": "scripts/build-knytos-services.sh --embed"
     },
     "arm_freshness": {
       "exit_status": 0,
@@ -264,7 +264,7 @@
       "diagnostics": [
         ">>> Staged AArch64 service bundle signatures verified."
       ],
-      "command": "scripts/build-catten-services.sh --check"
+      "command": "scripts/build-knytos-services.sh --check"
     }
   },
   "bundles": {
@@ -594,11 +594,11 @@
     ".cargo/config.toml": "0a45a5f5ba64d678118b745947c36b9580f9815315c5856577e01f4f68091fe4",
     "Cargo.lock": "1e425c4211e2059e3da207d53e2c06b360ba69899a3644ab65609373f58323d6",
     "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
-    "crates/catten-services/src/bin/deployd.rs": "9416da775bc9ecb466d1f69a4b5bb73d851a8f0bb2605a4e35a001deceb4f5d6",
-    "crates/catten-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
-    "crates/catten-services/src/name_catalog.rs": "3018cd477cf4d9360033797b7ea3ce810142c7ac96891ebe06d276962f9dfe7e",
+    "crates/knytos-services/src/bin/deployd.rs": "9416da775bc9ecb466d1f69a4b5bb73d851a8f0bb2605a4e35a001deceb4f5d6",
+    "crates/knytos-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
+    "crates/knytos-services/src/name_catalog.rs": "3018cd477cf4d9360033797b7ea3ce810142c7ac96891ebe06d276962f9dfe7e",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
-    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
     "scripts/prepare-local-deployment-fixture.sh": "72ea26f1e2f04f56738c1e26f95ed4169c7867e803fe52fb2e33b29ab8316232",
     "scripts/run-aarch64.sh": "d3a1e6123786ac9e880f79f577520d5f59378d98e909de647ba9260b6829d901",
     "scripts/run-x86_64.sh": "aadaf04b63519e457dcbf23ab91e2087483398076f4705900c4ad6f6f395612e",

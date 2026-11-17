@@ -77,9 +77,9 @@ architecture:
 
 ```sh
 cargo build --locked -p charlotte-app --example reconnecting_client \
-  --target crates/catten-services/aarch64-unknown-none.json
+  --target crates/knytos-services/aarch64-unknown-none.json
 cargo build --locked -p charlotte-app --example reconnecting_client \
-  --target crates/catten-services/x86_64-unknown-none.json
+  --target crates/knytos-services/x86_64-unknown-none.json
 bash scripts/run-host-tests.sh
 ```
 

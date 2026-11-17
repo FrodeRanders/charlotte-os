@@ -49,10 +49,10 @@ def component(path):
     if path.startswith("crates/catten/"):
         return "Kernel"
     if path.startswith("crates/catten-user/") or path.startswith(
-        "crates/catten-services/examples/"
+        "crates/knytos-services/examples/"
     ):
         return "Userspace demonstrations"
-    if path.startswith("crates/catten-services/src/bin/"):
+    if path.startswith("crates/knytos-services/src/bin/"):
         name = Path(parts[4]).stem
         if name in DEMOS:
             return "Userspace demonstrations"
@@ -70,8 +70,8 @@ def dedicated_test(path):
     p = Path(path)
     return (
         component(path) == "Userspace test applications"
-        or path in {"crates/catten-services/src/bin/raft.rs",
-                    "crates/catten-services/src/bin/servicemgr.rs"}
+        or path in {"crates/knytos-services/src/bin/raft.rs",
+                    "crates/knytos-services/src/bin/servicemgr.rs"}
         or path in VALIDATION_FILES
         or any(part in {"tests", "self_test", "test_data", "test_support", "fixtures"}
                or part.endswith("_tests") for part in p.parts)
@@ -280,10 +280,10 @@ def main():
                   "- Kernel includes native self-tests and adjacent subsystem fixtures; kernel",
                   "  demonstrations are listed separately. 'Other code' approximates kernel",
                   "  proper but still includes unclassified diagnostic/fixture scaffolding.",
-                  "- Userspace demonstrations: catten-user, catten-services/examples, echo, greet.",
+                  "- Userspace demonstrations: catten-user, knytos-services/examples, echo, greet.",
                   textwrap.fill("- Userspace test applications: " + ", ".join(sorted(PROBES)) + ".",
                                 width=79, subsequent_indent="  "),
-                  "- Runtime service binaries are separate from the shared catten-services SDK,",
+                  "- Runtime service binaries are separate from the shared knytos-services SDK,",
                   "  catten-rt/syscall, protocol, connector, crypto and Raft libraries.",
                   "  Standalone raft/servicemgr fixture servers remain in the services category",
                   "  with their code counted as test-related; production DNS owns durable Raft.",

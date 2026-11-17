@@ -152,7 +152,7 @@
     ".cargo/config.toml": "ee5add326b9194e024f9eae1ca22a7f0e3941889a22049f3f77dd04677e96def",
     "Cargo.lock": "c516b44bd41c5aa77f4df60e3e6249f2019df65ae19675e83911b2a85f08524a",
     "rust-toolchain.toml": "a0665391d1aa1a019bb02e2af6b9e19dde456912abdd252b9d8ca5afc8cd82d4",
-    "crates/catten-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656"
+    "crates/knytos-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656"
   },
   "capture_scope": "Selected receipts, compiler/target/source identities and native outcomes. Complete temporary raw captures are not published.",
   "controls": {

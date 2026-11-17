@@ -41,7 +41,7 @@ existing all-or-nothing routing contract.
 
 The contact-age bound uses the existing
 `catten_services::frouter::SNAPSHOT_SOURCE_MAX_AGE_MS`, currently **1000 ms**, in
-`crates/catten-services/src/lib.rs`. It derives from `SNAPSHOT_REFRESH_MS`, also
+`../../crates/knytos-services`. It derives from `SNAPSHOT_REFRESH_MS`, also
 used for route/assignment/membership refresh. The router's local admission lease
 is five refresh intervals. `cluster_ingress::MAX_BACKENDS`, currently **64**,
 bounds both the projection and member snapshots. These are compile-time
