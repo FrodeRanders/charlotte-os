@@ -12,7 +12,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     config,
@@ -21,7 +21,7 @@ use catten_rt::{
         OwnedMemory,
     },
 };
-use catten_services::{
+use knytos_services::{
     frouter,
     net,
     owned_call_with_backpressure,
@@ -196,7 +196,7 @@ fn probe_cluster_vip(tcp_conn: ConnectionRef<'_>, address: [u8; 4], port: u16) -
     for socket in sockets {
         let _ = socket.close();
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[ingress-probe] FAILOVER WINDOW OPEN with {} established flow(s)",
         established.len()
     );
@@ -209,7 +209,7 @@ fn probe_cluster_vip(tcp_conn: ConnectionRef<'_>, address: [u8; 4], port: u16) -
         }
         let _ = socket.close();
     }
-    catten_rt::logln!("[ingress-probe] {} flow(s) survived the failover window", successful);
+    knytos_rt::logln!("[ingress-probe] {} flow(s) survived the failover window", successful);
     true
 }
 
@@ -224,7 +224,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 2);
 
     let net_status = owned_call_with_backpressure(net_conn.as_ref(), net::OP_STATUS, 0)
-        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
         .wait()
         .unwrap_or_else(|_| unsafe { thread_exit() })
         .result;
@@ -265,7 +265,7 @@ fn main(ctx: Context) -> ! {
             // Keep its kernel alive until the external fixture removes it;
             // otherwise successful completion would stop QEMU before the
             // non-advertiser guests have established their test flows.
-            catten_rt::logln!("[ingress-probe] PROBE SKIPPED ON VIP ADVERTISER");
+            knytos_rt::logln!("[ingress-probe] PROBE SKIPPED ON VIP ADVERTISER");
             sleep_ms(VIP_ADVERTISER_FIXTURE_HOLD_MS);
         } else if !probe_cluster_vip(
             tcp_conn.as_ref(),
@@ -391,7 +391,7 @@ fn main(ctx: Context) -> ! {
     }
 
     assert_eq!(retained.len(), 32);
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[tcpclient] 32 caller-sponsored TCP receive buffers retained while bidirectional traffic \
          progressed"
     );
@@ -403,4 +403,4 @@ fn main(ctx: Context) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

@@ -18,7 +18,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
@@ -29,7 +29,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     entropy,
     ns,
     s3 as protocol,
@@ -75,7 +75,7 @@ use zeroize::{
     Zeroize,
     Zeroizing,
 };
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const MAX_OPERATIONS: usize = 8;
 const OPERATION_LEASE_SECONDS: u64 = 300;
@@ -198,12 +198,12 @@ fn connect<'connection>(
             Ok(stream) => Ok(Transport::Tls(Box::new(stream))),
             Err(tls_client::OpenError::Handshake(code)) => {
                 config::write::<u32>(status::ERROR, 0x5400 | code);
-                catten_rt::logln!("[s3] TLS handshake verification failed");
+                knytos_rt::logln!("[s3] TLS handshake verification failed");
                 Err(())
             }
             Err(tls_client::OpenError::EntropyUnavailable) => {
                 config::write::<u32>(status::ERROR, 0x5400);
-                catten_rt::logln!("[s3] TLS unavailable: system entropy source failed");
+                knytos_rt::logln!("[s3] TLS unavailable: system entropy source failed");
                 Err(())
             }
             Err(
@@ -594,7 +594,7 @@ impl<'connection> Service<'connection> {
     }
 }
 
-fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::IncomingMessage) {
+fn handle_message(service: &mut Service<'_>, mut message: knytos_rt::owned::IncomingMessage) {
     let Some(reply) = message.reply.take() else {
         return;
     };
@@ -880,7 +880,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         fail(0xe007);
     }
     let view = profile.view();
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[s3] serving endpoint={}:{} bucket={} prefix={} region={} tls={} rights={:#x}",
         view.host,
         view.port,
@@ -911,7 +911,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         match endpoint.try_receive() {
             Ok(None) => sleep_ms(10),
             Ok(Some(message)) => handle_message(&mut service, message),
-            Err(catten_rt::owned::ReceiveError::EndpointClosed) => fail(0xe008),
+            Err(knytos_rt::owned::ReceiveError::EndpointClosed) => fail(0xe008),
             Err(_) => {
                 service.failures = service.failures.wrapping_add(1);
                 config::write::<u32>(status::FAILURES, service.failures);

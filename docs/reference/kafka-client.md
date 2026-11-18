@@ -13,7 +13,7 @@ The implementation is split at the userspace boundary:
   contains no live capabilities;
 - `kafka.elf` owns the broker socket, producer IDs, epochs, sequence numbers,
   group state, and transactional identity; and
-- `catten_services::kafka_client` is the owned application API; and
+- `knytos_services::kafka_client` is the owned application API; and
 - `kafka_step.elf` plus `knytos-kafka-step` provide a generic,
   capability-separated consume--procedure--produce runner.
 
@@ -137,7 +137,7 @@ Resolve the authority-endpoint name from the deployment contract, keep the
 returned owned connection, and borrow it through a client:
 
 ```rust
-use catten_services::{
+use knytos_services::{
     kafka_client::Client,
     wait_for_registered_name_bytes_owned,
 };
@@ -154,7 +154,7 @@ Additional routes are numbered from one in `KafkaProfile::produce_routes`
 order. Both ordinary and transactional production can select them:
 
 ```rust
-use catten_services::kafka_client::Route;
+use knytos_services::kafka_client::Route;
 
 let mut transaction = client.begin_transaction()?;
 transaction.produce_to(
@@ -223,7 +223,7 @@ failures abort and redeliver without charging the business attempt count.
 
 The scoped launch API gives the runner `grantctl` and a signed descriptor
 rather than a name-service connection. The descriptor can authorize the exact
-connector and procedure names, and `catten_services::grant_client` returns only
+connector and procedure names, and `knytos_services::grant_client` returns only
 those attenuated connections. The node agent supports signed central-S3 pull
 and scoped launch for arbitrary artifact names. Generated Kafka-step rollout
 still needs the release and rollback controller plus per-component connector
@@ -303,7 +303,7 @@ Handshake randomness comes first from the architecture RNG syscall and then
 from the optional `rng` service backed by protected VirtIO RNG DMA. If trusted
 time, entropy, or verification is unavailable, connection establishment fails
 closed. Broker sockets and both TLS record buffers are aggregated in
-`catten_services::tls_client::OwnedTlsStream`, so reconnect and error paths
+`knytos_services::tls_client::OwnedTlsStream`, so reconnect and error paths
 release the whole transport by dropping one owner.
 
 `KafkaAuthentication::ScramSha256` authenticates the connector as a Kafka

@@ -2,13 +2,13 @@
 
 use alloc::vec::Vec;
 
-use catten_services::ns;
+use knytos_services::ns;
 use knytos_protocol_ns::snapshot;
 
 enum StatusBacking {
     Empty,
-    Memory(catten_rt::owned::OwnedMemory),
-    Mapping(catten_rt::owned::MappedMemory<catten_rt::owned::Writable>),
+    Memory(knytos_rt::owned::OwnedMemory),
+    Mapping(knytos_rt::owned::MappedMemory<knytos_rt::owned::Writable>),
 }
 
 /// One owner for every transient field from preparation through publication.
@@ -16,7 +16,7 @@ enum StatusBacking {
 struct StatusReply {
     backing: StatusBacking,
     bytes: Vec<u8>,
-    reply: Option<catten_rt::owned::ReplyToken>,
+    reply: Option<knytos_rt::owned::ReplyToken>,
 }
 
 impl StatusReply {
@@ -28,7 +28,7 @@ impl StatusReply {
     }
 
     fn prepare(&mut self) -> Result<(), i64> {
-        use catten_rt::owned::OwnedMemory;
+        use knytos_rt::owned::OwnedMemory;
         self.backing = StatusBacking::Memory(
             OwnedMemory::allocate(self.bytes.len().div_ceil(4096)).map_err(|_| ns::ERR_INVALID)?,
         );
@@ -82,7 +82,7 @@ impl StatusReply {
 /// Consume the catalog observation's received transaction before any scalar
 /// attachment fallback can touch it. No new cleanup/retry policy is added.
 pub(super) fn reply_status(
-    mut request: catten_rt::owned::IncomingMessage,
+    mut request: knytos_rt::owned::IncomingMessage,
     registry: &super::Registry,
     pending: usize,
 ) {

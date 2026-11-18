@@ -13,12 +13,12 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
 };
-use catten_services::{
+use knytos_services::{
     net,
     publication,
     relmsg,
@@ -479,14 +479,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         unsafe { thread_exit() };
     }
     config::write::<u32>(status::STAGE, 2);
-    let endpoint = catten_rt::owned::Endpoint::create(relmsg::INTERFACE, relmsg::VERSION, 16)
+    let endpoint = knytos_rt::owned::Endpoint::create(relmsg::INTERFACE, relmsg::VERSION, 16)
         .unwrap_or_else(|_| unsafe { thread_exit() });
     if endpoint.bind_completion_queue(0).is_err() {
         unsafe { thread_exit() };
     }
     let generation =
         publication::register(names, relmsg::NAME, &endpoint).unwrap_or_else(|error| {
-            catten_rt::logln!("[relmsg] registration rejected: {error:?}");
+            knytos_rt::logln!("[relmsg] registration rejected: {error:?}");
             unsafe { thread_exit() }
         });
     // Pack the service generation and retry epoch into disjoint namespaces.
@@ -503,7 +503,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let cq = ctx.completion_queue_layout();
     let mut retransmit_timer_armed =
         submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE) != u64::MAX;
-    let mut retransmit_watchdog = catten_services::deadline::Deadline::after(relmsg::RETRANSMIT_MS);
+    let mut retransmit_watchdog = knytos_services::deadline::Deadline::after(relmsg::RETRANSMIT_MS);
     config::write::<u32>(status::STAGE, 4);
 
     loop {
@@ -519,7 +519,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     ipc_reply(pending.reply, relmsg::ERR_PEER_UNREACHABLE);
                 }
             }
-            catten_rt::logln!("[relmsg] shutdown: pending receive and peer sessions released");
+            knytos_rt::logln!("[relmsg] shutdown: pending receive and peer sessions released");
             return request;
         }
         // Retransmission cadence must be independent of endpoint traffic.
@@ -536,7 +536,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         if retransmit_due {
             retransmit_pending(net_conn, &mut peers);
-            retransmit_watchdog = catten_services::deadline::Deadline::after(relmsg::RETRANSMIT_MS);
+            retransmit_watchdog = knytos_services::deadline::Deadline::after(relmsg::RETRANSMIT_MS);
         }
         if !retransmit_timer_armed {
             retransmit_timer_armed =
@@ -552,10 +552,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // closes or adopts this handle. The endpoint owner spans the reactor.
         let message = ipc_recv(endpoint.as_raw());
         let _attachments =
-            catten_services::RequestAttachments::new(message.memory, message.connection);
+            knytos_services::RequestAttachments::new(message.memory, message.connection);
         config::write::<u32>(status::STAGE, 7);
         if message.status == ipc_status::NO_MESSAGE {
-            catten_services::reactor::wait(Some(retransmit_watchdog.remaining_ms()), 0);
+            knytos_services::reactor::wait(Some(retransmit_watchdog.remaining_ms()), 0);
             continue;
         }
         if message.status == ipc_status::ENDPOINT_CLOSED {
@@ -789,7 +789,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 fn main(ctx: Context) -> ! {
     if matches!(
         ctx.manifest_value(knytos_launch::relmsg_status::AUDIT_PROBE_KEY),
-        Some(catten_rt::ManifestValue::Unsigned(1))
+        Some(knytos_rt::ManifestValue::Unsigned(1))
     ) {
         verify_fragment_rejection();
     }
@@ -841,10 +841,10 @@ fn verify_fragment_rejection() {
         process_frame(0, local, session, &frame, &mut empty, &mut received);
         assert!(empty.is_empty());
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[relmsg] over-ceiling SYN fragments rejected before peer/session admission; existing \
          assembly preserved"
     );
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

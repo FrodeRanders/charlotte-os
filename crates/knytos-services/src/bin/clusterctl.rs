@@ -18,9 +18,9 @@
 
 extern crate alloc;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
@@ -32,7 +32,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     clusterctl,
     disco,
     dns,
@@ -68,7 +68,7 @@ fn lookup(ns_connection: u64, name: u64) -> u64 {
     if lookup == 0 {
         return 0;
     }
-    let (generation, connection) = catten_services::spin_reply(lookup);
+    let (generation, connection) = knytos_services::spin_reply(lookup);
     if generation < 1 || connection == 0 {
         0
     } else {
@@ -84,7 +84,7 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     if create == 0 {
         return false;
     }
-    let created = catten_services::spin_reply(create).0;
+    let created = knytos_services::spin_reply(create).0;
     if created != objstore::ERR_OK && created != objstore::ERR_EXISTS {
         return false;
     }
@@ -103,7 +103,7 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     memory_unmap(size_cap);
     let set_size =
         ipc_scalar_call_borrow_read(obj_conn, objstore::OP_SET_SIZE, object_id, size_cap);
-    let resized = set_size != 0 && catten_services::spin_reply(set_size).0 == objstore::ERR_OK;
+    let resized = set_size != 0 && knytos_services::spin_reply(set_size).0 == objstore::ERR_OK;
     memory_close(size_cap);
     if !resized {
         return false;
@@ -127,11 +127,11 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
         memory_close(data);
         return false;
     }
-    if catten_services::spin_reply(write).0 != objstore::ERR_OK {
+    if knytos_services::spin_reply(write).0 != objstore::ERR_OK {
         return false;
     }
     let flush = ipc_scalar_call(obj_conn, objstore::OP_FLUSH, 0);
-    flush != 0 && catten_services::spin_reply(flush).0 == objstore::ERR_OK
+    flush != 0 && knytos_services::spin_reply(flush).0 == objstore::ERR_OK
 }
 
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
@@ -191,13 +191,13 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
     let endpoint =
         Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8).map_err(|_| 0xdea2u32)?;
     publication::register(ns_connection, clusterctl::NAME, &endpoint).map_err(|error| {
-        catten_rt::logln!("[clusterctl] registration rejected: {error:?}");
+        knytos_rt::logln!("[clusterctl] registration rejected: {error:?}");
         0xdea3u32
     })?;
     endpoint.bind_completion_queue(0).map_err(|_| 0xdea4u32)?;
     config::write::<u32>(status::STAGE, STAGE_SERVING);
 
-    let mut relays = catten_services::clusterctl_relay::Relays::new(
+    let mut relays = knytos_services::clusterctl_relay::Relays::new(
         dns_connection.as_ref(),
         &trust.deployment_key,
         0,
@@ -221,7 +221,7 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
             return Ok(request);
         }
         let mut progressed = false;
-        for _ in 0..catten_services::clusterctl_relay::MAX_RELAYS {
+        for _ in 0..knytos_services::clusterctl_relay::MAX_RELAYS {
             let message = ipc_recv(endpoint.as_raw());
             if matches!(message.status, ipc_status::NO_MESSAGE | ipc_status::PENDING) {
                 // A cancellation claim can fence the queue front. Its existing
@@ -232,12 +232,12 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                 unsafe { thread_exit() }
             }
             progressed = true;
-            if catten_services::clusterctl_relay::handles(message.opcode) {
+            if knytos_services::clusterctl_relay::handles(message.opcode) {
                 // Receive ABI boundary: move the complete incoming transaction
                 // into its existing controller relay, exactly once.
-                match unsafe { catten_rt::owned::IncomingMessage::from_raw(message) } {
+                match unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) } {
                     Ok(Some(incoming)) => relays.start(incoming),
-                    _ => catten_rt::domain_abort(),
+                    _ => knytos_rt::domain_abort(),
                 }
                 continue;
             }
@@ -410,7 +410,7 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
         }
         progressed |= relays.advance();
         if !progressed {
-            catten_services::reactor::wait(relays.remaining_ms(), 0);
+            knytos_services::reactor::wait(relays.remaining_ms(), 0);
         }
     }
 }
@@ -454,12 +454,12 @@ fn run_join(
         return clusterctl::ERR_NO_CLUSTER;
     }
 
-    let leader_raft = lookup(ns_connection, catten_services::raft_name(&target));
+    let leader_raft = lookup(ns_connection, knytos_services::raft_name(&target));
     if leader_raft == 0 {
         return clusterctl::ERR_NO_CLUSTER;
     }
 
-    let self_service_name = catten_services::raft_name(self_raft_id);
+    let self_service_name = knytos_services::raft_name(self_raft_id);
 
     let mut spec_buf = [0u8; 96];
     let Some(spec_len) =

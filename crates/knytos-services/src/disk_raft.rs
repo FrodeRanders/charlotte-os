@@ -11,7 +11,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     log_store::{
         JoinAdmission,
         LogStore,
@@ -19,7 +19,7 @@ use catten_graft::{
     },
     types::LogEntry,
 };
-use catten_rt::owned::ConnectionRef;
+use knytos_rt::owned::ConnectionRef;
 use spin::Mutex;
 
 use crate::objstore_client::{
@@ -354,7 +354,7 @@ fn persist_record(
 }
 
 fn persist_fail_stop(error: PersistError) -> ! {
-    catten_rt::logln!("[raft-store] FATAL: persistence rejected: {}", error);
+    knytos_rt::logln!("[raft-store] FATAL: persistence rejected: {}", error);
     unsafe { knytos_syscall::thread_exit() }
 }
 
@@ -632,18 +632,18 @@ mod tests {
                 for (stage, cause) in [
                     (
                         IoStage::Allocate,
-                        IoCause::Memory(catten_rt::owned::MemoryError::AllocationFailed),
+                        IoCause::Memory(knytos_rt::owned::MemoryError::AllocationFailed),
                     ),
                     (
                         IoStage::Map,
-                        IoCause::Memory(catten_rt::owned::MemoryError::MemoryStatus(13)),
+                        IoCause::Memory(knytos_rt::owned::MemoryError::MemoryStatus(13)),
                     ),
                     (
                         IoStage::Unmap,
-                        IoCause::Memory(catten_rt::owned::MemoryError::MemoryStatus(19)),
+                        IoCause::Memory(knytos_rt::owned::MemoryError::MemoryStatus(19)),
                     ),
-                    (IoStage::Submit, IoCause::Ipc(catten_rt::owned::IpcError::Status(23))),
-                    (IoStage::Wait, IoCause::Ipc(catten_rt::owned::IpcError::Status(29))),
+                    (IoStage::Submit, IoCause::Ipc(knytos_rt::owned::IpcError::Status(23))),
+                    (IoStage::Wait, IoCause::Ipc(knytos_rt::owned::IpcError::Status(29))),
                     (IoStage::Reply, IoCause::RemoteStatus(crate::objstore::ERR_DENIED)),
                 ] {
                     let error = IoError {
@@ -677,8 +677,8 @@ mod tests {
     fn flush_failure_preserves_completed_write_and_exact_error_without_replay() {
         let object = ObjectIds::new(10).log;
         for (stage, cause) in [
-            (IoStage::Submit, IoCause::Ipc(catten_rt::owned::IpcError::Status(31))),
-            (IoStage::Wait, IoCause::Ipc(catten_rt::owned::IpcError::Status(37))),
+            (IoStage::Submit, IoCause::Ipc(knytos_rt::owned::IpcError::Status(31))),
+            (IoStage::Wait, IoCause::Ipc(knytos_rt::owned::IpcError::Status(37))),
             (IoStage::Reply, IoCause::RemoteStatus(crate::objstore::ERR_IO_ERROR)),
         ] {
             let error = IoError {

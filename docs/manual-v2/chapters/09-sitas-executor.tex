@@ -179,8 +179,8 @@ with an explicit timed flag and separate readiness, deadline and admission-rejec
 outcomes. For a queue with one waiter, the safe runtime boundary is:
 
 \begin{lstlisting}[style=rustCode]
-let outcome = catten_rt::cq::wait(timeout_ms, cq_id)
-    .unwrap_or_else(|_| catten_rt::domain_abort());
+let outcome = knytos_rt::cq::wait(timeout_ms, cq_id)
+    .unwrap_or_else(|_| knytos_rt::domain_abort());
 // Recheck all sources; readiness does not observe a result.
 knytos_syscall::cq_wake(cq_id); // Peer notification.
 \end{lstlisting}

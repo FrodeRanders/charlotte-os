@@ -6,11 +6,11 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::state_machine::{
+use knytos_graft::state_machine::{
     QueryableStateMachine,
     StateMachine,
 };
-use catten_services::{
+use knytos_services::{
     dns,
     name_catalog::NameCatalog,
 };
@@ -51,7 +51,7 @@ impl StateMachine for CatalogMachine {
     fn restore(
         &self,
         snapshot_data: &[u8],
-    ) -> Result<(), catten_graft::state_machine::SnapshotError> {
+    ) -> Result<(), knytos_graft::state_machine::SnapshotError> {
         self.0.restore(snapshot_data)
     }
 
@@ -66,8 +66,8 @@ impl StateMachine for CatalogMachine {
 
 enum CatalogBacking {
     Empty,
-    Memory(catten_rt::owned::OwnedMemory),
-    Mapping(catten_rt::owned::MappedMemory<catten_rt::owned::Writable>),
+    Memory(knytos_rt::owned::OwnedMemory),
+    Mapping(knytos_rt::owned::MappedMemory<knytos_rt::owned::Writable>),
 }
 
 /// One owner for every transient field from preparation through publication.
@@ -75,7 +75,7 @@ enum CatalogBacking {
 struct CatalogReply {
     backing: CatalogBacking,
     bytes: Vec<u8>,
-    reply: Option<catten_rt::owned::ReplyToken>,
+    reply: Option<knytos_rt::owned::ReplyToken>,
 }
 
 impl CatalogReply {
@@ -87,7 +87,7 @@ impl CatalogReply {
     }
 
     fn prepare(&mut self) -> Result<(), i64> {
-        use catten_rt::owned::OwnedMemory;
+        use knytos_rt::owned::OwnedMemory;
         self.backing = CatalogBacking::Memory(
             OwnedMemory::allocate(self.bytes.len().div_ceil(4096))
                 .map_err(|_| dns::ERR_RESOURCE_LIMIT)?,
@@ -141,7 +141,7 @@ impl CatalogReply {
 
 /// Consume the catalog observation's received transaction before any scalar
 /// attachment fallback can touch it. No new cleanup/retry policy is added.
-pub(super) fn reply_catalog(mut request: catten_rt::owned::IncomingMessage, catalog: &NameCatalog) {
+pub(super) fn reply_catalog(mut request: knytos_rt::owned::IncomingMessage, catalog: &NameCatalog) {
     let invalid = request.arg0 != 0 || request.memory.is_some() || request.connection.is_some();
     let mut operation = CatalogReply {
         backing: CatalogBacking::Empty,
@@ -160,9 +160,9 @@ pub(super) fn reply_catalog(mut request: catten_rt::owned::IncomingMessage, cata
         Ok(bytes) => bytes,
         Err(error) => {
             operation.reject(match error {
-                catten_services::dns_catalog::EncodeError::TooLarge => dns::ERR_TOO_LARGE,
-                catten_services::dns_catalog::EncodeError::InvalidRecord => dns::ERR_BAD_OPCODE,
-                catten_services::dns_catalog::EncodeError::AllocationFailed => {
+                knytos_services::dns_catalog::EncodeError::TooLarge => dns::ERR_TOO_LARGE,
+                knytos_services::dns_catalog::EncodeError::InvalidRecord => dns::ERR_BAD_OPCODE,
+                knytos_services::dns_catalog::EncodeError::AllocationFailed => {
                     dns::ERR_RESOURCE_LIMIT
                 }
             });

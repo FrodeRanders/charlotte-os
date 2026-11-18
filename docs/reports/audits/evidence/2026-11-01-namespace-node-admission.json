@@ -237,7 +237,7 @@
     "log_sha256": "4c745537baa58de33fa9c6c41983f6e1a3520ae982f6a43cdec6f6126e99dc7d",
     "resource_policy_groups": 3,
     "retirement_collection_tests": 16,
-    "catten_services_tests": 268,
+    "knytos_services_tests": 268,
     "scope_note": "Host validation completed before the kernel-only baseline assertion correction. Host sources and production admission implementation were unchanged by that correction.",
     "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed after correction",
     "kernel_tests_clippy_log_sha256": "6ec0aedc13d45d5439f0c19d158d3d3513cec6e34b92dc1eb7d0379d547fa689",

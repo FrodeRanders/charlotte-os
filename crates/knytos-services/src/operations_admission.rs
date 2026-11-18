@@ -601,7 +601,7 @@ mod tests {
         verify_and_encode_with_capacity(bytes, trust, now, nodes, automatic, &profiles(nodes))
     }
 
-    use catten_graft::state_machine::StateMachine;
+    use knytos_graft::state_machine::StateMachine;
     use ed25519_compact::{
         KeyPair,
         Signature,
@@ -810,7 +810,7 @@ mod tests {
         let command =
             verify_and_encode(&fixture.bundle, &fixture.trust, 1_900_000_000, &[0x1234], 0x1234)
                 .unwrap();
-        assert!(command.len() <= catten_graft::types::MAX_COMMAND_BYTES);
+        assert!(command.len() <= knytos_graft::types::MAX_COMMAND_BYTES);
         assert!(!command.windows(32).any(|window| window.iter().all(|byte| *byte == 0x5a)));
 
         let catalog = NameCatalog::new_with_deployment_key(fixture.trust.deployment_key);

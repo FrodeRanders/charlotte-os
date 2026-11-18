@@ -7,7 +7,7 @@
 
 use core::ops::Range;
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     ConnectionRef,
     IpcError,
     MemoryError,
@@ -144,7 +144,7 @@ fn record_call(
     opcode: u32,
     resource_id: u32,
     record: RecordRequest<'_>,
-) -> Result<catten_rt::owned::CallResult, Error> {
+) -> Result<knytos_rt::owned::CallResult, Error> {
     let (memory, len) = encode_record(record)?;
     let arg0 = if resource_id == 0 {
         len as u64
@@ -164,7 +164,7 @@ fn routed_record_call(
     resource_id: u32,
     route: Route,
     record: RecordRequest<'_>,
-) -> Result<catten_rt::owned::CallResult, Error> {
+) -> Result<knytos_rt::owned::CallResult, Error> {
     let (memory, len) = encode_record(record)?;
     let arg0 = protocol::pack_routed_record_arg(resource_id, route.index(), len)
         .ok_or(Error::InvalidRequest)?;

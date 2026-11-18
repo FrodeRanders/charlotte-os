@@ -567,7 +567,7 @@
       "exit_status": 101,
       "log_sha256": "0aa01284505e8b0876367f15a3f7e69e2052d4bf04cbd0bc223d64d7e974484e",
       "diagnostics": [
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/build/knytos-graft/f7a56711979924ce/out/catten_graft-f7a56711979924ce)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/build/knytos-graft/f7a56711979924ce/out/knytos_graft-f7a56711979924ce)",
         "",
         "running 1 test",
         "test node::tests::leader_read_waits_for_current_term_commit_despite_recent_quorum_contact ... FAILED",

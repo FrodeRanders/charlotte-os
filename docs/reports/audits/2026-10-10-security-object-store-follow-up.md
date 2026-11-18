@@ -28,7 +28,7 @@ also removes the object's pending size, preventing stale resize state from
 following a later explicit reuse.
 
 No new owning capability is stored as an integer. Request attachments, borrowed
-buffers and moved replies retain the existing `catten_rt::owned` wrappers.
+buffers and moved replies retain the existing `knytos_rt::owned` wrappers.
 The validated persisted-object snapshot contains disk metadata, not a kernel
 capability or independent cleanup/retry authority.
 

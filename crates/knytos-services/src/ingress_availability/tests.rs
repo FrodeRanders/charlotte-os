@@ -4,7 +4,7 @@ use alloc::{
     vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,

@@ -4,7 +4,7 @@
 
 use alloc::vec::Vec;
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     Connection,
     ConnectionRef,

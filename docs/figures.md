@@ -249,7 +249,7 @@ participant Q as Completion queue
       Note over K,Q: Cancellation remains observable until terminal cleanup
 ```
 
-This depicts why application code uses catten_rt::owned: Rust ownership mirrors capability ownership across the ABI.
+This depicts why application code uses knytos_rt::owned: Rust ownership mirrors capability ownership across the ABI.
 
 ### 6. Focused deployment-handoff topology
 

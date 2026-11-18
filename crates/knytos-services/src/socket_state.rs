@@ -1,7 +1,7 @@
 //! Socket records own deferred reply authority and remote-resource metadata.
 use alloc::collections::BTreeMap;
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     IncomingMessage,
     MappedMemory,
     MemoryError,

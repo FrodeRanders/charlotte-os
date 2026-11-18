@@ -209,18 +209,18 @@ macro:
 #![no_std]
 #![no_main]
 
-use catten_rt::Context;
+use knytos_rt::Context;
 
 fn main(ctx: Context) -> ! {
     // The launch environment owns this bootstrap connection.
     let _controller = ctx.bootstrap_connection()
-        .unwrap_or_else(|| catten_rt::domain_abort());
+        .unwrap_or_else(|| knytos_rt::domain_abort());
     // A deployed application also borrows ctx.profile_memory().
     // See the complete client in Section 5's discovery discussion.
     unsafe { knytos_syscall::thread_exit() }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 \end{lstlisting}
 
 \autoref{sec:reconnecting-client} contains the complete application skeleton:

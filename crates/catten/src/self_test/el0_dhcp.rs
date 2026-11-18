@@ -33,14 +33,14 @@ mod inner {
         },
     };
 
-    // "tcpip" packed LE (catten_services::socket::NAME); the kernel crate does
-    // not link catten_services, so mirror the packed short name here.
+    // "tcpip" packed LE (knytos_services::socket::NAME); the kernel crate does
+    // not link knytos_services, so mirror the packed short name here.
     const TCPIP_NAME: u64 = 0x0070_6970_6374;
 
-    // Name-service opcodes (catten_services::ns).
+    // Name-service opcodes (knytos_services::ns).
     const NS_OP_LOOKUP: u32 = 2;
 
-    // socket protocol (catten_services::socket) constants mirrored here.
+    // socket protocol (knytos_services::socket) constants mirrored here.
     const SOCKET_OP_STATUS: u32 = 10;
     const STATUS_OFFSET_IP: usize = 0;
     const STATUS_OFFSET_MAGIC: usize = 4;

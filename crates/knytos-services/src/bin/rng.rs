@@ -10,7 +10,7 @@ extern crate alloc;
 
 use core::mem::ManuallyDrop;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
@@ -22,7 +22,7 @@ use catten_rt::{
         SharedDmaMemory,
     },
 };
-use catten_services::{
+use knytos_services::{
     entropy,
     publication,
     reactor,
@@ -42,7 +42,7 @@ use knytos_syscall::{
     thread_exit,
 };
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const PAGE_SIZE: usize = 4_096;
 use rng_device::QUEUE_SIZE;
@@ -120,7 +120,7 @@ const fn ring_pages() -> usize {
 }
 
 struct VirtioRng<'domain> {
-    _mmio: catten_rt::owned::MappedMmio,
+    _mmio: knytos_rt::owned::MappedMmio,
     ring: SharedDmaMemory<'domain>,
     entropy: SharedDmaMemory<'domain>,
     common: *mut u8,
@@ -286,7 +286,7 @@ impl ServingRng<'_> {
         // and the shutdown request together. The coordinator must retain this
         // driver root; there is no device-quiesced acknowledgement.
         let _retained = ManuallyDrop::new((self, request));
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[rng] terminal device retention: shutdown cannot prove descriptor quiescence"
         );
         let cq = ctx.completion_queue_layout();
@@ -318,19 +318,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     };
     if let Err(error) = serving.endpoint.bind_completion_queue(0) {
         config::write::<u32>(status::ERROR, 0xe007);
-        catten_rt::logln!("[rng] endpoint CQ binding rejected: {:?}", error);
-        catten_rt::domain_abort();
+        knytos_rt::logln!("[rng] endpoint CQ binding rejected: {:?}", error);
+        knytos_rt::domain_abort();
     }
     if let Err(error) = publication::register(ns_connection, entropy::NAME, &serving.endpoint) {
         config::write::<u32>(status::ERROR, 0xe005);
-        catten_rt::logln!("[rng] publication rejected: {:?}", error);
+        knytos_rt::logln!("[rng] publication rejected: {:?}", error);
         // Initialized device and endpoint remain live through terminal abort.
         // An accepted/uncertain registration is never replayed or treated as
         // device quiescence merely because its observation budget expired.
-        catten_rt::domain_abort();
+        knytos_rt::domain_abort();
     }
     config::write::<u32>(status::STAGE, 1);
-    catten_rt::logln!("[rng] serving host-backed VirtIO entropy");
+    knytos_rt::logln!("[rng] serving host-backed VirtIO entropy");
     let mut bytes_served = 0u64;
     let cq = ctx.completion_queue_layout();
 
@@ -358,12 +358,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             continue;
         };
         let length = message.arg0;
-        if catten_services::entropy_service::serve_fill(message, |output| {
+        if knytos_services::entropy_service::serve_fill(message, |output| {
             let retained = serving.device.retained_failure().is_some();
             let result = serving.device.fill(output);
             if !retained && let Err(rng_device::Error::Retained(reason)) = result {
                 config::write::<u32>(status::ERROR, RETAINED_DEVICE_ERROR);
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[rng] device retained after {:?}, {:?}; no descriptor replay or cleanup",
                     reason,
                     serving.device.retained_attempt()

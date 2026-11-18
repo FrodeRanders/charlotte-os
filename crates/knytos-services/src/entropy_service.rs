@@ -1,6 +1,6 @@
 //! Caller-funded RNG replies. No reply backing is allocated by the producer.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     IncomingMessage,
     MappedMemory,
     Writable,

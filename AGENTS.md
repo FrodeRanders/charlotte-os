@@ -8,11 +8,11 @@ Knytos uses linear capability ownership. In userspace services and
 applications, do not store an owning capability as a bare integer and do not
 build manual cleanup ladders around early returns.
 
-- Use the types in `catten_rt::owned`: `OwnedMemory`, `MappedMemory`,
+- Use the types in `knytos_rt::owned`: `OwnedMemory`, `MappedMemory`,
   `Completion`, `ReadOperation`, `Endpoint`, `Connection`, `ConnectionRef`,
   `PendingCall`, `IncomingMessage`, `ReplyToken`, `MmioRegion`, `Interrupt`,
   and `DmaTransfer`.
-- Use protocol-specific owners, such as `catten_services::socket::OwnedSocket`,
+- Use protocol-specific owners, such as `knytos_services::socket::OwnedSocket`,
   for remote resources represented by scalar IDs.
 - Scoped deployment uses `launch_scoped_artifact` and retains its
   `DeployedArtifact`. The kernel's signed launch receipt supplies its retirement

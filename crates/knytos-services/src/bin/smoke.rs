@@ -8,7 +8,7 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
@@ -24,4 +24,4 @@ fn main(_ctx: Context) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

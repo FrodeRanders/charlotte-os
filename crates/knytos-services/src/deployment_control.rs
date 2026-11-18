@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     ConnectionRef,
     OwnedMemory,
@@ -537,7 +537,7 @@ impl<S> Calls for Runtime<'_, S> {
     }
 
     fn abort(&mut self, _pending: &Self::Pending, _socket: &Self::Socket) -> ! {
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     }
 
     fn poll(&mut self, pending: &mut Self::Pending) -> Result<Option<Self::Reply>, RpcError> {
@@ -599,7 +599,7 @@ mod tests {
         RefCell,
     };
 
-    use catten_rt::owned::IpcError;
+    use knytos_rt::owned::IpcError;
 
     use super::*;
     type Log = Rc<RefCell<Vec<(&'static str, usize)>>>;

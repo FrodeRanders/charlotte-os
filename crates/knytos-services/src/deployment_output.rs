@@ -1,5 +1,5 @@
 //! Owning, CQ-bound deployment response sends with confirmed prefix receipts.
-use catten_rt::owned::IpcError;
+use knytos_rt::owned::IpcError;
 
 use crate::{
     deadline::Deadline,
@@ -244,7 +244,7 @@ impl<'a> Calls for Runtime<'a> {
     }
 
     fn abort(&mut self, _: &Deadline, _: &Self::Socket) -> ! {
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     }
 
     fn poll(

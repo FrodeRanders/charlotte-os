@@ -1,7 +1,7 @@
 //! Replicated admission of backends for new flows, separate from voter removal.
 use alloc::vec::Vec;
 
-use catten_graft::{
+use knytos_graft::{
     node::RaftNode,
     types::NodeState,
 };

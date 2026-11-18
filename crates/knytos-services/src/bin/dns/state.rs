@@ -13,8 +13,8 @@ pub(super) struct InFlightCall {
     pub(super) call_id: u64,
     pub(super) expected_peer: String,
     pub(super) expected_generation: u64,
-    pub(super) reply: Option<catten_rt::owned::ReplyToken>,
-    pub(super) deadline: catten_services::deadline::Deadline,
+    pub(super) reply: Option<knytos_rt::owned::ReplyToken>,
+    pub(super) deadline: knytos_services::deadline::Deadline,
 }
 
 pub(super) struct CompletedCall {
@@ -28,29 +28,29 @@ pub(super) struct CompletedCall {
 
 pub(super) enum LocalCallDestination {
     Client {
-        reply: Option<catten_rt::owned::ReplyToken>,
+        reply: Option<knytos_rt::owned::ReplyToken>,
     },
     Remote {
         caller: Vec<u8>,
         session: u64,
         call_id: u64,
         peer: String,
-        reply: catten_services::rcall::PreparedReply,
+        reply: knytos_services::rcall::PreparedReply,
     },
 }
 
 /// The complete asynchronous local operation and its terminal destination.
 pub(super) struct PendingLocalCall {
-    pub(super) operation: catten_services::local_invocation::LocalInvocation,
+    pub(super) operation: knytos_services::local_invocation::LocalInvocation,
     pub(super) destination: LocalCallDestination,
 }
 
 pub(super) enum PendingQueryKind {
     Lookup {
-        reply: Option<catten_rt::owned::ReplyToken>,
+        reply: Option<knytos_rt::owned::ReplyToken>,
     },
     Call {
-        reply: Option<catten_rt::owned::ReplyToken>,
+        reply: Option<knytos_rt::owned::ReplyToken>,
         name: Vec<u8>,
         opcode: u32,
         arg: i64,
@@ -59,7 +59,7 @@ pub(super) enum PendingQueryKind {
         reply: u64,
     },
     Release {
-        reply: catten_services::release_admission::PreparedReply,
+        reply: knytos_services::release_admission::PreparedReply,
     },
     Operations {
         reply: u64,
@@ -75,7 +75,7 @@ pub(super) enum PendingQueryKind {
 pub(super) struct PendingQuery {
     pub(super) query_id: u64,
     pub(super) expected_leader: String,
-    pub(super) deadline: catten_services::deadline::Deadline,
+    pub(super) deadline: knytos_services::deadline::Deadline,
     pub(super) kind: PendingQueryKind,
 }
 
@@ -83,18 +83,18 @@ pub(super) enum PendingRegistration {
     Prepare {
         term: u64,
         log_index: u64,
-        reply: Option<catten_rt::owned::ReplyToken>,
+        reply: Option<knytos_rt::owned::ReplyToken>,
         name: Vec<u8>,
-        connection: Option<catten_rt::owned::Connection>,
+        connection: Option<knytos_rt::owned::Connection>,
         existing_local_generation: u64,
     },
     Activate {
         term: u64,
         log_index: u64,
-        reply: Option<catten_rt::owned::ReplyToken>,
+        reply: Option<knytos_rt::owned::ReplyToken>,
         name: Vec<u8>,
         generation: u64,
-        connection: Option<catten_rt::owned::Connection>,
+        connection: Option<knytos_rt::owned::Connection>,
         local_generation: u64,
     },
     Unregister {
@@ -115,7 +115,7 @@ pub(super) enum PendingRegistration {
     Release {
         term: u64,
         log_index: u64,
-        reply: catten_services::release_admission::PreparedReply,
+        reply: knytos_services::release_admission::PreparedReply,
     },
     /// Leader-local placement-controller reconciliation.
     Placement {
@@ -137,7 +137,7 @@ pub(super) enum PendingRegistration {
         term: u64,
         log_index: u64,
         peer: String,
-        reply: catten_services::rrelease::PreparedReply,
+        reply: knytos_services::rrelease::PreparedReply,
     },
     /// Leader-side: a follower relayed an operational admission proof. The
     /// leader reverified it before submitting the compact command.
@@ -181,7 +181,7 @@ pub(super) enum PendingRegistration {
         log_index: u64,
         name: Vec<u8>,
         owner: Vec<u8>,
-        remote_reply: catten_services::rregister::PreparedReply,
+        remote_reply: knytos_services::rregister::PreparedReply,
     },
     /// Leader-side: the activate half of a remote register has committed; the
     /// generation reply is relayed back to the hosting node.
@@ -190,7 +190,7 @@ pub(super) enum PendingRegistration {
         log_index: u64,
         name: Vec<u8>,
         owner: Vec<u8>,
-        remote_reply: catten_services::rregister::PreparedReply,
+        remote_reply: knytos_services::rregister::PreparedReply,
         generation: u64,
     },
     /// Follower-side: a register for a locally hosted service was relayed to
@@ -200,9 +200,9 @@ pub(super) enum PendingRegistration {
         expected_peer: String,
         session: u64,
         request_id: u64,
-        reply: Option<catten_rt::owned::ReplyToken>,
+        reply: Option<knytos_rt::owned::ReplyToken>,
         name: Vec<u8>,
-        connection: Option<catten_rt::owned::Connection>,
+        connection: Option<knytos_rt::owned::Connection>,
         local_generation: u64,
     },
 }
@@ -281,7 +281,7 @@ pub(super) struct LocalPublication {
     pub(super) name: Vec<u8>,
     pub(super) generation: u64,
     pub(super) local_generation: u64,
-    pub(super) connection: Option<catten_rt::owned::Connection>,
+    pub(super) connection: Option<knytos_rt::owned::Connection>,
     pub(super) close_watch: u64,
     pub(super) endpoint_closed: bool,
     pub(super) local_cleanup_submitted: bool,

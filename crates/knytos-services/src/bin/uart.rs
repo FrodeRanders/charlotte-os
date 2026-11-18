@@ -22,11 +22,11 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     console,
     ns,
     pl011,
@@ -148,7 +148,7 @@ fn main(ctx: Context) -> ! {
 
     loop {
         // Block on the single wait point.
-        catten_services::reactor::wait(None, 0);
+        knytos_services::reactor::wait(None, 0);
 
         // Clear the device-side level condition before asking the kernel to
         // re-arm the GIC source. Clearing only when a deferred read exists
@@ -183,7 +183,7 @@ fn main(ctx: Context) -> ! {
         loop {
             let message = ipc_recv(endpoint);
             let _attachments =
-                catten_services::RequestAttachments::new(message.memory, message.connection);
+                knytos_services::RequestAttachments::new(message.memory, message.connection);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -251,4 +251,4 @@ fn main(ctx: Context) -> ! {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

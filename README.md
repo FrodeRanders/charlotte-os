@@ -64,7 +64,7 @@ The main additions and extensions currently maintained here are:
 - **Capability-based userspace services:** EL0 (userspace) service loading,
   typed launch manifests, endpoint IPC, transferable memory objects,
   completion queues, device capabilities, service supervision, and
-  stale-connection handling. The non-`Copy` owners in `catten_rt::owned`
+  stale-connection handling. The non-`Copy` owners in `knytos_rt::owned`
   mirror linear kernel ownership: moved capabilities transfer exactly once,
   memory borrows outlive pending calls, and `Drop` or explicit consuming
   teardown closes compound operations across ordinary error paths.

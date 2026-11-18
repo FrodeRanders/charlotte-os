@@ -3,11 +3,11 @@
 #![no_std]
 #![no_main]
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     kafka as protocol,
     kafka_client::{
         Client,
@@ -18,7 +18,7 @@ use catten_services::{
 use knytos_protocol_kafka::RecordRequest;
 use knytos_syscall::thread_exit;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
 
@@ -44,6 +44,6 @@ fn main(ctx: Context) -> ! {
         knytos_launch::kafka_fence_smoke_status::STAGE,
         knytos_launch::kafka_fence_smoke_status::SUCCESS,
     );
-    catten_rt::logln!("[kafka-fence-smoke] stale transactional producer was fenced");
+    knytos_rt::logln!("[kafka-fence-smoke] stale transactional producer was fenced");
     unsafe { thread_exit() }
 }

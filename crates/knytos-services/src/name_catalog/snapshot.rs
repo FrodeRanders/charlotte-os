@@ -3,7 +3,7 @@
 //! Extracted from the catalog module. The codec walks the catalog's private
 //! registries directly, so it stays a child module of `name_catalog`.
 
-use catten_graft::state_machine::SnapshotError;
+use knytos_graft::state_machine::SnapshotError;
 
 use super::*;
 

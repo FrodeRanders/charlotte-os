@@ -140,7 +140,7 @@
     "log_sha256": "a203781892c5dc98a2b6b609d4570571ab9e663e02a798a0ac92a3849f219617",
     "shared_charged_allocator_tests": 15,
     "resource_policy_groups": 3,
-    "catten_services_tests": 268,
+    "knytos_services_tests": 268,
     "result": "Full runner passed, including intentional unsafe-control rejection tests.",
     "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed",
     "minimal_kernel_clippy": "ARM acpi, offline/locked, -D warnings: passed",

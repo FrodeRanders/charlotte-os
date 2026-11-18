@@ -17,7 +17,7 @@ remote teardown report or log errors before `complete()` performs the
 divergent thread exit:
 
 ```rust
-use catten_rt::{Context, ShutdownRequest, owned::Endpoint};
+use knytos_rt::{Context, ShutdownRequest, owned::Endpoint};
 
 fn serve(ctx: &Context) -> ShutdownRequest {
     let endpoint = Endpoint::create(INTERFACE, VERSION, 16).unwrap();
@@ -31,7 +31,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         match endpoint.try_receive() {
             Ok(Some(message)) => handle(message),
             Ok(None) => sleep_or_wait_with_a_bound(),
-            Err(_) => catten_rt::domain_abort(),
+            Err(_) => knytos_rt::domain_abort(),
         }
     }
 }
@@ -140,7 +140,7 @@ stale or conflicting per-node sequences, stores the exact envelope in its
 snapshot, and exposes only locally applied state to node agents.
 
 The target deployment agent verifies the applied envelope again and moves its
-memory owner through `catten_rt::owned::request_node_shutdown`. The kernel
+memory owner through `knytos_rt::owned::request_node_shutdown`. The kernel
 consumes that capability on every result, admits only its uniquely delegated
 agent, independently verifies the signature and target node against the NIC
 driver's protected status page, and derives the actual deadline in the kernel
@@ -196,7 +196,7 @@ coordinator transfer the NIC driver to device quiescence.
 
 Startup is part of the same lifecycle. A long-lived service must not use an
 unbounded dependency lookup before it starts polling `Context::lifecycle()`.
-`catten_services::wait_for_local_ready_or_shutdown` performs bounded,
+`knytos_services::wait_for_local_ready_or_shutdown` performs bounded,
 non-blocking name lookups with owned timer waits, so HTTP, time, and TCP/IP can
 therefore acknowledge a drain even when the node-ready gate never opens. The
 kernel coordinator records acknowledged, unacknowledged, and forced counts per

@@ -22,7 +22,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     transport::{
         AppendEntriesRpc,
         InstallSnapshotRpc,
@@ -124,7 +124,7 @@ pub fn decode_join_reply(frame: &[u8]) -> Option<u64> {
 /// Ethernet memory object (Ethernet header + tagged-payload header + body).
 pub const MAX_RPC_PAYLOAD: usize = {
     let relmsg = crate::relmsg::MAX_MSG - 1;
-    let direct = 4096 - 14 - catten_graft::wire::TAGGED_PAYLOAD_HEADER_SIZE;
+    let direct = 4096 - 14 - knytos_graft::wire::TAGGED_PAYLOAD_HEADER_SIZE;
     if relmsg < direct {
         relmsg
     } else {
@@ -134,9 +134,9 @@ pub const MAX_RPC_PAYLOAD: usize = {
 
 /// Inbound Raft RPC request decoded from a relmsg message.
 pub enum InboundRpc {
-    VoteRequest(catten_graft::types::VoteRequest),
-    AppendEntries(catten_graft::types::AppendEntriesRequest),
-    InstallSnapshot(catten_graft::types::InstallSnapshotRequest),
+    VoteRequest(knytos_graft::types::VoteRequest),
+    AppendEntries(knytos_graft::types::AppendEntriesRequest),
+    InstallSnapshot(knytos_graft::types::InstallSnapshotRequest),
 }
 
 /// A tagged, encoded Raft RPC queued for a peer: (type tag, protobuf bytes).
@@ -499,7 +499,7 @@ impl RelmsgRaftTransport {
     fn encode_append(&self, rpc: &AppendEntriesRpc<'_>) -> Vec<u8> {
         let mut entries = rpc.entries.clone();
         loop {
-            let request = catten_graft::types::AppendEntriesRequest {
+            let request = knytos_graft::types::AppendEntriesRequest {
                 term: rpc.term,
                 leader_id: rpc.leader_id.to_string(),
                 prev_log_index: rpc.prev_log_index,
@@ -514,7 +514,7 @@ impl RelmsgRaftTransport {
             }
             if entries.pop().is_none() {
                 // Nothing fits; the peer gets an empty (heartbeat) append.
-                let request = catten_graft::types::AppendEntriesRequest {
+                let request = knytos_graft::types::AppendEntriesRequest {
                     term: rpc.term,
                     leader_id: rpc.leader_id.to_string(),
                     prev_log_index: rpc.prev_log_index,
@@ -559,7 +559,7 @@ impl RaftTransport for RelmsgRaftTransport {
         last_log_index: u64,
         last_log_term: u64,
     ) {
-        let request = catten_graft::types::VoteRequest {
+        let request = knytos_graft::types::VoteRequest {
             term,
             candidate_id: candidate_id.to_string(),
             last_log_index,
@@ -580,7 +580,7 @@ impl RaftTransport for RelmsgRaftTransport {
     }
 
     fn send_install_snapshot(&self, rpc: InstallSnapshotRpc<'_>) {
-        let request = catten_graft::types::InstallSnapshotRequest {
+        let request = knytos_graft::types::InstallSnapshotRequest {
             term: rpc.term,
             leader_id: rpc.leader_id.to_string(),
             last_included_index: rpc.last_included_index,
@@ -615,7 +615,7 @@ fn send_payload_net(
     tag: u8,
     payload: &[u8],
 ) -> Option<u64> {
-    let tagged_header = catten_graft::wire::build_tagged_payload_header(tag, payload.len()).ok()?;
+    let tagged_header = knytos_graft::wire::build_tagged_payload_header(tag, payload.len()).ok()?;
     let len = 14 + tagged_header.len() + payload.len();
     if len > 4096 {
         return None;
@@ -689,7 +689,7 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
 mod tests {
     use alloc::string::ToString;
 
-    use catten_graft::{
+    use knytos_graft::{
         types::VoteRequest,
         wire::encode_vote_request,
     };

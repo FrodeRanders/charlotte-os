@@ -340,7 +340,7 @@ pub(crate) fn rejecting_fill(destination: &mut [u8]) -> bool {
 
 #[cfg(not(test))]
 fn actual_owned_fields_follow_the_same_fence() {
-    use catten_rt::owned::{
+    use knytos_rt::owned::{
         Endpoint,
         OwnedMemory,
     };

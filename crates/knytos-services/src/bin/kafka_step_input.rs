@@ -2,11 +2,11 @@
 #![no_std]
 #![no_main]
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     kafka,
     kafka_client::{
         Client,
@@ -19,7 +19,7 @@ use knytos_launch::kafka_step_input_status as status;
 use knytos_protocol_kafka::RecordRequest;
 use knytos_syscall::thread_exit;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const INPUTS: [&[u8]; 4] =
     [b"knytos-step-input", b"knytos-step-retry", b"knytos-step-timeout", b"knytos-step-dlq"];

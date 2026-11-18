@@ -57,7 +57,7 @@
     "caller_original_charge_preserved": true
   },
   "configuration": {
-    "central_compile_time_dimensions": "catten_services::entropy::{BUFFER_PAGES, BUFFER_BYTES, MAX_REQUEST}",
+    "central_compile_time_dimensions": "knytos_services::entropy::{BUFFER_PAGES, BUFFER_BYTES, MAX_REQUEST}",
     "descriptor_bound": "nonzero buffer; bytes <= u32::MAX",
     "domain_observation_default_ms": 5000,
     "dns_nonce_lookup_and_fill_budget_ms": 100,
@@ -76,19 +76,19 @@
       "explicitly_ignored_documentation_examples": 2,
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_rt-7565f8c504a110ab)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_rt-7565f8c504a110ab)",
           "passed": 53,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/debug/deps/catten_rt-7565f8c504a110ab",
+          "executable": "target/debug/deps/knytos_rt-7565f8c504a110ab",
           "executable_sha256": "6b717ab9d72e6a3d6263f6472021447aa273247183d161dda57dceedb831c586"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_services-8baf3ad084f7a274)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_services-8baf3ad084f7a274)",
           "passed": 244,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/debug/deps/catten_services-8baf3ad084f7a274",
+          "executable": "target/debug/deps/knytos_services-8baf3ad084f7a274",
           "executable_sha256": "116d5b82441e7cc30b58d94930cf0d3881f94d4037158f73f9aef460bdb170da"
         },
         {
@@ -180,13 +180,13 @@
           "executable_sha256": "8af0068cf4fdbcbc8d7a336ed99623c226cf54c7082632c12ef5c1f8e34cb362"
         },
         {
-          "harness": "Doc-tests catten_rt",
+          "harness": "Doc-tests knytos_rt",
           "passed": 1,
           "failed": 0,
           "ignored": 2
         },
         {
-          "harness": "Doc-tests catten_services",
+          "harness": "Doc-tests knytos_services",
           "passed": 0,
           "failed": 0,
           "ignored": 0
@@ -203,19 +203,19 @@
       "explicitly_ignored_documentation_examples": 2,
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_rt-f5e796761dc4e325)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_rt-f5e796761dc4e325)",
           "passed": 53,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/release/deps/catten_rt-f5e796761dc4e325",
+          "executable": "target/release/deps/knytos_rt-f5e796761dc4e325",
           "executable_sha256": "9880a33c3c998bf02362c806f2d75abb7051d2c7965f20220f907d885ad4b9e6"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_services-1557187fb8e52239)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_services-1557187fb8e52239)",
           "passed": 244,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/release/deps/catten_services-1557187fb8e52239",
+          "executable": "target/release/deps/knytos_services-1557187fb8e52239",
           "executable_sha256": "5452e289d2700087d75692777a54ecc3aa78af948495f854d18ebfdc560ac16d"
         },
         {
@@ -307,19 +307,19 @@
           "executable_sha256": "db6674c52e9806543bf41d922cdeb16c6b7b3ee8c2f90d400ac0b9326b655223"
         },
         {
-          "harness": "Doc-tests catten_rt",
+          "harness": "Doc-tests knytos_rt",
           "passed": 0,
           "failed": 0,
           "ignored": 1
         },
         {
-          "harness": "Doc-tests catten_rt",
+          "harness": "Doc-tests knytos_rt",
           "passed": 1,
           "failed": 0,
           "ignored": 1
         },
         {
-          "harness": "Doc-tests catten_services",
+          "harness": "Doc-tests knytos_services",
           "passed": 0,
           "failed": 0,
           "ignored": 0

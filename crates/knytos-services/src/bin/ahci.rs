@@ -18,12 +18,12 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
 };
-use catten_services::{
+use knytos_services::{
     block,
     ns,
     sleep_ms,
@@ -499,15 +499,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if flushed && stopped && knytos_syscall::device_close(irq_cap) == 0 {
                 return request;
             }
-            catten_rt::logln!("[ahci] device quiescence failed; retaining controller domain");
+            knytos_rt::logln!("[ahci] device quiescence failed; retaining controller domain");
             loop {
                 sleep_ms(100);
             }
         }
         let message = ipc_recv(endpoint);
-        let _attachments = catten_services::RequestAttachments::connection_only(message.connection);
+        let _attachments = knytos_services::RequestAttachments::connection_only(message.connection);
         if message.status == ipc_status::NO_MESSAGE {
-            catten_services::reactor::wait(Some(10), 0);
+            knytos_services::reactor::wait(Some(10), 0);
             continue;
         }
         if message.status == ipc_status::ENDPOINT_CLOSED {
@@ -653,4 +653,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete_device_quiesced()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

@@ -6,14 +6,14 @@
 #![no_main]
 extern crate alloc;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
     owned::OwnedMemory,
 };
-use catten_services::{
+use knytos_services::{
     block,
     wait_for_registered_name_owned,
 };

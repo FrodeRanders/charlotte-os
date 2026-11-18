@@ -1,6 +1,6 @@
 //! Owned socket operations over an attenuated TCP/IP service connection.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     ConnectionRef,
     IpcError,
@@ -246,7 +246,7 @@ impl<'connection> OpeningSocket<'connection> {
 impl Drop for OpeningSocket<'_> {
     fn drop(&mut self) {
         if self.service.is_some() {
-            catten_rt::domain_abort();
+            knytos_rt::domain_abort();
         }
     }
 }
@@ -317,7 +317,7 @@ impl ClosingSocket<'_> {
 impl Drop for ClosingSocket<'_> {
     fn drop(&mut self) {
         if self.lease.is_some() {
-            catten_rt::domain_abort();
+            knytos_rt::domain_abort();
         }
     }
 }

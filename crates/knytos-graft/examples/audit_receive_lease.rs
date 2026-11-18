@@ -7,7 +7,7 @@ use std::sync::{
     Mutex,
 };
 
-use catten_graft::{
+use knytos_graft::{
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,
@@ -134,7 +134,7 @@ fn main() {
     old.handle_append_entries_response("n2", delayed, 5_001);
     assert_eq!(old.read_ready(&read), Ok(false));
     let result = old.handle_client_query(read);
-    assert_eq!(result, Err((catten_graft::types::ERR_READ_BARRIER, Some("n1".to_string()))));
+    assert_eq!(result, Err((knytos_graft::types::ERR_READ_BARRIER, Some("n1".to_string()))));
     println!(
         "PASS: delayed term-one reply cannot commit the fresh read fence; stale query rejected"
     );

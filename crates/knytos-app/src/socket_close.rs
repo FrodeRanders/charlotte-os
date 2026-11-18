@@ -1,5 +1,5 @@
 //! Synchronous driver for the same consuming socket-close operation as reactors.
-use catten_rt::owned::IpcError;
+use knytos_rt::owned::IpcError;
 
 use crate::{
     deadline::Deadline,
@@ -74,7 +74,7 @@ impl<C: Calls> Blocking<C> {
                 }
                 Err(error) => {
                     let (now, _) = self.calls.now();
-                    if error != IpcError::Status(catten_rt::abi::ipc_status::QUEUE_FULL)
+                    if error != IpcError::Status(knytos_rt::abi::ipc_status::QUEUE_FULL)
                         || self.admission.expired_at(now)
                         || self.deadline.expired_at(now)
                     {
@@ -109,7 +109,7 @@ impl<'a> Calls for (Runtime, core::marker::PhantomData<&'a ()>) {
     type Owner = ClosingSocket<'a>;
 
     fn now(&self) -> (u64, u64) {
-        catten_rt::abi::monotonic_clock()
+        knytos_rt::abi::monotonic_clock()
     }
 
     fn submit(&mut self, owner: &mut Self::Owner) -> Result<(), IpcError> {
@@ -127,11 +127,11 @@ impl<'a> Calls for (Runtime, core::marker::PhantomData<&'a ()>) {
     fn abort(&mut self, _owner: &Self::Owner, failure: Failure) -> ! {
         match failure {
             Failure::Observation(error) => {
-                catten_rt::logln!("[socket] close observation retained through abort: {error:?}")
+                knytos_rt::logln!("[socket] close observation retained through abort: {error:?}")
             }
-            other => catten_rt::logln!("[socket] close retained through abort: {other:?}"),
+            other => knytos_rt::logln!("[socket] close retained through abort: {other:?}"),
         }
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     }
 }
 /// Both explicit close and ordinary socket Drop consume their lease here once.
@@ -269,7 +269,7 @@ mod tests {
         assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err());
     }
     fn queue_full() -> IpcError {
-        IpcError::Status(catten_rt::abi::ipc_status::QUEUE_FULL)
+        IpcError::Status(knytos_rt::abi::ipc_status::QUEUE_FULL)
     }
     #[test]
     fn success_submits_once_and_disposes_pending_before_remote_lease() {
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn wait_admission_and_observation_failures_remain_distinct_from_timeout() {
         for error in [
-            SocketError::Ipc(IpcError::Status(catten_rt::abi::ipc_status::RESOURCE_LIMIT)),
+            SocketError::Ipc(IpcError::Status(knytos_rt::abi::ipc_status::RESOURCE_LIMIT)),
             SocketError::Ipc(IpcError::Status(99)),
             SocketError::InvalidReply,
             SocketError::Service(-2),

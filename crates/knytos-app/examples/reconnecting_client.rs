@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
-use catten_rt::abi::{
+use knytos_rt::abi::{
     IPC_REPLY_CANCELLED,
     IPC_REPLY_ENDPOINT_CLOSED,
     ipc_status,
@@ -117,7 +117,7 @@ fn session(ctx: &Context, connection: &Connection, work: &mut Work) -> Result<()
         let value = decode(observe(pending, &work.deadline)?)?;
 
         // Business use: a confirmed, read-only greeting observation.
-        catten_rt::logln!("observation {}: {}", work.completed, value);
+        knytos_rt::logln!("observation {}: {}", work.completed, value);
         work.completed += 1;
         // Only a new business operation receives a new deadline.
         work.deadline = Deadline::after(JOB_BUDGET_MS);
@@ -178,8 +178,8 @@ fn cancel(pending: PendingCall<'_>) {
         // Rejected cleanup returns the owner, including any Rust memory loan.
         // Keep it and the enclosing session live through terminal abort.
         let _retained = retained;
-        catten_rt::logln!("call cleanup rejected: {:?}", error);
-        catten_rt::domain_abort();
+        knytos_rt::logln!("call cleanup rejected: {:?}", error);
+        knytos_rt::domain_abort();
     }
 }
 //CALLEND

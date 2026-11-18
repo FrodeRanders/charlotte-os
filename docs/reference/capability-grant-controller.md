@@ -15,7 +15,7 @@ A scoped application receives exactly two relevant launch objects:
 
 Only `grantctl` receives the separately typed `NameService` initial
 capability. An ordinary application should call
-`catten_services::grant_client::acquire`, passing its borrowed
+`knytos_services::grant_client::acquire`, passing its borrowed
 `Context::profile_memory()` and the requested service name. The helper owns the
 request memory and returned connection, so submission failures and early
 returns cannot leak capabilities.

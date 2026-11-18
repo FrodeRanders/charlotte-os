@@ -1,7 +1,7 @@
 //! Public-data entropy-client ownership controls for the opt-in signed probe.
 //! The local peer returns deterministic fixture bytes, never production entropy.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     Completion,
     Connection,
     ConnectionRef,
@@ -10,7 +10,7 @@ use catten_rt::owned::{
     OwnedMemory,
     PendingCall,
 };
-use catten_services::{
+use knytos_services::{
     deadline::Deadline,
     entropy,
     entropy_service,
@@ -38,9 +38,9 @@ struct Peer {
 impl Peer {
     fn new() -> Self {
         let endpoint = Endpoint::create(entropy::INTERFACE, entropy::VERSION, 8)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         let connection =
-            endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+            endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
         Self {
             connection,
             endpoint,
@@ -51,8 +51,8 @@ impl Peer {
         let mut message = self
             .endpoint
             .try_receive()
-            .unwrap_or_else(|_| catten_rt::domain_abort())
-            .unwrap_or_else(|| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
+            .unwrap_or_else(|| knytos_rt::domain_abort());
         check(
             message.opcode == entropy::OP_FILL
                 && message.arg0 == REQUEST_LEN as u64
@@ -73,19 +73,19 @@ impl Peer {
             );
             return;
         }
-        let reply = message.reply.take().unwrap_or_else(|| catten_rt::domain_abort());
+        let reply = message.reply.take().unwrap_or_else(|| knytos_rt::domain_abort());
         match mode {
             1 | 5 => {
                 let memory = if mode == 1 {
-                    message.memory.take().unwrap_or_else(|| catten_rt::domain_abort())
+                    message.memory.take().unwrap_or_else(|| knytos_rt::domain_abort())
                 } else {
                     OwnedMemory::allocate(entropy::BUFFER_PAGES + 1)
-                        .unwrap_or_else(|_| catten_rt::domain_abort())
+                        .unwrap_or_else(|_| knytos_rt::domain_abort())
                 };
                 let mut mapping =
-                    memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+                    memory.map_writable().unwrap_or_else(|_| knytos_rt::domain_abort());
                 mapping.as_mut_slice()[..REQUEST_LEN].fill(0x3a);
-                let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+                let memory = mapping.unmap().unwrap_or_else(|_| knytos_rt::domain_abort());
                 check(
                     reply.reply_move(memory, (REQUEST_LEN - usize::from(mode == 1)) as i64).is_ok(),
                     301,
@@ -106,7 +106,7 @@ fn delayed_observation() {
     // operation past its deadline while retaining its pending owner/output.
     check(
         Completion::timer(DELAYED_OBSERVATION_MS)
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
             .wait()
             .is_ok(),
         306,
@@ -124,7 +124,7 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
             &mut bytes,
             Deadline::after(REQUEST_BUDGET_MS),
         )
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
         peer.reply(mode);
         let result = read.finish();
         match mode {
@@ -151,7 +151,7 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
             &mut bytes,
             Deadline::after(REQUEST_BUDGET_MS),
         )
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
         peer.reply(0);
         if explicit {
             check(read.cancel().is_ok(), 311);
@@ -169,7 +169,7 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
         &mut bytes,
         Deadline::after(SILENT_BUDGET_MS),
     )
-    .unwrap_or_else(|_| catten_rt::domain_abort());
+    .unwrap_or_else(|_| knytos_rt::domain_abort());
     peer.reply(0);
     delayed_observation();
     check(
@@ -214,7 +214,7 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
     let held: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
         silent
             .call(entropy::OP_FILL, REQUEST_LEN as u64)
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
     });
     check(
         tls_client::fill_service_entropy(silent, &mut bytes, Deadline::after(REQUEST_BUDGET_MS))
@@ -234,10 +234,10 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
     let recovered: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
         silent
             .call(entropy::OP_FILL, REQUEST_LEN as u64)
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
     });
     drop(recovered);
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] entropy read: caller buffer, malformed count/missing memory/extra \
          connection/size, ",
         "device rejection, cancel/Drop and late-result cleanup; original deadline, ",
@@ -249,8 +249,8 @@ fn serve_invalid(peer: &Peer, pending: PendingCall<'_>, error: i64) {
     let message = peer
         .endpoint
         .try_receive()
-        .unwrap_or_else(|_| catten_rt::domain_abort())
-        .unwrap_or_else(|| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
+        .unwrap_or_else(|| knytos_rt::domain_abort());
     check(
         !entropy_service::serve_fill(message, |_| {
             check(false, 321);
@@ -258,7 +258,7 @@ fn serve_invalid(peer: &Peer, pending: PendingCall<'_>, error: i64) {
         }),
         322,
     );
-    let reply = pending.wait().unwrap_or_else(|_| catten_rt::domain_abort());
+    let reply = pending.wait().unwrap_or_else(|_| knytos_rt::domain_abort());
     check(reply.result == error && reply.memory.is_none() && reply.connection.is_none(), 323);
 }
 
@@ -270,7 +270,7 @@ fn server_contract(peer: &Peer) {
         peer.connection
             .as_ref()
             .call(1, REQUEST_LEN as u64)
-            .unwrap_or_else(|_| catten_rt::domain_abort()),
+            .unwrap_or_else(|_| knytos_rt::domain_abort()),
         entropy::ERR_BAD_OPCODE,
     );
     serve_invalid(
@@ -278,29 +278,29 @@ fn server_contract(peer: &Peer) {
         peer.connection
             .as_ref()
             .call(entropy::OP_FILL, REQUEST_LEN as u64)
-            .unwrap_or_else(|_| catten_rt::domain_abort()),
+            .unwrap_or_else(|_| knytos_rt::domain_abort()),
         entropy::ERR_INVALID,
     );
     for length in [0, entropy::MAX_REQUEST as u64 + 1, u64::MAX] {
         let buffer = OwnedMemory::allocate(entropy::BUFFER_PAGES)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         let pending = peer
             .connection
             .as_ref()
             .call_move(entropy::OP_FILL, length, buffer)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         serve_invalid(peer, pending, entropy::ERR_INVALID);
     }
     let buffer = OwnedMemory::allocate(entropy::BUFFER_PAGES + 1)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let pending = peer
         .connection
         .as_ref()
         .call_move(entropy::OP_FILL, REQUEST_LEN as u64, buffer)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     serve_invalid(peer, pending, entropy::ERR_INVALID);
     let buffer =
-        OwnedMemory::allocate(entropy::BUFFER_PAGES).unwrap_or_else(|_| catten_rt::domain_abort());
+        OwnedMemory::allocate(entropy::BUFFER_PAGES).unwrap_or_else(|_| knytos_rt::domain_abort());
     // The kernel rejects a loan to the same address space before submission.
     // Actual read-only mapping/revocation is tested against the distinct signed
     // RNG domain by the kernel caller-accounting fixture.
@@ -311,24 +311,24 @@ fn server_contract(peer: &Peer) {
             .is_err(),
         328,
     );
-    drop(buffer.map_writable().unwrap_or_else(|_| catten_rt::domain_abort()));
+    drop(buffer.map_writable().unwrap_or_else(|_| knytos_rt::domain_abort()));
     for length in [1, entropy::MAX_REQUEST] {
         let mut mapping = OwnedMemory::allocate(entropy::BUFFER_PAGES)
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
             .map_writable()
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         mapping.as_mut_slice().fill(0xa5);
-        let buffer = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+        let buffer = mapping.unmap().unwrap_or_else(|_| knytos_rt::domain_abort());
         let pending = peer
             .connection
             .as_ref()
             .call_move(entropy::OP_FILL, length as u64, buffer)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         let message = peer
             .endpoint
             .try_receive()
-            .unwrap_or_else(|_| catten_rt::domain_abort())
-            .unwrap_or_else(|| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
+            .unwrap_or_else(|| knytos_rt::domain_abort());
         check(
             entropy_service::serve_fill(message, |bytes| {
                 check(bytes.len() == length, 324);
@@ -337,13 +337,13 @@ fn server_contract(peer: &Peer) {
             }),
             325,
         );
-        let reply = pending.wait().unwrap_or_else(|_| catten_rt::domain_abort());
+        let reply = pending.wait().unwrap_or_else(|_| knytos_rt::domain_abort());
         check(reply.result == length as i64 && reply.connection.is_none(), 326);
         let mapping = reply
             .memory
-            .unwrap_or_else(|| catten_rt::domain_abort())
+            .unwrap_or_else(|| knytos_rt::domain_abort())
             .map_read_only()
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         check(
             mapping.len() == entropy::BUFFER_BYTES
                 && mapping.as_slice()[..length].iter().all(|b| *b == 0x3a)
@@ -351,7 +351,7 @@ fn server_contract(peer: &Peer) {
             327,
         );
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[security] entropy server: retired/missing/oversized/invalid rejected before fill; \
          same-domain loan rejected before admission; minimum/maximum caller buffers and untouched \
          suffix verified"

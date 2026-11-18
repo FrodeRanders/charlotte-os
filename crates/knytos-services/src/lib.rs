@@ -502,11 +502,11 @@ pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
 /// Stage a memory-carried service name using the ownership-aware runtime API.
 /// The returned object is unmapped and can be copied or moved into an IPC
 /// operation without any manual cleanup path.
-pub fn stage_name_owned(name: &[u8]) -> Option<catten_rt::owned::OwnedMemory> {
+pub fn stage_name_owned(name: &[u8]) -> Option<knytos_rt::owned::OwnedMemory> {
     if name.is_empty() || name.len() > MAX_NAME_LEN {
         return None;
     }
-    let memory = catten_rt::owned::OwnedMemory::allocate(1).ok()?;
+    let memory = knytos_rt::owned::OwnedMemory::allocate(1).ok()?;
     let mut mapping = memory.map_writable().ok()?;
     mapping.as_mut_slice()[..name.len()].copy_from_slice(name);
     mapping.unmap().ok()
@@ -1776,8 +1776,8 @@ pub mod dns {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub enum IngressAssignmentError {
         InvalidName,
-        Ipc(catten_rt::owned::IpcError),
-        Memory(catten_rt::owned::MemoryError),
+        Ipc(knytos_rt::owned::IpcError),
+        Memory(knytos_rt::owned::MemoryError),
         Service(i64),
         InvalidReply,
     }
@@ -1789,7 +1789,7 @@ pub mod dns {
     /// reply memory remain linearly owned throughout the operation; the
     /// returned values contain no live capabilities or borrowed mappings.
     pub fn ingress_assignments(
-        connection: catten_rt::owned::ConnectionRef<'_>,
+        connection: knytos_rt::owned::ConnectionRef<'_>,
         artifact_name: &[u8],
     ) -> Result<Vec<knytos_launch::ingress::ServiceId>, IngressAssignmentError> {
         if !knytos_launch::deployment::valid_artifact_name(artifact_name) {
@@ -2599,7 +2599,7 @@ pub mod rquery {
 /// `(result, returned_connection_cap)`.
 ///
 /// The wait is scheduler-backed and unbounded; a caller that needs a deadline
-/// must poll an owned [`catten_rt::owned::PendingCall`] instead.
+/// must poll an owned [`knytos_rt::owned::PendingCall`] instead.
 /// # Safety
 ///
 /// `call` must be a live pending-call capability owned by the caller.
@@ -2650,15 +2650,15 @@ pub fn spin_reply(call: u64) -> (i64, u64) {
 /// Timer-backed pause for explicit protocol/hardware admission backoff.
 /// Rejection must not turn a caller's retry loop into a runnable spin.
 pub fn sleep_ms(milliseconds: u64) {
-    let timer = catten_rt::owned::Completion::timer(milliseconds).unwrap_or_else(|error| {
-        catten_rt::logln!("[reactor] pause timer admission rejected: {:?}", error);
-        catten_rt::domain_abort()
+    let timer = knytos_rt::owned::Completion::timer(milliseconds).unwrap_or_else(|error| {
+        knytos_rt::logln!("[reactor] pause timer admission rejected: {:?}", error);
+        knytos_rt::domain_abort()
     });
     match timer.wait() {
         Ok(0) => {}
         result => {
-            catten_rt::logln!("[reactor] pause timer did not complete: {:?}", result);
-            catten_rt::domain_abort()
+            knytos_rt::logln!("[reactor] pause timer did not complete: {:?}", result);
+            knytos_rt::domain_abort()
         }
     }
 }
@@ -2667,19 +2667,19 @@ pub fn sleep_ms(milliseconds: u64) {
 /// capability. Transient endpoint backpressure is retried with a timer-backed
 /// pause, matching [`scalar_call_with_backpressure`] without exposing handles.
 pub fn owned_call_with_backpressure(
-    connection: catten_rt::owned::ConnectionRef<'_>,
+    connection: knytos_rt::owned::ConnectionRef<'_>,
     opcode: u32,
     arg0: u64,
-) -> Result<catten_rt::owned::PendingCall<'static>, catten_rt::call::AdmissionError> {
-    catten_rt::call::Admission::new(&deadline::Deadline::after(5_000))
+) -> Result<knytos_rt::owned::PendingCall<'static>, knytos_rt::call::AdmissionError> {
+    knytos_rt::call::Admission::new(&deadline::Deadline::after(5_000))
         .call(connection, opcode, arg0)
 }
 
 /// Wait for a service and return a uniquely owned connection to it.
 pub fn wait_for_registered_name_owned(
-    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    ns_connection: knytos_rt::owned::ConnectionRef<'_>,
     name: u64,
-) -> Option<(i64, catten_rt::owned::Connection)> {
+) -> Option<(i64, knytos_rt::owned::Connection)> {
     let result =
         owned_call_with_backpressure(ns_connection, ns::OP_LOOKUP, name).ok()?.wait().ok()?;
     let connection = result.connection?;
@@ -2693,10 +2693,10 @@ pub fn wait_for_registered_name_owned(
 /// Resolve a service dependency while allowing node shutdown to interrupt
 /// startup before the dependency registers.
 pub fn wait_for_registered_name_or_shutdown_owned(
-    ctx: &catten_rt::Context,
-    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    ctx: &knytos_rt::Context,
+    ns_connection: knytos_rt::owned::ConnectionRef<'_>,
     name: u64,
-) -> Result<(i64, catten_rt::owned::Connection), catten_rt::ShutdownRequest> {
+) -> Result<(i64, knytos_rt::owned::Connection), knytos_rt::ShutdownRequest> {
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Err(request);
@@ -2712,9 +2712,9 @@ pub fn wait_for_registered_name_or_shutdown_owned(
 /// uniquely owned connection. The staged name remains owned by this call
 /// until the name-service lookup terminates.
 pub fn wait_for_registered_name_bytes_owned(
-    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    ns_connection: knytos_rt::owned::ConnectionRef<'_>,
     service_name: &[u8],
-) -> Option<(i64, catten_rt::owned::Connection)> {
+) -> Option<(i64, knytos_rt::owned::Connection)> {
     if service_name.is_empty() || service_name.len() > MAX_NAME_LEN {
         return None;
     }
@@ -2723,7 +2723,7 @@ pub fn wait_for_registered_name_bytes_owned(
     }
     let staged = stage_name_owned(service_name)?;
     let deadline = deadline::Deadline::after(5_000);
-    let result = catten_rt::call::Admission::new(&deadline)
+    let result = knytos_rt::call::Admission::new(&deadline)
         .call_copy(ns_connection, ns::OP_LOOKUP_NAMED, service_name.len() as u64, &staged)
         .ok()?
         .wait()
@@ -2734,9 +2734,9 @@ pub fn wait_for_registered_name_bytes_owned(
 
 /// Resolve an optional service without waiting for a future registration.
 pub fn try_registered_name_owned(
-    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    ns_connection: knytos_rt::owned::ConnectionRef<'_>,
     name: u64,
-) -> Option<(i64, catten_rt::owned::Connection)> {
+) -> Option<(i64, knytos_rt::owned::Connection)> {
     let result =
         owned_call_with_backpressure(ns_connection, ns::OP_TRY_LOOKUP, name).ok()?.wait().ok()?;
     let connection = result.connection?;
@@ -2750,9 +2750,9 @@ pub fn try_registered_name_owned(
 /// Resolve an optional full-length service name without waiting for a future
 /// registration. The staged name remains borrowed until the call completes.
 pub fn try_registered_name_bytes_owned(
-    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    ns_connection: knytos_rt::owned::ConnectionRef<'_>,
     service_name: &[u8],
-) -> Option<(i64, catten_rt::owned::Connection)> {
+) -> Option<(i64, knytos_rt::owned::Connection)> {
     if service_name.is_empty() || service_name.len() > MAX_NAME_LEN {
         return None;
     }
@@ -2772,14 +2772,14 @@ pub fn try_registered_name_bytes_owned(
 /// Observe a live publication without acquiring invocation authority. This
 /// also works for policy-published names that reject every legacy lookup.
 pub fn publication_generation_owned(
-    names: catten_rt::owned::ConnectionRef<'_>,
+    names: knytos_rt::owned::ConnectionRef<'_>,
     service_name: &[u8],
 ) -> Option<u64> {
     publication_generation::observe(names, service_name).ok().flatten()
 }
 
 /// Wait for the local boot-ready marker using ownership-aware IPC.
-pub fn wait_for_local_ready_owned(ns_connection: catten_rt::owned::ConnectionRef<'_>) -> bool {
+pub fn wait_for_local_ready_owned(ns_connection: knytos_rt::owned::ConnectionRef<'_>) -> bool {
     wait_for_registered_name_owned(ns_connection, knytos_launch::LOCAL_READY_NAME).is_some()
 }
 
@@ -2792,9 +2792,9 @@ pub fn wait_for_local_ready_owned(ns_connection: catten_rt::owned::ConnectionRef
 /// waiting for one of its startup gates. The short non-blocking lookup and
 /// owned timer keep both operations bounded without exposing capabilities.
 pub fn wait_for_local_ready_or_shutdown(
-    ctx: &catten_rt::Context,
-    ns_connection: catten_rt::owned::ConnectionRef<'_>,
-) -> Result<(), catten_rt::ShutdownRequest> {
+    ctx: &knytos_rt::Context,
+    ns_connection: knytos_rt::owned::ConnectionRef<'_>,
+) -> Result<(), knytos_rt::ShutdownRequest> {
     wait_for_registered_name_or_shutdown_owned(ctx, ns_connection, knytos_launch::LOCAL_READY_NAME)
         .map(|_| ())
 }
@@ -2807,9 +2807,9 @@ pub fn wait_for_local_ready_or_shutdown(
 /// sole waiter; unrelated CQ readiness only triggers a lifecycle recheck and
 /// does not restart or finish the delay.
 pub fn sleep_ms_or_shutdown(
-    ctx: &catten_rt::Context,
+    ctx: &knytos_rt::Context,
     milliseconds: u64,
-) -> Result<(), catten_rt::ShutdownRequest> {
+) -> Result<(), knytos_rt::ShutdownRequest> {
     let deadline = deadline::Deadline::after(milliseconds);
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {

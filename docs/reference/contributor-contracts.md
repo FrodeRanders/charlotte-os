@@ -1304,7 +1304,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - CQ wait has one checked ABI (88): explicit timeout milliseconds, queue and
   timed flag, with readiness/deadline/admission rejection kept distinct. Syscalls
-  12/42 and their SDK/kernel adapters are retired. Use `catten_rt::cq::wait`;
+  12/42 and their SDK/kernel adapters are retired. Use `knytos_rt::cq::wait`;
   ordinary service reactors use the shared fail-closed policy, while specialized
   admission recovery must retain original pending owners and deadlines. A wait
   rejection is neither a clock tick nor permission to replay accepted work.

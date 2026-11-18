@@ -13,7 +13,7 @@
 //!
 //! extern crate alloc;
 //! use knytos_syscall::*;
-//! use catten_rt::{config, Context};
+//! use knytos_rt::{config, Context};
 //!
 //! fn main(ctx: Context) -> ! {
 //!     let mode = ctx.manifest_value(knytos_launch::manifest_key(b"mode"));
@@ -21,7 +21,7 @@
 //!     unsafe { thread_exit(); }
 //! }
 //!
-//! catten_rt::entry!(main);
+//! knytos_rt::entry!(main);
 //! ```
 //!
 //! The program does **not** define `_start`, `panic_handler`, or an allocator.
@@ -50,7 +50,7 @@ pub use owned::NodeShutdownRequestError;
 /// `_start` remains the ELF entry point; `main` is a Rust source-level contract.
 ///
 /// ```ignore
-/// catten_rt::entry!(my_main);
+/// knytos_rt::entry!(my_main);
 /// ```
 #[macro_export]
 macro_rules! entry {

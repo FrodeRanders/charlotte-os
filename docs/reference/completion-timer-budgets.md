@@ -23,7 +23,7 @@ field controls these initial limits.
 Timer submission reserves domain and node admission before publishing either
 the capability or detached record. Rejection returns `SubmitError::WouldBlock`
 without leaking an operation slot or reservation. The existing syscall ABI
-returns its submission-failure sentinel; `catten_rt::owned::Completion::timer`
+returns its submission-failure sentinel; `knytos_rt::owned::Completion::timer`
 reports `CompletionError::SubmissionFailed` rather than a distinct quota reason.
 Cancellation state and its fixed-size queue node are prepared fallibly before
 record publication. Insertion allocates nothing. The queue's inline quantum

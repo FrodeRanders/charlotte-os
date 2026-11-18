@@ -1,6 +1,6 @@
 # Scoped deployment launch and retirement
 
-`catten_rt::owned::launch_scoped_artifact(artifact, artifact_len, descriptor,
+`knytos_rt::owned::launch_scoped_artifact(artifact, artifact_len, descriptor,
 descriptor_len)` is the sole scoped application-launch API. It consumes two
 `OwnedMemory` values and returns `Result<DeployedArtifact, ArtifactLaunchError>`.
 The signed descriptor's complete name is authoritative; there is no packed-name

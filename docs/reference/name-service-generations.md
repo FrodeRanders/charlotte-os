@@ -3,7 +3,7 @@
 NS interface **2** uses one mandatory `CNSGEN01` moved-memory record for
 publication observation (opcode 18) and exact-generation unregistration (opcode
 10). `arg0` is the exact frame length. `knytos-protocol-ns` defines the shared
-encoder/borrowed decoder; `catten_services::ns_generation` reexports it. The
+encoder/borrowed decoder; `knytos_services::ns_generation` reexports it. The
 kernel's node NS endpoint advertises the same shared interface version.
 
 | Field | Encoding |

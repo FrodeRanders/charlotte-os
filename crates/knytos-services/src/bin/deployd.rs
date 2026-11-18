@@ -15,11 +15,11 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
 };
-use catten_services::{
+use knytos_services::{
     clusterctl,
     deployment_http::Error as RequestError,
     socket,
@@ -51,12 +51,12 @@ fn fail() -> ! {
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
-    let management = match catten_services::management_io::Factory::load(ctx) {
+    let management = match knytos_services::management_io::Factory::load(ctx) {
         Ok(factory) => factory,
-        Err(catten_services::management_io::StartupError::Shutdown(request)) => return request,
+        Err(knytos_services::management_io::StartupError::Shutdown(request)) => return request,
         Err(_) => {
-            catten_rt::logln!("[deployd] management credentials unavailable; ingress disabled");
-            return catten_services::management_io::disabled(ctx);
+            knytos_rt::logln!("[deployd] management credentials unavailable; ingress disabled");
+            return knytos_services::management_io::disabled(ctx);
         }
     };
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail());
@@ -75,18 +75,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     let trace = matches!(
         ctx.manifest_value(knytos_launch::deployd_status::TRACE_KEY),
-        Some(catten_rt::ManifestValue::Unsigned(1))
+        Some(knytos_rt::ManifestValue::Unsigned(1))
     );
     let cq = ctx.completion_queue_layout();
-    let mut inputs = catten_services::deployment_input::Inputs::new(0);
-    let mut controls = catten_services::deployment_control::Controls::new(controller.as_ref(), 0);
-    let mut outputs = catten_services::deployment_output::Outputs::new(
+    let mut inputs = knytos_services::deployment_input::Inputs::new(0);
+    let mut controls = knytos_services::deployment_control::Controls::new(controller.as_ref(), 0);
+    let mut outputs = knytos_services::deployment_output::Outputs::new(
         0,
-        catten_services::deployment_output::MAX_RESPONSE_BYTES,
+        knytos_services::deployment_output::MAX_RESPONSE_BYTES,
     );
-    let mut closes = catten_services::deployment_close::Closes::new(0);
+    let mut closes = knytos_services::deployment_close::Closes::new(0);
     let mut shutdown = None;
-    let mut listeners = catten_services::deployment_listener::Listeners::new(
+    let mut listeners = knytos_services::deployment_listener::Listeners::new(
         tcp.as_ref(),
         clusterctl::NOTIFY_PORT,
         0,
@@ -103,7 +103,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         if shutdown.is_none() {
             shutdown = ctx.lifecycle().shutdown_requested();
             if shutdown.is_some() {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[deployd] management drain begin inputs={} controls={} outputs={} \
                      listeners={} closes={}",
                     inputs.occupied_slots(),
@@ -147,7 +147,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 + closes.occupied_slots()
                 == 0
             {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[deployd] management drain complete inputs={} controls={} outputs={} \
                      listeners={} closes={}",
                     inputs.occupied_slots(),
@@ -159,7 +159,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 return shutdown.take().unwrap();
             }
             if !progressed {
-                catten_services::reactor::wait(
+                knytos_services::reactor::wait(
                     [
                         listeners.remaining_ms(false),
                         controls.remaining_ms(),
@@ -180,13 +180,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         listeners.replenish(available);
         let (mut progressed, finished) = listeners.advance(false);
         if !announced && listeners.accepting() {
-            catten_rt::logln!("[deployd] listening port={}", clusterctl::NOTIFY_PORT);
+            knytos_rt::logln!("[deployd] listening port={}", clusterctl::NOTIFY_PORT);
             announced = true;
         }
         if let Some((socket, accepted)) = finished {
             if accepted {
                 let mut socket =
-                    catten_services::management_io::Connection::unaccepted(socket, &management);
+                    knytos_services::management_io::Connection::unaccepted(socket, &management);
                 if socket.accepted().is_err() {
                     closes.start(socket);
                     continue;
@@ -251,18 +251,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         .into_iter()
         .flatten()
         .min();
-        catten_services::reactor::wait(timeout, 0);
+        knytos_services::reactor::wait(timeout, 0);
     }
 }
 
 fn retire_output<'a>(
-    socket: catten_services::management_io::Connection<'a>,
-    result: Result<usize, catten_services::deployment_output::Error>,
-    closes: &mut catten_services::deployment_close::Closes<'a>,
+    socket: knytos_services::management_io::Connection<'a>,
+    result: Result<usize, knytos_services::deployment_output::Error>,
+    closes: &mut knytos_services::deployment_close::Closes<'a>,
     trace: bool,
 ) {
     if trace && let Err(error) = result {
-        catten_rt::logln!("[deployd] response ended: {error:?}");
+        knytos_rt::logln!("[deployd] response ended: {error:?}");
     }
     // A send receipt confirms enqueue only. The next owning phase observes one
     // logical close without blocking other clients or resending accepted work.
@@ -273,4 +273,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

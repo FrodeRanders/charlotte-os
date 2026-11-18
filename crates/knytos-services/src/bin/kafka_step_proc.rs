@@ -4,7 +4,7 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
     owned::{
@@ -13,7 +13,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     kafka_step::{
         self as protocol,
         OutputBatch,
@@ -29,9 +29,9 @@ use knytos_syscall::{
     thread_exit,
 };
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
-const NAME: u64 = catten_services::name(b"kproc");
+const NAME: u64 = knytos_services::name(b"kproc");
 const INPUT: &[u8] = b"knytos-step-input";
 const RETRY_INPUT: &[u8] = b"knytos-step-retry";
 const TIMEOUT_INPUT: &[u8] = b"knytos-step-timeout";

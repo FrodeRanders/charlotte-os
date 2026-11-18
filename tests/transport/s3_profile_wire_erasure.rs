@@ -1,7 +1,7 @@
 //! Encoded launch-profile ownership with public credential fixtures.
 use core::hint::black_box;
 
-use catten_services::s3 as wire;
+use knytos_services::s3 as wire;
 use zeroize::Zeroizing;
 
 mod support;

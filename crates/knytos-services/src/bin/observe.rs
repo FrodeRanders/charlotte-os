@@ -10,11 +10,11 @@
 
 extern crate alloc;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 use alloc::collections::VecDeque;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     owned::{
@@ -26,7 +26,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     ns,
     objstore,
     observability,
@@ -502,12 +502,12 @@ fn main(ctx: Context) -> ! {
             {
                 value
             }
-            _ => catten_rt::domain_abort(),
+            _ => knytos_rt::domain_abort(),
         };
     if archive_interval_ms == 0 {
-        catten_rt::logln!("[observe] history=memory archive=disabled");
+        knytos_rt::logln!("[observe] history=memory archive=disabled");
     } else {
-        catten_rt::logln!("[observe] history=memory archive_interval_ms={}", archive_interval_ms);
+        knytos_rt::logln!("[observe] history=memory archive_interval_ms={}", archive_interval_ms);
     }
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| unsafe { thread_exit() });
     let system_observer = ctx.system_observer_cap().unwrap_or_else(|| unsafe { thread_exit() });
@@ -579,7 +579,7 @@ fn main(ctx: Context) -> ! {
                     full,
                 } => {
                     current.last_flush_ticks = ticks;
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[observe] archived {} resource sample(s){}",
                         record_count,
                         if full {
@@ -594,7 +594,7 @@ fn main(ctx: Context) -> ! {
             }
         }
         if drop_archive {
-            catten_rt::logln!("[observe] telemetry archive flush failed; retrying later");
+            knytos_rt::logln!("[observe] telemetry archive flush failed; retrying later");
             archive = None;
         }
 
@@ -609,7 +609,7 @@ fn main(ctx: Context) -> ! {
         } else {
             remaining_ms
         };
-        catten_services::reactor::wait(Some(remaining_ms), 0);
+        knytos_services::reactor::wait(Some(remaining_ms), 0);
         ticks = monotonic_clock().0;
 
         loop {

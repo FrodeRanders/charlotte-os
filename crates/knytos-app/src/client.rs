@@ -1,5 +1,5 @@
 //! Scalar protocol boundary shared by native clients and host-side scripts.
-use catten_rt::{
+use knytos_rt::{
     call::{
         Admission,
         AdmissionError,
@@ -57,8 +57,8 @@ impl ScalarService for ScalarClient<'_, '_> {
 
 fn decode(result: i64) -> Result<i64, Error> {
     match result {
-        catten_rt::abi::IPC_REPLY_ENDPOINT_CLOSED => Err(Error::EndpointClosed),
-        catten_rt::abi::IPC_REPLY_CANCELLED => Err(Error::Cancelled),
+        knytos_rt::abi::IPC_REPLY_ENDPOINT_CLOSED => Err(Error::EndpointClosed),
+        knytos_rt::abi::IPC_REPLY_CANCELLED => Err(Error::Cancelled),
         value if value < 0 => Err(Error::Service(value)),
         value => Ok(value),
     }
@@ -121,7 +121,7 @@ mod tests {
         let mut service = ScriptedScalar::new(vec![Step {
             opcode: 1,
             argument: 9,
-            result: Ok(catten_rt::abi::IPC_REPLY_CANCELLED),
+            result: Ok(knytos_rt::abi::IPC_REPLY_CANCELLED),
         }]);
         assert_eq!(service.call(1, 8), Err(Error::UnexpectedCall));
         assert!(!service.is_complete());

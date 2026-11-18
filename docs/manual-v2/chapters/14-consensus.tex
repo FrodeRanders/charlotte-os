@@ -331,7 +331,7 @@ Knytos uses detached timer completion cookies and a checked CQ watchdog.
 Endpoint readiness and completion notifications release the same reactor wait:
 
 \begin{lstlisting}[style=rustCode]
-let outcome = catten_services::reactor::wait(
+let outcome = knytos_services::reactor::wait(
     Some(remaining_ms), cq_id);
 // Ready: drain completions and recheck all endpoint sources.
 // Deadline: evaluate the original protocol deadline.

@@ -14,7 +14,7 @@
 
 use core::cmp;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
@@ -28,7 +28,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     objstore,
     publication,
     socket,
@@ -43,7 +43,7 @@ use knytos_syscall::{
     thread_exit,
 };
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const NTP_PORT: u16 = 123;
 const NTP_PACKET_LEN: usize = 48;
@@ -374,7 +374,7 @@ fn start_attempt<'connection>(
         Ok(socket) => socket,
         Err(error) => {
             ntp_setup_failed(NTP_SETUP_SOCKET, u32::MAX);
-            catten_rt::logln!("[time] NTP setup phase={} socket={:?}", NTP_SETUP_SOCKET, error);
+            knytos_rt::logln!("[time] NTP setup phase={} socket={:?}", NTP_SETUP_SOCKET, error);
             return None;
         }
     };
@@ -383,7 +383,7 @@ fn start_attempt<'connection>(
         Ok(memory) => memory,
         Err(error) => {
             ntp_setup_failed(NTP_SETUP_ADDRESS_MEMORY, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} address memory={:?}",
                 NTP_SETUP_ADDRESS_MEMORY,
                 error
@@ -395,7 +395,7 @@ fn start_attempt<'connection>(
         Ok(mapping) => mapping,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_ADDRESS_MAP, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} address map={:?}",
                 NTP_SETUP_ADDRESS_MAP,
                 error
@@ -409,7 +409,7 @@ fn start_attempt<'connection>(
         Ok(memory) => memory,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_ADDRESS_UNMAP, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} address unmap={:?}",
                 NTP_SETUP_ADDRESS_UNMAP,
                 error
@@ -421,7 +421,7 @@ fn start_attempt<'connection>(
         Ok(call) => call,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_CONNECT_SUBMIT, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} connect submit={:?}",
                 NTP_SETUP_CONNECT_SUBMIT,
                 error
@@ -433,7 +433,7 @@ fn start_attempt<'connection>(
         Some(result) => result,
         None => {
             ntp_setup_failed(NTP_SETUP_CONNECT_RESULT, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} connect wait failed",
                 NTP_SETUP_CONNECT_RESULT
             );
@@ -442,7 +442,7 @@ fn start_attempt<'connection>(
     };
     if connect_result != 0 {
         ntp_setup_failed(NTP_SETUP_CONNECT_RESULT, connect_result as u32);
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[time] NTP setup phase={} connect result={}",
             NTP_SETUP_CONNECT_RESULT,
             connect_result
@@ -455,7 +455,7 @@ fn start_attempt<'connection>(
         Ok(memory) => memory,
         Err(error) => {
             ntp_setup_failed(NTP_SETUP_PACKET_MEMORY, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} packet memory={:?}",
                 NTP_SETUP_PACKET_MEMORY,
                 error
@@ -467,7 +467,7 @@ fn start_attempt<'connection>(
         Ok(mapping) => mapping,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_PACKET_MAP, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} packet map={:?}",
                 NTP_SETUP_PACKET_MAP,
                 error
@@ -478,7 +478,7 @@ fn start_attempt<'connection>(
     let mut packet = [0; NTP_PACKET_LEN];
     packet[0] = 0x23; // LI=0, VN=4, mode=client
     packet[40..48].copy_from_slice(&request_transmit.to_be_bytes());
-    if !catten_services::socket_send::encode(&packet, packet_mapping.as_mut_slice()) {
+    if !knytos_services::socket_send::encode(&packet, packet_mapping.as_mut_slice()) {
         ntp_setup_failed(NTP_SETUP_PACKET_MAP, u32::MAX);
         return None;
     }
@@ -486,7 +486,7 @@ fn start_attempt<'connection>(
         Ok(memory) => memory,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_PACKET_UNMAP, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} packet unmap={:?}",
                 NTP_SETUP_PACKET_UNMAP,
                 error
@@ -498,7 +498,7 @@ fn start_attempt<'connection>(
         Ok(call) => call,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_SEND_SUBMIT, u32::MAX);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] NTP setup phase={} send submit={:?}",
                 NTP_SETUP_SEND_SUBMIT,
                 error
@@ -510,13 +510,13 @@ fn start_attempt<'connection>(
         Some(result) => result,
         None => {
             ntp_setup_failed(NTP_SETUP_SEND_RESULT, u32::MAX);
-            catten_rt::logln!("[time] NTP setup phase={} send wait failed", NTP_SETUP_SEND_RESULT);
+            knytos_rt::logln!("[time] NTP setup phase={} send wait failed", NTP_SETUP_SEND_RESULT);
             return None;
         }
     };
     if send_result != NTP_PACKET_LEN as i64 {
         ntp_setup_failed(NTP_SETUP_SEND_RESULT, send_result as u32);
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[time] NTP setup phase={} send result={}",
             NTP_SETUP_SEND_RESULT,
             send_result
@@ -599,7 +599,7 @@ fn poll_attempt(attempt: &mut Attempt<'_>, received: MonoClock) -> Option<Result
         Ok(Some(result)) => result,
         Ok(None) => {
             if received.ticks >= attempt.deadline_mono_ticks {
-                catten_rt::logln!("[time] NTP response timed out");
+                knytos_rt::logln!("[time] NTP response timed out");
                 return Some(Err(()));
             }
             return None;
@@ -622,7 +622,7 @@ fn poll_attempt(attempt: &mut Attempt<'_>, received: MonoClock) -> Option<Result
     let bytes = &mapping.as_slice()[..length];
     let sample = parse_ntp_reply(bytes, attempt, received).ok_or(());
     if sample.is_err() {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[time] rejected NTP reply: len={} header={:#x} stratum={}",
             result.result,
             bytes[0],
@@ -792,7 +792,7 @@ impl CalibrationPersistence {
         self.stage = PERSIST_STAGE_IDLE;
         config::write::<u32>(status::PERSIST_ERROR, stage);
         config::write::<u32>(status::PERSIST_STAGE, PERSIST_STAGE_IDLE);
-        catten_rt::logln!("[time] calibration persistence stage={} {}", stage, reason);
+        knytos_rt::logln!("[time] calibration persistence stage={} {}", stage, reason);
     }
 }
 
@@ -822,7 +822,7 @@ fn handle_requests(endpoint: &Endpoint, model: &mut Option<ClockModel>, server_i
         let message = match endpoint.try_receive() {
             Ok(Some(message)) => message,
             Ok(None) => break,
-            Err(catten_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
+            Err(knytos_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
             Err(_) => continue,
         };
         let Some(reply) = message.reply else {
@@ -905,13 +905,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let endpoint =
         Endpoint::create(time::INTERFACE, time::VERSION, 32).unwrap_or_else(|_| fail(0xe006));
     publication::register(ns_conn, time::NAME, &endpoint).unwrap_or_else(|error| {
-        catten_rt::logln!("[time] registration rejected: {error:?}");
+        knytos_rt::logln!("[time] registration rejected: {error:?}");
         fail(0xe007)
     });
     if endpoint.bind_completion_queue(0).is_err() {
         fail(0xe007);
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[time] serving; NTP {}.{}.{}.{}:{} persistence={}",
         server_ipv4[0],
         server_ipv4[1],
@@ -946,7 +946,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         handle_requests(&endpoint, &mut model, server_ipv4);
         let Some(now_mono) = read_monotonic() else {
             config::write::<u32>(status::ERROR, 0xe008);
-            catten_services::reactor::wait(Some(LOOP_WAIT_MS), 0);
+            knytos_services::reactor::wait(Some(LOOP_WAIT_MS), 0);
             continue;
         };
         if let Some(obj_conn) = obj_conn.as_ref() {
@@ -955,7 +955,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         #[cfg(feature = "service-heartbeats")]
         if now_mono.ticks >= next_heartbeat_ticks {
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[time] hb state={} samples={} ntp_active={} persist_stage={} persist_timeouts={}",
                 model.as_ref().map_or(time::STATE_UNSYNCHRONIZED, |clock| clock.state),
                 model.as_ref().map_or(0, |clock| clock.sample_count),
@@ -999,7 +999,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     config::write::<i64>(status::DRIFT_PPB, clock.drift_ppb);
                     let unix_seconds = clock.anchor_utc_ns / 1_000_000_000;
                     let utc = time::utc_from_unix(unix_seconds as i64);
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[time] synchronized unix_s={} \
                          utc={:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z stratum={} \
                          uncertainty_ms={} drift_ppb={}",
@@ -1027,7 +1027,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 Err(()) => {
                     ntp_failures = ntp_failures.wrapping_add(1);
                     config::write::<u32>(status::NTP_FAILURES, ntp_failures);
-                    catten_rt::logln!("[time] NTP request failed; failures={}", ntp_failures);
+                    knytos_rt::logln!("[time] NTP request failed; failures={}", ntp_failures);
                     next_sync_ticks = ticks_after(now_mono, RETRY_INTERVAL_SECONDS);
                 }
             }
@@ -1041,18 +1041,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 // until the stack has installed a source address and route.
                 next_sync_ticks = ticks_after(now_mono, 1);
             } else {
-                catten_rt::logln!("[time] requesting NTP sample");
+                knytos_rt::logln!("[time] requesting NTP sample");
                 attempt = start_attempt(tcp_conn.as_ref(), server_ipv4, now_mono, &mut model);
                 if attempt.is_none() {
                     ntp_failures = ntp_failures.wrapping_add(1);
                     config::write::<u32>(status::NTP_FAILURES, ntp_failures);
-                    catten_rt::logln!("[time] NTP request setup failed; failures={}", ntp_failures);
+                    knytos_rt::logln!("[time] NTP request setup failed; failures={}", ntp_failures);
                     next_sync_ticks = ticks_after(now_mono, RETRY_INTERVAL_SECONDS);
                 }
             }
         }
 
-        catten_services::reactor::wait(Some(LOOP_WAIT_MS), 0);
+        knytos_services::reactor::wait(Some(LOOP_WAIT_MS), 0);
         while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
     }
 }

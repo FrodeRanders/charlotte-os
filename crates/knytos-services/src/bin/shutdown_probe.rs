@@ -2,14 +2,14 @@
 #![no_std]
 #![no_main]
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
     config,
     owned::Endpoint,
 };
-use catten_services::{
+use knytos_services::{
     sleep_ms,
     sleep_ms_or_shutdown,
 };
@@ -24,7 +24,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let stubborn =
         matches!(ctx.manifest_value(MODE_KEY), Some(ManifestValue::Unsigned(MODE_STUBBORN)));
     let endpoint =
-        Endpoint::create(INTERFACE, VERSION, 1).unwrap_or_else(|_| catten_rt::domain_abort());
+        Endpoint::create(INTERFACE, VERSION, 1).unwrap_or_else(|_| knytos_rt::domain_abort());
     config::write::<u32>(STATUS_STARTED, 1);
 
     loop {
@@ -52,4 +52,4 @@ fn main(ctx: Context) -> ! {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

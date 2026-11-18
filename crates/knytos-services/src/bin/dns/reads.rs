@@ -5,20 +5,20 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     node::{
         PendingRead,
         RaftNode,
     },
     types::NodeState,
 };
-use catten_rt::owned::{
+use knytos_rt::owned::{
     ConnectionRef,
     IncomingMessage,
     OwnedMemory,
     ReplyToken,
 };
-use catten_services::{
+use knytos_services::{
     deadline::Deadline,
     dns,
     name_catalog::{
@@ -83,7 +83,7 @@ pub(super) struct Routes<'a> {
 }
 
 fn error(code: i64) -> i64 {
-    if code == catten_graft::types::ERR_RESOURCE_LIMIT {
+    if code == knytos_graft::types::ERR_RESOURCE_LIMIT {
         dns::ERR_RESOURCE_LIMIT
     } else {
         dns::ERR_NOT_LEADER
@@ -98,15 +98,15 @@ fn reply_remote(
     status: i64,
     entry: Option<&CatalogEntry>,
 ) {
-    match catten_services::rquery::encode_reply(
+    match knytos_services::rquery::encode_reply(
         session,
         query_id,
         status,
         entry.map_or(0, |entry| entry.generation),
         entry.map_or(&[][..], |entry| entry.node.as_slice()),
     ) {
-        Ok(reply) => transport.send_message(peer, catten_services::rquery::TAG_REPLY, reply),
-        Err(error) => catten_rt::logln!("[dns] query reply preparation rejected: {:?}", error),
+        Ok(reply) => transport.send_message(peer, knytos_services::rquery::TAG_REPLY, reply),
+        Err(error) => knytos_rt::logln!("[dns] query reply preparation rejected: {:?}", error),
     }
 }
 
@@ -258,7 +258,7 @@ impl Reads {
         };
         *next_query_id = next_id;
         let request =
-            match catten_services::rquery::encode_request(session, query_id, node_name, &name) {
+            match knytos_services::rquery::encode_request(session, query_id, node_name, &name) {
                 Ok(request) if !deadline.expired() => request,
                 Ok(_) => {
                     destination.reject(dns::ERR_NOT_LEADER, transport);
@@ -293,7 +293,7 @@ impl Reads {
             deadline,
             kind,
         });
-        transport.send_message(&leader, catten_services::rquery::TAG_REQUEST, request);
+        transport.send_message(&leader, knytos_services::rquery::TAG_REQUEST, request);
     }
 
     pub fn drive(&mut self, node: &RaftNode, routes: &mut Routes<'_>) {
@@ -471,7 +471,7 @@ impl Routes<'_> {
                     return Some(dns::ERR_RESOURCE_LIMIT);
                 };
                 *self.next_call_id = next_id;
-                match catten_services::rcall::encode_request(
+                match knytos_services::rcall::encode_request(
                     self.session,
                     call_id,
                     self.node_name,
@@ -491,7 +491,7 @@ impl Routes<'_> {
                         });
                         self.transport.send_message(
                             peer,
-                            catten_services::rcall::TAG_REQUEST,
+                            knytos_services::rcall::TAG_REQUEST,
                             request,
                         );
                         None

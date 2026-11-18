@@ -7,7 +7,7 @@
 
 use alloc::vec::Vec;
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     ConnectionRef,
     IpcError,
     MemoryError,
@@ -164,7 +164,7 @@ fn request_call(
     service: ConnectionRef<'_>,
     opcode: u32,
     request: ObjectRequest<'_>,
-) -> Result<catten_rt::owned::CallResult, Error> {
+) -> Result<knytos_rt::owned::CallResult, Error> {
     let (memory, len) = OwnedPayload::encode(4096, 4096, |output| request.encode(output))
         .map_err(Error::Payload)?
         .into_parts();

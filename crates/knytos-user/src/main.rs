@@ -10,7 +10,7 @@
 #![no_main]
 
 extern crate alloc;
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
@@ -93,7 +93,7 @@ fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
         return false;
     }
     for index in 0..64 {
-        let Ok(mut timer) = catten_rt::owned::Completion::timer(0) else {
+        let Ok(mut timer) = knytos_rt::owned::Completion::timer(0) else {
             return false;
         };
         loop {
@@ -134,8 +134,8 @@ fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
             } else {
                 let remaining_ms = (budget - elapsed).div_ceil(u128::from(frequency)) as u64;
                 if !matches!(
-                    catten_rt::cq::wait(Some(remaining_ms), 0),
-                    Ok(catten_rt::cq::WaitOutcome::Ready)
+                    knytos_rt::cq::wait(Some(remaining_ms), 0),
+                    Ok(knytos_rt::cq::WaitOutcome::Ready)
                 ) {
                     return false;
                 }
@@ -145,7 +145,7 @@ fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
     true
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 /// Both tasks share the existing Sitas executor. Client polls first; the server
 /// then replies, and backend dispatch makes the client recheck its owned call.
@@ -157,7 +157,7 @@ fn run_owned_call_probe() -> bool {
         Ordering,
     };
 
-    use catten_rt::{
+    use knytos_rt::{
         call::CallObservation,
         deadline::Deadline,
         owned::{
@@ -217,7 +217,7 @@ fn run_owned_call_probe() -> bool {
     executor.run();
     let result = passed.load(Ordering::Relaxed);
     if result {
-        catten_rt::logln!("[sitas] owned IPC future verified");
+        knytos_rt::logln!("[sitas] owned IPC future verified");
     }
     result
 }

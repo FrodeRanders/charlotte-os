@@ -5,7 +5,7 @@ edition = "2024"
 description = "no_std Raft consensus core adapted for Knytos"
 
 [lib]
-name = "catten_graft"
+name = "knytos_graft"
 path = "src/lib.rs"
 bench = false
 

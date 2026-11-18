@@ -31,13 +31,13 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
     config,
 };
-use catten_services::{
+use knytos_services::{
     clusterctl,
     disco,
     net,
@@ -142,7 +142,7 @@ impl ClusterProbe {
             return;
         }
         self.next_refresh_ms = tick_ms + RAFT_STATUS_REFRESH_MS;
-        let raft_name = catten_services::raft_name(identity);
+        let raft_name = knytos_services::raft_name(identity);
         self.pending_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, raft_name);
     }
 
@@ -579,7 +579,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // The node's name is the persisted identity derived from its NIC MAC and
     // the cluster mnemonic, so every node on the segment carries the same
     // stable identity in its probes.
-    let node_id = match catten_services::node_identity::NodeIdentity::load_or_create(
+    let node_id = match knytos_services::node_identity::NodeIdentity::load_or_create(
         names,
         &mnemonic,
         Some(local_mac),
@@ -592,13 +592,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     };
     config::write::<u32>(status::STAGE, 4);
 
-    let endpoint = catten_rt::owned::Endpoint::create(disco::INTERFACE, disco::VERSION, 8)
+    let endpoint = knytos_rt::owned::Endpoint::create(disco::INTERFACE, disco::VERSION, 8)
         .unwrap_or_else(|_| unsafe { thread_exit() });
     if endpoint.bind_completion_queue(0).is_err() {
         unsafe { thread_exit() };
     }
     publication::register(names, disco::NAME, &endpoint).unwrap_or_else(|error| {
-        catten_rt::logln!("[disco] registration rejected: {error:?}");
+        knytos_rt::logln!("[disco] registration rejected: {error:?}");
         unsafe { thread_exit() }
     });
     config::write::<u32>(status::STAGE, 5);
@@ -632,7 +632,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut tick_ms: u64 = RAPID_PROBE_COUNT as u64 * RAPID_PROBE_INTERVAL_MS;
     let cq = ctx.completion_queue_layout();
     let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
-    let mut clock_watchdog = catten_services::deadline::Deadline::after(CLOCK_TICK_MS);
+    let mut clock_watchdog = knytos_services::deadline::Deadline::after(CLOCK_TICK_MS);
     let mut heart: u32 = 0;
 
     loop {
@@ -640,7 +640,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             for reply in cluster_waiters {
                 ipc_reply(reply, clusterctl::ERR_NO_CLUSTER);
             }
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[disco] shutdown: released {} peer(s) and pending cluster waiters",
                 peers.len()
             );
@@ -663,7 +663,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // only the Rust owner closes it when the serving scope ends.
             let message = ipc_recv(endpoint.as_raw());
             let _attachments =
-                catten_services::RequestAttachments::new(message.memory, message.connection);
+                knytos_services::RequestAttachments::new(message.memory, message.connection);
             if message.status == ipc_status::ENDPOINT_CLOSED {
                 unsafe { thread_exit() };
             }
@@ -844,7 +844,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // A real timer completion advances protocol time independently of
         // endpoint traffic. Counting CQ wakes as milliseconds made TTL and
         // refresh cadence depend on packet rate.
-        catten_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
+        knytos_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
         let mut clock_fired = false;
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == CLOCK_TIMER_COOKIE {
@@ -857,7 +857,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // will be delivered promptly. A delayed/lost cookie must not freeze
         // peer TTLs and Raft-posture refreshes.
         if clock_fired || clock_watchdog.expired() {
-            clock_watchdog = catten_services::deadline::Deadline::after(CLOCK_TICK_MS);
+            clock_watchdog = knytos_services::deadline::Deadline::after(CLOCK_TICK_MS);
             tick_ms = tick_ms.saturating_add(CLOCK_TICK_MS);
             if !clock_armed {
                 clock_armed =
@@ -872,4 +872,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

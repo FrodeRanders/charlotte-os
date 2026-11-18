@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     owned::{
         CallResult,
@@ -130,8 +130,8 @@ impl Export<'_> {
         if let Some(socket) = self.socket.take()
             && socket.close().is_err()
         {
-            catten_rt::logln!("[otlp] socket close unconfirmed; retaining exporter through abort");
-            catten_rt::domain_abort();
+            knytos_rt::logln!("[otlp] socket close unconfirmed; retaining exporter through abort");
+            knytos_rt::domain_abort();
         }
         result
     }

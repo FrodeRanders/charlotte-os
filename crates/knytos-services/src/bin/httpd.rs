@@ -56,7 +56,7 @@ use core::{
     },
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
@@ -65,7 +65,7 @@ use catten_rt::{
         ConnectionRef,
     },
 };
-use catten_services::{
+use knytos_services::{
     cluster_observe,
     deadline::Deadline,
     disco,
@@ -107,7 +107,7 @@ static TRACE_PHASES: AtomicBool = AtomicBool::new(false);
 
 fn trace_phase(phase: &str) {
     if TRACE_PHASES.load(Ordering::Relaxed) {
-        catten_rt::logln!("[http] phase={phase}");
+        knytos_rt::logln!("[http] phase={phase}");
     }
 }
 // At most four retained responses, independent of TLS wire-flight bounds.
@@ -421,9 +421,9 @@ fn build_cluster_json(snapshot: &Snapshot, dns_conn: ConnectionRef<'_>) -> Optio
         s.push_str("{\"name\":");
         push_json_string(&mut s, &deployment.name);
         let rollout = match deployment.state {
-            catten_services::clusterctl::ROLLOUT_COMMITTED => "committed",
-            catten_services::clusterctl::ROLLOUT_READY => "ready",
-            catten_services::clusterctl::ROLLOUT_REPLACING => "replacing",
+            knytos_services::clusterctl::ROLLOUT_COMMITTED => "committed",
+            knytos_services::clusterctl::ROLLOUT_READY => "ready",
+            knytos_services::clusterctl::ROLLOUT_REPLACING => "replacing",
             _ => "unknown",
         };
         let _ = write!(
@@ -764,8 +764,8 @@ fn render_dns(snapshot: &Snapshot, s: &mut String, dns_conn: ConnectionRef<'_>) 
             dns_conn,
             dns::OP_CATALOG,
             0,
-            catten_services::dns_catalog::MAX_SNAPSHOT_LEN,
-        ) && let Some(catalog) = catten_services::dns_catalog::decode(&bytes)
+            knytos_services::dns_catalog::MAX_SNAPSHOT_LEN,
+        ) && let Some(catalog) = knytos_services::dns_catalog::decode(&bytes)
         {
             let _ = write!(
                 s,
@@ -987,7 +987,7 @@ fn render_history(s: &mut String, history: &HistoryReport) {
 }
 
 fn render_ns(snapshot: &Snapshot, s: &mut String, ns_conn: ConnectionRef<'_>) {
-    use catten_services::ns_generation::snapshot;
+    use knytos_services::ns_generation::snapshot;
     let Some(bytes) = read_moved(snapshot, ns_conn, ns::OP_STATUS, 0, snapshot::MAX_SNAPSHOT_LEN)
     else {
         s.push_str("\"ns\":null");
@@ -1489,19 +1489,19 @@ fn response(
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
-    let management = match catten_services::management_io::Factory::load(ctx) {
+    let management = match knytos_services::management_io::Factory::load(ctx) {
         Ok(factory) => factory,
-        Err(catten_services::management_io::StartupError::Shutdown(request)) => return request,
+        Err(knytos_services::management_io::StartupError::Shutdown(request)) => return request,
         Err(_) => {
-            catten_rt::logln!("[http] management credentials unavailable; ingress disabled");
+            knytos_rt::logln!("[http] management credentials unavailable; ingress disabled");
             config::write::<u32>(status::ERROR, 0xe010);
-            return catten_services::management_io::disabled(ctx);
+            return knytos_services::management_io::disabled(ctx);
         }
     };
     TRACE_PHASES.store(
         matches!(
             ctx.manifest_value(status::TRACE_KEY),
-            Some(catten_rt::ManifestValue::Unsigned(1))
+            Some(knytos_rt::ManifestValue::Unsigned(1))
         ),
         Ordering::Relaxed,
     );
@@ -1557,10 +1557,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         heap_allocations: 0,
         cpu_busy_ticks: 0,
     };
-    let mut inputs = catten_services::status_input::Inputs::new(0);
-    let mut outputs = catten_services::deployment_output::Outputs::new(0, MAX_RESPONSE_BYTES);
-    let mut closes = catten_services::deployment_close::Closes::new(0);
-    let mut listeners = catten_services::deployment_listener::Listeners::new(
+    let mut inputs = knytos_services::status_input::Inputs::new(0);
+    let mut outputs = knytos_services::deployment_output::Outputs::new(0, MAX_RESPONSE_BYTES);
+    let mut closes = knytos_services::deployment_close::Closes::new(0);
+    let mut listeners = knytos_services::deployment_listener::Listeners::new(
         services.tcp_conn.as_ref(),
         HTTP_PORT,
         0,
@@ -1568,11 +1568,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut shutdown = None;
     let mut announced = false;
     loop {
-        catten_services::management_io::drain(ctx);
+        knytos_services::management_io::drain(ctx);
         if shutdown.is_none() {
             shutdown = ctx.lifecycle().shutdown_requested();
             if shutdown.is_some() {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[http] management drain begin inputs={} outputs={} listeners={} closes={}",
                     inputs.occupied_slots(),
                     outputs.occupied_slots(),
@@ -1605,7 +1605,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 + closes.occupied_slots()
                 == 0
             {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[http] management drain complete inputs={} outputs={} listeners={} closes={}",
                     inputs.occupied_slots(),
                     outputs.occupied_slots(),
@@ -1615,7 +1615,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 return shutdown.take().unwrap();
             }
             if !progressed {
-                catten_services::reactor::wait(
+                knytos_services::reactor::wait(
                     [listeners.remaining_ms(false), closes.remaining_ms()]
                         .into_iter()
                         .flatten()
@@ -1625,19 +1625,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             continue;
         }
-        let available = catten_services::deployment_input::MAX_CLIENTS.saturating_sub(
+        let available = knytos_services::deployment_input::MAX_CLIENTS.saturating_sub(
             inputs.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
         );
         listeners.replenish(available);
         let (mut progressed, finished) = listeners.advance(false);
         if !announced && listeners.accepting() {
-            catten_rt::logln!("[http] listening port={HTTP_PORT}; bounded client reactor");
+            knytos_rt::logln!("[http] listening port={HTTP_PORT}; bounded client reactor");
             announced = true;
         }
         if let Some((socket, accepted)) = finished {
             if accepted {
                 let mut socket =
-                    catten_services::management_io::Connection::unaccepted(socket, &management);
+                    knytos_services::management_io::Connection::unaccepted(socket, &management);
                 if socket.accepted().is_err() {
                     closes.start(socket);
                     continue;
@@ -1674,12 +1674,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             retire_output(socket, result, &mut closes, &mut counters);
         }
         progressed |= closes.advance();
-        let available = catten_services::deployment_input::MAX_CLIENTS.saturating_sub(
+        let available = knytos_services::deployment_input::MAX_CLIENTS.saturating_sub(
             inputs.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
         );
         listeners.replenish(available);
         if !progressed {
-            catten_services::reactor::wait(
+            knytos_services::reactor::wait(
                 [
                     inputs.remaining_ms(),
                     outputs.remaining_ms(),
@@ -1696,9 +1696,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 }
 
 fn retire_output<'a>(
-    socket: catten_services::management_io::Connection<'a>,
-    result: Result<usize, catten_services::deployment_output::Error>,
-    closes: &mut catten_services::deployment_close::Closes<'a>,
+    socket: knytos_services::management_io::Connection<'a>,
+    result: Result<usize, knytos_services::deployment_output::Error>,
+    closes: &mut knytos_services::deployment_close::Closes<'a>,
     counters: &mut HttpCounters,
 ) {
     if let Ok(bytes) = result {
@@ -1713,4 +1713,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

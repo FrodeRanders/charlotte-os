@@ -16,7 +16,7 @@ queue IDs, invalid flags and noncanonical event-only input reject before waiting
 Runtime ABI advances to 3; all signed variants and fixtures declare that contract.
 Current store/descriptor grammars are unchanged. ABI 1/2 target matching rejects.
 
-`catten_rt::cq::wait` returns typed readiness/deadline or admission/invalid-request
+`knytos_rt::cq::wait` returns typed readiness/deadline or admission/invalid-request
 errors. Ordinary service reactors share a fail-closed policy: rejected waiting
 logs and aborts the domain while its pending resources remain governed by the
 existing retirement owners. Timer-backed admission pauses also reject failed

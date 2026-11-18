@@ -14,7 +14,7 @@ the platform boundary:
   no live capabilities and makes object streams explicit remote resources.
 - `s3.elf` owns TCP connections and credentials and publishes the short name
   `s3`.
-- `catten_services::s3_client` is the safe application API. `GetObject` and
+- `knytos_services::s3_client` is the safe application API. `GetObject` and
   `PutObject` close or abort in `Drop`, while explicit consuming methods report
   remote teardown failures.
 
@@ -70,7 +70,7 @@ Resolve `s3` through the local name service and retain the returned owned
 connection. Construct a borrowed client from it:
 
 ```rust
-use catten_services::{s3, s3_client::Client, wait_for_registered_name_owned};
+use knytos_services::{s3, s3_client::Client, wait_for_registered_name_owned};
 
 let (_, connection) = wait_for_registered_name_owned(ns, s3::NAME)?;
 let client = Client::new(connection.as_ref());

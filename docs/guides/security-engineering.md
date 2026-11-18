@@ -38,7 +38,7 @@ object ID and retaining its frames cannot reconstruct that transaction later.
 Make transfer and finalization consume the actual Rust owner. Return that owner
 on rejection when its contract supports continuation.
 
-Use `catten_rt::owned` and protocol-specific owners in userspace. Local infallible
+Use `knytos_rt::owned` and protocol-specific owners in userspace. Local infallible
 cleanup can use ordinary RAII. Fallible remote close needs a consuming explicit
 operation and its documented fallback. Kernel owners used beneath unknown locks
 often retain all fields on abandonment, and that policy must be explicit. Merely

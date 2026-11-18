@@ -11,7 +11,7 @@ default = ["service-heartbeats"]
 service-heartbeats = []
 
 [lib]
-name = "catten_services"
+name = "knytos_services"
 path = "src/lib.rs"
 bench = false
 

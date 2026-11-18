@@ -2,7 +2,7 @@
 #![no_std]
 extern crate alloc;
 
-pub use catten_rt::{
+pub use knytos_rt::{
     Context,
     ShutdownRequest,
     deadline,
@@ -25,14 +25,14 @@ mod socket_close;
 pub mod socket_send;
 
 pub const fn name(bytes: &[u8]) -> u64 {
-    catten_rt::manifest_key(bytes)
+    knytos_rt::manifest_key(bytes)
 }
 
 fn sleep_ms(milliseconds: u64) {
     let result = owned::Completion::timer(milliseconds).and_then(owned::Completion::wait);
     if result != Ok(0) {
-        catten_rt::logln!("[app] backoff failed: {:?}", result);
-        catten_rt::domain_abort();
+        knytos_rt::logln!("[app] backoff failed: {:?}", result);
+        knytos_rt::domain_abort();
     }
 }
 
@@ -108,11 +108,11 @@ pub enum AppExit {
 
 pub fn run<E: core::fmt::Debug>(context: Context, app: fn(&Context) -> Result<AppExit, E>) -> ! {
     match app(&context) {
-        Ok(AppExit::Completed) => unsafe { catten_rt::thread_exit() },
+        Ok(AppExit::Completed) => unsafe { knytos_rt::thread_exit() },
         Ok(AppExit::Shutdown(request)) => request.complete(),
         Err(error) => {
-            catten_rt::logln!("[app] stopped: {:?}", error);
-            catten_rt::domain_abort()
+            knytos_rt::logln!("[app] stopped: {:?}", error);
+            knytos_rt::domain_abort()
         }
     }
 }
@@ -128,10 +128,10 @@ macro_rules! entry {
     };
 }
 #[doc(hidden)]
-pub use catten_rt as __runtime;
+pub use knytos_rt as __runtime;
 
 pub mod prelude {
-    pub use catten_rt::call::{
+    pub use knytos_rt::call::{
         Admission,
         AdmissionError,
         CallObservation,

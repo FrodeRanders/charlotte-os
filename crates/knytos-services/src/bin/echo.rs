@@ -12,7 +12,7 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
     owned::{
@@ -21,7 +21,7 @@ use catten_rt::{
         ReceiveError,
     },
 };
-use catten_services::{
+use knytos_services::{
     echo,
     ns,
     stage_name_owned,
@@ -88,42 +88,42 @@ fn main(ctx: Context) -> ! {
     // this does not authorize DNS to remove our existing local registrations.
     match ctx.manifest_value(knytos_launch::echo_config::CLUSTER_NAME) {
         None => (),
-        Some(catten_rt::ManifestValue::Bytes(cluster_name)) => {
-            let deadline = catten_services::deadline::Deadline::after(5_000);
+        Some(knytos_rt::ManifestValue::Bytes(cluster_name)) => {
+            let deadline = knytos_services::deadline::Deadline::after(5_000);
             let staged =
-                stage_name_owned(cluster_name).unwrap_or_else(|| catten_rt::domain_abort());
+                stage_name_owned(cluster_name).unwrap_or_else(|| knytos_rt::domain_abort());
             let mut lookup = ns_connection
-                .call(ns::OP_TRY_LOOKUP, catten_services::dns::NAME)
-                .unwrap_or_else(|_| catten_rt::domain_abort());
+                .call(ns::OP_TRY_LOOKUP, knytos_services::dns::NAME)
+                .unwrap_or_else(|_| knytos_rt::domain_abort());
             let mut reply = lookup
                 .wait_timeout(deadline.remaining_ms())
-                .unwrap_or_else(|_| catten_rt::domain_abort())
-                .unwrap_or_else(|| catten_rt::domain_abort());
+                .unwrap_or_else(|_| knytos_rt::domain_abort())
+                .unwrap_or_else(|| knytos_rt::domain_abort());
             if reply.result < 1 {
-                catten_rt::domain_abort();
+                knytos_rt::domain_abort();
             }
-            let catalog = reply.connection.take().unwrap_or_else(|| catten_rt::domain_abort());
+            let catalog = reply.connection.take().unwrap_or_else(|| knytos_rt::domain_abort());
             if deadline.expired() {
-                catten_rt::domain_abort();
+                knytos_rt::domain_abort();
             }
             let mut pending = catalog
                 .call_connection_copy(
-                    catten_services::dns::OP_REGISTER_NAMED,
+                    knytos_services::dns::OP_REGISTER_NAMED,
                     cluster_name.len() as u64,
                     &endpoint,
                     IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
                     &staged,
                 )
-                .unwrap_or_else(|_| catten_rt::domain_abort());
+                .unwrap_or_else(|_| knytos_rt::domain_abort());
             let result = pending
                 .wait_timeout(deadline.remaining_ms())
-                .unwrap_or_else(|_| catten_rt::domain_abort())
-                .unwrap_or_else(|| catten_rt::domain_abort());
+                .unwrap_or_else(|_| knytos_rt::domain_abort())
+                .unwrap_or_else(|| knytos_rt::domain_abort());
             if result.result < 1 {
-                catten_rt::domain_abort();
+                knytos_rt::domain_abort();
             }
         }
-        Some(_) => catten_rt::domain_abort(),
+        Some(_) => knytos_rt::domain_abort(),
     }
 
     // Unified shard wait (§7): bind the endpoint's readiness to the default
@@ -149,7 +149,7 @@ fn main(ctx: Context) -> ! {
     loop {
         // 1. Block on the single wait point. Releases on endpoint readiness, kernel completions, or
         //    explicit peer wakes alike.
-        catten_services::reactor::wait(None, 0);
+        knytos_services::reactor::wait(None, 0);
 
         // 2. Drain every ready endpoint message. (A full executor would also drain CQ ring entries
         //    and wake tasks here.)
@@ -214,4 +214,4 @@ fn main(ctx: Context) -> ! {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

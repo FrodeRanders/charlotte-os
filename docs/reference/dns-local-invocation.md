@@ -2,7 +2,7 @@
 
 DNS interface **4**, opcode **5**, accepts one moved memory object. `arg0` is
 its exact frame byte length. `knytos_protocol_dns::encode` is the shared
-service/kernel-fixture encoder; `catten_services::dns_call` reexports it.
+service/kernel-fixture encoder; `knytos_services::dns_call` reexports it.
 
 | Field | Encoding |
 | --- | --- |

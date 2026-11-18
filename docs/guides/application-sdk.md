@@ -18,7 +18,7 @@ is a complete, compiling client with explicit business recovery policy. It uses:
   scope drops its owners before the wrapper exits, acknowledges an authenticated
   shutdown request, or aborts on an application error. Join workers before
   returning, because exiting one thread does not drain a domain.
-- `catten_rt::deadline::Deadline` for a monotonic business-operation budget.
+- `knytos_rt::deadline::Deadline` for a monotonic business-operation budget.
   Reconnection and admission do not reset it.
 - `PendingCall::observe_until` for `Reply`, `Deadline`, `WaitRejected` or `Failed`.
   Deadline and wait-rejection variants retain the original pending owner and its

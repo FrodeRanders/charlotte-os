@@ -1,5 +1,5 @@
 //! Full-name generation requests and one-shot CQ-bound retirement ownership.
-use catten_rt::owned::{
+use knytos_rt::owned::{
     ConnectionRef,
     OwnedMemory,
     PendingCall,

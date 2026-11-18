@@ -21,7 +21,7 @@ mod rng_device_contract;
 mod status_observation_contract;
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     config,
@@ -36,7 +36,7 @@ use catten_rt::{
         ThreadHandle,
     },
 };
-use catten_services::{
+use knytos_services::{
     clusterctl_client,
     deadline::Deadline,
     entropy,
@@ -81,8 +81,8 @@ fn check(condition: bool, failure: u32) {
     if !condition {
         config::write::<u32>(status::FAILURE, failure);
         config::write::<u32>(status::STAGE, status::FAILED);
-        catten_rt::logln!("[security-probe] failed check {}", failure);
-        catten_rt::domain_abort();
+        knytos_rt::logln!("[security-probe] failed check {}", failure);
+        knytos_rt::domain_abort();
     }
 }
 
@@ -92,18 +92,18 @@ fn request(
     service: &[u8],
     rights: u16,
 ) -> PendingCall<'static> {
-    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
-    let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort());
+    let mut mapping = memory.map_writable().unwrap_or_else(|_| knytos_rt::domain_abort());
     let len = grant::encode_request(service, rights, descriptor, mapping.as_mut_slice())
-        .unwrap_or_else(|| catten_rt::domain_abort());
-    let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|| knytos_rt::domain_abort());
+    let memory = mapping.unmap().unwrap_or_else(|_| knytos_rt::domain_abort());
     controller
         .call_move(grant::OP_ACQUIRE, len as u64, memory)
-        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
 }
 
 fn serve(endpoint: &Endpoint) -> bool {
-    if let Some(mut message) = endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+    if let Some(mut message) = endpoint.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort())
     {
         let result = if message.opcode == PING {
             PONG
@@ -122,19 +122,19 @@ fn serve(endpoint: &Endpoint) -> bool {
 fn wait(mut pending: PendingCall<'static>, endpoint: &Endpoint) -> CallResult {
     let deadline = Deadline::after(5_000);
     endpoint.bind_completion_queue(0).unwrap_or_else(|error| {
-        catten_rt::logln!("[security-probe] wait endpoint interest rejected: {:?}", error);
+        knytos_rt::logln!("[security-probe] wait endpoint interest rejected: {:?}", error);
         check(false, 102);
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     });
     pending.bind_cq(0).unwrap_or_else(|error| {
-        catten_rt::logln!("[security-probe] wait reply interest rejected: {:?}", error);
+        knytos_rt::logln!("[security-probe] wait reply interest rejected: {:?}", error);
         check(false, 103);
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     });
     loop {
         check(!deadline.expired(), 100);
         let serviced = serve(endpoint);
-        if let Some(reply) = pending.poll().unwrap_or_else(|_| catten_rt::domain_abort()) {
+        if let Some(reply) = pending.poll().unwrap_or_else(|_| knytos_rt::domain_abort()) {
             return reply;
         }
         if !serviced {
@@ -156,26 +156,26 @@ fn denied(reply: CallResult, error: i64, failure: u32) {
 }
 
 fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
-    use catten_services::{
+    use knytos_services::{
         clusterctl,
         deployment_control::Controls,
         deployment_http::Request,
     };
     let endpoint = Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let connection =
-        endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+        endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut controls = Controls::new(connection.as_ref(), 0);
     let healthy_budget = Deadline::after(2_000);
     for _ in 0..2 {
         let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_UDP)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         check(
             controls
                 .start(
                     socket,
                     Request::Status(b"security_missing".to_vec()),
-                    catten_services::deployment_input::MAX_BUFFERED_BYTES,
+                    knytos_services::deployment_input::MAX_BUFFERED_BYTES,
                 )
                 .is_none(),
             200,
@@ -183,12 +183,12 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     }
     let held = endpoint
         .try_receive()
-        .unwrap_or_else(|_| catten_rt::domain_abort())
-        .unwrap_or_else(|| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
+        .unwrap_or_else(|| knytos_rt::domain_abort());
     let mut healthy = endpoint
         .try_receive()
-        .unwrap_or_else(|_| catten_rt::domain_abort())
-        .unwrap_or_else(|| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
+        .unwrap_or_else(|| knytos_rt::domain_abort());
     check(
         held.opcode == clusterctl::OP_ROLLOUT
             && healthy.opcode == clusterctl::OP_ROLLOUT
@@ -199,7 +199,7 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     let _ = healthy
         .reply
         .take()
-        .unwrap_or_else(|| catten_rt::domain_abort())
+        .unwrap_or_else(|| knytos_rt::domain_abort())
         .reply(clusterctl::ERR_NOT_FOUND);
     drop(healthy);
     let cq = ctx.completion_queue_layout();
@@ -230,7 +230,7 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
                     204,
                 );
                 // Local timeout does not release the receiver's moved page.
-                let memory = held.memory.as_ref().unwrap_or_else(|| catten_rt::domain_abort());
+                let memory = held.memory.as_ref().unwrap_or_else(|| knytos_rt::domain_abort());
                 check(memory.len() == 4096, 205);
                 let _ = socket.close();
                 break;
@@ -239,53 +239,53 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
             completed += 1;
             continue;
         }
-        catten_services::reactor::wait(controls.remaining_ms(), 0);
+        knytos_services::reactor::wait(controls.remaining_ms(), 0);
     }
-    check(endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort()).is_none(), 206);
+    check(endpoint.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort()).is_none(), 206);
     drop(held);
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] deployment control CQ: healthy moved reply beside ",
         "held moved request; original timeout, no replay and receiver-owned backing retained"
     ));
 }
 
 fn relay_request_memory(bytes: &[u8]) -> OwnedMemory {
-    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
-    let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort());
+    let mut mapping = memory.map_writable().unwrap_or_else(|_| knytos_rt::domain_abort());
     mapping.as_mut_slice()[..bytes.len()].copy_from_slice(bytes);
-    mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort())
+    mapping.unmap().unwrap_or_else(|_| knytos_rt::domain_abort())
 }
 
 fn controller_server_relay_probe(ctx: &Context) {
-    use catten_services::{
+    use knytos_services::{
         clusterctl,
         clusterctl_relay::Relays,
         dns,
     };
     let server = Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let backend = Endpoint::create(dns::INTERFACE, dns::VERSION, 8)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-    server.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
-    backend.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
-    let client = server.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
+    server.bind_completion_queue(0).unwrap_or_else(|_| knytos_rt::domain_abort());
+    backend.bind_completion_queue(0).unwrap_or_else(|_| knytos_rt::domain_abort());
+    let client = server.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
     let dns_connection =
-        backend.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+        backend.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut relays = Relays::new(dns_connection.as_ref(), &[0; 32], 0);
     // Same-namespace fixtures use the public moved-memory request form.
     // DNS gets a distinct copy whose receiver retains it after timeout.
     let original = relay_request_memory(b"held");
     let mut held_call = client
         .call_move(clusterctl::OP_ROLLOUT, 4, original)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut healthy_call = client
         .call_move(clusterctl::OP_ROLLOUT, 7, relay_request_memory(b"healthy"))
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut malformed_call = client
         .call(clusterctl::OP_INGRESS_POLICY_STATUS, 0)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     for pending in [&mut held_call, &mut healthy_call, &mut malformed_call] {
-        pending.bind_cq(0).unwrap_or_else(|_| catten_rt::domain_abort());
+        pending.bind_cq(0).unwrap_or_else(|_| knytos_rt::domain_abort());
     }
     let outer = Deadline::after(7_000);
     let healthy_budget = Deadline::after(2_000);
@@ -304,13 +304,13 @@ fn controller_server_relay_probe(ctx: &Context) {
         check(!outer.expired(), 300);
         let mut progressed = false;
         while let Some(incoming) =
-            server.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+            server.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort())
         {
             relays.start(incoming);
             progressed = true;
         }
         while let Some(mut incoming) =
-            backend.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+            backend.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort())
         {
             received += 1;
             check(incoming.connection.is_none(), 301);
@@ -319,11 +319,11 @@ fn controller_server_relay_probe(ctx: &Context) {
                 held = Some(incoming);
                 continue;
             }
-            let token = incoming.reply.take().unwrap_or_else(|| catten_rt::domain_abort());
+            let token = incoming.reply.take().unwrap_or_else(|| knytos_rt::domain_abort());
             if incoming.opcode == dns::OP_INGRESS_POLICY_QUERY {
                 token
                     .reply_connection(&backend, IpcRights::CALL, 0)
-                    .unwrap_or_else(|_| catten_rt::domain_abort());
+                    .unwrap_or_else(|_| knytos_rt::domain_abort());
             } else {
                 check(incoming.opcode == dns::OP_DEPLOY_ROLLOUT_NAMED && incoming.arg0 == 7, 303);
                 let bytes = clusterctl::RolloutStatus {
@@ -338,14 +338,14 @@ fn controller_server_relay_probe(ctx: &Context) {
                 drop(incoming.memory.take());
                 token
                     .reply_move(relay_request_memory(&bytes), bytes.len() as i64)
-                    .unwrap_or_else(|_| catten_rt::domain_abort());
+                    .unwrap_or_else(|_| knytos_rt::domain_abort());
             }
             progressed = true;
         }
         progressed |= relays.advance();
         if !healthy_done
             && let Some(mut reply) =
-                healthy_call.poll().unwrap_or_else(|_| catten_rt::domain_abort())
+                healthy_call.poll().unwrap_or_else(|_| knytos_rt::domain_abort())
         {
             check(
                 !healthy_budget.expired()
@@ -353,8 +353,8 @@ fn controller_server_relay_probe(ctx: &Context) {
                     && reply.connection.is_none(),
                 304,
             );
-            let memory = reply.memory.take().unwrap_or_else(|| catten_rt::domain_abort());
-            let mapping = memory.map_read_only().unwrap_or_else(|_| catten_rt::domain_abort());
+            let memory = reply.memory.take().unwrap_or_else(|| knytos_rt::domain_abort());
+            let mapping = memory.map_read_only().unwrap_or_else(|_| knytos_rt::domain_abort());
             check(
                 clusterctl::RolloutStatus::decode(
                     &mapping.as_slice()[..clusterctl::ROLLOUT_STATUS_LEN],
@@ -365,13 +365,13 @@ fn controller_server_relay_probe(ctx: &Context) {
             healthy_done = true;
         }
         if !malformed_done
-            && let Some(reply) = malformed_call.poll().unwrap_or_else(|_| catten_rt::domain_abort())
+            && let Some(reply) = malformed_call.poll().unwrap_or_else(|_| knytos_rt::domain_abort())
         {
             denied(reply, dns::ERR_UNCERTAIN, 306);
             malformed_done = true;
         }
         if !held_done
-            && let Some(reply) = held_call.poll().unwrap_or_else(|_| catten_rt::domain_abort())
+            && let Some(reply) = held_call.poll().unwrap_or_else(|_| knytos_rt::domain_abort())
         {
             denied(reply, clusterctl::ERR_RPC_TIMEOUT, 307);
             check(healthy_done && malformed_done, 308);
@@ -381,7 +381,7 @@ fn controller_server_relay_probe(ctx: &Context) {
             break;
         }
         if !progressed {
-            catten_services::reactor::wait(
+            knytos_services::reactor::wait(
                 Some(
                     relays.remaining_ms().unwrap_or(outer.remaining_ms()).min(outer.remaining_ms()),
                 ),
@@ -391,12 +391,12 @@ fn controller_server_relay_probe(ctx: &Context) {
     }
     check(received == 3 && relays.occupied_slots() == 0 && relays.reserved_bytes() == 0, 309);
     check(held.as_ref().and_then(|i| i.memory.as_ref()).is_some_and(|m| m.len() == 4096), 310);
-    check(backend.try_receive().unwrap_or_else(|_| catten_rt::domain_abort()).is_none(), 311);
+    check(backend.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort()).is_none(), 311);
     drop(held_call);
     drop(healthy_call);
     drop(malformed_call);
     drop(held);
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] controller server CQ: healthy returned record beside held DNS; ",
         "malformed returned connection rejected, original timeout/no replay; ",
         "incoming mapping ended and DNS copy retained"
@@ -408,16 +408,16 @@ fn controller_server_relay_probe(ctx: &Context) {
 /// backing; native HTTP runs separately exercise the actual TCP/IP backend.
 fn listener_reactor_probe(ctx: &Context) {
     let endpoint = Endpoint::create(socket::INTERFACE, socket::VERSION, 8)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-    endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| knytos_rt::domain_abort());
     let connection =
-        endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
-    let mut listeners = catten_services::deployment_listener::Listeners::new(
+        endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
+    let mut listeners = knytos_services::deployment_listener::Listeners::new(
         connection.as_ref(),
-        catten_services::clusterctl::NOTIFY_PORT,
+        knytos_services::clusterctl::NOTIFY_PORT,
         0,
     );
-    let mut closes = catten_services::deployment_close::Closes::new(0);
+    let mut closes = knytos_services::deployment_close::Closes::new(0);
     listeners.replenish(2);
     let mut held = None;
     let mut created = 0;
@@ -434,7 +434,7 @@ fn listener_reactor_probe(ctx: &Context) {
         check(!budget.expired(), 250);
         let mut progressed = false;
         while let Some(mut request) =
-            endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+            endpoint.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort())
         {
             progressed = true;
             check(request.connection.is_none(), 251);
@@ -451,12 +451,12 @@ fn listener_reactor_probe(ctx: &Context) {
                 }
                 socket::OP_LISTEN => {
                     check(request.arg0 == 2, 254);
-                    let memory = request.memory.take().unwrap_or_else(|| catten_rt::domain_abort());
+                    let memory = request.memory.take().unwrap_or_else(|| knytos_rt::domain_abort());
                     let mapping =
-                        memory.map_read_only().unwrap_or_else(|_| catten_rt::domain_abort());
+                        memory.map_read_only().unwrap_or_else(|_| knytos_rt::domain_abort());
                     check(
                         mapping.as_slice()[..2]
-                            == catten_services::clusterctl::NOTIFY_PORT.to_le_bytes(),
+                            == knytos_services::clusterctl::NOTIFY_PORT.to_le_bytes(),
                         255,
                     );
                     drop(mapping);
@@ -474,9 +474,9 @@ fn listener_reactor_probe(ctx: &Context) {
             request
                 .reply
                 .take()
-                .unwrap_or_else(|| catten_rt::domain_abort())
+                .unwrap_or_else(|| knytos_rt::domain_abort())
                 .reply(result)
-                .unwrap_or_else(|_| catten_rt::domain_abort());
+                .unwrap_or_else(|_| knytos_rt::domain_abort());
         }
         let (progress, finished) = listeners.advance(false);
         progressed |= progress;
@@ -488,13 +488,13 @@ fn listener_reactor_probe(ctx: &Context) {
         }
         progressed |= closes.advance();
         if completed && closes.occupied_slots() == 0 && !released {
-            let mut request = held.take().unwrap_or_else(|| catten_rt::domain_abort());
+            let mut request = held.take().unwrap_or_else(|| knytos_rt::domain_abort());
             request
                 .reply
                 .take()
-                .unwrap_or_else(|| catten_rt::domain_abort())
+                .unwrap_or_else(|| knytos_rt::domain_abort())
                 .reply(socket::ERR_QUOTA_EXCEEDED)
-                .unwrap_or_else(|_| catten_rt::domain_abort());
+                .unwrap_or_else(|_| knytos_rt::domain_abort());
             released = true;
             progressed = true;
         }
@@ -507,12 +507,12 @@ fn listener_reactor_probe(ctx: &Context) {
                     .into_iter()
                     .flatten()
                     .min();
-            catten_services::reactor::wait(remaining, 0);
+            knytos_services::reactor::wait(remaining, 0);
         }
     }
     check(created == 2 && completed && held.is_none() && closes.occupied_slots() == 0, 260);
-    check(endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort()).is_none(), 261);
-    catten_rt::logln!(concat!(
+    check(endpoint.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort()).is_none(), 261);
+    knytos_rt::logln!(concat!(
         "[security] deployment listener CQ: held creation beside complete listen/accept/close; ",
         "moved setup page and confirmed creation rejection, no replay"
     ));
@@ -533,7 +533,7 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
             pending: None,
             socket: Some(
                 socket::OwnedSocket::open(tcpip, domain)
-                    .unwrap_or_else(|_| catten_rt::domain_abort()),
+                    .unwrap_or_else(|_| knytos_rt::domain_abort()),
             ),
         };
         send.pending = Some(
@@ -541,9 +541,9 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
                 .as_ref()
                 .unwrap()
                 .send_call(b"probe", &budget)
-                .unwrap_or_else(|_| catten_rt::domain_abort()),
+                .unwrap_or_else(|_| knytos_rt::domain_abort()),
         );
-        send.pending.as_mut().unwrap().bind_cq(0).unwrap_or_else(|_| catten_rt::domain_abort());
+        send.pending.as_mut().unwrap().bind_cq(0).unwrap_or_else(|_| knytos_rt::domain_abort());
         sends[index] = Some(send);
     }
     let cq = ctx.completion_queue_layout();
@@ -561,7 +561,7 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
                 continue;
             };
             if let Some(reply) =
-                send.pending.as_mut().unwrap().poll().unwrap_or_else(|_| catten_rt::domain_abort())
+                send.pending.as_mut().unwrap().poll().unwrap_or_else(|_| knytos_rt::domain_abort())
             {
                 denied(reply, socket::ERR_NOT_CONNECTED, 212);
                 drop(send.pending.take());
@@ -572,29 +572,29 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
             }
         }
         if !progressed {
-            catten_services::reactor::wait(Some(budget.remaining_ms()), 0);
+            knytos_services::reactor::wait(Some(budget.remaining_ms()), 0);
         }
     }
     check(sends.iter().all(Option::is_none), 213);
 
     // A current TCP socket still rejects an untagged moved page before enqueue.
     let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_TCP)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
-    let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort());
+    let mut mapping = memory.map_writable().unwrap_or_else(|_| knytos_rt::domain_abort());
     mapping.as_mut_slice().fill(0);
-    let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+    let memory = mapping.unmap().unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut pending = tcpip
         .call_move(socket::OP_SEND, socket.id(), memory)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let reply = pending
         .wait_timeout(2_000)
-        .unwrap_or_else(|_| catten_rt::domain_abort())
-        .unwrap_or_else(|| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
+        .unwrap_or_else(|| knytos_rt::domain_abort());
     denied(reply, socket::ERR_BAD_OPCODE, 214);
     drop(pending);
     let _ = socket.close();
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] deployment output CQ: TCP terminal and UDP rejection; ",
         "moved frame cleanup and retired frame rejection"
     ));
@@ -604,8 +604,8 @@ fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket:
     // The existing held-controller fixture consumed five seconds while this
     // unactivated owner stayed live. TCP/IP may reap its backend independently.
     let mut retired = expired.into_closing();
-    retired.submit().unwrap_or_else(|_| catten_rt::domain_abort());
-    retired.bind_cq(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    retired.submit().unwrap_or_else(|_| knytos_rt::domain_abort());
+    retired.bind_cq(0).unwrap_or_else(|_| knytos_rt::domain_abort());
     let budget = Deadline::after(2_000);
     let cq = ctx.completion_queue_layout();
     loop {
@@ -615,17 +615,17 @@ fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket:
             }
         }
         check(!budget.expired(), 221);
-        if let Some(receipt) = retired.poll().unwrap_or_else(|_| catten_rt::domain_abort()) {
+        if let Some(receipt) = retired.poll().unwrap_or_else(|_| knytos_rt::domain_abort()) {
             check(receipt == socket::CloseReceipt::Unavailable, 222);
             break;
         }
-        catten_services::reactor::wait(Some(budget.remaining_ms()), 0);
+        knytos_services::reactor::wait(Some(budget.remaining_ms()), 0);
     }
     drop(retired);
-    let mut closes = catten_services::deployment_close::Closes::new(0);
+    let mut closes = knytos_services::deployment_close::Closes::new(0);
     for domain in [socket::DOMAIN_TCP, socket::DOMAIN_UDP] {
         let socket =
-            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| knytos_rt::domain_abort());
         closes.start(socket);
     }
     let cq = ctx.completion_queue_layout();
@@ -637,13 +637,13 @@ fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket:
         }
         check(!budget.expired(), 220);
         if !closes.advance() {
-            catten_services::reactor::wait(
+            knytos_services::reactor::wait(
                 Some(closes.remaining_ms().unwrap_or(0).min(budget.remaining_ms())),
                 0,
             );
         }
     }
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] deployment close CQ: TCP and UDP logical acknowledgements; ",
         "reaped owner returns Unavailable; pending/socket owners released after logical receipts"
     ));
@@ -655,13 +655,13 @@ fn synchronous_close_probe(tcpip: ConnectionRef<'_>, expired: socket::OwnedSocke
     check(expired.close().is_ok(), 230);
     for domain in [socket::DOMAIN_TCP, socket::DOMAIN_UDP] {
         let socket =
-            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| knytos_rt::domain_abort());
         check(socket.close().is_ok(), 231);
         let socket =
-            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| knytos_rt::domain_abort());
         drop(socket);
     }
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] synchronous socket close: reaped owner, explicit TCP/UDP ",
         "and Drop share consuming close and bounded reply observation"
     ));
@@ -669,20 +669,20 @@ fn synchronous_close_probe(tcpip: ConnectionRef<'_>, expired: socket::OwnedSocke
 
 fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
     let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_UDP)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-    socket.connect_ipv4([10, 0, 2, 2], 9).unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
+    socket.connect_ipv4([10, 0, 2, 2], 9).unwrap_or_else(|_| knytos_rt::domain_abort());
     let result = socket
         .try_send_call(b"probe")
-        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
         .wait()
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(result.result == 5 && result.memory.is_none() && result.connection.is_none(), 240);
 
     let result = tcpip
         .call(socket::OP_TRY_SEND, socket.id())
-        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
         .wait()
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(result.result == socket::ERR_BAD_OPCODE, 241);
     for case in 0..6 {
         let memory = OwnedMemory::allocate(
@@ -692,10 +692,10 @@ fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
                 1
             },
         )
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-        let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
-        let frame = &mut mapping.as_mut_slice()[..catten_services::socket_send::FRAME_BYTES];
-        check(catten_services::socket_send::encode(b"x", frame), 242);
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
+        let mut mapping = memory.map_writable().unwrap_or_else(|_| knytos_rt::domain_abort());
+        let frame = &mut mapping.as_mut_slice()[..knytos_services::socket_send::FRAME_BYTES];
+        check(knytos_services::socket_send::encode(b"x", frame), 242);
         let mut id = socket.id();
         match case {
             0 => {
@@ -706,7 +706,7 @@ fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
                 id |= 1 << 32;
             }
             1 => frame[12] = 1,
-            2 => frame[catten_services::socket_send::HEADER_BYTES + 1] = 1,
+            2 => frame[knytos_services::socket_send::HEADER_BYTES + 1] = 1,
             3 => frame[8..12].copy_from_slice(&u32::MAX.to_le_bytes()),
             4 => {}
             // A canonical frame with an unissued high-half ID must not
@@ -714,12 +714,12 @@ fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
             5 => id |= 1 << 32,
             _ => unreachable!(),
         }
-        let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+        let memory = mapping.unmap().unwrap_or_else(|_| knytos_rt::domain_abort());
         let reply = tcpip
             .call_move(socket::OP_TRY_SEND, id, memory)
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
             .wait()
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         let expected = if case == 5 {
             socket::ERR_BAD_SOCKET
         } else {
@@ -734,12 +734,12 @@ fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
     // request after confirmed rejection, not replay of uncertain work.
     let reply = socket
         .try_send_call(b"after")
-        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
         .wait()
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(reply.result == 5, 249);
     check(socket.close().is_ok(), 250);
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] immediate socket send: full ID, UDP enqueue, retired/missing/",
         "reserved/tail/length/extended rejection and high-half isolation"
     ));
@@ -747,32 +747,32 @@ fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
 
 fn main(ctx: Context) -> ! {
     check(ctx.name_service_connection().is_none(), 1);
-    let controller = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
-    let descriptor = ctx.profile_memory().unwrap_or_else(|| catten_rt::domain_abort());
+    let controller = ctx.bootstrap_connection().unwrap_or_else(|| knytos_rt::domain_abort());
+    let descriptor = ctx.profile_memory().unwrap_or_else(|| knytos_rt::domain_abort());
     let own = descriptor
         .map_read_only()
-        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|_| knytos_rt::domain_abort())
         .as_slice()
         .to_vec();
-    let endpoint = Endpoint::create(0x5ec, 1, 8).unwrap_or_else(|_| catten_rt::domain_abort());
-    endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    let endpoint = Endpoint::create(0x5ec, 1, 8).unwrap_or_else(|_| knytos_rt::domain_abort());
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| knytos_rt::domain_abort());
     config::write::<u32>(status::STAGE, status::STARTED);
 
     gcm_contract::check();
-    catten_rt::logln!("[security] TLS GCM known-answer, tamper rejection and decrypt passed");
+    knytos_rt::logln!("[security] TLS GCM known-answer, tamper rejection and decrypt passed");
 
     hash_contract::check();
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed"
     );
 
     network_random_contract::check();
-    catten_rt::logln!("[security] ephemeral-port HMAC known-answer sequence passed");
+    knytos_rt::logln!("[security] ephemeral-port HMAC known-answer sequence passed");
 
     if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(2))) {
         let tcpip =
             grant_client::acquire(controller, &descriptor, b"tcpip", deployment::RIGHT_CALL)
-                .unwrap_or_else(|_| catten_rt::domain_abort());
+                .unwrap_or_else(|_| knytos_rt::domain_abort());
         let mut submitted = 0u32;
         loop {
             if let Some(shutdown) = ctx.lifecycle().shutdown_requested() {
@@ -788,7 +788,7 @@ fn main(ctx: Context) -> ! {
                 .collect();
             submitted = submitted.saturating_add(batch.len() as u32);
             for call in batch {
-                let result = call.wait().unwrap_or_else(|_| catten_rt::domain_abort());
+                let result = call.wait().unwrap_or_else(|_| knytos_rt::domain_abort());
                 check(result.result == socket::ERR_BAD_SOCKET, 47);
             }
             config::write::<u32>(status::REQUESTS, submitted);
@@ -798,9 +798,9 @@ fn main(ctx: Context) -> ! {
     if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(1))) {
         // Publish from a distinct domain: copied IPC attachments deliberately
         // reject same-domain destinations. Never receive on this endpoint.
-        let silent = Endpoint::create(0x5ed, 1, 8).unwrap_or_else(|_| catten_rt::domain_abort());
+        let silent = Endpoint::create(0x5ed, 1, 8).unwrap_or_else(|_| knytos_rt::domain_abort());
         grant_client::publish(controller, &descriptor, SILENT, &silent)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         let mut submitted = 0u32;
         loop {
             if let Some(shutdown) = ctx.lifecycle().shutdown_requested() {
@@ -831,23 +831,23 @@ fn main(ctx: Context) -> ! {
         // Explicit service calls bypass architectural entropy so each run
         // crosses at least two low-byte ring-index boundaries.
         let rng = grant_client::acquire(controller, &descriptor, b"rng", deployment::RIGHT_CALL)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
         let entropy_deadline = Deadline::after(30_000);
         let mut scratch = zeroize::Zeroizing::new([0u8; 32]);
         for completed in 1..=512u32 {
-            if let Err(error) = catten_services::tls_client::fill_service_entropy(
+            if let Err(error) = knytos_services::tls_client::fill_service_entropy(
                 rng.as_ref(),
                 &mut *scratch,
                 entropy_deadline,
             ) {
-                catten_rt::logln!("[security] hardware entropy rollover rejected: {:?}", error);
+                knytos_rt::logln!("[security] hardware entropy rollover rejected: {:?}", error);
                 check(false, 400);
             }
             config::write::<u32>(status::REQUESTS, completed);
         }
         drop(rng);
         drop(scratch);
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[security] hardware entropy: 512 service-only 32-byte requests passed; no entropy \
              bytes logged"
         );
@@ -863,19 +863,19 @@ fn main(ctx: Context) -> ! {
     }
 
     let Some(ManifestValue::Bytes(alternate)) = ctx.manifest_value(status::ALTERNATE_KEY) else {
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     };
     let Some(ManifestValue::Bytes(key)) = ctx.manifest_value(status::DEPLOYMENT_KEY) else {
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     };
-    let key: &[u8; 32] = key.try_into().unwrap_or_else(|_| catten_rt::domain_abort());
+    let key: &[u8; 32] = key.try_into().unwrap_or_else(|_| knytos_rt::domain_abort());
     check(
         deployment::verify(&own, key) == deployment::VerifyOutcome::Valid
             && deployment::verify(alternate, key) == deployment::VerifyOutcome::Valid,
         2,
     );
-    let admitted = deployment::decode(&own).unwrap_or_else(|| catten_rt::domain_abort());
-    let replacement = deployment::decode(alternate).unwrap_or_else(|| catten_rt::domain_abort());
+    let admitted = deployment::decode(&own).unwrap_or_else(|| knytos_rt::domain_abort());
+    let replacement = deployment::decode(alternate).unwrap_or_else(|| knytos_rt::domain_abort());
     check(
         replacement.artifact_name == admitted.artifact_name
             && replacement.variants().eq(admitted.variants())
@@ -910,12 +910,12 @@ fn main(ctx: Context) -> ! {
     for call in batch {
         denied(wait(call, &endpoint), grant::ERR_UNAUTHORIZED, 101);
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[security] reply CQ: 32 controller denials drained through owned multi-source waits"
     );
 
     let generation = grant_client::publish(controller, &descriptor, AVAILABLE, &endpoint)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(generation > 0, 7);
     config::write::<u64>(status::PUBLICATION_GENERATION, generation as u64);
     checks |= 16;
@@ -924,15 +924,15 @@ fn main(ctx: Context) -> ! {
     let unavailable = request(controller, &own, MISSING, deployment::RIGHT_CALL);
     let found = wait(request(controller, &own, AVAILABLE, deployment::CLIENT_RIGHTS), &endpoint);
     check(found.result >= 1 && found.memory.is_none(), 8);
-    let connection = found.connection.unwrap_or_else(|| catten_rt::domain_abort());
+    let connection = found.connection.unwrap_or_else(|| knytos_rt::domain_abort());
     denied(wait(unavailable, &endpoint), grant::ERR_UNAVAILABLE, 9);
     checks |= 64;
     check(
         wait(
             connection.call(PING, 0).unwrap_or_else(|error| {
-                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
                 check(false, 105);
-                catten_rt::domain_abort()
+                knytos_rt::domain_abort()
             }),
             &endpoint,
         )
@@ -940,12 +940,12 @@ fn main(ctx: Context) -> ! {
             == PONG,
         10,
     );
-    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort());
     // The returned application connection must not be re-delegable. Failure
     // occurs in the kernel before the bogus controller request is submitted.
     let delegatable = endpoint
         .connect(IpcRights::CALL | IpcRights::MINT_CONNECTION)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     // Positive control: the same submission succeeds for an explicitly
     // mintable source. IPC accepts it, then the remote service rejects the invalid opcode.
     denied(
@@ -958,7 +958,7 @@ fn main(ctx: Context) -> ! {
                     IpcRights::CALL,
                     &memory,
                 )
-                .unwrap_or_else(|_| catten_rt::domain_abort()),
+                .unwrap_or_else(|_| knytos_rt::domain_abort()),
             &endpoint,
         ),
         grant::ERR_INVALID,
@@ -975,7 +975,7 @@ fn main(ctx: Context) -> ! {
                 &memory,
             ),
             // This submission ABI signals rejection by returning a zero handle.
-            Err(catten_rt::owned::IpcError::CreationFailed)
+            Err(knytos_rt::owned::IpcError::CreationFailed)
         ),
         11,
     );
@@ -992,9 +992,9 @@ fn main(ctx: Context) -> ! {
     }
     let recovered =
         grant_client::acquire(controller, &descriptor, AVAILABLE, deployment::CLIENT_RIGHTS)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(
-        wait(recovered.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
+        wait(recovered.call(PING, 0).unwrap_or_else(|_| knytos_rt::domain_abort()), &endpoint)
             .result
             == PONG,
         12,
@@ -1002,20 +1002,20 @@ fn main(ctx: Context) -> ! {
     checks |= 128;
 
     let tcpip = grant_client::acquire(controller, &descriptor, b"tcpip", deployment::RIGHT_CALL)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(
         matches!(
             tcpip.send(socket::OP_FRAME, 0),
-            Err(catten_rt::owned::IpcError::Status(knytos_syscall::ipc_status::PERMISSION_DENIED))
+            Err(knytos_rt::owned::IpcError::Status(knytos_syscall::ipc_status::PERMISSION_DENIED))
         ),
         13,
     ); // CALL does not imply SEND.
-    let frame = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let frame = OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort());
     denied(
         wait(
             tcpip
                 .call_move(socket::OP_FRAME, 14, frame)
-                .unwrap_or_else(|_| catten_rt::domain_abort()),
+                .unwrap_or_else(|_| knytos_rt::domain_abort()),
             &endpoint,
         ),
         socket::ERR_BAD_OPCODE,
@@ -1026,14 +1026,14 @@ fn main(ctx: Context) -> ! {
     // must cancel locally. The fake endpoint carries no naming authority.
     let silent_connection =
         grant_client::acquire(controller, &descriptor, SILENT, deployment::RIGHT_CALL)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
     let outer_budget = Deadline::after(7_000);
     let silent_result =
         grant_client::publish(silent_connection.as_ref(), &descriptor, AVAILABLE, &endpoint);
     check(
         matches!(
             silent_result,
-            Err(grant_client::Error::Observation(catten_rt::call::ObservationError::Deadline))
+            Err(grant_client::Error::Observation(knytos_rt::call::ObservationError::Deadline))
         ) && !outer_budget.expired(),
         15,
     );
@@ -1042,16 +1042,16 @@ fn main(ctx: Context) -> ! {
     // silent fixture never receives, so only cancellation can drain them.
     let queued: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
         silent_connection.call(PING, 0).unwrap_or_else(|error| {
-            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
             check(false, 105);
-            catten_rt::domain_abort()
+            knytos_rt::domain_abort()
         })
     });
     let admission_budget = Deadline::after(2_000);
     check(
         matches!(
             publication::register(silent_connection.as_ref(), 0, &endpoint),
-            Err(publication::Error::Admission(catten_rt::owned::IpcError::Status(
+            Err(publication::Error::Admission(knytos_rt::owned::IpcError::Status(
                 knytos_syscall::ipc_status::QUEUE_FULL
             )))
         ) && !admission_budget.expired(),
@@ -1073,19 +1073,19 @@ fn main(ctx: Context) -> ! {
     // replay would strand at least one slot in this never-receiving endpoint.
     let recovered_queue: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
         silent_connection.call(PING, 0).unwrap_or_else(|error| {
-            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
             check(false, 105);
-            catten_rt::domain_abort()
+            knytos_rt::domain_abort()
         })
     });
     drop(recovered_queue);
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] platform publication: full-queue deadline, ",
         "silent-call cancellation and all eight slots recovered"
     ));
     entropy_contract::run(silent_connection.as_ref());
     rng_device_contract::check();
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[security] RNG device: exact completion, short results, terminal timeout/late result, \
          backend faults and complete field retention; no replay"
     );
@@ -1099,9 +1099,9 @@ fn main(ctx: Context) -> ! {
     );
     checks |= 512;
     let expired_socket = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     let synchronous_expired = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     controller_reactor_probe(&ctx, tcpip.as_ref());
     controller_server_relay_probe(&ctx);
     listener_reactor_probe(&ctx);
@@ -1117,7 +1117,7 @@ fn main(ctx: Context) -> ! {
     for _ in 0..2_048 {
         match OwnedMemory::allocate(1) {
             Ok(memory) => allocations.push(memory),
-            Err(catten_rt::owned::MemoryError::AllocationFailed) => break,
+            Err(knytos_rt::owned::MemoryError::AllocationFailed) => break,
             Err(_) => check(false, 17),
         }
     }
@@ -1127,25 +1127,25 @@ fn main(ctx: Context) -> ! {
     // unreceived request. Retain every other page throughout both checks.
     let full: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
         silent_connection.call(PING, 0).unwrap_or_else(|error| {
-            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
             check(false, 105);
-            catten_rt::domain_abort()
+            knytos_rt::domain_abort()
         })
     });
-    let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
+    let request = allocations.pop().unwrap_or_else(|| knytos_rt::domain_abort());
     check(
         matches!(
             clusterctl_client::call_move(silent_connection.as_ref(), PING, 0, request),
-            Err(clusterctl_client::Error::Admission(catten_rt::owned::IpcError::Status(
+            Err(clusterctl_client::Error::Admission(knytos_rt::owned::IpcError::Status(
                 knytos_syscall::ipc_status::QUEUE_FULL
             )))
         ),
         52,
     );
-    allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
+    allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort()));
     check(OwnedMemory::allocate(1).is_err(), 53);
     drop(full);
-    let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
+    let request = allocations.pop().unwrap_or_else(|| knytos_rt::domain_abort());
     let moved_budget = Deadline::after(7_000);
     check(
         matches!(
@@ -1154,13 +1154,13 @@ fn main(ctx: Context) -> ! {
         ) && !moved_budget.expired(),
         54,
     );
-    allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
+    allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort()));
     check(OwnedMemory::allocate(1).is_err(), 55);
     let recovered_rpc_queue: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
         silent_connection.call(PING, 0).unwrap_or_else(|error| {
-            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
             check(false, 105);
-            catten_rt::domain_abort()
+            knytos_rt::domain_abort()
         })
     });
     drop(recovered_rpc_queue);
@@ -1172,7 +1172,7 @@ fn main(ctx: Context) -> ! {
     let healthy_budget = Deadline::after(2_000);
     loop {
         check(!healthy_budget.expired(), 56);
-        let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
+        let request = allocations.pop().unwrap_or_else(|| knytos_rt::domain_abort());
         let result = clusterctl_client::call_move(tcpip.as_ref(), socket::OP_STATUS, 0, request);
         let accepted = match result {
             Ok(reply) => {
@@ -1180,7 +1180,7 @@ fn main(ctx: Context) -> ! {
                 drop(reply);
                 true
             }
-            Err(clusterctl_client::Error::Admission(catten_rt::owned::IpcError::Status(
+            Err(clusterctl_client::Error::Admission(knytos_rt::owned::IpcError::Status(
                 knytos_syscall::ipc_status::QUEUE_FULL,
             ))) => false,
             Err(_) => {
@@ -1188,23 +1188,23 @@ fn main(ctx: Context) -> ! {
                 false
             }
         };
-        allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
+        allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| knytos_rt::domain_abort()));
         check(OwnedMemory::allocate(1).is_err(), 59);
         if accepted {
             break;
         }
         sleep_ms(5);
     }
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[security] controller RPC: scalar/move deadlines, eight queue slots, ",
         "rejected/cancelled/returned page charges and healthy status passed"
     ));
     check(
         wait(
             connection.call(PING, 0).unwrap_or_else(|error| {
-                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
                 check(false, 105);
-                catten_rt::domain_abort()
+                knytos_rt::domain_abort()
             }),
             &endpoint,
         )
@@ -1215,9 +1215,9 @@ fn main(ctx: Context) -> ! {
     drop(allocations);
     let after_pressure =
         grant_client::acquire(controller, &descriptor, AVAILABLE, deployment::CLIENT_RIGHTS)
-            .unwrap_or_else(|_| catten_rt::domain_abort());
+            .unwrap_or_else(|_| knytos_rt::domain_abort());
     check(
-        wait(after_pressure.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
+        wait(after_pressure.call(PING, 0).unwrap_or_else(|_| knytos_rt::domain_abort()), &endpoint)
             .result
             == PONG,
         20,
@@ -1229,7 +1229,7 @@ fn main(ctx: Context) -> ! {
     for _ in 0..2_048 {
         match Completion::timer(3_600_000) {
             Ok(timer) => timers.push(timer),
-            Err(catten_rt::owned::CompletionError::SubmissionFailed) => break,
+            Err(knytos_rt::owned::CompletionError::SubmissionFailed) => break,
             Err(_) => check(false, 21),
         }
     }
@@ -1239,7 +1239,7 @@ fn main(ctx: Context) -> ! {
     // Drop must cancel the hour-long timer without waiting for its deadline.
     check(!cleanup_budget.expired(), 23);
     for _ in 0..64 {
-        drop(Completion::timer(3_600_000).unwrap_or_else(|_| catten_rt::domain_abort()));
+        drop(Completion::timer(3_600_000).unwrap_or_else(|_| knytos_rt::domain_abort()));
     }
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 24);
     checks |= 2_048;
@@ -1254,9 +1254,9 @@ fn main(ctx: Context) -> ! {
     check(
         wait(
             connection.call(PING, 0).unwrap_or_else(|error| {
-                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
                 check(false, 105);
-                catten_rt::domain_abort()
+                knytos_rt::domain_abort()
             }),
             &endpoint,
         )
@@ -1266,13 +1266,13 @@ fn main(ctx: Context) -> ! {
     );
     drop(endpoints);
     for _ in 0..128 {
-        drop(Endpoint::create(0x5ef, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort()));
+        drop(Endpoint::create(0x5ef, 1, 1).unwrap_or_else(|_| knytos_rt::domain_abort()));
     }
     // Owning batches exercise record admission through the real EL0 ABI.
     // Keep the queue larger than the call-record limit so queue fullness does
     // not masquerade as record rejection. Drop cancels every outstanding call.
     let record_endpoint =
-        Endpoint::create(0x5f2, 1, 1_024).unwrap_or_else(|_| catten_rt::domain_abort());
+        Endpoint::create(0x5f2, 1, 1_024).unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut connections = Vec::new();
     for _ in 0..1_024 {
         match record_endpoint.connect(IpcRights::CALL) {
@@ -1295,7 +1295,7 @@ fn main(ctx: Context) -> ! {
     drop(calls);
     check(
         wait(
-            connections[0].call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()),
+            connections[0].call(PING, 0).unwrap_or_else(|_| knytos_rt::domain_abort()),
             &record_endpoint,
         )
         .result
@@ -1305,14 +1305,14 @@ fn main(ctx: Context) -> ! {
     drop(connections);
     for _ in 0..128 {
         drop(
-            record_endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort()),
+            record_endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort()),
         );
     }
     drop(record_endpoint);
     checks |= 4_096;
-    let watched = Endpoint::create(0x5f0, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let watched = Endpoint::create(0x5f0, 1, 1).unwrap_or_else(|_| knytos_rt::domain_abort());
     let watched_connection =
-        watched.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+        watched.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut watches = CloseWatches {
         endpoint: Some(watched),
         connection: watched_connection,
@@ -1321,7 +1321,7 @@ fn main(ctx: Context) -> ! {
     for _ in 0..2_048 {
         match watches.connection.watch_closed() {
             Ok(completion) => watches.completions.push(completion),
-            Err(catten_rt::owned::CompletionError::SubmissionFailed) => break,
+            Err(knytos_rt::owned::CompletionError::SubmissionFailed) => break,
             Err(_) => check(false, 27),
         }
     }
@@ -1334,9 +1334,9 @@ fn main(ctx: Context) -> ! {
     check(
         wait(
             connection.call(PING, 0).unwrap_or_else(|error| {
-                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                knytos_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
                 check(false, 105);
-                catten_rt::domain_abort()
+                knytos_rt::domain_abort()
             }),
             &endpoint,
         )
@@ -1352,14 +1352,14 @@ fn main(ctx: Context) -> ! {
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 31);
     checks |= 8_192;
     let cancel_endpoint =
-        Endpoint::create(0x5f1, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort());
+        Endpoint::create(0x5f1, 1, 1).unwrap_or_else(|_| knytos_rt::domain_abort());
     let cancel_connection =
-        cancel_endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+        cancel_endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut cancel_watches = Vec::new();
     for _ in 0..2_048 {
         match cancel_connection.watch_closed() {
             Ok(watch) => cancel_watches.push(watch),
-            Err(catten_rt::owned::CompletionError::SubmissionFailed) => break,
+            Err(knytos_rt::owned::CompletionError::SubmissionFailed) => break,
             Err(_) => check(false, 32),
         }
     }
@@ -1369,11 +1369,11 @@ fn main(ctx: Context) -> ! {
     drop(cancel_watches);
     check(!cleanup_budget.expired(), 34);
     for _ in 0..128 {
-        drop(cancel_connection.watch_closed().unwrap_or_else(|_| catten_rt::domain_abort()));
+        drop(cancel_connection.watch_closed().unwrap_or_else(|_| knytos_rt::domain_abort()));
     }
     check(!cleanup_budget.expired(), 35);
     let mut surviving =
-        cancel_connection.watch_closed().unwrap_or_else(|_| catten_rt::domain_abort());
+        cancel_connection.watch_closed().unwrap_or_else(|_| knytos_rt::domain_abort());
     check(surviving.poll() == Ok(None), 36);
     drop(cancel_endpoint);
     check(surviving.wait() == Ok(knytos_syscall::IPC_REPLY_ENDPOINT_CLOSED), 37);
@@ -1396,7 +1396,7 @@ fn main(ctx: Context) -> ! {
     checks |= 32_768;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
-    catten_rt::logln!("[security-probe] passed checks={:#x}", checks);
+    knytos_rt::logln!("[security-probe] passed checks={:#x}", checks);
     drop(tcpip);
     drop(recovered);
     drop(connection);
@@ -1412,4 +1412,4 @@ fn main(ctx: Context) -> ! {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

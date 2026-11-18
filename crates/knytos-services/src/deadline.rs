@@ -1,2 +1,2 @@
 //! Shared monotonic operation budget.
-pub use catten_rt::deadline::Deadline;
+pub use knytos_rt::deadline::Deadline;

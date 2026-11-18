@@ -545,7 +545,7 @@
     },
     "signing_tool_sha256": "c5d6e7b302eb8c9a3caeab1b11cd6434558888fb428be451fb6953429ccfce88",
     "test_executable_sha256": {
-      "target/debug/deps/catten_services-55cf6822a5826acb": "5059f64b7ceba067c875b55394d4ef2c9ad7f0dc58ea617b1b6fee9cacdc7f16",
+      "target/debug/deps/knytos_services-55cf6822a5826acb": "5059f64b7ceba067c875b55394d4ef2c9ad7f0dc58ea617b1b6fee9cacdc7f16",
       "target/debug/examples/reconnecting_client-47a901f3899ed8d4": "952e2e78d46d621becde62427169dd23bdaf73a7eaa3b0432f1b7bcfbe613a29",
       "target/debug/deps/knytos_launch-37f0abb748e506c0": "7863ec5d1590e84d1063b6cd3c2407f16ea95f94c7510b6bdc2dc460aac4824f",
       "target/debug/deps/deployment-1aa7988906e0e77c": "d4f8063a56bccfc0e3175e38c9f2180c7af81f4af32a6562d2cae6671101c1d2",

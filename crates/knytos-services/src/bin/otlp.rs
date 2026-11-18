@@ -8,7 +8,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
@@ -19,7 +19,7 @@ use catten_rt::{
         PendingCall,
     },
 };
-use catten_services::{
+use knytos_services::{
     deadline::Deadline,
     net,
     ns,
@@ -29,7 +29,7 @@ use catten_services::{
     socket,
     time,
 };
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 struct Call {
     pending: PendingCall<'static>,
@@ -68,7 +68,7 @@ impl Call {
             if ctx.lifecycle().shutdown_requested().is_some() || call.deadline.expired() {
                 return Err(());
             }
-            catten_services::reactor::wait(Some(call.deadline.remaining_ms()), 0);
+            knytos_services::reactor::wait(Some(call.deadline.remaining_ms()), 0);
         }
     }
 }
@@ -154,9 +154,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         Some(ManifestValue::Bytes(bytes)) => knytos_launch::otlp::Profile::decode(bytes),
         _ => None,
     }
-    .unwrap_or_else(|| catten_rt::domain_abort());
+    .unwrap_or_else(|| knytos_rt::domain_abort());
     let [a, b, c, d] = profile.address;
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[otlp] collector=http://{}.{}.{}.{}:{}{} interval_ms={} timeout_ms={} \
          archive_independent=true",
         a,
@@ -197,14 +197,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             Ok(otlp_transport::Outcome::Accepted(otlp::Acknowledgement::Full)) => {
                 accepted = accepted.saturating_add(1);
                 failures = 0;
-                catten_rt::logln!("[otlp] accepted batches={} dropped={}", accepted, dropped);
+                knytos_rt::logln!("[otlp] accepted batches={} dropped={}", accepted, dropped);
             }
             Ok(otlp_transport::Outcome::Accepted(otlp::Acknowledgement::Partial {
                 rejected,
             })) => {
                 dropped = dropped.saturating_add(1);
                 failures = 0;
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[otlp] partial success rejected={} batch terminal; no replay",
                     rejected
                 );
@@ -212,7 +212,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             result => {
                 dropped = dropped.saturating_add(1);
                 failures = failures.saturating_add(1);
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[otlp] batch dropped={} failure={:?}; sampling remains independent",
                     dropped,
                     result
@@ -236,7 +236,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             knytos_syscall::monotonic_clock().0 % 1_000
         };
         if let Err(request) =
-            catten_services::sleep_ms_or_shutdown(ctx, delay.saturating_add(jitter))
+            knytos_services::sleep_ms_or_shutdown(ctx, delay.saturating_add(jitter))
         {
             return request;
         }

@@ -1,7 +1,7 @@
 //! A single-endpoint serving scope and explicitly joined native workers.
 //! Handlers are synchronous; multiplexed calls use owned reactor operations.
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     cq,
@@ -96,7 +96,7 @@ impl<'ctx> Server<'ctx> {
     }
 }
 
-pub use catten_rt::owned::{
+pub use knytos_rt::owned::{
     WorkerCapacity,
     Workers,
 };

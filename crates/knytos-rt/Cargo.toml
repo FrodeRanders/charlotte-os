@@ -5,7 +5,7 @@ edition = "2024"
 description = "Minimal runtime (crt0) for Knytos userspace programs"
 
 [lib]
-name = "catten_rt"
+name = "knytos_rt"
 path = "src/lib.rs"
 bench = false
 

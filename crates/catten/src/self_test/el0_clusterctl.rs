@@ -24,7 +24,7 @@ mod inner {
         },
     };
 
-    // "ctl" packed LE; catten_services::clusterctl.
+    // "ctl" packed LE; knytos_services::clusterctl.
     const CTL_NAME: u64 = 0x0000_0000_006c_7463;
     const CTL_OP_UPLOAD: u32 = 1;
     const RETIRED_CTL_DEPLOY: u32 = 2;
@@ -121,7 +121,7 @@ mod inner {
     }
 
     /// Pack a short name into a little-endian u64 (mirrors the userspace
-    /// `catten_services::name` helper).
+    /// `knytos_services::name` helper).
     fn pack_name(name: &[u8]) -> u64 {
         let mut packed = 0u64;
         for (index, byte) in name.iter().copied().enumerate().take(8) {

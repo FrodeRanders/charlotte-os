@@ -1,6 +1,6 @@
 //! Bounded entropy requests with complete pending/reply/mapping ownership.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     Connection,
     ConnectionRef,

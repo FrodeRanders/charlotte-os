@@ -3,7 +3,7 @@
 User-thread construction is fallible. `SPAWN_THREAD` rejects invalid user entry
 ranges, invalid LP numbers, exhausted stack/thread admission, physical backing
 failure and context/publication allocation failure with `(u64::MAX, 0)`.
-`catten_rt::owned::ThreadHandle::spawn` returns `Result<ThreadHandle, ThreadError>`;
+`knytos_rt::owned::ThreadHandle::spawn` returns `Result<ThreadHandle, ThreadError>`;
 `SpawnFailed` leaves the caller running. Trusted mandatory fixtures retain a
 panic wrapper; fallible supervisor launch paths retain the unstarted namespace
 owner until construction/publication succeeds and roll it back on rejection.

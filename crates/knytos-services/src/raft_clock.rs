@@ -1,6 +1,6 @@
 //! Kernel-monotonic time for the two Raft service reactors.
 
-use catten_graft::{
+use knytos_graft::{
     clock::MonotonicClock,
     node::RaftNode,
 };
@@ -8,8 +8,8 @@ use catten_graft::{
 pub fn start() -> MonotonicClock {
     let (counter, frequency) = knytos_syscall::monotonic_clock();
     MonotonicClock::new(counter, frequency).unwrap_or_else(|error| {
-        catten_rt::logln!("[raft] invalid monotonic clock: {:?}", error);
-        catten_rt::domain_abort()
+        knytos_rt::logln!("[raft] invalid monotonic clock: {:?}", error);
+        knytos_rt::domain_abort()
     })
 }
 
@@ -19,8 +19,8 @@ pub fn start() -> MonotonicClock {
 pub fn refresh(node: &mut RaftNode, clock: &mut MonotonicClock) {
     let (counter, frequency) = knytos_syscall::monotonic_clock();
     let millis = clock.sample(counter, frequency).unwrap_or_else(|error| {
-        catten_rt::logln!("[raft] monotonic clock rejected: {:?}", error);
-        catten_rt::domain_abort()
+        knytos_rt::logln!("[raft] monotonic clock rejected: {:?}", error);
+        knytos_rt::domain_abort()
     });
     node.set_millis(millis);
 }

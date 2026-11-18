@@ -790,7 +790,7 @@ fn operational_bindings_are_atomic_fenced_and_snapshot_persistent() {
     let release_v1 = signed_release(&release_pair, b"orders", 1, &[kafka_v1.as_slice()]);
     let bundle_v1 = signed_operational_bundle(&release_v1, &operational_pair, 1, 1, b"profile-v1");
     let command_v1 = encode_release_with_operations(&bundle_v1, &[0x1111]).unwrap();
-    assert!(command_v1.len() <= catten_graft::types::MAX_COMMAND_BYTES);
+    assert!(command_v1.len() <= knytos_graft::types::MAX_COMMAND_BYTES);
     assert_eq!(i64_result(catalog.apply_with_result(2, &command_v1)), 1);
     assert_eq!(i64_result(catalog.apply_with_result(3, &command_v1)), 1);
 
@@ -909,7 +909,7 @@ fn retired_catalog_snapshots_reject_without_changing_live_state() {
         retired[..8].copy_from_slice(&magic.to_le_bytes());
         assert_eq!(
             catalog.restore(&retired),
-            Err(catten_graft::state_machine::SnapshotError::Unsupported)
+            Err(knytos_graft::state_machine::SnapshotError::Unsupported)
         );
         assert_eq!(catalog.snapshot(), before);
     }
@@ -1408,7 +1408,7 @@ fn snapshot_descriptor_name_binding_rejects_before_any_live_publication() {
     let before = target.snapshot();
     assert_eq!(
         target.restore(&corrupted),
-        Err(catten_graft::state_machine::SnapshotError::Malformed)
+        Err(knytos_graft::state_machine::SnapshotError::Malformed)
     );
     assert_eq!(target.snapshot(), before);
 }

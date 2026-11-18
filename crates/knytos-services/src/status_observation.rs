@@ -3,7 +3,7 @@
 //! Each accepted call stays owned until observation or checked cancellation.
 //! A missing result is unavailable data, never permission to replay a request.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     ConnectionRef,
     IpcError,

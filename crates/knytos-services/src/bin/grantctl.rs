@@ -15,7 +15,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     owned::{
         Endpoint,
@@ -24,7 +24,7 @@ use catten_rt::{
         PendingCall,
     },
 };
-use catten_services::{
+use knytos_services::{
     grant,
     ns,
 };
@@ -34,7 +34,7 @@ use knytos_authorization::{
 };
 use knytos_syscall::IpcRights;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 fn reply_error(message: &mut IncomingMessage, error: i64) {
     if let Some(reply) = message.reply.take() {
@@ -110,7 +110,7 @@ fn publication_memory(request: grant::AcquireRequest<'_>) -> Result<(OwnedMemory
 
 fn submit(
     message: &mut IncomingMessage,
-    name_service: catten_rt::owned::ConnectionRef<'_>,
+    name_service: knytos_rt::owned::ConnectionRef<'_>,
 ) -> Result<(PendingCall<'static>, bool, IpcRights), i64> {
     let publish = message.opcode == grant::OP_PUBLISH;
     if (message.opcode != grant::OP_ACQUIRE && !publish)
@@ -175,7 +175,7 @@ struct PendingGrant {
     call: PendingCall<'static>,
     publish: bool,
     rights: IpcRights,
-    deadline: catten_services::deadline::Deadline,
+    deadline: knytos_services::deadline::Deadline,
 }
 
 impl PendingGrant {
@@ -213,12 +213,12 @@ impl PendingGrant {
 }
 
 fn main(ctx: Context) -> ! {
-    let endpoint_cap = ctx.bootstrap_cap().unwrap_or_else(|| catten_rt::domain_abort());
+    let endpoint_cap = ctx.bootstrap_cap().unwrap_or_else(|| knytos_rt::domain_abort());
     // Ownership transfers exactly once from the typed launch bootstrap slot.
     let endpoint =
-        unsafe { Endpoint::from_raw(endpoint_cap) }.unwrap_or_else(|_| catten_rt::domain_abort());
-    let name_service = ctx.name_service_connection().unwrap_or_else(|| catten_rt::domain_abort());
-    endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
+        unsafe { Endpoint::from_raw(endpoint_cap) }.unwrap_or_else(|_| knytos_rt::domain_abort());
+    let name_service = ctx.name_service_connection().unwrap_or_else(|| knytos_rt::domain_abort());
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| knytos_rt::domain_abort());
     let mut pending: Vec<PendingGrant> = Vec::new();
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
@@ -237,7 +237,7 @@ fn main(ctx: Context) -> ! {
                     intake_exhausted = false;
                     break;
                 }
-                Err(_) => catten_rt::domain_abort(),
+                Err(_) => knytos_rt::domain_abort(),
             };
             let owner_pending = pending
                 .iter()
@@ -257,7 +257,7 @@ fn main(ctx: Context) -> ! {
                         reply_error(&mut message, grant::ERR_UNAVAILABLE);
                         continue;
                     }
-                    let deadline = catten_services::deadline::Deadline::after(5_000);
+                    let deadline = knytos_services::deadline::Deadline::after(5_000);
                     pending.push(PendingGrant {
                         message,
                         call,
@@ -286,9 +286,9 @@ fn main(ctx: Context) -> ! {
             knytos_syscall::completion_status::WAIT_ADMISSION_FAILED => {
                 // No waiter was installed. Preserve the pending owners and
                 // their original deadlines; bounded admission backoff only.
-                catten_services::sleep_ms(10);
+                knytos_services::sleep_ms(10);
             }
-            _ => catten_rt::domain_abort(),
+            _ => knytos_rt::domain_abort(),
         }
     }
 }

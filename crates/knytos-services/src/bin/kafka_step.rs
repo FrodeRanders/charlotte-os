@@ -6,7 +6,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
@@ -15,7 +15,7 @@ use catten_rt::{
         OwnedMemory,
     },
 };
-use catten_services::{
+use knytos_services::{
     kafka_client::{
         Client,
         DeliveryInfo,
@@ -40,7 +40,7 @@ use knytos_protocol_kafka::{
 };
 use knytos_syscall::thread_exit;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 struct Profile {
     procedure_name: Vec<u8>,

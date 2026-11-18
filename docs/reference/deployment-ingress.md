@@ -479,7 +479,7 @@ without obtaining name-service or mint authority.
 Each node agent enumerates the replicated desired-deployment set. It can own
 up to 64 independently named application domains, launches assignments for
 its node, and fences each retirement by the stable artifact principal and
-deployment generation. A `DeployedArtifact` owner in `catten_rt::owned`
+deployment generation. A `DeployedArtifact` owner in `knytos_rt::owned`
 retains the retirement obligation and requests best-effort retirement on
 drop. The limit is a kernel admission bound, not a protocol-name limit.
 

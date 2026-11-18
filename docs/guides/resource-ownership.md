@@ -5,7 +5,7 @@ ownership. Every closeable resource has exactly one owning Rust value. Normal
 error propagation then performs cleanup automatically.
 
 The raw functions in `knytos-syscall` describe the register ABI. They are not
-the normal service-development API. Use `catten_rt::owned` in services and
+the normal service-development API. Use `knytos_rt::owned` in services and
 applications.
 
 For application-to-service calls, the [reconnecting client](reconnecting-clients.md)
@@ -239,7 +239,7 @@ Socket close returns errors only before admission, but after acceptance, timeout
 uncertain observation retains the owner through domain abort. Closing a socket
 never proves that earlier business work was rolled back or can be replayed.
 
-For TLS clients, use `catten_services::tls_client::OwnedTlsStream`. Its
+For TLS clients, use `knytos_services::tls_client::OwnedTlsStream`. Its
 constructor consumes an `OwnedSocket` and requires a server DNS identity, DER
 trust anchor, synchronized Unix time, entropy service reference, and bounded
 socket retry policy. The wrapper is deliberately the only owner of the
@@ -253,7 +253,7 @@ for its prefixed secret, derived keys, HMAC pads, and inner digest. This limits
 retained copies, but it is not a guarantee that every compiler or cryptographic
 library intermediate is erased.
 
-Use `catten_services::deadline::Deadline` for an operation's total monotonic
+Use `knytos_services::deadline::Deadline` for an operation's total monotonic
 budget. Repeated short receives/polls must not restart that budget. Keep the
 deadline with the owning operation, continue serving unrelated requests while
 it is pending, and drop the whole operation on expiry. The grant controller is
@@ -388,7 +388,7 @@ hardware creation and own unpublished DMA domains through `PreparedDmaDomain`.
 Failed hardware rollback quarantines backing rather than returning potentially
 DMA-reachable pages. Observer startup uses a cancellable claim and one owning
 unstarted domain, so rejected grants reclaim delegated bootstrap authority.
-Userspace continues to use `catten_rt::owned`, while these kernel tokens remain
+Userspace continues to use `knytos_rt::owned`, while these kernel tokens remain
 internal.
 
 ## Review checklist

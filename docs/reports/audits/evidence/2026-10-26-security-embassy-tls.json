@@ -161,11 +161,11 @@
       "doctests": 1,
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_services-17bfc62d869565e8)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_services-17bfc62d869565e8)",
           "passed": 242,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/debug/deps/catten_services-17bfc62d869565e8",
+          "executable": "target/debug/deps/knytos_services-17bfc62d869565e8",
           "executable_sha256": "16da3a2817ae2cead573c9640e302619744c6e0b792f87d4ee94e57d40d4fc56"
         },
         {
@@ -417,7 +417,7 @@
           "executable_sha256": "499e30f4b9e729dff4b0031b088314f21b80bea22c40f10ce1748d15421a3f5b"
         },
         {
-          "harness": "Doc-tests catten_services",
+          "harness": "Doc-tests knytos_services",
           "passed": 0,
           "failed": 0,
           "ignored": 0
@@ -444,11 +444,11 @@
       "doctests": 1,
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_services-819aedc0f8cc2d14)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_services-819aedc0f8cc2d14)",
           "passed": 242,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/release/deps/catten_services-819aedc0f8cc2d14",
+          "executable": "target/release/deps/knytos_services-819aedc0f8cc2d14",
           "executable_sha256": "38df702b4ba8c2264cb8c35102147790dc0d397d6e37e7157c1a1bca4c6d16b9"
         },
         {
@@ -700,7 +700,7 @@
           "executable_sha256": "08f823fec2ed66084a3dafeb1f3a37bb6c4a1778f7b124e5b0333e12df2c1cce"
         },
         {
-          "harness": "Doc-tests catten_services",
+          "harness": "Doc-tests knytos_services",
           "passed": 0,
           "failed": 0,
           "ignored": 0

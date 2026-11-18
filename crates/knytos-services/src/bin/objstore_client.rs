@@ -2,9 +2,9 @@
 #![no_std]
 #![no_main]
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
     owned::{
@@ -12,7 +12,7 @@ use catten_rt::{
         OwnedMemory,
     },
 };
-use catten_services::{
+use knytos_services::{
     ns,
     objstore,
     wait_for_registered_name_owned,
@@ -186,7 +186,7 @@ fn main(ctx: Context) -> ! {
     if granted_delete != Ok(objstore::ERR_DENIED) {
         fail(0xdebf);
     }
-    catten_rt::logln!(concat!(
+    knytos_rt::logln!(concat!(
         "[objstore-client] automatic-ID collision preserved foreign ownership; ",
         "unauthorized scope replacement denied and original read grant preserved"
     ));
@@ -225,7 +225,7 @@ fn main(ctx: Context) -> ! {
                 fail(0xdec8);
             }
         }
-        catten_rt::logln!("[objstore-client] live scope revocation denied read and info");
+        knytos_rt::logln!("[objstore-client] live scope revocation denied read and info");
         let reply = request.reply.take().unwrap_or_else(|| fail(0xdec9));
         reply.reply(objstore::ERR_OK).unwrap_or_else(|_| fail(0xdec9));
         break;

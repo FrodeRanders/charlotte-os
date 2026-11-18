@@ -1,5 +1,5 @@
 //! Bounded, owned application client for the capability-grant controller.
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     abi::IpcRights,

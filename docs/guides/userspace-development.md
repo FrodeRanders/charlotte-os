@@ -17,17 +17,17 @@ The source-level entry contract is:
 #![no_std]
 #![no_main]
 
-use catten_rt::Context;
+use knytos_rt::Context;
 
 fn main(ctx: Context) -> ! {
     let bootstrap = ctx.bootstrap_connection();
-    let mode = ctx.manifest_value(catten_rt::manifest_key(b"mode"));
+    let mode = ctx.manifest_value(knytos_rt::manifest_key(b"mode"));
 
     // Program or service loop.
     unsafe { knytos_syscall::thread_exit() }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 ```
 
 The program does not define `_start`, a panic handler, or a global allocator.
@@ -109,7 +109,7 @@ results rather than treating the status page as general IPC.
 
 ## Ownership-aware resources
 
-Application and service code must use `catten_rt::owned` rather than raw
+Application and service code must use `knytos_rt::owned` rather than raw
 resource-owning capability syscalls. See the dedicated
 [userspace resource ownership guide](resource-ownership.md) for the complete
 rules and examples.
@@ -126,7 +126,7 @@ leaving register access unsafe. `ThreadHandle` retains the spawn-time thread
 generation so a delayed join cannot observe a recycled TID.
 
 Protocol-specific scalar resources also need owners, and
-`catten_services::socket::OwnedSocket` supplies explicit fallible close plus a
+`knytos_services::socket::OwnedSocket` supplies explicit fallible close plus a
 best-effort `Drop` fallback for TCP/IP socket IDs.
 
 Keep raw `knytos-syscall` calls within the runtime and documented driver

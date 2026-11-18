@@ -15,13 +15,13 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
     owned::Endpoint,
 };
-use catten_services::{
+use knytos_services::{
     deploy,
     grant_client,
     ns,
@@ -32,17 +32,17 @@ use knytos_syscall::IpcRights;
 
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1); // stage: started
-    let bootstrap = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
+    let bootstrap = ctx.bootstrap_connection().unwrap_or_else(|| knytos_rt::domain_abort());
     config::write::<u32>(status::STAGE, 2); // stage: bootstrap connection received
 
     let endpoint = Endpoint::create(deploy::INTERFACE, deploy::VERSION, 8)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
+        .unwrap_or_else(|_| knytos_rt::domain_abort());
     config::write::<u32>(status::STAGE, 3); // stage: endpoint created
 
     let generation = if let Some(descriptor) = ctx.profile_memory() {
         grant_client::publish(bootstrap, &descriptor, b"greet", &endpoint).unwrap_or_else(|error| {
-            catten_rt::logln!("[greet] publish grant failed: {:?}", error);
-            catten_rt::domain_abort()
+            knytos_rt::logln!("[greet] publish grant failed: {:?}", error);
+            knytos_rt::domain_abort()
         })
     } else {
         bootstrap
@@ -52,14 +52,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 &endpoint,
                 IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
             )
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
             .wait()
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|_| knytos_rt::domain_abort())
             .result
     };
     config::write::<u32>(status::STAGE, 4); // stage: short register call sent
     if generation < 1 {
-        catten_rt::domain_abort();
+        knytos_rt::domain_abort();
     }
     config::write::<u32>(status::GENERATION, generation as u32);
     config::write::<u32>(status::STAGE, 6); // stage: serving
@@ -73,7 +73,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             return request;
         }
         let Some(mut message) =
-            endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+            endpoint.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort())
         else {
             sleep_ms(10);
             continue;
@@ -99,4 +99,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

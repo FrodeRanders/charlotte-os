@@ -144,7 +144,7 @@
     "log_sha256": "6e17f59d0a0ccae755df743766932967284e8c431096061dc62ac25038bb88eb",
     "resource_policy_groups": 3,
     "shared_charged_allocator_tests": 15,
-    "catten_services_tests": 268,
+    "knytos_services_tests": 268,
     "separate_resource_policy_command": "python3 scripts/tests/test-resource-policy.py",
     "separate_resource_policy_result": "passed",
     "separate_resource_policy_log_sha256": "0fcfb77a30bb61f1718ce2eb3c339e144427ffd5a148b364eeab3cf2f78b6606",

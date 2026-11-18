@@ -1,6 +1,6 @@
 # Owned TLS client
 
-S3 and Kafka use `catten_services::tls_client::OwnedTlsStream` for TLS 1.3 with
+S3 and Kafka use `knytos_services::tls_client::OwnedTlsStream` for TLS 1.3 with
 AES-128-GCM-SHA-256. The stream owns its socket and stable read/write record
 buffers together. Explicit consuming close returns the socket's logical close
 result; ordinary Drop destroys the connection before wiping the buffers.

@@ -5,7 +5,7 @@ and the ordered [simplification ledger](../../reference/api-simplification.md).
 
 ## Changes
 
-- Removes the unused `catten_services::socket::MAX_SOCKETS` constant. Current
+- Removes the unused `knytos_services::socket::MAX_SOCKETS` constant. Current
   total capacity and per-principal socket/buffer quotas remain launch-owned.
 - Removes the paired `--cluster-service-name` runner flag. Repeated
   `--cluster-service [NAME=]IPv4:PORT` assignments use one table. An explicit

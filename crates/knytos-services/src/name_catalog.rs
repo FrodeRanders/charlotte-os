@@ -40,7 +40,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::state_machine::{
+use knytos_graft::state_machine::{
     QueryableStateMachine,
     StateMachine,
 };
@@ -1619,7 +1619,7 @@ impl StateMachine for NameCatalog {
     fn restore(
         &self,
         snapshot_data: &[u8],
-    ) -> Result<(), catten_graft::state_machine::SnapshotError> {
+    ) -> Result<(), knytos_graft::state_machine::SnapshotError> {
         self.restore_bytes(snapshot_data)
     }
 
@@ -1976,7 +1976,7 @@ pub fn encode_reassign(
         buf.extend_from_slice(&node.to_le_bytes());
         buf.extend_from_slice(&signed.select_variant(capacity.get(node)?.target?)?.to_le_bytes());
     }
-    (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
+    (buf.len() <= knytos_graft::types::MAX_COMMAND_BYTES).then_some(buf)
 }
 
 /// Encode one signed release and the leader-resolved node assignment for
@@ -2003,7 +2003,7 @@ pub fn encode_release(
         buf.extend_from_slice(&node.to_le_bytes());
         buf.extend_from_slice(&signed.select_variant(capacity.get(node)?.target?)?.to_le_bytes());
     }
-    (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
+    (buf.len() <= knytos_graft::types::MAX_COMMAND_BYTES).then_some(buf)
 }
 
 /// Encode a signed release plus one concrete, non-empty, unique node set per
@@ -2044,7 +2044,7 @@ pub fn encode_release_replicas(
             );
         }
     }
-    (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
+    (buf.len() <= knytos_graft::types::MAX_COMMAND_BYTES).then_some(buf)
 }
 
 /// Compact an already verified `COPSBND2` admission bundle for the Raft log.
@@ -2062,7 +2062,7 @@ pub fn encode_release_with_operations(
     let bundle = knytos_launch::operations_bundle::decode(bundle_bytes)?;
     let mut command = encode_release(bundle.release, assigned_nodes, capacity)?;
     append_operational_tail(&mut command, bundle_bytes, &bundle)?;
-    (command.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(command)
+    (command.len() <= knytos_graft::types::MAX_COMMAND_BYTES).then_some(command)
 }
 
 fn append_operational_tail(
@@ -2103,7 +2103,7 @@ pub fn encode_release_replicas_with_operations(
     let bundle = knytos_launch::operations_bundle::decode(bundle_bytes)?;
     let mut command = encode_release_replicas(bundle.release, assignments, capacity)?;
     append_operational_tail(&mut command, bundle_bytes, &bundle)?;
-    (command.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(command)
+    (command.len() <= knytos_graft::types::MAX_COMMAND_BYTES).then_some(command)
 }
 
 /// Encode a key-ceremony command: commit the cluster's Ed25519 public key.

@@ -22,11 +22,11 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     MAX_NAME_LEN,
     broker::{
         Catalog,
@@ -72,7 +72,7 @@ mod status_snapshot;
 const AUDIT_SNAPSHOT_MAX: usize = 4096;
 
 struct Registration {
-    publication: Option<catten_services::ns_publication::Publication>,
+    publication: Option<knytos_services::ns_publication::Publication>,
     generation: i64,
     /// Stable principal of the domain that created the registration, when the
     /// kernel-authenticated envelope supplied one. Only this principal (or a
@@ -95,12 +95,12 @@ type Registry = BTreeMap<Vec<u8>, Registration>;
 
 fn publication_generation(
     registry: &Registry,
-    query: &mut catten_rt::owned::IncomingMessage,
+    query: &mut knytos_rt::owned::IncomingMessage,
 ) -> i64 {
     if query.connection.is_some() {
         return ns::ERR_INVALID;
     }
-    let Ok((key, _)) = generation_request(query, catten_services::ns_generation::Action::Observe)
+    let Ok((key, _)) = generation_request(query, knytos_services::ns_generation::Action::Observe)
     else {
         return ns::ERR_INVALID;
     };
@@ -137,15 +137,15 @@ enum PendingLookup {
 /// The registry viewed as an immediate catalog (the broker's lookups).
 struct RegistryCatalog<'a>(&'a Registry);
 
-impl catten_services::broker::Catalog for RegistryCatalog<'_> {
-    fn resolve(&self, name: &[u8]) -> Option<catten_services::broker::CatalogTarget> {
+impl knytos_services::broker::Catalog for RegistryCatalog<'_> {
+    fn resolve(&self, name: &[u8]) -> Option<knytos_services::broker::CatalogTarget> {
         // The unregister tombstone (connection == 0) is not a live
         // registration: resolving it would make KeyedWaitlist::park return
         // the waiter instead of parking it, and the lookup path would then
         // discard the reply token (a lost reply and a forever-stalled
         // caller).
         self.0.get(name).and_then(|registration| {
-            (registration.connection() != 0).then_some(catten_services::broker::CatalogTarget {
+            (registration.connection() != 0).then_some(knytos_services::broker::CatalogTarget {
                 generation: registration.generation as u64,
                 connection: registration.connection(),
             })
@@ -154,8 +154,8 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
 }
 /// Deferred lookups retain the reply and captured caller identity. The waitlist
 /// is the service's *event-broker* face; the registry is its *catalog* face (see
-/// `catten_services::broker`).
-type Waitlist = catten_services::broker::KeyedWaitlist<PendingLookup>;
+/// `knytos_services::broker`).
+type Waitlist = knytos_services::broker::KeyedWaitlist<PendingLookup>;
 
 fn scalar_key(packed: u64) -> Vec<u8> {
     let bytes = packed.to_le_bytes();
@@ -242,10 +242,10 @@ fn synchronize_sender(
 
 /// Decode the complete owned receive transaction before registry/policy mutation.
 fn generation_request(
-    query: &mut catten_rt::owned::IncomingMessage,
-    action: catten_services::ns_generation::Action,
+    query: &mut knytos_rt::owned::IncomingMessage,
+    action: knytos_services::ns_generation::Action,
 ) -> Result<(Vec<u8>, u64), i64> {
-    use catten_services::ns_generation as protocol;
+    use knytos_services::ns_generation as protocol;
     if query.connection.is_some() {
         return Err(ns::ERR_INVALID);
     }
@@ -271,10 +271,10 @@ fn unregister_generation(
     registry: &mut Registry,
     policy: &mut PolicyStore,
     own_identity: DomainIdentity,
-    query: &mut catten_rt::owned::IncomingMessage,
+    query: &mut knytos_rt::owned::IncomingMessage,
 ) -> i64 {
     let Ok((key, expected)) =
-        generation_request(query, catten_services::ns_generation::Action::Retire)
+        generation_request(query, knytos_services::ns_generation::Action::Retire)
     else {
         return ns::ERR_INVALID;
     };
@@ -296,7 +296,7 @@ fn unregister_generation(
     let Ok(current) = u64::try_from(registration.generation) else {
         return ns::ERR_NOT_FOUND;
     };
-    if !catten_services::publication_generation::retirement_allowed(
+    if !knytos_services::publication_generation::retirement_allowed(
         current,
         expected,
         registration.registrar.map(PrincipalId::get),
@@ -527,7 +527,7 @@ fn authorized_lookup_or_defer(
 ) {
     if RegistryCatalog(registry).resolve(service).is_some() {
         authorize_and_reply(policy, audit, registry, service, caller, requested, reply);
-    } else if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {
+    } else if waitlist.waiter_count() >= knytos_services::broker::MAX_WAITERS {
         unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
     } else {
         let _ = waitlist.park(
@@ -613,12 +613,12 @@ fn register(
 ) -> i64 {
     // Unique receive ABI boundary: this branch transfers the incoming
     // connection once; no handler or raw cleanup uses it after adoption.
-    let Ok(connection) = (unsafe { catten_rt::owned::Connection::from_raw(connection) }) else {
+    let Ok(connection) = (unsafe { knytos_rt::owned::Connection::from_raw(connection) }) else {
         return ns::ERR_INVALID;
     };
     let replacing_live = registry.get(&key).is_some_and(|entry| entry.publication.is_some());
     let live = registry.values().filter(|entry| entry.publication.is_some()).count();
-    if !catten_services::ns_publication::publication_admitted(live, replacing_live) {
+    if !knytos_services::ns_publication::publication_admitted(live, replacing_live) {
         return ns::ERR_INVALID;
     }
     // Public replacement is registrant-bound: it may only replace an active
@@ -633,7 +633,7 @@ fn register(
     }
     // Watch admission precedes every policy/registry mutation. Failure closes
     // only this unused candidate and cannot displace the existing generation.
-    let publication = match catten_services::ns_publication::Publication::prepare(connection) {
+    let publication = match knytos_services::ns_publication::Publication::prepare(connection) {
         Ok(publication) => publication,
         Err((_connection, _error)) => return ns::ERR_INVALID,
     };
@@ -751,7 +751,7 @@ fn lookup_or_defer(
             // Defer: the event broker retains the reply token until the
             // service registers (fulfillment by the publishing side). Fail
             // closed if the broker is saturated.
-            if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {
+            if waitlist.waiter_count() >= knytos_services::broker::MAX_WAITERS {
                 unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
             } else {
                 let _ = waitlist.park(
@@ -797,7 +797,7 @@ fn retire_closed(
     own_identity: DomainIdentity,
     entry: &knytos_syscall::CqEntry,
 ) {
-    use catten_services::ns_publication::Observation;
+    use knytos_services::ns_publication::Observation;
     for (name, registration) in registry.iter_mut() {
         let Some(publication) = registration.publication.as_mut() else {
             continue;
@@ -807,21 +807,21 @@ fn retire_closed(
             Ok(Observation::Pending) => return,
             Ok(Observation::Closed) => {
                 let Ok(generation) = u64::try_from(registration.generation) else {
-                    catten_rt::domain_abort();
+                    knytos_rt::domain_abort();
                 };
                 if policy.unpublish_service(own_identity, name, generation).is_err() {
                     // Keep the complete registry transaction on uncertainty;
                     // do not clear the connection or fabricate policy success.
-                    catten_rt::domain_abort();
+                    knytos_rt::domain_abort();
                 }
                 drop(registration.publication.take());
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[ns] endpoint-death retired {:?} generation={generation}",
                     core::str::from_utf8(name).ok()
                 );
                 return;
             }
-            Err(_) => catten_rt::domain_abort(),
+            Err(_) => knytos_rt::domain_abort(),
         }
     }
 }
@@ -835,7 +835,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 2);
 
     let mut registry: Registry = BTreeMap::new();
-    let mut waitlist: Waitlist = catten_services::broker::KeyedWaitlist::new();
+    let mut waitlist: Waitlist = knytos_services::broker::KeyedWaitlist::new();
     let own = knytos_syscall::get_domain_identity();
     let own_identity = DomainIdentity::new(own.asid, own.generation)
         .expect("name service received an invalid kernel identity");
@@ -855,7 +855,7 @@ fn main(ctx: Context) -> ! {
     // Context retains the launch-owned endpoint. Binding is readiness/config
     // only; no borrowed Endpoint view exists yet, so do not adopt this handle.
     if ipc_endpoint_bind_cq(endpoint, 0) != ipc_status::OK {
-        catten_rt::domain_abort();
+        knytos_rt::domain_abort();
     }
     let cq = ctx.completion_queue_layout();
     loop {
@@ -863,7 +863,7 @@ fn main(ctx: Context) -> ! {
             // Readiness is not teardown completion. Preserve the registry and
             // outstanding reply owners through terminal domain abort rather
             // than acknowledge cooperative/physical cleanup or spin on this wake.
-            catten_rt::domain_abort();
+            knytos_rt::domain_abort();
         }
         while let Some(entry) = unsafe { cq_read(cq.base, cq.entries) } {
             retire_closed(&mut registry, &mut policy, own_identity, &entry);
@@ -874,7 +874,7 @@ fn main(ctx: Context) -> ! {
             if status != completion_status::READY {
                 // Wait admission rejection is neither timeout nor cleanup
                 // completion. Keep the registry's owners through fail-closed abort.
-                catten_rt::domain_abort();
+                knytos_rt::domain_abort();
             }
             continue;
         }
@@ -882,7 +882,7 @@ fn main(ctx: Context) -> ! {
             unsafe { thread_exit() };
         }
         if !message.is_ok() {
-            catten_rt::domain_abort();
+            knytos_rt::domain_abort();
         }
         handled += 1;
         config::write::<u32>(status::HANDLED, handled);
@@ -990,7 +990,7 @@ fn main(ctx: Context) -> ! {
             ns::OP_UNREGISTER_GENERATION => {
                 // This branch consumes the successful receive exactly once.
                 let Ok(Some(mut query)) =
-                    (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+                    (unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) })
                 else {
                     continue;
                 };
@@ -1231,13 +1231,13 @@ fn main(ctx: Context) -> ! {
                                 // Ownership transfers exactly once from the
                                 // authenticated receive ABI for this reply.
                                 if let Ok(reply) =
-                                    unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }
+                                    unsafe { knytos_rt::owned::ReplyToken::from_raw(message.reply) }
                                 {
                                     let _ = reply.reply(ns::ERR_NOT_FOUND);
                                 }
                             }
                             (Some(target), Some(target_principal)) => {
-                                if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {
+                                if waitlist.waiter_count() >= knytos_services::broker::MAX_WAITERS {
                                     unsafe {
                                         ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);
                                     }
@@ -1269,7 +1269,7 @@ fn main(ctx: Context) -> ! {
                 // This branch adopts each successful receive exactly once at
                 // the raw service ABI boundary; no scalar cleanup follows it.
                 let Ok(Some(mut query)) =
-                    (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+                    (unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) })
                 else {
                     continue;
                 };
@@ -1282,7 +1282,7 @@ fn main(ctx: Context) -> ! {
                 // Unique receive boundary: this branch owns all attachments
                 // and reply authority before validating the observation.
                 if let Ok(Some(request)) =
-                    unsafe { catten_rt::owned::IncomingMessage::from_raw(message) }
+                    unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) }
                 {
                     status_snapshot::reply_status(request, &registry, waitlist.waiter_count());
                 }
@@ -1291,7 +1291,7 @@ fn main(ctx: Context) -> ! {
                 // Unique receive ABI boundary, including retired opcodes: own
                 // every attachment before rejecting without decoding its body.
                 if let Ok(Some(mut request)) =
-                    unsafe { catten_rt::owned::IncomingMessage::from_raw(message) }
+                    unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) }
                     && let Some(reply) = request.reply.take()
                 {
                     let _ = reply.reply(ns::ERR_BAD_OPCODE);
@@ -1301,4 +1301,4 @@ fn main(ctx: Context) -> ! {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

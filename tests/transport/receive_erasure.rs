@@ -1,7 +1,7 @@
 //! Public fixtures inspect initialized plaintext bytes before host release.
 use core::hint::black_box;
 
-use catten_services::tls_client::read_owned_chunk;
+use knytos_services::tls_client::read_owned_chunk;
 use knytos_kafka::{
     self as wire,
     frame::{

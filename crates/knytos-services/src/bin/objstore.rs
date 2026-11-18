@@ -11,7 +11,7 @@
 #![no_main]
 extern crate alloc;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 use alloc::{
     collections::BTreeMap,
@@ -19,7 +19,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
@@ -34,7 +34,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     block,
     ns,
     objstore,
@@ -67,7 +67,7 @@ fn startup_failed(fallback: u32) -> ! {
         diag_error(fallback);
     }
     config::write_u32_release(status::STATE, status::State::Failed as u32);
-    catten_rt::domain_abort()
+    knytos_rt::domain_abort()
 }
 
 // One immutable first-failure record, published after every field is written.
@@ -85,7 +85,7 @@ fn io_failure(error: u32, op: u32, lba: u64, count: u32, phase: u32, ipc: u64, r
     config::write::<u32>(status::FAILURE_STATE, state);
     config::write::<u32>(status::FAILURE_OP, op);
     config::write_u32_release(status::FIRST_IO_ERROR, error);
-    catten_rt::logln!(
+    knytos_rt::logln!(
         concat!(
             "[objstore] first block failure state={} op={} lba={} count={} ",
             "phase={} status={:#x} result={}"
@@ -285,7 +285,7 @@ impl ObjStore {
             diag_error(0xe1);
             return None;
         };
-        let selected = catten_services::objstore_mount::select(
+        let selected = knytos_services::objstore_mount::select(
             |slot| {
                 diag_stage(21 + slot as u32);
                 read_superblock(&dev, slot)
@@ -986,7 +986,7 @@ impl ObjStore {
 fn read_superblock(
     dev: &BlockDev,
     slot: u64,
-) -> Result<catten_services::objstore_mount::Slot<Superblock>, ()> {
+) -> Result<knytos_services::objstore_mount::Slot<Superblock>, ()> {
     config::write::<u32>(status::DETAIL, 50 + slot as u32 * 10);
     let mut memory = OwnedMemory::allocate(1).map_err(|_| {
         io_failure(0xe3, block::OP_READ, slot, 1, 4, u64::MAX, i64::MIN);
@@ -1001,7 +1001,7 @@ fn read_superblock(
         return Err(());
     };
     config::write::<u32>(status::DETAIL, 52 + slot as u32 * 10);
-    use catten_services::objstore_mount::Slot;
+    use knytos_services::objstore_mount::Slot;
     let bytes = &mapping.as_slice()[..dev.block_size as usize];
     let result = match classify_superblock(bytes) {
         SuperblockState::Blank => Slot::Blank,
@@ -1148,7 +1148,7 @@ fn apply_scope(
     let result = store.install_scope(&persisted, principal);
     if result == objstore::ERR_OK {
         *scope = parsed;
-        catten_rt::logln!("[objstore] operator scope table applied ({} entries)", scope.len());
+        knytos_rt::logln!("[objstore] operator scope table applied ({} entries)", scope.len());
     }
     result
 }
@@ -1167,14 +1167,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut scope = match store.read_object_bytes(objstore::SCOPE_OBJECT_ID) {
         Some(bytes) => match objstore::ScopeTable::parse(&bytes) {
             Some(table) => {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[objstore] persisted scope table restored ({} entries)",
                     table.len()
                 );
                 table
             }
             None => {
-                catten_rt::logln!("[objstore] persisted scope table malformed; denying all grants");
+                knytos_rt::logln!("[objstore] persisted scope table malformed; denying all grants");
                 objstore::ScopeTable::default()
             }
         },
@@ -1194,7 +1194,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             &endpoint,
             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
         )
-        .and_then(|call| call.wait().map_err(|_| catten_rt::owned::IpcError::CreationFailed))
+        .and_then(|call| call.wait().map_err(|_| knytos_rt::owned::IpcError::CreationFailed))
         .map(|reply| reply.result)
         .unwrap_or(0);
     if generation < 1 {
@@ -1221,12 +1221,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 let elapsed_ms =
                     now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
                 if elapsed_ms >= SHUTDOWN_FLUSH_TIMEOUT_MS {
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[objstore] flush did not complete before the shutdown deadline"
                     );
                     break;
                 }
-                catten_rt::logln!("[objstore] shutdown flush failed; retrying");
+                knytos_rt::logln!("[objstore] shutdown flush failed; retrying");
                 sleep_ms(10);
             }
             drop(store);
@@ -1235,7 +1235,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         loop {
             let Some(mut message) =
-                endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+                endpoint.try_receive().unwrap_or_else(|_| knytos_rt::domain_abort())
             else {
                 break;
             };
@@ -1374,7 +1374,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // Endpoint arrivals and lifecycle publication both wake the default CQ.
         // The endpoint was bound before publication and its queue was drained
         // above; a generation arriving before this wait remains observable.
-        catten_services::reactor::wait(None, 0);
+        knytos_services::reactor::wait(None, 0);
     }
 }
 

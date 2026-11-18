@@ -1,6 +1,6 @@
 //! Endpoint publication with bounded retries before call acceptance.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     ConnectionRef,
     Endpoint,
     IpcError,
@@ -60,7 +60,7 @@ pub fn register(names: ConnectionRef<'_>, name: u64, endpoint: &Endpoint) -> Res
         || deadline.expired(),
         || {
             if !announced {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[publication] queue-full name={name:#x} endpoint={} retaining source",
                     endpoint.as_raw()
                 );

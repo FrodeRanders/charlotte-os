@@ -17,13 +17,13 @@ use alloc::{
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
     owned::Endpoint,
 };
-use catten_services::{
+use knytos_services::{
     net,
     publication,
     virtio,
@@ -160,7 +160,7 @@ unsafe fn alloc_dma(
     let iova = match unsafe { dma_map(dma_domain, cap, direction) } {
         Ok(iova) => iova,
         Err(error) => {
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[net] DMA map rejected pages={pages} direction={direction:?} {error:?}"
             );
             record_startup_failure(status::StartupError::DmaDomainMap, error.detail());
@@ -327,7 +327,7 @@ unsafe fn drain_tx(
         *used_seen = used_seen.wrapping_add(1);
     }
     if *used_seen != before && TX_SATURATED.swap(false, core::sync::atomic::Ordering::Relaxed) {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[net] TX ring recovered: device used_idx advanced to {} ({} freed)",
             device_idx,
             used_seen.wrapping_sub(before)
@@ -339,7 +339,7 @@ fn record_startup_failure(error: status::StartupError, detail: u64) {
     if unsafe { config::read::<u32>(status::STARTUP_ERROR) } == 0 {
         config::write::<u64>(status::STARTUP_DETAIL, detail);
         config::write_u32_release(status::STARTUP_ERROR, error as u32);
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[net] startup rejected stage={} error={error:?} detail={detail:#x}",
             unsafe { config::read::<u32>(status::STAGE) }
         );
@@ -503,9 +503,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let endpoint = Endpoint::create(net::INTERFACE, net::VERSION, 8)
         .unwrap_or_else(|_| startup_failed(status::StartupError::EndpointCreation, 0));
     if let Err(error) = publication::register(ns_conn, net::NAME, &endpoint) {
-        catten_rt::logln!("[net] registration failed: {error:?}");
+        knytos_rt::logln!("[net] registration failed: {error:?}");
         let (kind, detail) = match error {
-            publication::Error::Admission(catten_rt::owned::IpcError::Status(code)) => {
+            publication::Error::Admission(knytos_rt::owned::IpcError::Status(code)) => {
                 (status::StartupError::RegistrationAdmission, code)
             }
             publication::Error::Admission(_) => {
@@ -520,7 +520,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     config::write::<u32>(status::STAGE, 7);
     if let Err(error) = endpoint.bind_completion_queue(0) {
-        let detail = if let catten_rt::owned::IpcError::Status(code) = error {
+        let detail = if let knytos_rt::owned::IpcError::Status(code) = error {
             code
         } else {
             u64::MAX
@@ -575,15 +575,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             {
                 return request;
             }
-            catten_rt::logln!("[net] device quiescence failed; retaining controller domain");
+            knytos_rt::logln!("[net] device quiescence failed; retaining controller domain");
             loop {
-                catten_services::sleep_ms(100);
+                knytos_services::sleep_ms(100);
             }
         }
         // Interrupts are the normal wakeup path. The bounded poll also
         // recovers if a legacy virtio implementation suppresses an edge
         // while descriptors are being published.
-        let _ = catten_services::reactor::wait(Some(10), 0);
+        let _ = knytos_services::reactor::wait(Some(10), 0);
         let (_s, _c) = device_irq_ack(irq_cap);
         let _ = unsafe {
             r8(MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_ISR)
@@ -622,7 +622,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             let loop_tick = LOOP_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
             if loop_tick & 0x3ff == 0 {
                 let tx_busy = tx_in_use.iter().filter(|u| **u).count();
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[net] hb rx_unrecycled={}/{} tx_busy={}/{}",
                     rx_unrecycled,
                     rx_qsz,
@@ -638,7 +638,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // The existing DMA-ring/deferred-frame protocol adapter borrows
             // the endpoint; its owning capability never becomes a scalar.
             let m = ipc_recv(endpoint.as_raw());
-            let _attachments = catten_services::RequestAttachments::new(m.memory, m.connection);
+            let _attachments = knytos_services::RequestAttachments::new(m.memory, m.connection);
             if m.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -678,7 +678,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         config::write::<u32>(status::TX_PROGRESS, 1);
                         if !TX_SATURATED.swap(true, core::sync::atomic::Ordering::Relaxed) {
                             let busy = tx_in_use.iter().filter(|u| **u).count();
-                            catten_rt::logln!(
+                            knytos_rt::logln!(
                                 "[net] TX ring saturated: {} of {} descriptors in use",
                                 busy,
                                 tx_qsz
@@ -794,4 +794,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete_device_quiesced()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

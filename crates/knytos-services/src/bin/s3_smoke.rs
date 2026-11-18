@@ -6,12 +6,12 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
     owned::OwnedMemory,
 };
-use catten_services::{
+use knytos_services::{
     s3,
     s3_client::{
         Client,
@@ -33,7 +33,7 @@ use knytos_protocol_s3::{
 };
 use knytos_syscall::thread_exit;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const BODY: &[u8] = b"Knytos verified S3 over TLS\n";
 const KEY: &[u8] = b"smoke/round-trip.txt";
@@ -114,6 +114,6 @@ fn main(ctx: Context) -> ! {
 
     client.delete(ObjectRequest::get(KEY)).unwrap_or_else(|_| fail(0x530c));
     config::write::<u32>(status::STAGE, status::SUCCESS);
-    catten_rt::logln!("[s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded");
+    knytos_rt::logln!("[s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded");
     unsafe { thread_exit() }
 }

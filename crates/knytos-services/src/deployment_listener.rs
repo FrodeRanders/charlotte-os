@@ -1,5 +1,5 @@
 //! CQ-bound socket creation, listen setup and idle accept in the client pool.
-use catten_rt::owned::{
+use knytos_rt::owned::{
     ConnectionRef,
     IpcError,
     PendingCall,
@@ -223,7 +223,7 @@ struct Owner<'a> {
 impl Drop for Owner<'_> {
     fn drop(&mut self) {
         if self.opening.is_some() || self.pending.is_some() || self.socket.is_some() {
-            catten_rt::domain_abort();
+            knytos_rt::domain_abort();
         }
     }
 }
@@ -308,16 +308,16 @@ impl<'a> Calls for Runtime<'a> {
     fn abort(&mut self, _owner: &Owner<'a>, failure: Failure) -> ! {
         match failure {
             Failure::Binding(error) => {
-                catten_rt::logln!("[deployd] listener binding retained: {error:?}")
+                knytos_rt::logln!("[deployd] listener binding retained: {error:?}")
             }
             Failure::Observation(error) => {
-                catten_rt::logln!("[deployd] listener observation retained: {error:?}")
+                knytos_rt::logln!("[deployd] listener observation retained: {error:?}")
             }
             Failure::Deadline => {
-                catten_rt::logln!("[deployd] listener setup deadline; owner retained")
+                knytos_rt::logln!("[deployd] listener setup deadline; owner retained")
             }
         }
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     }
 }
 /// Setup and idle accepts consume the same positions as input/control/output/close.
@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn mapping_and_submission_rejection_return_socket_without_destructor_close() {
         for error in [
-            SocketError::Memory(catten_rt::owned::MemoryError::MemoryStatus(99)),
+            SocketError::Memory(knytos_rt::owned::MemoryError::MemoryStatus(99)),
             SocketError::Ipc(IpcError::Status(99)),
         ] {
             let mut m = machine(1);

@@ -21,7 +21,7 @@
 //! ```
 use alloc::vec::Vec;
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     Connection,
     ConnectionRef,
     IpcError,
@@ -114,7 +114,7 @@ impl IdentityStore for Store {
         match self.call(objstore::OP_CREATE_AT_SHARED, object)?.wait().ok()?.result {
             objstore::ERR_OK => Some(true),
             objstore::ERR_EXISTS => {
-                catten_rt::logln!("[identity] shared creation lost; waiting for owner publication");
+                knytos_rt::logln!("[identity] shared creation lost; waiting for owner publication");
                 Some(false)
             }
             _ => None,

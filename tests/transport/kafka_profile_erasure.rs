@@ -1,7 +1,7 @@
 //! Kafka launch-profile byte ownership with public credential fixtures.
 use core::hint::black_box;
 
-use catten_services::kafka as wire;
+use knytos_services::kafka as wire;
 use zeroize::Zeroizing;
 
 mod support;

@@ -293,7 +293,7 @@ wait_on_cq_checked(asid, cq, timeout):
   return readiness/deadline or distinct admission/unknown-queue rejection
 ```
 
-The runtime exposes `catten_rt::cq::wait` with typed `WaitOutcome` and
+The runtime exposes `knytos_rt::cq::wait` with typed `WaitOutcome` and
 `WaitError`; only syscalls 88/41 implement CQ wait/wake. See the
 [current contract](cq-wait.md) for explicit timeout flags and shared-CQ limits.
 

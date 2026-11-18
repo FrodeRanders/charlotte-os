@@ -2,7 +2,7 @@
 //! CQ entries are hints; only the watch's confirmed endpoint-close result
 //! permits logical unpublication. Neither grants physical cleanup authority.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     Completion,
     CompletionError,
     Connection,

@@ -1,7 +1,7 @@
 //! Public profile fixtures exercise only local byte ownership.
 use core::hint::black_box;
 
-use catten_services::s3 as wire;
+use knytos_services::s3 as wire;
 use knytos_s3::profile::OwnedProfile;
 use zeroize::Zeroizing;
 

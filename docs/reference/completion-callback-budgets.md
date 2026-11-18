@@ -11,7 +11,7 @@ Kernel code subscribes using `completion::observe`, which takes a strong
 until notification or cancellation. Dropping it removes only the subscription:
 the operation remains live, its producer continues, and transferred buffers
 remain owned until terminal completion. No syscall exposes Rust callback
-objects; applications use `catten_rt::owned`.
+objects; applications use `knytos_rt::owned`.
 
 Captured-operation preparation uses the owner-local
 `observe_registered(asid, cap, &captured, observer)`. It checks exact `Arc`

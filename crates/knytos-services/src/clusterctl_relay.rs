@@ -1,5 +1,5 @@
 //! Bounded DNS forwarding for HTTP-facing cluster administration operations.
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     ConnectionRef,
     IncomingMessage,
@@ -564,10 +564,10 @@ impl Calls for Runtime<'_> {
     }
 
     fn abort(&mut self, _owner: &Relay, error: IpcError) -> ! {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[clusterctl] accepted DNS relay binding failed; transaction retained: {error:?}"
         );
-        catten_rt::domain_abort()
+        knytos_rt::domain_abort()
     }
 }
 /// Server-side request owners retain their incoming reply and original mapping

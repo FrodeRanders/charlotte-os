@@ -9,12 +9,12 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     node::RaftNode,
     types::NodeState,
 };
-use catten_rt::config;
-use catten_services::{
+use knytos_rt::config;
+use knytos_services::{
     dns,
     name_catalog::NameCatalog,
     relmsg_transport::RelmsgRaftTransport,
@@ -39,13 +39,13 @@ use super::{
 
 /// Retire completed unregister calls without parking the reactor.
 pub(super) fn drain_local_unregistrations(
-    calls: &mut Vec<catten_services::publication_generation::Unregistration>,
+    calls: &mut Vec<knytos_services::publication_generation::Unregistration>,
 ) {
     calls.retain_mut(|call| match call.advance() {
         None => true,
-        Some(catten_services::publication_generation::Outcome::Removed) => false,
+        Some(knytos_services::publication_generation::Outcome::Removed) => false,
         Some(outcome) => {
-            catten_rt::logln!("[dns] local retirement terminal outcome {:?}; no replay", outcome);
+            knytos_rt::logln!("[dns] local retirement terminal outcome {:?}; no replay", outcome);
             false
         }
     });
@@ -85,7 +85,7 @@ pub(super) fn drive_local_calls(
                 // per-peer ACK count can identify this entry as settled even
                 // when concurrently admitted calls complete out of order.
                 let reply_ordinal = next_reply_ordinal.entry(peer.clone()).or_insert_with(|| {
-                    transport.acknowledged_count_for(&peer, catten_services::rcall::TAG_REPLY)
+                    transport.acknowledged_count_for(&peer, knytos_services::rcall::TAG_REPLY)
                 });
                 *reply_ordinal = reply_ordinal.saturating_add(1);
                 completed.push_back(CompletedCall {
@@ -100,7 +100,7 @@ pub(super) fn drive_local_calls(
                 config::write_u32_release(dns::status::REMOTE_CALLS_SERVED, *remote_calls_served);
                 transport.send_message(
                     &peer,
-                    catten_services::rcall::TAG_REPLY,
+                    knytos_services::rcall::TAG_REPLY,
                     reply.finish(result),
                 );
             }
@@ -177,13 +177,13 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>) {
 /// Sample elapsed Raft time and maintain its detached wake-up timer.
 pub(super) fn advance_raft_clock(
     node: &mut RaftNode,
-    clock: &mut catten_graft::clock::MonotonicClock,
+    clock: &mut knytos_graft::clock::MonotonicClock,
     tick_due: bool,
     heartbeat_interval_ms: u64,
     last_heartbeat_broadcast: &mut u64,
     timer_armed: &mut bool,
 ) {
-    catten_services::raft_clock::refresh(node, clock);
+    knytos_services::raft_clock::refresh(node, clock);
     if !tick_due {
         return;
     }

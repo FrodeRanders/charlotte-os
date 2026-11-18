@@ -23,7 +23,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
@@ -37,7 +37,7 @@ use catten_rt::{
         PendingCall,
     },
 };
-use catten_services::{
+use knytos_services::{
     cluster_ingress::{
         BackendSnapshot,
         FORWARDED_ETHERTYPE,
@@ -91,8 +91,8 @@ static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 /// the containing reactor through terminal abort, never replay or polling.
 fn cq_bound(mut call: PendingCall<'static>) -> PendingCall<'static> {
     if call.bind_cq(0).is_err() {
-        catten_rt::logln!("[frouter] accepted call CQ binding rejected; retaining reactor");
-        catten_rt::domain_abort();
+        knytos_rt::logln!("[frouter] accepted call CQ binding rejected; retaining reactor");
+        knytos_rt::domain_abort();
     }
     call
 }
@@ -609,8 +609,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // look us up and query our live counters.
     let endpoint =
         Endpoint::create(frouter::INTERFACE, frouter::VERSION, 8).unwrap_or_else(|_| fail());
-    if let Err(error) = catten_services::publication::register(ns_conn, frouter::NAME, &endpoint) {
-        catten_rt::logln!("[frouter] registration failed: {error:?}");
+    if let Err(error) = knytos_services::publication::register(ns_conn, frouter::NAME, &endpoint) {
+        knytos_rt::logln!("[frouter] registration failed: {error:?}");
         fail();
     }
     endpoint.bind_completion_queue(0).unwrap_or_else(|_| fail());
@@ -672,7 +672,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[frouter] shutdown: cancelling NIC receive, {} lookup(s), {} protocol \
                  forward(s), and {} L2 send(s)",
                 route_lookups.iter().filter(|lookup| lookup.call.is_some()).count(),
@@ -692,7 +692,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
             }
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[frouter] shutdown: cancelling NIC receive, {} lookup(s), {} protocol \
                      forward(s), and {} L2 send(s)",
                     route_lookups.iter().filter(|lookup| lookup.call.is_some()).count(),
@@ -708,7 +708,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 // the demultiplexer from the NIC driver.
                 let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
                 if tick & 0xff == 0 {
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[frouter] hb rx={} fwd={} dropped={} unknown={} routes={} \
                          ingress={}/{}/{} epoch={}",
                         rx_total,
@@ -822,7 +822,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             state.snapshot_lease = None;
                             state.vip_advertiser = None;
                             snapshot_expirations = snapshot_expirations.wrapping_add(1);
-                            catten_rt::logln!(
+                            knytos_rt::logln!(
                                 "[frouter] VIP SNAPSHOT LEASE EXPIRED vip={}.{}.{}.{}:{} epoch={}",
                                 state.service.address[0],
                                 state.service.address[1],
@@ -852,7 +852,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     .flatten();
                 let epoch_changed = state.logged_epoch != Some(snapshot.epoch);
                 if epoch_changed && new_advertiser == Some(snapshot.self_node) {
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[frouter] VIP SNAPSHOT OWNER vip={}.{}.{}.{}:{} node={:08x} epoch={} \
                          backends={}/{}",
                         state.service.address[0],
@@ -873,7 +873,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     && let Some(call) =
                         submit_gratuitous_arp(&net_conn, owner.mac, state.service.address)
                 {
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[frouter] VIP ADVERTISER ACQUIRED vip={}.{}.{}.{}:{} node={:08x} \
                          epoch={} backends={}/{}",
                         state.service.address[0],
@@ -1009,7 +1009,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // L2 sends all signal this CQ. The timeout is solely the
                     // next periodic route/assignment/membership refresh; an
                     // unrelated wake does not restart that deadline.
-                    catten_services::reactor::wait(Some(refresh.remaining_ms()), 0);
+                    knytos_services::reactor::wait(Some(refresh.remaining_ms()), 0);
                     continue;
                 }
                 Ok(Some(result)) => result,
@@ -1085,7 +1085,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         Ok(call) => {
                             pending_l2_sends.push(cq_bound(call));
                             if ingress_forwarded == 0 {
-                                catten_rt::logln!(
+                                knytos_rt::logln!(
                                     "[frouter] FIRST REMOTE VIP FRAME \
                                      backend={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                                     destination[0],
@@ -1156,4 +1156,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

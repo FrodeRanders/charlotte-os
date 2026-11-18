@@ -13,7 +13,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     charlotte::CharlotteTransport,
     log_store::{
         InMemoryLogStore,
@@ -43,13 +43,13 @@ use catten_graft::{
         encode_vote_response,
     },
 };
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     config,
     manifest_key,
 };
-use catten_services::{
+use knytos_services::{
     disco,
     disk_raft,
     dns,
@@ -160,7 +160,7 @@ fn read_payload_from_mem(cap: u64, length: u64) -> Option<Vec<u8>> {
     Some(value)
 }
 
-fn reply_payload(reply: u64, payload: Result<Vec<u8>, catten_graft::wire::WireError>) {
+fn reply_payload(reply: u64, payload: Result<Vec<u8>, knytos_graft::wire::WireError>) {
     if let Ok(payload) = payload
         && let Some(memory) = write_payload_to_mem(&payload)
     {
@@ -305,36 +305,36 @@ fn drive_inbound(
     node: &mut RaftNode,
     transport: &RelmsgRaftTransport,
     source_mac: [u8; 6],
-    inbound: catten_services::relmsg_transport::InboundRpc,
+    inbound: knytos_services::relmsg_transport::InboundRpc,
     millis: u64,
 ) {
     match inbound {
-        catten_services::relmsg_transport::InboundRpc::VoteRequest(request) => {
+        knytos_services::relmsg_transport::InboundRpc::VoteRequest(request) => {
             let response = node.handle_vote_request(request, millis);
-            if let Ok(payload) = catten_graft::wire::encode_vote_response(&response) {
+            if let Ok(payload) = knytos_graft::wire::encode_vote_response(&response) {
                 transport.send_response(
                     source_mac,
-                    catten_services::relmsg_transport::TAG_VOTE_RESPONSE,
+                    knytos_services::relmsg_transport::TAG_VOTE_RESPONSE,
                     payload,
                 );
             }
         }
-        catten_services::relmsg_transport::InboundRpc::AppendEntries(request) => {
+        knytos_services::relmsg_transport::InboundRpc::AppendEntries(request) => {
             let response = node.handle_append_entries(request, millis);
-            if let Ok(payload) = catten_graft::wire::encode_append_response(&response) {
+            if let Ok(payload) = knytos_graft::wire::encode_append_response(&response) {
                 transport.send_response(
                     source_mac,
-                    catten_services::relmsg_transport::TAG_APPEND_RESPONSE,
+                    knytos_services::relmsg_transport::TAG_APPEND_RESPONSE,
                     payload,
                 );
             }
         }
-        catten_services::relmsg_transport::InboundRpc::InstallSnapshot(request) => {
+        knytos_services::relmsg_transport::InboundRpc::InstallSnapshot(request) => {
             let response = node.handle_install_snapshot(request, millis);
-            if let Ok(payload) = catten_graft::wire::encode_snapshot_response(&response) {
+            if let Ok(payload) = knytos_graft::wire::encode_snapshot_response(&response) {
                 transport.send_response(
                     source_mac,
-                    catten_services::relmsg_transport::TAG_SNAPSHOT_RESPONSE,
+                    knytos_services::relmsg_transport::TAG_SNAPSHOT_RESPONSE,
                     payload,
                 );
             }
@@ -413,7 +413,7 @@ fn main(ctx: Context) -> ! {
         _ => {
             let mut identity_retries = 120u32;
             loop {
-                if let Some(identity) = catten_services::node_identity::NodeIdentity::load_or_create(
+                if let Some(identity) = knytos_services::node_identity::NodeIdentity::load_or_create(
                     names, cluster_id, None,
                 ) {
                     break identity.name_str().to_string();
@@ -436,7 +436,7 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(status::STAGE, 3);
 
-    let name_u64 = catten_services::raft_name(node_id.as_bytes());
+    let name_u64 = knytos_services::raft_name(node_id.as_bytes());
     let register = ipc_scalar_call_connection(
         ns_conn,
         ns::OP_REGISTER,
@@ -486,7 +486,7 @@ fn main(ctx: Context) -> ! {
         None
     } else {
         Some(disk_raft::open(names, namespace).unwrap_or_else(|error| {
-            catten_rt::logln!("[raft-store] open rejected: {:?}", error);
+            knytos_rt::logln!("[raft-store] open rejected: {:?}", error);
             fatal(9)
         }))
     };
@@ -527,15 +527,15 @@ fn main(ctx: Context) -> ! {
             continue;
         }
 
-        let peer_name = catten_services::raft_name(peer_id.as_bytes());
+        let peer_name = knytos_services::raft_name(peer_id.as_bytes());
         peers.push(Peer::voter(peer_id.to_string(), peer_name));
         peer_specs.push((peer_id.to_string(), peer_name, 0));
     }
 
     config::write::<u32>(status::STAGE, 5);
 
-    let mut raft_clock = catten_services::raft_clock::start();
-    let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
+    let mut raft_clock = knytos_services::raft_clock::start();
+    let mut node = RaftNode::new(knytos_graft::node::RaftNodeConfig {
         me,
         timeout_millis: election_timeout_ms,
         log_store,
@@ -548,7 +548,7 @@ fn main(ctx: Context) -> ! {
         snapshot_chunk_bytes: 3000,
     })
     .unwrap_or_else(|error| {
-        catten_rt::logln!("[raft-store] snapshot restore rejected: {:?}", error);
+        knytos_rt::logln!("[raft-store] snapshot restore rejected: {:?}", error);
         fatal(16)
     });
     config::write::<u32>(status::CURRENT_TERM, node.current_term as u32);
@@ -565,7 +565,7 @@ fn main(ctx: Context) -> ! {
 
     let cq = ctx.completion_queue_layout();
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
-    let mut clock_watchdog = catten_services::deadline::Deadline::after(
+    let mut clock_watchdog = knytos_services::deadline::Deadline::after(
         if timer_armed {
             1_000
         } else {
@@ -599,12 +599,12 @@ fn main(ctx: Context) -> ! {
         // Endpoint readiness and transport completions wake this reactor
         // immediately. The retained watchdog supplements the detached clock;
         // ordinary readiness never restarts its deadline.
-        catten_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
+        knytos_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
         // A successfully submitted detached timer is not proof that its CQ
         // completion will arrive. Keep the bounded CQ timeout as an
         // independent clock watchdog so one delayed/lost cookie cannot stop
         // elections and heartbeats forever.
-        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+        knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let mut tick_due = clock_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
@@ -645,7 +645,7 @@ fn main(ctx: Context) -> ! {
                 .iter()
                 .find(|peer| &peer.id == peer_id)
                 .map(|peer| peer.service_name)
-                .unwrap_or_else(|| catten_services::raft_name(peer_id.as_bytes()));
+                .unwrap_or_else(|| knytos_services::raft_name(peer_id.as_bytes()));
             peer_specs.push((peer_id.clone(), peer_name, 0));
         }
         for (peer_id, peer_name, pending) in &mut peer_specs {
@@ -829,7 +829,7 @@ fn main(ctx: Context) -> ! {
         // Drain inbound Raft traffic after processing the timer tick.
         loop {
             let message = ipc_recv(endpoint);
-            catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+            knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -899,9 +899,9 @@ fn main(ctx: Context) -> ! {
                             // Raft EtherType drive consensus.
                             if frame[0..6] == local_mac
                                 && u16::from_be_bytes([frame[12], frame[13]])
-                                    == catten_services::raft::ETHERTYPE
+                                    == knytos_services::raft::ETHERTYPE
                                 && let Ok((tag, payload)) =
-                                    catten_graft::wire::parse_tagged_payload(&frame[14..])
+                                    knytos_graft::wire::parse_tagged_payload(&frame[14..])
                             {
                                 let mut source_mac = [0u8; 6];
                                 source_mac.copy_from_slice(&frame[6..12]);
@@ -1114,7 +1114,7 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+        knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
         if tick_due {
             if node.check_timeout() {
                 node.start_election(node.millis());
@@ -1130,7 +1130,7 @@ fn main(ctx: Context) -> ! {
             }
             // Only a real clock cookie or this retained watchdog starts a new
             // period. Other readiness cannot postpone its original deadline.
-            clock_watchdog = catten_services::deadline::Deadline::after(
+            clock_watchdog = knytos_services::deadline::Deadline::after(
                 if timer_armed {
                     1_000
                 } else {
@@ -1257,4 +1257,4 @@ fn main(ctx: Context) -> ! {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

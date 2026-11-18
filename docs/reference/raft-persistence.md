@@ -1,6 +1,6 @@
 # Current Raft persistence
 
-`catten_services::disk_raft::open` opens the complete durable pair before either
+`knytos_services::disk_raft::open` opens the complete durable pair before either
 store is exposed to Raft. DNS always requires it. The generic Raft service
 accepts explicit memory mode (`storage=0`, or omitted) or required durability
 (`storage=2`); mode 1 and malformed policy values reject. A rejected disk pair

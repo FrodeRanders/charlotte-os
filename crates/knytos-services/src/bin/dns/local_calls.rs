@@ -1,7 +1,7 @@
 //! One owned node-local invocation, advanced on shared reactor readiness.
 
-use catten_rt::owned::ConnectionRef;
-use catten_services::{
+use knytos_rt::owned::ConnectionRef;
+use knytos_services::{
     deadline::Deadline,
     local_invocation::LocalInvocation,
 };

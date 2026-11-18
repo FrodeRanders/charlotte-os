@@ -44,7 +44,7 @@ changes who supplies reply storage; it does not refund or reclassify charges.
 
 ## Configuration and DNS follow-through
 
-`catten_services::entropy` groups `BUFFER_PAGES = 1`,
+`knytos_services::entropy` groups `BUFFER_PAGES = 1`,
 `BUFFER_BYTES = BUFFER_PAGES * 4096` and `MAX_REQUEST = BUFFER_BYTES`.
 These compile-time dimensions control client allocations and the driver's
 persistent private entropy DMA buffer together. The 4096-byte page unit is an

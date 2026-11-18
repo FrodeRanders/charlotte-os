@@ -16,7 +16,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     config,
@@ -31,7 +31,7 @@ use catten_rt::{
         request_node_shutdown,
     },
 };
-use catten_services::{
+use knytos_services::{
     dns,
     net,
     node_identity,
@@ -46,7 +46,7 @@ use catten_services::{
     wait_for_registered_name_owned,
 };
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const STAGE_IDENTITY: u32 = 2;
 const STAGE_SERVING: u32 = 6;
@@ -154,7 +154,7 @@ fn note_launch_failure(
         failures,
         remaining_ms,
     });
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[agent] launch attempt failed for {:?} generation={}; retry in {} ms (failure {})",
         core::str::from_utf8(identity).unwrap_or("<invalid>"),
         generation,
@@ -168,9 +168,9 @@ fn clear_launch_retry(retries: &mut Vec<LaunchRetry>, kind: LaunchRetryKind, ide
 }
 
 fn fail(stage: u32) -> ! {
-    catten_rt::logln!("[agent] fatal stage={:#x}", stage);
+    knytos_rt::logln!("[agent] fatal stage={:#x}", stage);
     config::write_u32_release(knytos_launch::agent_status::STAGE, stage);
-    catten_rt::domain_abort()
+    knytos_rt::domain_abort()
 }
 
 fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
@@ -325,7 +325,7 @@ fn query_release(dns_connection: ConnectionRef<'_>, release_name: &[u8]) -> Opti
 }
 
 fn decode_deployment(bytes: &[u8]) -> Option<DeploymentInfo> {
-    let entry = catten_services::name_catalog::decode_deployment_result(bytes)?;
+    let entry = knytos_services::name_catalog::decode_deployment_result(bytes)?;
     Some(DeploymentInfo {
         generation: entry.generation,
         replica_nodes: entry.replica_nodes,
@@ -346,7 +346,7 @@ fn fetch_from_central_store(
     {
         return Some(artifact);
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[agent] starting full S3 GET for {:?} key {:?}",
         core::str::from_utf8(descriptor.artifact_name).unwrap_or("<invalid>"),
         core::str::from_utf8(variant.object_key).unwrap_or("<invalid>")
@@ -363,10 +363,10 @@ fn fetch_from_central_store(
         descriptor.artifact_name,
     ) != knytos_launch::signature_note::VerifyOutcome::Valid
     {
-        catten_rt::logln!("[agent] fetched artifact failed identity validation");
+        knytos_rt::logln!("[agent] fetched artifact failed identity validation");
         return None;
     }
-    catten_rt::logln!("[agent] fetched and verified {} bytes", artifact.len());
+    knytos_rt::logln!("[agent] fetched and verified {} bytes", artifact.len());
     Some(artifact)
 }
 
@@ -377,23 +377,23 @@ fn fetch_s3_object(
     expected_digest: &[u8; 32],
 ) -> Option<Vec<u8>> {
     let Some((_, connection)) = try_registered_name_bytes_owned(names, b"s3") else {
-        catten_rt::logln!("[agent] S3 GET unavailable: connector is not registered");
+        knytos_rt::logln!("[agent] S3 GET unavailable: connector is not registered");
         return None;
     };
     let client = S3Client::new(connection.as_ref());
     let (mut get, info) = match client.get(knytos_protocol_s3::ObjectRequest::get(key)) {
         Ok(result) => result,
         Err(error) => {
-            catten_rt::logln!("[agent] S3 GET begin failed for key {:?}: {:?}", key, error);
+            knytos_rt::logln!("[agent] S3 GET begin failed for key {:?}: {:?}", key, error);
             return None;
         }
     };
     let Ok(expected_len) = usize::try_from(info.content_length) else {
-        catten_rt::logln!("[agent] S3 GET length does not fit usize for key {:?}", key);
+        knytos_rt::logln!("[agent] S3 GET length does not fit usize for key {:?}", key);
         return None;
     };
     if info.status != 200 || expected_len == 0 || expected_len > max_len {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[agent] S3 GET rejected metadata for key {:?}: status={} length={} max={}",
             key,
             info.status,
@@ -408,7 +408,7 @@ fn fetch_s3_object(
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
             Err(error) => {
-                catten_rt::logln!("[agent] S3 GET read failed for key {:?}: {:?}", key, error);
+                knytos_rt::logln!("[agent] S3 GET read failed for key {:?}: {:?}", key, error);
                 return None;
             }
         };
@@ -416,17 +416,17 @@ fn fetch_s3_object(
         let mapping = match memory.map_read_only() {
             Ok(mapping) => mapping,
             Err((_, error)) => {
-                catten_rt::logln!("[agent] S3 GET chunk mapping failed: {:?}", error);
+                knytos_rt::logln!("[agent] S3 GET chunk mapping failed: {:?}", error);
                 return None;
             }
         };
         let Some(chunk_bytes) = mapping.as_slice().get(..len) else {
-            catten_rt::logln!("[agent] S3 GET returned an invalid chunk length {}", len);
+            knytos_rt::logln!("[agent] S3 GET returned an invalid chunk length {}", len);
             return None;
         };
         bytes.extend_from_slice(chunk_bytes);
         if bytes.len() > expected_len {
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[agent] S3 GET exceeded declared length for key {:?}: received={} expected={}",
                 key,
                 bytes.len(),
@@ -436,11 +436,11 @@ fn fetch_s3_object(
         }
     }
     if let Err(error) = get.close() {
-        catten_rt::logln!("[agent] S3 GET close failed for key {:?}: {:?}", key, error);
+        knytos_rt::logln!("[agent] S3 GET close failed for key {:?}: {:?}", key, error);
         return None;
     }
     if bytes.len() != expected_len {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[agent] S3 GET length mismatch for key {:?}: received={} expected={}",
             key,
             bytes.len(),
@@ -449,7 +449,7 @@ fn fetch_s3_object(
         return None;
     }
     if knytos_launch::sha256::digest(&bytes) != *expected_digest {
-        catten_rt::logln!("[agent] S3 GET digest mismatch for key {:?}", key);
+        knytos_rt::logln!("[agent] S3 GET digest mismatch for key {:?}", key);
         return None;
     }
     Some(bytes)
@@ -517,7 +517,7 @@ fn launch(
         entry.descriptor.len(),
     )
     .ok()?;
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[agent] launched {:?} generation={} asid={} principal={:#x}",
         core::str::from_utf8(name).unwrap_or("<invalid>"),
         entry.generation,
@@ -595,7 +595,7 @@ fn launch_operational(
     let package = memory_from_bytes(&package)?;
     let domain =
         launch_operational_connector(package, package_len, &binding.target_artifact).ok()?;
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[agent] launched operational profile={:?} target={:?} generation={} asid={}",
         core::str::from_utf8(&binding.profile_name).unwrap_or("<invalid>"),
         core::str::from_utf8(&binding.target_artifact).unwrap_or("<invalid>"),
@@ -634,7 +634,7 @@ fn publish_if_ready(
         return;
     };
     if reply.result >= 1 {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[agent] published {:?} deployment_generation={} service_generation={}",
             core::str::from_utf8(&active.name).unwrap_or("<invalid>"),
             active.generation,
@@ -649,9 +649,9 @@ fn publish_if_ready(
 fn drain_for_node_shutdown(
     active: &mut Vec<ActiveDeployment>,
     operational: &mut Vec<ActiveOperational>,
-    request: catten_rt::ShutdownRequest,
-) -> catten_rt::ShutdownRequest {
-    catten_rt::logln!("[agent] node shutdown requested deadline_ms={}", request.deadline_ms);
+    request: knytos_rt::ShutdownRequest,
+) -> knytos_rt::ShutdownRequest {
+    knytos_rt::logln!("[agent] node shutdown requested deadline_ms={}", request.deadline_ms);
     config::write_u32_release(knytos_launch::agent_status::STAGE, STAGE_DRAINING_APPLICATIONS);
     for running in active.iter_mut() {
         running.retiring = true;
@@ -677,7 +677,7 @@ fn drain_for_node_shutdown(
 
         if active.is_empty() {
             if !draining_connectors {
-                catten_rt::logln!("[agent] application domains drained; draining connectors");
+                knytos_rt::logln!("[agent] application domains drained; draining connectors");
                 config::write_u32_release(
                     knytos_launch::agent_status::STAGE,
                     STAGE_DRAINING_CONNECTORS,
@@ -699,7 +699,7 @@ fn drain_for_node_shutdown(
         }
 
         if active.is_empty() && operational.is_empty() {
-            catten_rt::logln!("[agent] child domains drained for node shutdown");
+            knytos_rt::logln!("[agent] child domains drained for node shutdown");
             config::write_u32_release(knytos_launch::agent_status::STAGE, STAGE_SHUTDOWN_READY);
             return request;
         }
@@ -707,7 +707,7 @@ fn drain_for_node_shutdown(
     }
 }
 
-fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
+fn serve(ctx: &Context) -> knytos_rt::ShutdownRequest {
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail(STAGE_FAIL));
     let poll_ms = match ctx.manifest_value(manifest_key(b"poll-ms")) {
         Some(ManifestValue::Unsigned(ms)) => ms,
@@ -756,13 +756,13 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
                 fail(STAGE_FAIL)
             };
             match request_node_shutdown(envelope_memory, envelope.len()) {
-                Ok(()) | Err(catten_rt::NodeShutdownRequestError::AlreadyInProgress) => {
+                Ok(()) | Err(knytos_rt::NodeShutdownRequestError::AlreadyInProgress) => {
                     observed_shutdown_generation = generation;
                     config::write_u32_release(
                         knytos_launch::agent_status::STAGE,
                         STAGE_CLUSTER_SHUTDOWN_ACCEPTED,
                     );
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[agent] accepted cluster shutdown sequence={} generation={} \
                          node_grace_ms={} phase_grace_ms={}",
                         fields.sequence,
@@ -772,8 +772,8 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
                     );
                 }
                 Err(
-                    catten_rt::NodeShutdownRequestError::InvalidEnvelope
-                    | catten_rt::NodeShutdownRequestError::Denied,
+                    knytos_rt::NodeShutdownRequestError::InvalidEnvelope
+                    | knytos_rt::NodeShutdownRequestError::Denied,
                 ) => fail(STAGE_FAIL),
             }
         }
@@ -955,7 +955,7 @@ fn selected_variant<'a>(
     if !target.supports(variant.target) {
         return None;
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[agent] selected variant={} architecture={:?} abi={} required_features={:#x}",
         entry.replica_variants[position],
         variant.target.architecture,
@@ -971,10 +971,10 @@ fn fetch_cached_artifact(
     variant: knytos_launch::deployment::ArtifactVariant<'_>,
     key: &[u8; 32],
 ) -> Option<Vec<u8>> {
-    let connection = lookup(names, catten_services::objstore::NAME)?;
+    let connection = lookup(names, knytos_services::objstore::NAME)?;
     let reply = connection
         .as_ref()
-        .call(catten_services::objstore::OP_READ, knytos_launch::artifact_object_id(name))
+        .call(knytos_services::objstore::OP_READ, knytos_launch::artifact_object_id(name))
         .ok()?
         .wait()
         .ok()?;
@@ -990,6 +990,6 @@ fn fetch_cached_artifact(
     {
         return None;
     }
-    catten_rt::logln!("[agent] verified selected variant in local artifact cache");
+    knytos_rt::logln!("[agent] verified selected variant in local artifact cache");
     Some(bytes.to_vec())
 }

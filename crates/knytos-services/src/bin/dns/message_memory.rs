@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use catten_services::dns;
+use knytos_services::dns;
 use knytos_syscall::{
     IpcMessage,
     ipc_reply,
@@ -19,19 +19,19 @@ pub(super) struct CallRequest {
     pub(super) name: Vec<u8>,
     pub(super) opcode: u32,
     pub(super) arg: i64,
-    pub(super) reply: Option<catten_rt::owned::ReplyToken>,
+    pub(super) reply: Option<knytos_rt::owned::ReplyToken>,
 }
 
 pub(super) fn read_call_request(message: IpcMessage) -> Option<CallRequest> {
     // Raw receive ABI boundary. OP_CALL bypasses the scalar attachment guard
     // and this transaction consumes every unique attachment/reply exactly once.
-    let Ok(Some(mut incoming)) = (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+    let Ok(Some(mut incoming)) = (unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) })
     else {
         return None;
     };
     let parsed = (|| {
         let length = usize::try_from(incoming.arg0).map_err(|_| dns::ERR_TOO_LARGE)?;
-        if !(catten_services::dns_call::HEADER_LEN..=catten_services::dns_call::MAX_FRAME_LEN)
+        if !(knytos_services::dns_call::HEADER_LEN..=knytos_services::dns_call::MAX_FRAME_LEN)
             .contains(&length)
         {
             return Err(dns::ERR_TOO_LARGE);
@@ -41,7 +41,7 @@ pub(super) fn read_call_request(message: IpcMessage) -> Option<CallRequest> {
             return Err(dns::ERR_TOO_LARGE);
         }
         let mapping = memory.map_read_only().map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
-        let request = catten_services::dns_call::decode(&mapping.as_slice()[..length])
+        let request = knytos_services::dns_call::decode(&mapping.as_slice()[..length])
             .ok_or(dns::ERR_BAD_OPCODE)?;
         let mut name = Vec::new();
         name.try_reserve_exact(request.name.len()).map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
@@ -215,9 +215,9 @@ pub(super) fn packed_name(packed: u64) -> Vec<u8> {
 /// Adopt the release transaction once and prepare its terminal output before admission.
 pub(super) fn read_release_request(
     message: IpcMessage,
-) -> Option<(Vec<u8>, catten_services::release_admission::PreparedReply)> {
+) -> Option<(Vec<u8>, knytos_services::release_admission::PreparedReply)> {
     // Raw receive boundary: no scalar attachment guard or caller may reuse this message.
-    let Ok(Some(mut incoming)) = (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+    let Ok(Some(mut incoming)) = (unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) })
     else {
         return None;
     };
@@ -248,7 +248,7 @@ pub(super) fn read_release_request(
             return None;
         }
     };
-    match catten_services::release_admission::PreparedReply::prepare(token, &envelope) {
+    match knytos_services::release_admission::PreparedReply::prepare(token, &envelope) {
         Ok(reply) => Some((envelope, reply)),
         Err((token, code)) => {
             let _ = token.reply(code);

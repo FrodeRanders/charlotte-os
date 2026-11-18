@@ -133,7 +133,7 @@ Version-1 records are unsupported.
 
 ## Wire and API bounds
 
-`catten_services::cluster_observe` owns the `CLOBSV2` codec. Version 2 is
+`knytos_services::cluster_observe` owns the `CLOBSV2` codec. Version 2 is
 limited to 32 nodes, 256 deployments, the launch ABI's bounded ingress table,
 and 64 KiB total. Node identities are rendered as 16-digit hexadecimal strings
 in JSON so JavaScript cannot lose precision. Unknown flags, noncanonical

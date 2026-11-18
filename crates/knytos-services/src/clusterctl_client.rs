@@ -1,6 +1,6 @@
 //! Bounded cluster-control calls for the deployment HTTP adapter.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     CallResult,
     ConnectionRef,
     IpcError,

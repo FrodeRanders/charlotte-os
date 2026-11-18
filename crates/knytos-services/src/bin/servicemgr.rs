@@ -9,11 +9,11 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     authorization::{
         AuthorizationRights,
         wire,
@@ -181,10 +181,10 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 3);
 
     loop {
-        catten_services::reactor::wait(None, 0);
+        knytos_services::reactor::wait(None, 0);
         loop {
             let m = ipc_recv(ep);
-            let _attachments = catten_services::RequestAttachments::new(m.memory, m.connection);
+            let _attachments = knytos_services::RequestAttachments::new(m.memory, m.connection);
             if m.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -331,4 +331,4 @@ fn persistent_replacement(ns_conn: u64) -> (u64, u64) {
     }
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

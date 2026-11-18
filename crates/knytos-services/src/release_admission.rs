@@ -1,5 +1,5 @@
 //! Owned destination prepared before release admission or follower relay.
-use catten_rt::owned::{
+use knytos_rt::owned::{
     MappedMemory,
     OwnedMemory,
     ReplyToken,

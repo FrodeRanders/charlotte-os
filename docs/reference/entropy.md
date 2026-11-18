@@ -70,7 +70,7 @@ replies therefore consumes caller backing rather than fresh producer backing.
 This does not eliminate IPC metadata admission, queue contention, producer
 mapping costs or denial of service from authorized flooding.
 
-Virtqueue memory uses `catten_rt::owned::SharedDmaMemory`. This owner keeps the
+Virtqueue memory uses `knytos_rt::owned::SharedDmaMemory`. This owner keeps the
 memory object, CPU mapping, and DMA mapping together; access is volatile, and
 drop order removes device access before unmapping CPU access and closing the
 memory capability. Setup and teardown errors retain the precise mapped or
@@ -112,7 +112,7 @@ asynchronous capacity-report reactor migration or a latency guarantee for
 kernel cleanup. Independent failed collections retain the existing report
 interval and fail-closed no-nonce behavior.
 
-Protocol storage dimensions are grouped in `catten_services::entropy`:
+Protocol storage dimensions are grouped in `knytos_services::entropy`:
 `BUFFER_PAGES = 1`, `BUFFER_BYTES = BUFFER_PAGES * 4096` and
 `MAX_REQUEST = BUFFER_BYTES`. The page size is the memory-object ABI's structural
 unit. These are compile-time settings; no launch/boot resource or live override

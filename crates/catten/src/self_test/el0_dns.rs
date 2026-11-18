@@ -23,7 +23,7 @@ mod inner {
 
     // "dns" packed LE; the dns service registers under this name.
     const DNS_NAME: u64 = 0x0073_6e64;
-    // catten_services::dns opcodes.
+    // knytos_services::dns opcodes.
     const DNS_OP_REGISTER: u32 = 1;
     const LONG_ECHO_NAME: &[u8] = b"cluster.console.echo.primary.v1";
     const DNS_OP_EVENT_FIRE: u32 = 12;
@@ -40,7 +40,7 @@ mod inner {
     const ALPHA_NAME: u64 = 0x0061_6870_6c61;
     // "echo" packed LE.
     const ECHO_NAME: u64 = 0x0000_6f68_6365;
-    // catten_services::echo opcodes.
+    // knytos_services::echo opcodes.
     const ECHO_OP_ECHO: u32 = 1;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
@@ -360,7 +360,7 @@ mod inner {
         use crate::cpu::scheduler::yield_lp;
 
         // Logical artifact name: "greet".
-        // catten_services::dns::artifact_object_id(b"greet").
+        // knytos_services::dns::artifact_object_id(b"greet").
         const DEPLOY_OBJECT_ID: u64 = 0xfffe_ea29_637f_e28a;
         const DNS_OP_DEPLOY_SUBMIT: u32 = 33;
         const DNS_OP_GET: u32 = 1;

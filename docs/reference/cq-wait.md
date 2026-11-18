@@ -16,7 +16,7 @@ Rebuild/re-sign all variants; ABI 1/2/3 requirements reject on ABI 4 nodes.
 
 There is no timeout sentinel. Some(u64::MAX) remains a finite request; None
 encodes timeout zero/flag zero. Invalid flag, a nonzero event-only timeout or
-wide queue rejects before registration. The safe runtime `catten_rt::cq::wait`
+wide queue rejects before registration. The safe runtime `knytos_rt::cq::wait`
 returns `WaitOutcome::{Ready, Deadline}` or `WaitError::{AdmissionRejected,
 InvalidQueueOrRequest, InvalidStatus}`. An event-only deadline status is invalid.
 
@@ -47,7 +47,7 @@ See the [refactoring evidence](../reports/audits/2026-10-25-refactoring-cq-readi
 
 Readiness is a hint, not result observation, attachment adoption or physical
 quiescence. Preserve every pending operation and borrowed buffer on timeout or
-rejection. `catten_services::reactor::wait` gives ordinary reference reactors a
+rejection. `knytos_services::reactor::wait` gives ordinary reference reactors a
 shared explicit policy: log and abort the domain on wait rejection. It cannot
 spin, invent a protocol clock tick or replay an accepted request. Grant control
 and security fixtures retain their specialized bounded admission policy.

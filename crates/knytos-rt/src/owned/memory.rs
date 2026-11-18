@@ -251,7 +251,7 @@ pub enum SharedDmaMapError {
 /// subsequent mapping, lending and release of uncertain device backing.
 ///
 /// ```compile_fail
-/// use catten_rt::owned::FailedSharedDmaMemory;
+/// use knytos_rt::owned::FailedSharedDmaMemory;
 /// fn cpu_access(mut failed: FailedSharedDmaMemory) {
 ///     let _ = failed.as_mut_slice();
 /// }

@@ -37,17 +37,17 @@ use core::sync::atomic::{
     Ordering,
 };
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 // Simple bump allocator for queue virtual addresses
 static DMA_DOMAIN: AtomicU64 = AtomicU64::new(0);
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
 };
-use catten_services::{
+use knytos_services::{
     block,
     ns,
     sleep_ms,
@@ -746,7 +746,7 @@ fn drain_outstanding(io: &mut IoState, dma_domain: u64, irq_cap: u64) -> bool {
         if io.outstanding == 0 {
             return true;
         }
-        catten_services::reactor::wait(Some(10), 0);
+        knytos_services::reactor::wait(Some(10), 0);
         let _ = device_irq_ack(irq_cap);
     }
     false
@@ -765,7 +765,7 @@ fn flush_controller(io: &mut IoState, irq_cap: u64) -> bool {
             // different completion here is inconsistent and must fail closed.
             return false;
         }
-        catten_services::reactor::wait(Some(10), 0);
+        knytos_services::reactor::wait(Some(10), 0);
         let _ = device_irq_ack(irq_cap);
     }
     false
@@ -904,7 +904,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if quiesce(&mut io, endpoint, dma_domain, irq_cap) {
                 return request;
             }
-            catten_rt::logln!("[nvme] device quiescence failed; retaining controller domain");
+            knytos_rt::logln!("[nvme] device quiescence failed; retaining controller domain");
             // Do not hang node shutdown forever if the controller never
             // drains. The SMMU aborting STE installed during domain destroy
             // still isolates the device, so exit after a bounded grace period.
@@ -915,7 +915,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 let elapsed_ms =
                     now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
                 if elapsed_ms >= QUIESCE_TIMEOUT_MS {
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[nvme] quiescence deadline expired; exiting with the controller masked"
                     );
                     return request;
@@ -929,7 +929,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // idle controller needs no watchdog. Retain the bounded missed-MSI-X
         // fallback while commands (and their DMA/reply owners) are outstanding.
         let watchdog_ms = (io.outstanding != 0).then_some(10);
-        catten_services::reactor::wait(watchdog_ms, 0);
+        knytos_services::reactor::wait(watchdog_ms, 0);
 
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
@@ -943,7 +943,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         loop {
             let message = ipc_recv(endpoint);
             let _attachments =
-                catten_services::RequestAttachments::connection_only(message.connection);
+                knytos_services::RequestAttachments::connection_only(message.connection);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }

@@ -51,7 +51,7 @@ their values are not printed or used to synthesize a table. Runner-local
 VIP/port values still select the first assignment's SLIRP host-forwarding
 target and are not a second kernel policy source.
 
-The unused `catten_services::socket::MAX_SOCKETS` export is removed. Socket
+The unused `knytos_services::socket::MAX_SOCKETS` export is removed. Socket
 capacity comes from the privileged TCP/IP launch policy, with separate total
 slots and per-principal socket/buffer quotas. The deprecated constant's 16
 was never the current stack capacity. No wire opcode, runtime ABI or admission

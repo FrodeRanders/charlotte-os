@@ -80,19 +80,19 @@
       ],
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_rt-7565f8c504a110ab)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_rt-7565f8c504a110ab)",
           "passed": 53,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/debug/deps/catten_rt-7565f8c504a110ab",
+          "executable": "target/debug/deps/knytos_rt-7565f8c504a110ab",
           "executable_sha256": "6b717ab9d72e6a3d6263f6472021447aa273247183d161dda57dceedb831c586"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_services-8baf3ad084f7a274)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_services-8baf3ad084f7a274)",
           "passed": 252,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/debug/deps/catten_services-8baf3ad084f7a274",
+          "executable": "target/debug/deps/knytos_services-8baf3ad084f7a274",
           "executable_sha256": "cae07d28b634ff00f6367d1fcaae226b74e9a7396d5b0ae5b34112d7f8dc4653"
         },
         {
@@ -184,13 +184,13 @@
           "executable_sha256": "2bbea727c9c16b2f12cef442498d1f83cbd126318a918d496ea5f79fa1b875a3"
         },
         {
-          "harness": "Doc-tests catten_rt",
+          "harness": "Doc-tests knytos_rt",
           "passed": 1,
           "failed": 0,
           "ignored": 2
         },
         {
-          "harness": "Doc-tests catten_services",
+          "harness": "Doc-tests knytos_services",
           "passed": 0,
           "failed": 0,
           "ignored": 0
@@ -217,19 +217,19 @@
       ],
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_rt-f5e796761dc4e325)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_rt-f5e796761dc4e325)",
           "passed": 53,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/release/deps/catten_rt-f5e796761dc4e325",
+          "executable": "target/release/deps/knytos_rt-f5e796761dc4e325",
           "executable_sha256": "9880a33c3c998bf02362c806f2d75abb7051d2c7965f20220f907d885ad4b9e6"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_services-1557187fb8e52239)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_services-1557187fb8e52239)",
           "passed": 252,
           "failed": 0,
           "ignored": 0,
-          "executable": "target/release/deps/catten_services-1557187fb8e52239",
+          "executable": "target/release/deps/knytos_services-1557187fb8e52239",
           "executable_sha256": "c1b66581ac41ae03cdd10fb1db303933eabdcac297d549eeff8548c055d3b6dc"
         },
         {
@@ -321,19 +321,19 @@
           "executable_sha256": "db6674c52e9806543bf41d922cdeb16c6b7b3ee8c2f90d400ac0b9326b655223"
         },
         {
-          "harness": "Doc-tests catten_rt",
+          "harness": "Doc-tests knytos_rt",
           "passed": 0,
           "failed": 0,
           "ignored": 1
         },
         {
-          "harness": "Doc-tests catten_rt",
+          "harness": "Doc-tests knytos_rt",
           "passed": 1,
           "failed": 0,
           "ignored": 1
         },
         {
-          "harness": "Doc-tests catten_services",
+          "harness": "Doc-tests knytos_services",
           "passed": 0,
           "failed": 0,
           "ignored": 0

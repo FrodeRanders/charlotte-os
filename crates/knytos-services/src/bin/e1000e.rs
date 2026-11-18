@@ -18,12 +18,12 @@ use alloc::{
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
 };
-use catten_services::{
+use knytos_services::{
     net,
     ns,
     wait_reply,
@@ -247,7 +247,7 @@ unsafe fn reset_controller() -> bool {
         }
         // Reset completion is asynchronous. Let another runnable thread use
         // this LP between bounded status checks instead of burning cycles.
-        let _ = catten_services::reactor::wait(Some(RESET_WAIT_MILLIS), 0);
+        let _ = knytos_services::reactor::wait(Some(RESET_WAIT_MILLIS), 0);
     }
     false
 }
@@ -455,7 +455,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             link_up = true;
             break;
         }
-        let _ = catten_services::reactor::wait(Some(LINK_WAIT_MILLIS), 0);
+        let _ = knytos_services::reactor::wait(Some(LINK_WAIT_MILLIS), 0);
         let cause = unsafe { mmio_read(ICR) };
         let _ = device_irq_ack(irq_cap);
         config::write::<u32>(status::INTERRUPT_CAUSE, cause);
@@ -524,12 +524,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             {
                 return request;
             }
-            catten_rt::logln!("[e1000e] device quiescence failed; retaining controller domain");
+            knytos_rt::logln!("[e1000e] device quiescence failed; retaining controller domain");
             loop {
-                catten_services::sleep_ms(100);
+                knytos_services::sleep_ms(100);
             }
         }
-        let _ = catten_services::reactor::wait(Some(10), 0);
+        let _ = knytos_services::reactor::wait(Some(10), 0);
         let cause = unsafe { mmio_read(ICR) };
         let (_status, _count) = device_irq_ack(irq_cap);
         config::write::<u32>(status::INTERRUPT_CAUSE, cause);
@@ -558,7 +558,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
             if tick & 0x3ff == 0 {
                 let tx_busy = tx_in_use.iter().filter(|u| **u).count();
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[e1000e] hb rx_pending={} tx_busy={}/{} icr={:#x}",
                     received.len(),
                     tx_busy,
@@ -577,7 +577,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         loop {
             let message = ipc_recv(ep);
             let _attachments =
-                catten_services::RequestAttachments::connection_only(message.connection);
+                knytos_services::RequestAttachments::connection_only(message.connection);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -696,4 +696,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete_device_quiesced()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

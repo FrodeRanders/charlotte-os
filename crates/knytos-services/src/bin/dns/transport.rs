@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use catten_graft::{
+use knytos_graft::{
     node::RaftNode,
     wire::{
         encode_append_response,
@@ -10,7 +10,7 @@ use catten_graft::{
         encode_vote_response,
     },
 };
-use catten_services::{
+use knytos_services::{
     disco,
     relmsg_transport::{
         InboundRpc,

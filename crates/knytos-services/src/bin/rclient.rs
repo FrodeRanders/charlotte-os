@@ -4,12 +4,12 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
     owned::OwnedMemory,
 };
-use catten_services::{
+use knytos_services::{
     relmsg,
     wait_for_registered_name_owned,
 };
@@ -126,4 +126,4 @@ fn main(ctx: Context) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

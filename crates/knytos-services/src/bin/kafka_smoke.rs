@@ -7,11 +7,11 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     kafka as protocol,
     kafka_client::{
         Client,
@@ -24,7 +24,7 @@ use catten_services::{
 use knytos_protocol_kafka::RecordRequest;
 use knytos_syscall::thread_exit;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const INPUT: &[u8] = b"knytos-input";
 const OUTPUT: &[u8] = b"knytos-output";
@@ -58,8 +58,8 @@ fn produce_when_ready(client: &Client<'_>, value: &[u8]) -> Result<i64, Error> {
 }
 
 fn next_value<'connection>(
-    consumer: &mut catten_services::kafka_client::Consumer<'connection>,
-) -> Result<Option<(catten_services::kafka_client::DeliveryToken<'connection>, Vec<u8>, i64)>, Error>
+    consumer: &mut knytos_services::kafka_client::Consumer<'connection>,
+) -> Result<Option<(knytos_services::kafka_client::DeliveryToken<'connection>, Vec<u8>, i64)>, Error>
 {
     let Some(delivery) = consumer.poll()? else {
         return Ok(None);
@@ -128,7 +128,7 @@ fn main(ctx: Context) -> ! {
 
     config::write::<u32>(status::OFFSET, output_offset as u32);
     config::write::<u32>(status::STAGE, status::SUCCESS);
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, \
          read_committed consume, transactional offset commit, and abort filtering succeeded"
     );

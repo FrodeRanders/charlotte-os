@@ -202,7 +202,7 @@ justifies timer-driven receive polling. Socket cancellation, rejected CQ binding
 lifecycle observation and remote close belong to the containing service owner;
 the protocol engine has no kernel capability, socket teardown or cleanup registry.
 
-`catten_services::management_io::Connection` is the containing owner. Its pending
+`knytos_services::management_io::Connection` is the containing owner. Its pending
 RPC precedes session/socket fields, so confirmed observation/cancellation ends
 before local TLS state or raw socket release. Receives own returned memory and
 mappings; output retains encrypted prefixes until positive receipts. A final

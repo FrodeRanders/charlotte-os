@@ -32,7 +32,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
+use knytos_graft::{
     membership::ClusterConfiguration,
     node::RaftNode,
     transport::RaftTransport,
@@ -41,7 +41,7 @@ use catten_graft::{
         Peer,
     },
 };
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
@@ -49,7 +49,7 @@ use catten_rt::{
     manifest_key,
     owned::ConnectionRef,
 };
-use catten_services::{
+use knytos_services::{
     broker::EventBroker,
     cluster_ingress::BackendSnapshot,
     cluster_observe,
@@ -216,13 +216,13 @@ fn fatal(stage: u64) -> ! {
 /// Returns `(connection, local_generation)`.
 fn local_publication(
     names: ConnectionRef<'_>,
-    attached_connection: Option<catten_rt::owned::Connection>,
+    attached_connection: Option<knytos_rt::owned::Connection>,
     name: &[u8],
-) -> Option<(Option<catten_rt::owned::Connection>, u64)> {
+) -> Option<(Option<knytos_rt::owned::Connection>, u64)> {
     if let Some(connection) = attached_connection {
         return Some((Some(connection), 0));
     }
-    let staged = catten_services::stage_name_owned(name)?;
+    let staged = knytos_services::stage_name_owned(name)?;
     let result =
         names.call_copy(ns::OP_TRY_LOOKUP_NAMED, name.len() as u64, &staged).ok()?.wait().ok()?;
     if result.result < 1 {
@@ -251,7 +251,7 @@ fn prepare_registration_relay(
     let id = *next_id;
     let next = id.checked_add(1).ok_or(dns::ERR_RESOURCE_LIMIT)?;
     let request =
-        catten_services::rregister::encode_request(session, id, owner, name, deployment_generation)
+        knytos_services::rregister::encode_request(session, id, owner, name, deployment_generation)
             .map_err(|error| error.status())?;
     pending.try_reserve(1).map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
     let mut peer = alloc::string::String::new();
@@ -277,8 +277,8 @@ fn register_name(
 ) -> Option<i64> {
     // Raw receive ABI boundary: this opcode transfers its unique attachment
     // exactly once. Every rejection drops this owner; pending phases move it.
-    let attached = unsafe { catten_rt::owned::Connection::from_raw(message.connection) }.ok();
-    if name.is_empty() || name.len() > catten_services::MAX_NAME_LEN {
+    let attached = unsafe { knytos_rt::owned::Connection::from_raw(message.connection) }.ok();
+    if name.is_empty() || name.len() > knytos_services::MAX_NAME_LEN {
         return Some(dns::ERR_TOO_LARGE);
     }
     let relay = if node.state != NodeState::Leader {
@@ -304,7 +304,7 @@ fn register_name(
     // Scoped applications expose publication generation without acquiring
     // invocation authority. Their deployment agent retains the domain owner.
     let publication = if deployment_generation != 0 && attached.is_none() {
-        catten_services::publication_generation::observe(names, &name)
+        knytos_services::publication_generation::observe(names, &name)
             .ok()
             .flatten()
             .map(|generation| (None, generation))
@@ -321,7 +321,7 @@ fn register_name(
             session,
             request_id,
             // Raw receive reply authority transfers once into this pending owner.
-            reply: unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }.ok(),
+            reply: unsafe { knytos_rt::owned::ReplyToken::from_raw(message.reply) }.ok(),
             name,
             connection,
             local_generation,
@@ -334,7 +334,7 @@ fn register_name(
         else {
             unreachable!()
         };
-        transport.send_message(expected_peer, catten_services::rregister::TAG_REQUEST, request);
+        transport.send_message(expected_peer, knytos_services::rregister::TAG_REQUEST, request);
         None
     } else {
         let Some((connection, existing_local_generation)) = publication else {
@@ -348,7 +348,7 @@ fn register_name(
                     term: node.current_term,
                     log_index: index,
                     // Raw receive reply authority transfers once into this pending owner.
-                    reply: unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }.ok(),
+                    reply: unsafe { knytos_rt::owned::ReplyToken::from_raw(message.reply) }.ok(),
                     name,
                     connection,
                     existing_local_generation,
@@ -364,26 +364,26 @@ fn register_name(
 /// for this containing transaction; abort with it and any accepted RPC retained.
 fn queue_local_unregistration(
     names: ConnectionRef<'_>,
-    pending: &mut Vec<catten_services::publication_generation::Unregistration>,
+    pending: &mut Vec<knytos_services::publication_generation::Unregistration>,
     name: &[u8],
     generation: u64,
 ) {
     if pending.len() >= MAX_IN_FLIGHT_CALLS || pending.try_reserve(1).is_err() {
-        catten_rt::logln!("[dns] local retirement storage rejected; retaining transaction");
-        catten_rt::domain_abort();
+        knytos_rt::logln!("[dns] local retirement storage rejected; retaining transaction");
+        knytos_rt::domain_abort();
     }
-    match catten_services::publication_generation::Unregistration::begin(names, name, generation, 0)
+    match knytos_services::publication_generation::Unregistration::begin(names, name, generation, 0)
     {
         Ok(operation) => pending.push(operation),
-        Err(catten_services::publication_generation::BeginError::Unstarted(error)) => {
-            catten_rt::logln!("[dns] local retirement admission rejected: {:?}", error);
-            catten_rt::domain_abort();
+        Err(knytos_services::publication_generation::BeginError::Unstarted(error)) => {
+            knytos_rt::logln!("[dns] local retirement admission rejected: {:?}", error);
+            knytos_rt::domain_abort();
         }
-        Err(catten_services::publication_generation::BeginError::Accepted(_owner)) => {
+        Err(knytos_services::publication_generation::BeginError::Accepted(_owner)) => {
             // _owner remains live through nonreturning abort. Never discard
             // accepted work, poll it on a timer fallback, or submit it again.
-            catten_rt::logln!("[dns] accepted local retirement binding rejected; retaining owner");
-            catten_rt::domain_abort();
+            knytos_rt::logln!("[dns] accepted local retirement binding rejected; retaining owner");
+            knytos_rt::domain_abort();
         }
     }
 }
@@ -395,7 +395,7 @@ fn ingress_membership_snapshot(
     local_mac: [u8; 6],
     service_name: Option<&[u8]>,
 ) -> Option<BackendSnapshot> {
-    catten_services::ingress_availability::snapshot(
+    knytos_services::ingress_availability::snapshot(
         node,
         catalog,
         local_mac,
@@ -747,7 +747,7 @@ fn reconcile_replica_placements(
                     *forced_reassignment_count,
                 );
             }
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[dns] proposed {} reassignment for {}{}",
                 if forced {
                     "topology"
@@ -775,7 +775,7 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
     loop {
         let message = ipc_recv(endpoint);
         let _attachments =
-            catten_services::RequestAttachments::new(message.memory, message.connection);
+            knytos_services::RequestAttachments::new(message.memory, message.connection);
         if message.status == ipc_status::NO_MESSAGE {
             break;
         }
@@ -907,7 +907,7 @@ const PLACEMENT_REASSIGN_COOLDOWN_MS: u64 = 60_000;
 const CAPACITY_NONCE_TIMEOUT_MS: u64 = 100;
 
 fn obtain_capacity_boot_nonce(ns_connection: ConnectionRef<'_>) -> Option<u64> {
-    let deadline = catten_services::deadline::Deadline::after(CAPACITY_NONCE_TIMEOUT_MS);
+    let deadline = knytos_services::deadline::Deadline::after(CAPACITY_NONCE_TIMEOUT_MS);
     if let Some(nonce) = knytos_syscall::random_u64().filter(|nonce| *nonce != 0) {
         return Some(nonce);
     }
@@ -918,7 +918,7 @@ fn obtain_capacity_boot_nonce(ns_connection: ConnectionRef<'_>) -> Option<u64> {
     }
     let entropy = reply.connection?;
     let mut bytes = [0; 8];
-    catten_services::tls_client::fill_service_entropy(entropy.as_ref(), &mut bytes, deadline)
+    knytos_services::tls_client::fill_service_entropy(entropy.as_ref(), &mut bytes, deadline)
         .ok()?;
     let nonce = u64::from_le_bytes(bytes);
     (nonce != 0).then_some(nonce)
@@ -943,8 +943,8 @@ fn fresh_capacity_view(
 
 fn filter_capacity_report(
     filters: &mut BTreeMap<u64, operations_admission::CapacityFilter>,
-    report: catten_services::rcapacity::Report,
-) -> Option<(catten_services::rcapacity::Report, bool)> {
+    report: knytos_services::rcapacity::Report,
+) -> Option<(knytos_services::rcapacity::Report, bool)> {
     let observed = operations_admission::NodeCapacity {
         target: Some(report.target),
         free_frames: report.free_frames,
@@ -968,7 +968,7 @@ fn filter_capacity_report(
         }
     };
     Some((
-        catten_services::rcapacity::Report {
+        knytos_services::rcapacity::Report {
             free_frames: filtered.free_frames,
             usable_frames: filtered.usable_frames,
             cpu_load_permille: filtered.cpu_load_permille,
@@ -1053,7 +1053,7 @@ fn operations_capacity_view(
 /// unchanged samples. Placement decisions still read only applied state.
 fn capacity_command(
     catalog: &NameCatalog,
-    report: catten_services::rcapacity::Report,
+    report: knytos_services::rcapacity::Report,
 ) -> Option<Vec<u8>> {
     let next = operations_admission::NodeCapacity {
         target: Some(report.target),
@@ -1124,7 +1124,7 @@ fn release_command(
         }
         _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
     })?;
-    catten_services::name_catalog::encode_release_replicas(envelope, &assignments, capacity)
+    knytos_services::name_catalog::encode_release_replicas(envelope, &assignments, capacity)
         .ok_or(dns::ERR_TOO_LARGE)
 }
 
@@ -1134,7 +1134,7 @@ fn release_command(
 const TIME_QUERY_TIMEOUT_MS: u64 = 100;
 
 fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
-    let mut call = time.call(catten_services::time::OP_UNIX_SECONDS, 0).ok()?;
+    let mut call = time.call(knytos_services::time::OP_UNIX_SECONDS, 0).ok()?;
     let (start_ticks, frequency_hz) = knytos_syscall::monotonic_clock();
     let frequency_hz = frequency_hz.max(1);
     loop {
@@ -1148,7 +1148,7 @@ fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
         if elapsed_ms >= TIME_QUERY_TIMEOUT_MS {
             return None;
         }
-        catten_services::sleep_ms(5);
+        knytos_services::sleep_ms(5);
     }
 }
 
@@ -1297,8 +1297,8 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         } => {
             transport.send_message(
                 &peer,
-                catten_services::rdeploy::TAG_REPLY,
-                catten_services::rdeploy::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+                knytos_services::rdeploy::TAG_REPLY,
+                knytos_services::rdeploy::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
             );
         }
         PendingRegistration::RemoteRelease {
@@ -1308,7 +1308,7 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         } => {
             transport.send_message(
                 &peer,
-                catten_services::rrelease::TAG_REPLY,
+                knytos_services::rrelease::TAG_REPLY,
                 reply.reject(dns::ERR_UNCERTAIN),
             );
         }
@@ -1320,8 +1320,8 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         } => {
             transport.send_message(
                 &peer,
-                catten_services::roperations::TAG_REPLY,
-                catten_services::roperations::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+                knytos_services::roperations::TAG_REPLY,
+                knytos_services::roperations::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
             );
         }
         PendingRegistration::RemoteShutdown {
@@ -1332,8 +1332,8 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         } => {
             transport.send_message(
                 &peer,
-                catten_services::rshutdown::TAG_REPLY,
-                catten_services::rshutdown::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+                knytos_services::rshutdown::TAG_REPLY,
+                knytos_services::rshutdown::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
             );
         }
         PendingRegistration::RemoteIngressPolicy {
@@ -1344,8 +1344,8 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         } => {
             transport.send_message(
                 &peer,
-                catten_services::ringress_policy::TAG_REPLY,
-                catten_services::ringress_policy::encode_reply(
+                knytos_services::ringress_policy::TAG_REPLY,
+                knytos_services::ringress_policy::encode_reply(
                     session,
                     request_id,
                     dns::ERR_UNCERTAIN,
@@ -1364,7 +1364,7 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         } => {
             let reply = remote_reply.finish(0);
             let owner = alloc::string::String::from_utf8_lossy(&owner);
-            transport.send_message(&owner, catten_services::rregister::TAG_REPLY, reply);
+            transport.send_message(&owner, knytos_services::rregister::TAG_REPLY, reply);
         }
     }
 }
@@ -1386,7 +1386,7 @@ fn relay_to_leader(
     encode: impl FnOnce(u64, u64) -> Option<Vec<u8>>,
     kind: impl FnOnce(u64) -> PendingQueryKind,
 ) -> Option<i64> {
-    let deadline = catten_services::deadline::Deadline::after(timeout_ms);
+    let deadline = knytos_services::deadline::Deadline::after(timeout_ms);
     let Some(leader) = node.known_leader_id.clone() else {
         return Some(dns::ERR_NOT_LEADER);
     };
@@ -1424,9 +1424,9 @@ fn relay_release(
     session: u64,
     caller: &[u8],
     envelope: Vec<u8>,
-    reply: catten_services::release_admission::PreparedReply,
-) -> Result<(), (catten_services::release_admission::PreparedReply, i64)> {
-    let deadline = catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
+    reply: knytos_services::release_admission::PreparedReply,
+) -> Result<(), (knytos_services::release_admission::PreparedReply, i64)> {
+    let deadline = knytos_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
     let Some(leader) = node.known_leader_id.clone() else {
         return Err((reply, dns::ERR_NOT_LEADER));
     };
@@ -1441,7 +1441,7 @@ fn relay_release(
         return Err((reply, dns::ERR_BUSY));
     };
     let Some(frame) =
-        catten_services::rrelease::encode_request(&catten_services::rrelease::Request {
+        knytos_services::rrelease::encode_request(&knytos_services::rrelease::Request {
             session,
             request_id: id,
             caller: caller.into(),
@@ -1462,7 +1462,7 @@ fn relay_release(
             reply,
         },
     });
-    transport.send_message(&leader, catten_services::rrelease::TAG_REQUEST, frame);
+    transport.send_message(&leader, knytos_services::rrelease::TAG_REQUEST, frame);
     Ok(())
 }
 
@@ -1615,7 +1615,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if raft_endpoint == 0 || ipc_endpoint_bind_cq(raft_endpoint, 0) != 0 {
         fatal(18);
     }
-    let raft_name = catten_services::raft_name(&node_name);
+    let raft_name = knytos_services::raft_name(&node_name);
     let raft_register = ipc_scalar_call_connection(
         ns_conn,
         ns::OP_REGISTER,
@@ -1636,7 +1636,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // supplies transient MAC routes; admission itself is a command in this
     // same durable Raft log.
     let transport = Arc::new(RelmsgRaftTransport::new(relmsg_conn));
-    transport.set_net_send(net_conn, local_mac, catten_services::raft::ETHERTYPE);
+    transport.set_net_send(net_conn, local_mac, knytos_services::raft::ETHERTYPE);
     config::write_u32_release(dns::status::STAGE, 7);
 
     let me = Peer::voter(node_name_str.clone(), raft_name);
@@ -1652,12 +1652,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // would permit a restarted replica to vote twice in one term.
     let namespace = persistent_namespace(&mnemonic, &node_name);
     let (log_store, persistent_state) = disk_raft::open(names, namespace).unwrap_or_else(|error| {
-        catten_rt::logln!("[raft-store] DNS open rejected: {:?}", error);
+        knytos_rt::logln!("[raft-store] DNS open rejected: {:?}", error);
         fatal(16)
     });
-    let mut raft_clock = catten_services::raft_clock::start();
-    let mut availability_publisher = catten_services::ingress_availability::Publisher::default();
-    let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
+    let mut raft_clock = knytos_services::raft_clock::start();
+    let mut availability_publisher = knytos_services::ingress_availability::Publisher::default();
+    let mut node = RaftNode::new(knytos_graft::node::RaftNodeConfig {
         me: me.clone(),
         timeout_millis: election_timeout_ms,
         log_store: Box::new(log_store),
@@ -1674,7 +1674,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         snapshot_chunk_bytes: 1200,
     })
     .unwrap_or_else(|error| {
-        catten_rt::logln!("[raft-store] snapshot restore rejected: {:?}", error);
+        knytos_rt::logln!("[raft-store] snapshot restore rejected: {:?}", error);
         fatal(16)
     });
     config::write_u32_release(dns::status::STAGE, 8);
@@ -1693,7 +1693,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
     let mut pending_reads = reads::Reads::default();
     let mut pending_local_unregistrations: Vec<
-        catten_services::publication_generation::Unregistration,
+        knytos_services::publication_generation::Unregistration,
     > = Vec::new();
     let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
@@ -1704,9 +1704,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // reactor iteration — the event fires when the replicated entry lands on
     // this node, never by polling order or boot timing. This is the
     // replicated service's event-broker face; the catalog is its catalog
-    // face (see `catten_services::broker`).
-    let mut event_waiters: catten_services::broker::KeyedWaitlist<u64> =
-        catten_services::broker::KeyedWaitlist::new();
+    // face (see `knytos_services::broker`).
+    let mut event_waiters: knytos_services::broker::KeyedWaitlist<u64> =
+        knytos_services::broker::KeyedWaitlist::new();
     let mut next_disco_query_ms = 0u64;
     let mut join_request_pending = false;
     let mut join_retry_at_ms = 0u64;
@@ -1717,7 +1717,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut logged_raft_state = NodeState::Follower;
     let mut next_joint_diagnostic_ms = 0u64;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
-    let mut clock_watchdog = catten_services::deadline::Deadline::after(LOOP_TICK_MS);
+    let mut clock_watchdog = knytos_services::deadline::Deadline::after(LOOP_TICK_MS);
     let mut last_heartbeat_broadcast = 0u64;
     let mut capacity_boot_nonce = None;
     let mut capacity_last_seen_ms: BTreeMap<u64, (u64, u64)> = BTreeMap::new();
@@ -1738,7 +1738,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             for reply in event_waiters.drain() {
                 ipc_reply(reply, clusterctl::ERR_NOT_LEADER);
             }
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[dns] shutdown: cancelling {} register(s), {} call(s), {} query(s), and {} local \
                  call(s)",
                 pending_registers.len(),
@@ -1760,12 +1760,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             .chain(pending_reads.remaining_ms())
             .chain(in_flight_calls.iter().map(|call| call.deadline.remaining_ms()))
             .fold(clock_watchdog.remaining_ms(), core::cmp::min);
-        catten_services::reactor::wait(Some(wait_ms), 0);
+        knytos_services::reactor::wait(Some(wait_ms), 0);
         // Keep the CQ timeout active even after the detached timer is submitted.
         // It is an independent watchdog: a submitted timer can
         // have its completion delayed or dropped; ignoring the timeout while
         // `timer_armed` stayed true would then freeze Raft time forever.
-        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+        knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let mut tick_due = clock_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
@@ -1792,7 +1792,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if let (Some(node_key), Some(boot_nonce), Some(target)) =
                 (node_identity::key_from_name(&node_name), capacity_boot_nonce, target)
             {
-                let report = catten_services::rcapacity::Report {
+                let report = knytos_services::rcapacity::Report {
                     target,
                     node_key,
                     boot_nonce,
@@ -1813,7 +1813,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         capacity_last_seen_ms
                             .insert(control.node_key, (control.boot_nonce, node.millis()));
                         if seeded {
-                            catten_rt::logln!(
+                            knytos_rt::logln!(
                                 "[dns] seeded capacity control for node {:016x} target={:?}",
                                 control.node_key,
                                 control.target
@@ -1828,7 +1828,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 dns::status::CAPACITY_COMMANDS_PROPOSED,
                                 capacity_commands_proposed,
                             );
-                            catten_rt::logln!(
+                            knytos_rt::logln!(
                                 "[dns] proposed filtered capacity for node {:016x}",
                                 control.node_key
                             );
@@ -1839,8 +1839,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 {
                     transport.send_message(
                         &leader,
-                        catten_services::rcapacity::TAG_REQUEST,
-                        catten_services::rcapacity::encode_request(report),
+                        knytos_services::rcapacity::TAG_REQUEST,
+                        knytos_services::rcapacity::encode_request(report),
                     );
                 }
             }
@@ -1884,7 +1884,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 if !node.joining {
                     node.begin_joining(anchor.clone(), node.millis());
                 }
-                catten_rt::logln!(
+                knytos_rt::logln!(
                     "[dns] JOIN REQUEST self={} anchor={} term={}",
                     node.me.id,
                     anchor,
@@ -1925,11 +1925,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             memory_close(memory);
                             continue;
                         }
-                        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+                        knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
                         let frame = &object[IPC_MESSAGE_HEADER_SIZE..IPC_MESSAGE_HEADER_SIZE + len];
                         match frame.first().copied() {
-                            Some(catten_services::rcall::TAG_REQUEST) => {
-                                let local_deadline = catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
+                            Some(knytos_services::rcall::TAG_REQUEST) => {
+                                let local_deadline = knytos_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
                                 // A remote invocation addressed to this node:
                                 // execute it against the local name service and
                                 // reply to the caller's MAC.
@@ -1941,7 +1941,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     target_generation,
                                     opcode,
                                     arg,
-                                )) = catten_services::rcall::decode_request(frame)
+                                )) = knytos_services::rcall::decode_request(frame)
                                 {
                                     let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
                                     else {
@@ -1957,12 +1957,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     // Prepare the result buffer before dedup admission or
                                     // local lookup/invocation. Failure admits no operation;
                                     // the requester retains its existing uncertain deadline.
-                                    let mut prepared_reply = match catten_services::rcall::PreparedReply::try_new(
+                                    let mut prepared_reply = match knytos_services::rcall::PreparedReply::try_new(
                                         session, call_id, target_generation,
                                     ) {
                                         Ok(reply) => Some(reply),
                                         Err(error) => {
-                                            catten_rt::logln!("[dns] invocation reply preparation rejected: {:?}", error);
+                                            knytos_rt::logln!("[dns] invocation reply preparation rejected: {:?}", error);
                                             memory_unmap(memory);
                                             memory_close(memory);
                                             continue;
@@ -1996,7 +1996,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             completed_calls.iter().position(|completed| {
                                                 transport.acknowledged_count_for(
                                                     &completed.peer,
-                                                    catten_services::rcall::TAG_REPLY,
+                                                    knytos_services::rcall::TAG_REPLY,
                                                 ) >= completed.settled_after_ack
                                             })
                                     {
@@ -2077,7 +2077,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 .or_insert_with(|| {
                                                     transport.acknowledged_count_for(
                                                         &source_peer,
-                                                        catten_services::rcall::TAG_REPLY,
+                                                        knytos_services::rcall::TAG_REPLY,
                                                     )
                                                 });
                                             *reply_ordinal = reply_ordinal.saturating_add(1);
@@ -2101,17 +2101,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             let reply = prepared_reply.take().unwrap().finish(result);
                                             transport.send_message(
                                                 &source_peer,
-                                                catten_services::rcall::TAG_REPLY,
+                                                knytos_services::rcall::TAG_REPLY,
                                                 reply,
                                             );
                                         }
                                     }
                                 }
                             }
-                            Some(catten_services::rcall::TAG_REPLY) => {
+                            Some(knytos_services::rcall::TAG_REPLY) => {
                                 // Complete the matching in-flight OP_CALL.
                                 if let Some((session, call_id, target_generation, result)) =
-                                    catten_services::rcall::decode_reply(frame)
+                                    knytos_services::rcall::decode_reply(frame)
                                     && let Some(index) = in_flight_calls.iter().position(|call| {
                                         call.call_id == call_id
                                             && session == dns_session
@@ -2125,9 +2125,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     if let Some(reply) = call.reply { let _ = reply.reply(result); }
                                 }
                             }
-                            Some(catten_services::rquery::TAG_REQUEST) => {
+                            Some(knytos_services::rquery::TAG_REQUEST) => {
                                 if let Some((session, query_id, caller, name)) =
-                                    catten_services::rquery::decode_request(frame)
+                                    knytos_services::rquery::decode_request(frame)
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == caller
@@ -2142,9 +2142,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
                                 }
                             }
-                            Some(catten_services::rquery::TAG_REPLY) => {
+                            Some(knytos_services::rquery::TAG_REPLY) => {
                                 if let Some((session, query_id, status, generation, owner)) =
-                                    catten_services::rquery::decode_reply(frame)
+                                    knytos_services::rquery::decode_reply(frame)
                                     && session == dns_session
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
@@ -2230,7 +2230,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                         next_call_id =
                                                             next_call_id.wrapping_add(1).max(1);
                                                         let deadline = query.deadline;
-                                                        match catten_services::rcall::encode_request(
+                                                        match knytos_services::rcall::encode_request(
                                                             dns_session, call_id, &node_name, &name,
                                                             entry.generation, opcode, arg,
                                                         ) {
@@ -2244,7 +2244,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                                     deadline,
                                                                 });
                                                                 transport.send_message(
-                                                                    &owner_str, catten_services::rcall::TAG_REQUEST, request,
+                                                                    &owner_str, knytos_services::rcall::TAG_REQUEST, request,
                                                                 );
                                                                 None
                                                             }
@@ -2278,8 +2278,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::runregister::TAG_REQUEST) => {
-                                if let Some((owner, name, generation)) = catten_services::runregister::decode_request(frame)
+                            Some(knytos_services::runregister::TAG_REQUEST) => {
+                                if let Some((owner, name, generation)) = knytos_services::runregister::decode_request(frame)
                                     && node.state == NodeState::Leader
                                     && transport.peer_id_for_mac(&source_mac).is_some_and(|peer| peer.as_bytes() == owner)
                                     && catalog.lookup_owner(name, owner).is_some_and(|entry| entry.generation == generation)
@@ -2301,9 +2301,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::rregister::TAG_REQUEST) => {
+                            Some(knytos_services::rregister::TAG_REQUEST) => {
                                 // Prepare the whole two-phase reply before the first mutation.
-                                if let Some(request) = catten_services::rregister::decode_request(frame)
+                                if let Some(request) = knytos_services::rregister::decode_request(frame)
                                     && node.state == NodeState::Leader
                                     && transport.peer_id_for_mac(&source_mac).is_some_and(|peer| peer.as_bytes() == request.owner)
                                     && !pending_registers.iter().any(|pending| matches!(pending,
@@ -2318,14 +2318,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     });
                                 }
                             }
-                            Some(catten_services::rcapacity::TAG_REQUEST) => {
+                            Some(knytos_services::rcapacity::TAG_REQUEST) => {
                                 // Capacity from a committed member; the sender
                                 // must own the node key it claims. The leader
                                 // commits a sample only when it changes the
                                 // placement picture.
                                 if node.state == NodeState::Leader
                                     && let Some(report) =
-                                        catten_services::rcapacity::decode_request(frame)
+                                        knytos_services::rcapacity::decode_request(frame)
                                     && transport.peer_id_for_mac(&source_mac).is_some_and(
                                         |peer| {
                                             node_identity::key_from_name(peer.as_bytes())
@@ -2346,7 +2346,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         (control.boot_nonce, node.millis()),
                                     );
                                     if seeded {
-                                        catten_rt::logln!(
+                                        knytos_rt::logln!(
                                             "[dns] seeded capacity control for node {:016x}",
                                             control.node_key
                                         );
@@ -2360,21 +2360,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             dns::status::CAPACITY_COMMANDS_PROPOSED,
                                             capacity_commands_proposed,
                                         );
-                                        catten_rt::logln!(
+                                        knytos_rt::logln!(
                                             "[dns] proposed filtered capacity for node {:016x}",
                                             control.node_key
                                         );
                                     }
                                 }
                             }
-                            Some(catten_services::rregister::TAG_REPLY) => {
+                            Some(knytos_services::rregister::TAG_REPLY) => {
                                 // The leader acknowledged a relayed register:
                                 // publish the locally hosted service.
-                                if let Some((session, request_id, generation)) = catten_services::rregister::decode_reply(frame)
+                                if let Some((session, request_id, generation)) = knytos_services::rregister::decode_reply(frame)
                                     && let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
                                     && let Some(index) = pending_registers.iter().position(|pending| matches!(pending,
                                         PendingRegistration::RemoteRegister { expected_peer, session: expected_session, request_id: expected_request, .. }
-                                        if catten_services::rregister::reply_matches(expected_peer, *expected_session, *expected_request, &source_peer, session, request_id)))
+                                        if knytos_services::rregister::reply_matches(expected_peer, *expected_session, *expected_request, &source_peer, session, request_id)))
                                 {
                                     let PendingRegistration::RemoteRegister {
                                         reply,
@@ -2420,8 +2420,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::rdeploy::TAG_REQUEST) => {
-                                if let Some(request) = catten_services::rdeploy::decode_request(frame)
+                            Some(knytos_services::rdeploy::TAG_REQUEST) => {
+                                if let Some(request) = knytos_services::rdeploy::decode_request(frame)
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == request.caller
@@ -2447,8 +2447,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     if let Some(result) = result {
                                         transport.send_message(
                                             &source_peer,
-                                            catten_services::rdeploy::TAG_REPLY,
-                                            catten_services::rdeploy::encode_reply(
+                                            knytos_services::rdeploy::TAG_REPLY,
+                                            knytos_services::rdeploy::encode_reply(
                                                 request.session,
                                                 request.request_id,
                                                 result,
@@ -2457,9 +2457,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::rdeploy::TAG_REPLY) => {
+                            Some(knytos_services::rdeploy::TAG_REPLY) => {
                                 if let Some((session, request_id, result)) =
-                                    catten_services::rdeploy::decode_reply(frame)
+                                    knytos_services::rdeploy::decode_reply(frame)
                                     && session == dns_session
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
@@ -2485,11 +2485,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::rrelease::TAG_REQUEST) => {
-                                if let Some(request) = catten_services::rrelease::decode_request(frame)
+                            Some(knytos_services::rrelease::TAG_REQUEST) => {
+                                if let Some(request) = knytos_services::rrelease::decode_request(frame)
                                     && let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == request.caller
-                                    && let Some(reply) = catten_services::rrelease::PreparedReply::prepare(request.session, request.request_id)
+                                    && let Some(reply) = knytos_services::rrelease::PreparedReply::prepare(request.session, request.request_id)
                                 {
                                     let result = if node.state != NodeState::Leader { Err(dns::ERR_NOT_LEADER) }
                                     else if pending_registers.try_reserve(1).is_err() { Err(dns::ERR_BUSY) }
@@ -2502,13 +2502,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     };
                                     match result {
                                         Ok(log_index) => pending_registers.push(PendingRegistration::RemoteRelease { term: node.current_term, log_index, peer: source_peer, reply }),
-                                        Err(code) => transport.send_message(&source_peer, catten_services::rrelease::TAG_REPLY, reply.reject(code)),
+                                        Err(code) => transport.send_message(&source_peer, knytos_services::rrelease::TAG_REPLY, reply.reject(code)),
                                     }
                                 }
                             }
-                            Some(catten_services::rrelease::TAG_REPLY) => {
+                            Some(knytos_services::rrelease::TAG_REPLY) => {
                                 if let Some((session, request_id, result)) =
-                                    catten_services::rrelease::decode_reply(frame)
+                                    knytos_services::rrelease::decode_reply(frame)
                                     && session == dns_session
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
@@ -2532,9 +2532,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     reply.complete(result);
                                 }
                             }
-                            Some(catten_services::roperations::TAG_REQUEST) => {
+                            Some(knytos_services::roperations::TAG_REQUEST) => {
                                 if let Some(request) =
-                                    catten_services::roperations::decode_request(frame)
+                                    knytos_services::roperations::decode_request(frame)
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == request.caller
@@ -2583,8 +2583,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     if let Some(result) = result {
                                         transport.send_message(
                                             &source_peer,
-                                            catten_services::roperations::TAG_REPLY,
-                                            catten_services::roperations::encode_reply(
+                                            knytos_services::roperations::TAG_REPLY,
+                                            knytos_services::roperations::encode_reply(
                                                 request.session,
                                                 request.request_id,
                                                 result,
@@ -2593,9 +2593,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::roperations::TAG_REPLY) => {
+                            Some(knytos_services::roperations::TAG_REPLY) => {
                                 if let Some((session, request_id, result)) =
-                                    catten_services::roperations::decode_reply(frame)
+                                    knytos_services::roperations::decode_reply(frame)
                                     && session == dns_session
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
@@ -2621,9 +2621,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::rshutdown::TAG_REQUEST) => {
+                            Some(knytos_services::rshutdown::TAG_REQUEST) => {
                                 if let Some(request) =
-                                    catten_services::rshutdown::decode_request(frame)
+                                    knytos_services::rshutdown::decode_request(frame)
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == request.caller
@@ -2658,8 +2658,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     if let Some(result) = result {
                                         transport.send_message(
                                             &source_peer,
-                                            catten_services::rshutdown::TAG_REPLY,
-                                            catten_services::rshutdown::encode_reply(
+                                            knytos_services::rshutdown::TAG_REPLY,
+                                            knytos_services::rshutdown::encode_reply(
                                                 request.session,
                                                 request.request_id,
                                                 result,
@@ -2668,9 +2668,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::rshutdown::TAG_REPLY) => {
+                            Some(knytos_services::rshutdown::TAG_REPLY) => {
                                 if let Some((session, request_id, result)) =
-                                    catten_services::rshutdown::decode_reply(frame)
+                                    knytos_services::rshutdown::decode_reply(frame)
                                     && session == dns_session
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
@@ -2696,9 +2696,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::ringress_policy::TAG_REQUEST) => {
+                            Some(knytos_services::ringress_policy::TAG_REQUEST) => {
                                 if let Some(request) =
-                                    catten_services::ringress_policy::decode_request(frame)
+                                    knytos_services::ringress_policy::decode_request(frame)
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == request.caller
@@ -2732,8 +2732,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     if let Some(result) = result {
                                         transport.send_message(
                                             &source_peer,
-                                            catten_services::ringress_policy::TAG_REPLY,
-                                            catten_services::ringress_policy::encode_reply(
+                                            knytos_services::ringress_policy::TAG_REPLY,
+                                            knytos_services::ringress_policy::encode_reply(
                                                 request.session,
                                                 request.request_id,
                                                 result,
@@ -2742,9 +2742,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     }
                                 }
                             }
-                            Some(catten_services::ringress_policy::TAG_REPLY) => {
+                            Some(knytos_services::ringress_policy::TAG_REPLY) => {
                                 if let Some((session, request_id, result)) =
-                                    catten_services::ringress_policy::decode_reply(frame)
+                                    knytos_services::ringress_policy::decode_reply(frame)
                                     && session == dns_session
                                     && let Some(source_peer) =
                                         transport.peer_id_for_mac(&source_mac)
@@ -2818,7 +2818,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         )
                                     })
                                     .unwrap_or(0);
-                                catten_rt::logln!(
+                                knytos_rt::logln!(
                                     "[dns] JOIN RECEIVED source={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} index={} term={} leader={}",
                                     source_mac[0],
                                     source_mac[1],
@@ -2838,7 +2838,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             }
                             Some(TAG_JOIN_REPLY) => {
                                 if let Some(index) = decode_join_reply(&frame[1..]) {
-                                    catten_rt::logln!(
+                                    knytos_rt::logln!(
                                         "[dns] JOIN ACK index={} term={} committed_members={}",
                                         index,
                                         node.current_term,
@@ -2874,20 +2874,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         transport.reap_acks();
         config::write_u32_release(
             dns::status::REMOTE_CALL_ACKS,
-            transport.acknowledged_count(catten_services::rcall::TAG_REPLY).min(u32::MAX as u64)
+            transport.acknowledged_count(knytos_services::rcall::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
         );
         config::write_u32_release(
             dns::status::REMOTE_QUERY_REPLY_ACKS,
-            transport.acknowledged_count(catten_services::rquery::TAG_REPLY).min(u32::MAX as u64)
+            transport.acknowledged_count(knytos_services::rquery::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
         );
 
-        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+        knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let completed = node.poll_transport(node.millis());
         if let Err(reason) = availability_publisher.drive(&mut node, &catalog) {
-            catten_rt::logln!("[dns] {reason}; retaining reactor");
-            catten_rt::domain_abort();
+            knytos_rt::logln!("[dns] {reason}; retaining reactor");
+            knytos_rt::domain_abort();
         }
         if completed > 0 {
             config::write_u32_release(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
@@ -2978,14 +2978,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
-            catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
+            knytos_services::raft_clock::refresh(&mut node, &mut raft_clock);
             if message.is_ok() && message.opcode == dns::OP_CATALOG {
                 served += 1;
                 config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
                 // Raw receive ABI boundary: this branch transfers every unique
                 // attachment exactly once, before any scalar fallback guard.
                 if let Ok(Some(request)) =
-                    unsafe { catten_rt::owned::IncomingMessage::from_raw(message) }
+                    unsafe { knytos_rt::owned::IncomingMessage::from_raw(message) }
                 {
                     catalog::reply_catalog(request, &catalog);
                 }
@@ -3046,7 +3046,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 continue;
             }
-            let _attachments = catten_services::RequestAttachments::memory_only(message.memory);
+            let _attachments = knytos_services::RequestAttachments::memory_only(message.memory);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -3167,7 +3167,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         session: dns_session,
                                         request_id,
                                         reply: unsafe {
-                                            catten_rt::owned::ReplyToken::from_raw(message.reply)
+                                            knytos_rt::owned::ReplyToken::from_raw(message.reply)
                                         }
                                         .ok(),
                                         name,
@@ -3183,7 +3183,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     };
                                     transport.send_message(
                                         expected_peer,
-                                        catten_services::rregister::TAG_REQUEST,
+                                        knytos_services::rregister::TAG_REQUEST,
                                         request,
                                     );
                                     continue;
@@ -3200,7 +3200,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         term: node.current_term,
                                         log_index: index,
                                         reply: unsafe {
-                                            catten_rt::owned::ReplyToken::from_raw(message.reply)
+                                            knytos_rt::owned::ReplyToken::from_raw(message.reply)
                                         }
                                         .ok(),
                                         name,
@@ -3228,7 +3228,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // otherwise the event broker parks the reply token and
                     // the reactor settles it when the replicated entry lands.
                     if let Some(name) = read_named_bytes(&message) {
-                        if event_waiters.waiter_count() >= catten_services::broker::MAX_WAITERS
+                        if event_waiters.waiter_count() >= knytos_services::broker::MAX_WAITERS
                             && catalog.lookup(&name).is_none()
                         {
                             if message.reply != 0 {
@@ -3271,7 +3271,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             continue;
                         }
                         let local_generation =
-                            match catten_services::publication_generation::observe(names, &name) {
+                            match knytos_services::publication_generation::observe(names, &name) {
                                 Ok(generation) => generation.unwrap_or(0),
                                 Err(_) => {
                                     if message.reply != 0 {
@@ -3338,10 +3338,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             dns_session,
                             message.reply,
                             REMOTE_CALL_TIMEOUT_MS,
-                            catten_services::rdeploy::TAG_REQUEST,
+                            knytos_services::rdeploy::TAG_REQUEST,
                             |session, request_id| {
-                                catten_services::rdeploy::encode_request(
-                                    &catten_services::rdeploy::Request {
+                                knytos_services::rdeploy::encode_request(
+                                    &knytos_services::rdeploy::Request {
                                         session,
                                         request_id,
                                         caller: node_name.clone(),
@@ -3410,10 +3410,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             dns_session,
                             message.reply,
                             REMOTE_OPERATIONS_TIMEOUT_MS,
-                            catten_services::roperations::TAG_REQUEST,
+                            knytos_services::roperations::TAG_REQUEST,
                             |session, request_id| {
-                                catten_services::roperations::encode_request(
-                                    &catten_services::roperations::Request {
+                                knytos_services::roperations::encode_request(
+                                    &knytos_services::roperations::Request {
                                         session,
                                         request_id,
                                         caller: node_name.clone(),
@@ -3465,10 +3465,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             dns_session,
                             message.reply,
                             REMOTE_CALL_TIMEOUT_MS,
-                            catten_services::rshutdown::TAG_REQUEST,
+                            knytos_services::rshutdown::TAG_REQUEST,
                             |session, request_id| {
-                                catten_services::rshutdown::encode_request(
-                                    &catten_services::rshutdown::Request {
+                                knytos_services::rshutdown::encode_request(
+                                    &knytos_services::rshutdown::Request {
                                         session,
                                         request_id,
                                         caller: node_name.clone(),
@@ -3536,10 +3536,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             dns_session,
                             message.reply,
                             REMOTE_CALL_TIMEOUT_MS,
-                            catten_services::ringress_policy::TAG_REQUEST,
+                            knytos_services::ringress_policy::TAG_REQUEST,
                             |session, request_id| {
-                                catten_services::ringress_policy::encode_request(
-                                    &catten_services::ringress_policy::Request {
+                                knytos_services::ringress_policy::encode_request(
+                                    &knytos_services::ringress_policy::Request {
                                         session,
                                         request_id,
                                         caller: node_name.clone(),
@@ -3761,9 +3761,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             };
                             if frame[0..6] == local_mac
                                 && u16::from_be_bytes([frame[12], frame[13]])
-                                    == catten_services::raft::ETHERTYPE
+                                    == knytos_services::raft::ETHERTYPE
                                 && let Ok((tag, payload)) =
-                                    catten_graft::wire::parse_tagged_payload(&frame[14..])
+                                    knytos_graft::wire::parse_tagged_payload(&frame[14..])
                                 && (TAG_VOTE_REQUEST..=TAG_SNAPSHOT_RESPONSE).contains(&tag)
                             {
                                 let source_mac: [u8; 6] = frame[6..12].try_into().unwrap_or([0; 6]);
@@ -3925,11 +3925,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // Raw receive ABI boundary: retired/unknown operations
                     // consume their unique attachments even when rejected.
                     let _memory =
-                        unsafe { catten_rt::owned::OwnedMemory::from_raw(message.memory) }.ok();
+                        unsafe { knytos_rt::owned::OwnedMemory::from_raw(message.memory) }.ok();
                     let _connection =
-                        unsafe { catten_rt::owned::Connection::from_raw(message.connection) }.ok();
+                        unsafe { knytos_rt::owned::Connection::from_raw(message.connection) }.ok();
                     if let Ok(reply) =
-                        unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }
+                        unsafe { knytos_rt::owned::ReplyToken::from_raw(message.reply) }
                     {
                         let _ = reply.reply(dns::ERR_BAD_OPCODE);
                     }
@@ -4049,7 +4049,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .command_result(log_index)
                         .map(|bytes| {
                             if release_result {
-                                catten_services::release_admission::generation_result(bytes)
+                                knytos_services::release_admission::generation_result(bytes)
                             } else {
                                 <[u8; 8]>::try_from(bytes)
                                     .map(i64::from_le_bytes)
@@ -4072,7 +4072,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .map(u64::from_le_bytes)
                         .unwrap_or(0);
                     if generation != 0 {
-                        catten_rt::logln!(
+                        knytos_rt::logln!(
                             "[dns] reconciled replica placement {:?} generation={}",
                             core::str::from_utf8(&artifact).unwrap_or("<invalid>"),
                             generation
@@ -4093,8 +4093,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .unwrap_or(0);
                     transport.send_message(
                         &peer,
-                        catten_services::rdeploy::TAG_REPLY,
-                        catten_services::rdeploy::encode_reply(
+                        knytos_services::rdeploy::TAG_REPLY,
+                        knytos_services::rdeploy::encode_reply(
                             session,
                             request_id,
                             if generation == 0 {
@@ -4114,7 +4114,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let result = node.command_result(log_index).unwrap_or(&uncertain);
                     transport.send_message(
                         &peer,
-                        catten_services::rrelease::TAG_REPLY,
+                        knytos_services::rrelease::TAG_REPLY,
                         reply.finish(result),
                     );
                 }
@@ -4126,12 +4126,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 } => {
                     let result = node
                         .command_result(log_index)
-                        .map(catten_services::release_admission::generation_result)
+                        .map(knytos_services::release_admission::generation_result)
                         .unwrap_or(dns::ERR_UNCERTAIN);
                     transport.send_message(
                         &peer,
-                        catten_services::roperations::TAG_REPLY,
-                        catten_services::roperations::encode_reply(session, request_id, result),
+                        knytos_services::roperations::TAG_REPLY,
+                        knytos_services::roperations::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::RemoteShutdown {
@@ -4148,8 +4148,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .unwrap_or(dns::ERR_NOT_FOUND);
                     transport.send_message(
                         &peer,
-                        catten_services::rshutdown::TAG_REPLY,
-                        catten_services::rshutdown::encode_reply(session, request_id, result),
+                        knytos_services::rshutdown::TAG_REPLY,
+                        knytos_services::rshutdown::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::RemoteIngressPolicy {
@@ -4166,8 +4166,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .unwrap_or(dns::ERR_NOT_FOUND);
                     transport.send_message(
                         &peer,
-                        catten_services::ringress_policy::TAG_REPLY,
-                        catten_services::ringress_policy::encode_reply(session, request_id, result),
+                        knytos_services::ringress_policy::TAG_REPLY,
+                        knytos_services::ringress_policy::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::SetKey {
@@ -4217,7 +4217,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         let owner = alloc::string::String::from_utf8_lossy(&owner);
                         transport.send_message(
                             &owner,
-                            catten_services::rregister::TAG_REPLY,
+                            knytos_services::rregister::TAG_REPLY,
                             reply,
                         );
                     }
@@ -4242,7 +4242,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         },
                     );
                     let owner = alloc::string::String::from_utf8_lossy(&owner);
-                    transport.send_message(&owner, catten_services::rregister::TAG_REPLY, reply);
+                    transport.send_message(&owner, knytos_services::rregister::TAG_REPLY, reply);
                 }
                 PendingRegistration::Prepare {
                     reply,
@@ -4266,7 +4266,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     } else {
                         // The full-name copy and delegated connection remain owned;
                         // the returned connection (if any) stays in CallResult until Drop.
-                        catten_services::stage_name_owned(&name).and_then(|staged| {
+                        knytos_services::stage_name_owned(&name).and_then(|staged| {
                             names
                                 .call_delegated_connection_copy(
                                     ns::OP_REGISTER_NAMED,
@@ -4518,7 +4518,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         });
                     }
                 } else if let Some(leader) = node.known_leader_id.as_ref()
-                    && let Ok(request) = catten_services::runregister::encode_request(
+                    && let Ok(request) = knytos_services::runregister::encode_request(
                         &node_name,
                         &publication.name,
                         publication.generation,
@@ -4527,7 +4527,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 4);
                     transport.send_message(
                         leader,
-                        catten_services::runregister::TAG_REQUEST,
+                        knytos_services::runregister::TAG_REQUEST,
                         request,
                     );
                 }
@@ -4570,11 +4570,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         );
         if tick_due {
             // Readiness for other work cannot restart the clock watchdog.
-            clock_watchdog = catten_services::deadline::Deadline::after(LOOP_TICK_MS);
+            clock_watchdog = knytos_services::deadline::Deadline::after(LOOP_TICK_MS);
         }
         if logged_membership_epoch != node.membership_epoch() {
             logged_membership_epoch = node.membership_epoch();
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[dns] MEMBERSHIP epoch={} joint={} members={} commit={} last={} \
                  finalize_pending={} term={} leader={}",
                 logged_membership_epoch,
@@ -4597,7 +4597,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             placement_gates.clear();
             logged_raft_term = node.current_term;
             logged_raft_state = node.state;
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[dns] RAFT STATE state={:?} term={} leader={:?} millis={} pending={} queued={}",
                 node.state,
                 node.current_term,
@@ -4611,7 +4611,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             && node.millis() >= next_joint_diagnostic_ms
         {
             next_joint_diagnostic_ms = node.millis().saturating_add(5_000);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[dns] JOINT PROGRESS epoch={} commit={} last={} pending={} queued={} \
                  append_tx={} append_rx={}",
                 node.membership_epoch(),
@@ -4631,7 +4631,7 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 fn deployment_command(
     catalog: &NameCatalog,
@@ -4676,5 +4676,5 @@ fn deployment_command(
                 .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?,
         )
         .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?;
-    Ok(catten_services::name_catalog::encode_deploy(bytes, selected, variant))
+    Ok(knytos_services::name_catalog::encode_deploy(bytes, selected, variant))
 }

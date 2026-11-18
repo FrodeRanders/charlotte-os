@@ -8,7 +8,7 @@ use std::sync::{
     },
 };
 
-use catten_graft::{
+use knytos_graft::{
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,
@@ -171,7 +171,7 @@ fn election_deadlines_and_repeated_backoff_do_not_wrap() {
         persistent_state: Box::new(InMemoryPersistentStateStore::new()),
         state_machine: None,
         cluster_configuration: ClusterConfiguration::stable(peers),
-        transport: Arc::new(catten_graft::transport::NoopTransport),
+        transport: Arc::new(knytos_graft::transport::NoopTransport),
         current_millis: u64::MAX - 1,
         snapshot_min_entries: 64,
         snapshot_chunk_bytes: 3000,

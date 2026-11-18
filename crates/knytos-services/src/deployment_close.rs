@@ -1,5 +1,5 @@
 //! Bounded, CQ-bound logical socket close for deployment client phases.
-use catten_rt::owned::IpcError;
+use knytos_rt::owned::IpcError;
 
 use crate::{
     deadline::Deadline,
@@ -162,8 +162,8 @@ impl<'a> Calls for Runtime<'a> {
     }
 
     fn abort(&mut self, _owner: &Self::Owner, error: Error) -> ! {
-        catten_rt::logln!("[deployd] logical close failed with owner retained: {error:?}");
-        catten_rt::domain_abort()
+        knytos_rt::logln!("[deployd] logical close failed with owner retained: {error:?}");
+        knytos_rt::domain_abort()
     }
 }
 mod sealed_owner {
@@ -199,7 +199,7 @@ impl<'a> Closes<'a> {
         if let Err(_socket) = self.0.start(socket.prepare_close()) {
             // A full close pool here would violate the containing four-phase
             // admission accounting. Retain the complete arriving socket too.
-            catten_rt::domain_abort();
+            knytos_rt::domain_abort();
         }
     }
 

@@ -10,11 +10,11 @@
 
 extern crate alloc;
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     config,
 };
-use catten_services::{
+use knytos_services::{
     echo,
     ns,
     stage_name_owned,
@@ -69,4 +69,4 @@ fn main(ctx: Context) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

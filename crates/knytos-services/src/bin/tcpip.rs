@@ -16,7 +16,7 @@
 //! Clients call `OP_SOCKET`, `OP_CONNECT`, `OP_BIND`/`OP_LISTEN`,
 //! `OP_ACCEPT`, `OP_SEND`, `OP_RECV` (deferred reply), and `OP_CLOSE` on the
 //! tcpip connection. Data payloads use memory-object transfer. See
-//! [`catten_services::socket`].
+//! [`knytos_services::socket`].
 //!
 //! ## Launch manifest
 //!
@@ -45,7 +45,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ManifestValue,
     ShutdownRequest,
@@ -58,7 +58,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     dns,
     net,
     ns,
@@ -137,7 +137,7 @@ const SOCKET_CLOSE_GRACE_MS: u64 = 5_000;
 /// alone grants no access. The address-space id prevents two live instances of the
 /// same artifact principal from sharing sockets; the generation makes an id
 /// recyclable without reviving the previous owner's authority.
-use catten_services::{
+use knytos_services::{
     network_random::NetworkRandom,
     socket_lifetime::{
         self,
@@ -381,7 +381,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let (_link, mac) = decode_status(nic_status);
     let mtu: usize = 1500;
 
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[tcpip] NIC MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0],
         mac[1],
@@ -436,7 +436,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let endpoint =
         Endpoint::create(socket::INTERFACE, socket::VERSION, 8).unwrap_or_else(|_| fail(0xe004));
     publication::register(ns_connection, socket::NAME, &endpoint).unwrap_or_else(|error| {
-        catten_rt::logln!("[tcpip] registration rejected: {error:?}");
+        knytos_rt::logln!("[tcpip] registration rejected: {error:?}");
         fail(0xe005)
     });
     endpoint.bind_completion_queue(0).unwrap_or_else(|_| fail(0xe006));
@@ -455,10 +455,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut cfg = Config::new(hw);
     // Entropy is obtained before the interface emits any protocol state.
     let random = NetworkRandom::initialize(|bytes| {
-        if catten_services::tls_client::fill_entropy(
+        if knytos_services::tls_client::fill_entropy(
             None,
             bytes,
-            catten_services::tls_client::EntropyLimits::DEFAULT,
+            knytos_services::tls_client::EntropyLimits::DEFAULT,
         )
         .is_ok()
         {
@@ -466,12 +466,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         // RNG registration precedes network startup and needs no IP traffic.
         let (_, rng) =
-            wait_for_registered_name_owned(ns_connection, catten_services::entropy::NAME)
+            wait_for_registered_name_owned(ns_connection, knytos_services::entropy::NAME)
                 .ok_or(())?;
-        catten_services::tls_client::fill_entropy(
+        knytos_services::tls_client::fill_entropy(
             Some(rng.as_ref()),
             bytes,
-            catten_services::tls_client::EntropyLimits::DEFAULT,
+            knytos_services::tls_client::EntropyLimits::DEFAULT,
         )
         .map_err(|_| ())
     })
@@ -505,7 +505,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let reserved_slots = usize::from(dhcp);
     let socket_slots =
         resource_socket_capacity(ctx.heap_layout().size, requested_socket_slots, reserved_slots);
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[tcpip] socket policy requested_slots={} effective_slots={} per_owner={} buffer_quota={} \
          KiB heap={} KiB",
         requested_socket_slots,
@@ -515,7 +515,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         ctx.heap_layout().size / 1024,
     );
     if socket_slots < requested_socket_slots {
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[tcpip] socket capacity clamped by heap: requested={} effective={}",
             requested_socket_slots,
             socket_slots
@@ -580,7 +580,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             state.sockets.clear();
             config::write::<u32>(status::SOCKETS, 0);
-            catten_rt::logln!("[tcpip] shutdown: released {} socket(s)", socket_count);
+            knytos_rt::logln!("[tcpip] shutdown: released {} socket(s)", socket_count);
             return request;
         }
         let (counter, frequency) = knytos_syscall::monotonic_clock();
@@ -596,7 +596,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         {
             install_interface_addresses(&mut iface, local_cidr, &vips);
             service_vips = vips;
-            catten_rt::logln!("[tcpip] installed {} committed cluster VIP(s)", service_vips.len());
+            knytos_rt::logln!("[tcpip] installed {} committed cluster VIP(s)", service_vips.len());
         }
 
         // Periodic heartbeat (~every 1024 reactor iterations) with enough
@@ -608,7 +608,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         #[cfg(feature = "service-heartbeats")]
         if tick & 0x3ff == 0 {
             let summary = summarize_sockets(&state, &sockets);
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[tcpip] hb rx={} rxq={} rx_drop={} rx_map_err={}:{} tx_ok={} tx_err={} \
                  sockets={} tcp=l{}/c{}/e{}/x{}/z{} udp={} recv={}/{} send_ready={}",
                 rx_total,
@@ -660,7 +660,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     local_ip = cidr.address();
                     local_cidr = Some(cidr);
                     let octets = local_ip.octets();
-                    catten_rt::logln!(
+                    knytos_rt::logln!(
                         "[tcpip] DHCP assigned {}.{}.{}.{}/{}",
                         octets[0],
                         octets[1],
@@ -756,7 +756,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         for entry in state.sockets.values_mut() {
             if entry.send_pending.is_some() {
                 let tcp = sockets.get_mut::<TcpSocket>(entry.handle);
-                match catten_services::socket_state::send_ready(tcp.state(), tcp.can_send()) {
+                match knytos_services::socket_state::send_ready(tcp.state(), tcp.can_send()) {
                     Some(false) => {}
                     None => entry.send_pending.take().unwrap().reply(socket::ERR_NOT_CONNECTED),
                     Some(true) => {
@@ -777,13 +777,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             if entry.kind == SocketKind::Tcp {
                 let tcp = sockets.get::<TcpSocket>(entry.handle);
-                if let Some(result) = catten_services::socket_state::accept_result(tcp.state())
+                if let Some(result) = knytos_services::socket_state::accept_result(tcp.state())
                     && let Some(request) = entry.accept_pending.take()
                 {
-                    catten_services::socket_state::reply_accept(request, result);
+                    knytos_services::socket_state::reply_accept(request, result);
                 }
                 if entry.recv_pending.is_some()
-                    && catten_services::socket_state::receive_eof(tcp.state(), tcp.can_recv())
+                    && knytos_services::socket_state::receive_eof(tcp.state(), tcp.can_recv())
                 {
                     entry.recv_pending.take().unwrap().reply(0);
                 }
@@ -834,13 +834,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 // Raw authenticated-receive ABI boundary: transfer every
                 // attachment and reply exactly once into the operation owner.
                 let Ok(Some(request)) =
-                    (unsafe { catten_rt::owned::IncomingMessage::from_raw(msg) })
+                    (unsafe { knytos_rt::owned::IncomingMessage::from_raw(msg) })
                 else {
                     continue;
                 };
                 let owner = SocketOwner::from_message(&msg);
                 if msg.opcode == socket::OP_SEND {
-                    use catten_services::socket_state::{
+                    use knytos_services::socket_state::{
                         PendingSend,
                         reply_accept,
                     };
@@ -861,7 +861,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 }
                 if msg.opcode == socket::OP_TRY_SEND {
-                    use catten_services::socket_state::PendingSend;
+                    use knytos_services::socket_state::PendingSend;
                     // The same complete moved transaction owns both send forms.
                     // Decode before socket lookup; retired packed pages never
                     // reach backend enqueue, even with a valid low-half ID.
@@ -908,7 +908,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 }
                 if msg.opcode == socket::OP_ACCEPT {
-                    use catten_services::socket_state::reply_accept;
+                    use knytos_services::socket_state::reply_accept;
                     if request.memory.is_some() || request.connection.is_some() {
                         reply_accept(request, socket::ERR_BAD_OPCODE);
                     } else if let Some(entry) = state.owned_entry_mut(msg.arg0, owner) {
@@ -924,7 +924,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                     continue;
                 }
-                let mut receive = catten_services::socket_state::PendingReceive::new(request);
+                let mut receive = knytos_services::socket_state::PendingReceive::new(request);
                 if !receive.valid_buffer() {
                     receive.reply(socket::ERR_BAD_OPCODE);
                     continue;
@@ -967,7 +967,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 continue;
             }
-            let _attachments = catten_services::RequestAttachments::new(msg.memory, msg.connection);
+            let _attachments = knytos_services::RequestAttachments::new(msg.memory, msg.connection);
             if msg.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -1014,7 +1014,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             platform,
                         )
                     {
-                        catten_rt::logln!(
+                        knytos_rt::logln!(
                             "[tcpip] socket admission rejected: total={} capacity={} owner={:?}",
                             state.sockets.len(),
                             application_capacity,
@@ -1030,7 +1030,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     {
                         quota_rejections = quota_rejections.saturating_add(1);
                         if quota_rejections <= 3 || quota_rejections.is_power_of_two() {
-                            catten_rt::logln!(
+                            knytos_rt::logln!(
                                 "[tcpip] socket admission rejected (count={}): \
                                  owner_sockets={}/{} owner_buffers={}/{} total={} owner={:?}",
                                 quota_rejections,
@@ -1348,8 +1348,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // transmit data (e.g. an httpd response) drains before the
                     // FIN; the reactor sweeps the socket once fully closed.
                     match state.close_target(msg.arg0, owner) {
-                        Ok(catten_services::socket_state::CloseTarget::Live) => {}
-                        Ok(catten_services::socket_state::CloseTarget::Unavailable) => {
+                        Ok(knytos_services::socket_state::CloseTarget::Live) => {}
+                        Ok(knytos_services::socket_state::CloseTarget::Unavailable) => {
                             ipc_reply(msg.reply, socket::CLOSE_UNAVAILABLE);
                             continue;
                         }
@@ -1368,7 +1368,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         send.reply(socket::ERR_NOT_CONNECTED);
                     }
                     if let Some(request) = entry.accept_pending.take() {
-                        catten_services::socket_state::reply_accept(
+                        knytos_services::socket_state::reply_accept(
                             request,
                             socket::ERR_CONNECTION_REFUSED,
                         );
@@ -1484,7 +1484,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        let _ = catten_services::reactor::wait(Some(CLOCK_TICK_MS), 0);
+        let _ = knytos_services::reactor::wait(Some(CLOCK_TICK_MS), 0);
         // Bound draining even if another source replenishes this CQ.
         // Measure elapsed time with the scalar clock, independently of cookie count.
         for _ in 0..cq.entries {
@@ -1499,4 +1499,4 @@ fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
 }
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);

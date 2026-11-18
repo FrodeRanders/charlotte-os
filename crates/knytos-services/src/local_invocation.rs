@@ -1,6 +1,6 @@
 //! Owned asynchronous full-name lookup and scalar invocation on one CQ.
 
-use catten_rt::owned::{
+use knytos_rt::owned::{
     Connection,
     ConnectionRef,
     OwnedMemory,
@@ -203,7 +203,7 @@ impl Calls for KernelCalls {
         arg: i64,
     ) -> Result<Self::Pending, i64> {
         connection.call(opcode, arg as u64).map_err(|error| match error {
-            catten_rt::owned::IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT) => {
+            knytos_rt::owned::IpcError::Status(knytos_syscall::ipc_status::RESOURCE_LIMIT) => {
                 dns::ERR_RESOURCE_LIMIT
             }
             _ => dns::ERR_NOT_FOUND,
@@ -227,7 +227,7 @@ impl LocalInvocation {
             let memory = crate::stage_name_owned(name).ok_or(dns::ERR_RESOURCE_LIMIT)?;
             names.call_move(ns::OP_TRY_LOOKUP_NAMED, name.len() as u64, memory).map_err(
                 |(_memory, error)| match error {
-                    catten_rt::owned::IpcError::Status(
+                    knytos_rt::owned::IpcError::Status(
                         knytos_syscall::ipc_status::RESOURCE_LIMIT,
                     ) => dns::ERR_RESOURCE_LIMIT,
                     _ => dns::ERR_NOT_FOUND,

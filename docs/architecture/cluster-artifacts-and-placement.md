@@ -180,7 +180,7 @@ connection to the node's `grantctl` endpoint. It does not give the application
 a name-service connection.
 
 For each acquisition, the application uses the owned
-`catten_services::grant_client` helper. `grantctl` obtains kernel attestation
+`knytos_services::grant_client` helper. `grantctl` obtains kernel attestation
 that the exact descriptor digest belongs to this caller's live generation,
 binds its artifact name to the kernel-authenticated caller principal, and
 checks the exact named grant. A separately signed descriptor for the same

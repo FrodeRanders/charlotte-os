@@ -19,15 +19,15 @@
 #![no_main]
 extern crate alloc;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 use alloc::{
     collections::BTreeMap,
     vec::Vec,
 };
 
-use catten_rt::Context;
-use catten_services::{
+use knytos_rt::Context;
+use knytos_services::{
     fs,
     ns,
     objstore,
@@ -51,7 +51,7 @@ fn objstore_connect(ns_conn: u64) -> Option<u64> {
     if lookup == 0 {
         return None;
     }
-    let (generation, conn) = unsafe { catten_services::wait_reply(lookup) };
+    let (generation, conn) = unsafe { knytos_services::wait_reply(lookup) };
     if generation < 1 || conn == 0 {
         return None;
     }
@@ -77,7 +77,7 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
         memory_close(size_mem);
         return false;
     }
-    let (size_result, _) = unsafe { catten_services::wait_reply(size_call) };
+    let (size_result, _) = unsafe { knytos_services::wait_reply(size_call) };
     memory_close(size_mem);
     if size_result != 0 {
         return false;
@@ -102,7 +102,7 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
         memory_close(mem);
         return false;
     }
-    let (result, _) = unsafe { catten_services::wait_reply(call) };
+    let (result, _) = unsafe { knytos_services::wait_reply(call) };
     result == 0
 }
 
@@ -155,7 +155,7 @@ fn obj_create(obj_conn: u64) -> u64 {
     if call == 0 {
         return 0;
     }
-    let (id, _) = unsafe { catten_services::wait_reply(call) };
+    let (id, _) = unsafe { knytos_services::wait_reply(call) };
     if id <= 0 {
         0
     } else {
@@ -174,7 +174,7 @@ fn obj_flush(obj_conn: u64) -> bool {
     if call == 0 {
         return false;
     }
-    let (result, _) = unsafe { catten_services::wait_reply(call) };
+    let (result, _) = unsafe { knytos_services::wait_reply(call) };
     result == 0
 }
 
@@ -377,7 +377,7 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { catten_services::wait_reply(register) };
+    let (generation, _) = unsafe { knytos_services::wait_reply(register) };
     if generation < 1 {
         unsafe { thread_exit() };
     }
@@ -385,7 +385,7 @@ fn main(ctx: Context) -> ! {
     ipc_endpoint_bind_cq(endpoint, 0);
 
     loop {
-        catten_services::reactor::wait(None, 0);
+        knytos_services::reactor::wait(None, 0);
 
         loop {
             let message = ipc_recv(endpoint);

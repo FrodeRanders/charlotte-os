@@ -14,7 +14,7 @@ use core::{
     time::Duration,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     owned::{
@@ -250,7 +250,7 @@ impl<'a> Connection<'a> {
             && let Some(rejection) = error.client_rejection()
         {
             self.rejection_logged = true;
-            catten_rt::logln!(
+            knytos_rt::logln!(
                 "[management] connection={} {}",
                 self.audit_id,
                 rejection.audit_message()
@@ -311,7 +311,7 @@ impl<'a> Connection<'a> {
                 Ok(())
             }
         }
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[management] connection={} certificate={} role={:?} permission={:?} allowed={} \
              credential_utc={}",
             self.audit_id,
@@ -346,7 +346,7 @@ impl<'a> Connection<'a> {
                 self.pending = Some(call);
                 self.pending_kind = Some(kind);
                 if self.pending.as_mut().unwrap().bind_cq(self.cq).is_err() {
-                    catten_rt::domain_abort();
+                    knytos_rt::domain_abort();
                 }
                 Ok(Advance::Progress)
             }

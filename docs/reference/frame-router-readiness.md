@@ -13,7 +13,7 @@ deferred lookup. Ordinary rejected lookup/control admission waits for the next
 refresh opportunity; accepted calls are never replayed. Rejected CQ binding or
 checked wait admission aborts with the complete reactor and accepted work live.
 
-The existing `catten_services::frouter::SNAPSHOT_REFRESH_MS` in
+The existing `knytos_services::frouter::SNAPSHOT_REFRESH_MS` in
 `../../crates/knytos-services` supplies the shared **1000 ms** route,
 assignment and membership cadence. `SNAPSHOT_SOURCE_MAX_AGE_MS` derives from it,
 and `SNAPSHOT_LEASE_MS` is five times that interval. These are compile-time

@@ -22,7 +22,7 @@ use core::{
     time::Duration,
 };
 
-use catten_rt::{
+use knytos_rt::{
     call::CallObservation,
     deadline::Deadline,
     owned::{
@@ -140,7 +140,7 @@ pub struct WakeReactor<R> {
 }
 impl<R> WakeReactor<R> {
     pub fn new(backend: R, cq: u32, capacity: usize) -> Result<Self, RegistrationError> {
-        Self::with_clock(backend, cq, capacity, || catten_rt::abi::monotonic_clock().0)
+        Self::with_clock(backend, cq, capacity, || knytos_rt::abi::monotonic_clock().0)
     }
 
     fn with_clock(
@@ -216,8 +216,8 @@ fn fail_wait(error: io::ErrorKind) -> ! {
     panic!("injected reactor wait rejection: {error:?}");
     #[cfg(not(test))]
     {
-        catten_rt::logln!("[app-sitas] backend wait rejected: {:?}", error);
-        catten_rt::domain_abort()
+        knytos_rt::logln!("[app-sitas] backend wait rejected: {:?}", error);
+        knytos_rt::domain_abort()
     }
 }
 

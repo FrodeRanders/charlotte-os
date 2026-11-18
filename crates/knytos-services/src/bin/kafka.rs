@@ -16,7 +16,7 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::{
+use knytos_rt::{
     Context,
     ShutdownRequest,
     config,
@@ -27,7 +27,7 @@ use catten_rt::{
         ReplyToken,
     },
 };
-use catten_services::{
+use knytos_services::{
     entropy,
     kafka as protocol,
     name,
@@ -57,7 +57,7 @@ use knytos_syscall::{
 };
 use zeroize::Zeroizing;
 
-catten_rt::entry!(main);
+knytos_rt::entry!(main);
 
 const CLIENT_ID: &[u8] = b"knytos-os";
 const SEND_ATTEMPTS: usize = 1_000;
@@ -486,20 +486,20 @@ impl<'connection> BrokerTransport<'connection> {
                 match error {
                     tls_client::OpenError::Handshake(code) => {
                         if transport_failure {
-                            catten_rt::logln!("[kafka] TLS handshake transport failed ({})", code)
+                            knytos_rt::logln!("[kafka] TLS handshake transport failed ({})", code)
                         } else {
-                            catten_rt::logln!(
+                            knytos_rt::logln!(
                                 "[kafka] TLS handshake verification failed ({})",
                                 code
                             )
                         }
                     }
                     tls_client::OpenError::EntropyUnavailable => {
-                        catten_rt::logln!("[kafka] TLS unavailable: system entropy source failed")
+                        knytos_rt::logln!("[kafka] TLS unavailable: system entropy source failed")
                     }
                     tls_client::OpenError::InvalidConfiguration
                     | tls_client::OpenError::CryptoBusy => {
-                        catten_rt::logln!("[kafka] invalid TLS transport profile")
+                        knytos_rt::logln!("[kafka] invalid TLS transport profile")
                     }
                 }
                 if transport_failure {
@@ -1562,7 +1562,7 @@ impl<'connection> BrokerSession<'connection> {
                     sleep_ms(COORDINATOR_RETRY_MS);
                 }
                 Err(wire::Error::Broker(error)) => {
-                    catten_rt::logln!("[kafka] transactional offset commit broker error={}", error);
+                    knytos_rt::logln!("[kafka] transactional offset commit broker error={}", error);
                     return Err(map_broker(error));
                 }
                 Err(error) => return Err(map_wire(error)),
@@ -2188,7 +2188,7 @@ impl Service<'_> {
         config::write::<u32>(status::GROUP_GENERATION, membership.generation as u32);
         config::write::<u32>(status::GROUP_ASSIGNED, membership.assigned as u32);
         config::write::<u32>(status::GROUP_REBALANCES, self.group_rebalances);
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[kafka] group generation={} assigned={} member-bytes={}",
             membership.generation,
             membership.assigned,
@@ -2347,7 +2347,7 @@ fn required_rights(opcode: u32) -> u64 {
 fn handle_message(
     service: &mut Service<'_>,
     endpoint_rights: u64,
-    mut message: catten_rt::owned::IncomingMessage,
+    mut message: knytos_rt::owned::IncomingMessage,
 ) {
     let Some(reply) = message.reply.take() else {
         return;
@@ -2388,7 +2388,7 @@ fn handle_message(
         protocol::OP_CONSUMER_OPEN => {
             result = service.open_consumer(owner).map(i64::from).unwrap_or_else(|error| error);
             if result < 0 {
-                catten_rt::logln!("[kafka] consumer open failed error={}", result);
+                knytos_rt::logln!("[kafka] consumer open failed error={}", result);
             }
             let _ = reply.reply(result);
         }
@@ -2492,7 +2492,7 @@ fn handle_message(
         }
     }
     if result < 0 {
-        catten_rt::logln!("[kafka] opcode={} failed error={}", message.opcode, result);
+        knytos_rt::logln!("[kafka] opcode={} failed error={}", message.opcode, result);
     }
     service.account(result);
 }
@@ -2531,7 +2531,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             sleep_ms(TLS_TIME_RETRY_MS);
         }
         if !synchronized {
-            catten_rt::logln!("[kafka] TLS unavailable: time service did not synchronize");
+            knytos_rt::logln!("[kafka] TLS unavailable: time service did not synchronize");
             fail(0x4b00 | (-protocol::ERR_TLS_REQUIRED as u32 & 0xff));
         }
     }
@@ -2550,7 +2550,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         {
             fail(0x4b07);
         }
-        catten_rt::logln!(
+        knytos_rt::logln!(
             "[kafka] access-point name={} rights={:#x}",
             core::str::from_utf8(&authority.service_name).unwrap_or("?"),
             authority.rights
@@ -2560,7 +2560,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             rights: authority.rights,
         });
     }
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[kafka] serving instance={} endpoints={} broker={}:{} tls={} consume-topic={} \
          partition={} produce-routes={} group={} transactional-id={} ceiling={:#x}",
         core::str::from_utf8(&profile.instance_name).unwrap_or("?"),
@@ -2575,7 +2575,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         core::str::from_utf8(&profile.transactional_id).unwrap_or("?"),
         profile.rights
     );
-    catten_rt::logln!(
+    knytos_rt::logln!(
         "[kafka] coordinators group={} transaction={}",
         broker.group_coordinator.unwrap_or(-1),
         broker.transaction_coordinator.unwrap_or(-1)
@@ -2633,7 +2633,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     handle_message(&mut service, published.rights, message);
                 }
                 Ok(None) => {}
-                Err(catten_rt::owned::ReceiveError::EndpointClosed) => fail(0x4b0a),
+                Err(knytos_rt::owned::ReceiveError::EndpointClosed) => fail(0x4b0a),
                 Err(_) => {
                     config::write::<u32>(status::ERROR, 0x4b08);
                 }
@@ -2641,7 +2641,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         next_endpoint = (next_endpoint + 1) % endpoints.len();
         if !handled {
-            catten_services::reactor::wait(Some(SERVICE_WAIT_MS), 0);
+            knytos_services::reactor::wait(Some(SERVICE_WAIT_MS), 0);
         }
     }
 }

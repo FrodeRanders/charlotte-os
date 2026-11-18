@@ -131,12 +131,12 @@ pub(crate) fn with_service_pages<T>(
 
 /// Byte offset of the per-shard CQ ring base virtual address.
 ///
-/// Must match `catten_rt::config::SHARD_CQ_BASE_OFFSET`.
+/// Must match `knytos_rt::config::SHARD_CQ_BASE_OFFSET`.
 pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
 
 /// Byte offset of the per-shard CQ ring count.
 ///
-/// Must match `catten_rt::config::SHARD_CQ_COUNT_OFFSET`.
+/// Must match `knytos_rt::config::SHARD_CQ_COUNT_OFFSET`.
 pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 
 pub fn write_launch_header(config_frame: PAddr, heap_bytes: usize) {
