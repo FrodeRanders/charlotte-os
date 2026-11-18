@@ -235,21 +235,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "knytos-s3"
-version = "0.1.0"
-dependencies = [
- "knytos-launch",
- "knytos-protocol-s3",
- "zeroize",
-]
-
-[[package]]
 name = "charlotte-transport-tests"
 version = "0.1.0"
 dependencies = [
- "knytos-s3",
  "embedded-io",
  "knytos-kafka",
+ "knytos-s3",
  "knytos-services",
  "zeroize",
 ]
@@ -1046,12 +1037,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "knytos-s3"
+version = "0.1.0"
+dependencies = [
+ "knytos-launch",
+ "knytos-protocol-s3",
+ "zeroize",
+]
+
+[[package]]
 name = "knytos-services"
 version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
- "knytos-s3",
  "ed25519-compact",
  "embassy-crypto",
  "embassy-crypto-rustcrypto",
@@ -1078,6 +1077,7 @@ dependencies = [
  "knytos-protocol-s3",
  "knytos-protocol-time",
  "knytos-rt",
+ "knytos-s3",
  "knytos-smoltcp",
  "knytos-syscall",
  "p256",
