@@ -35,12 +35,12 @@ use catten_services::{
     },
     virtio,
 };
+use knytos_launch::rng_status as status;
 use knytos_syscall::{
     DmaDirection,
     cq_read,
     thread_exit,
 };
-use knytos_launch::rng_status as status;
 
 catten_rt::entry!(main);
 

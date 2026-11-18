@@ -43,12 +43,12 @@ use catten_services::{
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
-use knytos_syscall::*;
 use knytos_launch::clusterctl_status as status;
 use knytos_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
+use knytos_syscall::*;
 
 const STAGE_SERVING: u32 = 6;
 

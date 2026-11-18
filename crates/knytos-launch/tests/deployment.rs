@@ -1,3 +1,7 @@
+use ed25519_compact::{
+    KeyPair,
+    Signature,
+};
 use knytos_launch::{
     DEFAULT_USER_STACK_PAGES,
     MAX_USER_STACK_PAGES,
@@ -7,10 +11,6 @@ use knytos_launch::{
         DescriptorFields,
         EncodeError,
     },
-};
-use ed25519_compact::{
-    KeyPair,
-    Signature,
 };
 
 const FIXTURE_VARIANTS: &[knytos_launch::deployment::ArtifactVariant<'static>] =

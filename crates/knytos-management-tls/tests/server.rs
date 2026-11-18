@@ -24,8 +24,8 @@ use std::{
     },
 };
 
-use knytos_management_tls::*;
 use embassy_crypto_rustcrypto as _;
+use knytos_management_tls::*;
 use rustls::{
     ClientConfig,
     ClientConnection,

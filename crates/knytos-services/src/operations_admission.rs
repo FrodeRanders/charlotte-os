@@ -338,8 +338,7 @@ pub fn resolve_release_assignments_with_capacity(
     automatic_node: u64,
     capacity: &NodeCapacityView,
 ) -> Result<Vec<Vec<u64>>, AdmissionError> {
-    let release =
-        knytos_launch::release::decode(release_bytes).ok_or(AdmissionError::Invalid)?;
+    let release = knytos_launch::release::decode(release_bytes).ok_or(AdmissionError::Invalid)?;
     let descriptors = release.descriptors().collect::<Vec<_>>();
     resolve_descriptor_assignments_with_capacity(
         &descriptors,
@@ -576,11 +575,9 @@ mod tests {
                 (
                     *node,
                     NodeCapacity {
-                        target: Some(
-                            knytos_launch::execution_target::ExecutionTarget::baseline(
-                                knytos_launch::execution_target::Architecture::Aarch64,
-                            ),
-                        ),
+                        target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                            knytos_launch::execution_target::Architecture::Aarch64,
+                        )),
                         ..NodeCapacity::default()
                     },
                 )
@@ -605,6 +602,10 @@ mod tests {
     }
 
     use catten_graft::state_machine::StateMachine;
+    use ed25519_compact::{
+        KeyPair,
+        Signature,
+    };
     use knytos_launch::{
         deployment::{
             self,
@@ -625,10 +626,6 @@ mod tests {
             ReleaseFields,
         },
         trust::AdmissionTrust,
-    };
-    use ed25519_compact::{
-        KeyPair,
-        Signature,
     };
     use rand_core_10::UnwrapErr;
 
@@ -1217,11 +1214,9 @@ mod tests {
                 (
                     node,
                     NodeCapacity {
-                        target: Some(
-                            knytos_launch::execution_target::ExecutionTarget::baseline(
-                                knytos_launch::execution_target::Architecture::Aarch64,
-                            ),
-                        ),
+                        target: Some(knytos_launch::execution_target::ExecutionTarget::baseline(
+                            knytos_launch::execution_target::Architecture::Aarch64,
+                        )),
                         free_frames: 100,
                         usable_frames: 1000,
                         committed_frames: 0,

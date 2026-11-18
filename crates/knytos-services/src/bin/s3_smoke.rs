@@ -22,7 +22,6 @@ use catten_services::{
     sleep_ms,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::{
     s3_smoke_status as status,
     sha256::Sha256,
@@ -32,6 +31,7 @@ use knytos_protocol_s3::{
     ERR_UNSYNCHRONIZED,
     ObjectRequest,
 };
+use knytos_syscall::thread_exit;
 
 catten_rt::entry!(main);
 

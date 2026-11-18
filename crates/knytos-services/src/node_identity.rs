@@ -432,8 +432,7 @@ mod tests {
     fn only_successful_creation_writes_and_flushes_once() {
         let store = ScriptedStore::new(vec![None], true);
         let identity =
-            load_from(&store, b"knytos", Some([3; 6]), || panic!("creator must not wait"))
-                .unwrap();
+            load_from(&store, b"knytos", Some([3; 6]), || panic!("creator must not wait")).unwrap();
         assert_eq!(identity.name, decode(&encoded(b"knytos", [3; 6]).unwrap()).unwrap().name);
         assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (1, 1, 1));
         let mut store = ScriptedStore::new(vec![None], true);

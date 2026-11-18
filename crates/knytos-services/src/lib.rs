@@ -2795,12 +2795,8 @@ pub fn wait_for_local_ready_or_shutdown(
     ctx: &catten_rt::Context,
     ns_connection: catten_rt::owned::ConnectionRef<'_>,
 ) -> Result<(), catten_rt::ShutdownRequest> {
-    wait_for_registered_name_or_shutdown_owned(
-        ctx,
-        ns_connection,
-        knytos_launch::LOCAL_READY_NAME,
-    )
-    .map(|_| ())
+    wait_for_registered_name_or_shutdown_owned(ctx, ns_connection, knytos_launch::LOCAL_READY_NAME)
+        .map(|_| ())
 }
 
 /// Pause for one monotonic delay, interrupted by a lifecycle request.
@@ -2856,8 +2852,7 @@ pub fn scalar_call_with_backpressure(connection: u64, opcode: u32, arg0: u64) ->
 /// reliable-message/Raft membership clients) must call this before starting
 /// to communicate with other nodes.
 pub fn wait_for_local_ready(ns_conn: u64) -> bool {
-    let Some((_, connection)) =
-        wait_for_registered_name(ns_conn, knytos_launch::LOCAL_READY_NAME)
+    let Some((_, connection)) = wait_for_registered_name(ns_conn, knytos_launch::LOCAL_READY_NAME)
     else {
         return false;
     };

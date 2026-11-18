@@ -32,6 +32,7 @@ use catten_services::{
     pl011,
     wait_reply,
 };
+use knytos_launch::uart_status as status;
 use knytos_syscall::{
     IpcRights,
     device_irq_ack,
@@ -46,7 +47,6 @@ use knytos_syscall::{
     ipc_status,
     thread_exit,
 };
-use knytos_launch::uart_status as status;
 
 static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 

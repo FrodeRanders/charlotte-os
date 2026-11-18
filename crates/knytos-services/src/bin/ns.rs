@@ -34,6 +34,18 @@ use catten_services::{
     },
     ns,
 };
+use knytos_authorization::{
+    AuditLog,
+    AuditOutcome,
+    AuthorizationError,
+    AuthorizationRights,
+    DomainIdentity,
+    PolicyStore,
+    PrincipalId,
+    Roles,
+    wire,
+};
+use knytos_launch::ns_status as status;
 use knytos_syscall::{
     IpcMessage,
     IpcRights,
@@ -53,18 +65,6 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use knytos_authorization::{
-    AuditLog,
-    AuditOutcome,
-    AuthorizationError,
-    AuthorizationRights,
-    DomainIdentity,
-    PolicyStore,
-    PrincipalId,
-    Roles,
-    wire,
-};
-use knytos_launch::ns_status as status;
 
 #[path = "ns/status_snapshot.rs"]
 mod status_snapshot;

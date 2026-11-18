@@ -30,8 +30,7 @@ fn commented_key(bytes: &[u8]) -> String {
 
 #[test]
 fn operational_commands_share_bounded_public_key_file_admission() {
-    let path =
-        std::env::temp_dir().join(format!("knytos-public-key-input-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("knytos-public-key-input-{}", std::process::id()));
     fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
     let directory = Directory(path);
     let recipient = directory.0.join("recipient.pub");
@@ -39,10 +38,8 @@ fn operational_commands_share_bounded_public_key_file_admission() {
     let plaintext = directory.0.join("profile");
     let envelope = directory.0.join("envelope");
     let rejected_output = directory.0.join("rejected-envelope");
-    fs::write(&recipient, commented_key(&knytos_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY))
-        .unwrap();
-    fs::write(&signer, commented_key(&knytos_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY))
-        .unwrap();
+    fs::write(&recipient, commented_key(&knytos_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY)).unwrap();
+    fs::write(&signer, commented_key(&knytos_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY)).unwrap();
     fs::write(&plaintext, b"public opaque envelope payload").unwrap();
     let executable = env!("CARGO_BIN_EXE_cluster-sign");
     let private = concat!(env!("CARGO_MANIFEST_DIR"), "/dev-operations-key.hex");

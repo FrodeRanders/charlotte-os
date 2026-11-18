@@ -22,6 +22,7 @@ use catten_services::{
     ns,
     objstore,
 };
+use knytos_launch::service_manager_status as status;
 use knytos_syscall::{
     IpcRights,
     ipc_close,
@@ -42,7 +43,6 @@ use knytos_syscall::{
     spawn_upgrade,
     thread_exit,
 };
-use knytos_launch::service_manager_status as status;
 
 /// Pack 6 ASCII bytes into a u64 name.
 const fn name(s: &[u8]) -> u64 {

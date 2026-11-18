@@ -6,6 +6,10 @@ use std::{
     path::Path,
 };
 
+use ed25519_compact::{
+    KeyPair,
+    Seed,
+};
 use knytos_launch::{
     operations,
     trust::{
@@ -17,10 +21,6 @@ use knytos_launch::{
             BootstrapKey,
         },
     },
-};
-use ed25519_compact::{
-    KeyPair,
-    Seed,
 };
 
 fn pair(seed: u8) -> KeyPair {

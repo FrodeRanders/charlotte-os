@@ -21,8 +21,8 @@ use catten_services::{
     sleep_ms,
     wait_for_registered_name_bytes_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_protocol_kafka::RecordRequest;
+use knytos_syscall::thread_exit;
 
 catten_rt::entry!(main);
 

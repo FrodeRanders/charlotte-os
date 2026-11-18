@@ -65,10 +65,10 @@ use catten_services::{
     socket,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::frouter_status as status;
 use knytos_protocol_disco::DISCO_ETHERTYPE;
 use knytos_protocol_msg::MSG_ETHERTYPE;
+use knytos_syscall::thread_exit;
 
 const IPV4_ETHERTYPE: u16 = 0x0800;
 const ARP_ETHERTYPE: u16 = 0x0806;

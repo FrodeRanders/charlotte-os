@@ -28,11 +28,11 @@ use catten_services::{
     grant,
     ns,
 };
-use knytos_syscall::IpcRights;
 use knytos_authorization::{
     AuthorizationRights,
     wire,
 };
+use knytos_syscall::IpcRights;
 
 catten_rt::entry!(main);
 
@@ -66,8 +66,7 @@ fn authorized_request<'a>(
         return None;
     }
     let descriptor = knytos_launch::deployment::decode(request.descriptor)?;
-    if knytos_launch::artifact_principal_id(descriptor.artifact_name) != message.sender_principal
-    {
+    if knytos_launch::artifact_principal_id(descriptor.artifact_name) != message.sender_principal {
         return None;
     }
     let allowed = descriptor.grants().any(|grant| {

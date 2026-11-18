@@ -19,8 +19,8 @@ use catten_services::{
     ns,
     stage_name_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::client_status as status;
+use knytos_syscall::thread_exit;
 
 const ECHO_VALUE: u64 = 0x1234_5678;
 const SENTINEL: u32 = 0xc0de;

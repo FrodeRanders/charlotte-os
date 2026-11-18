@@ -48,11 +48,11 @@ use catten_services::{
     sleep_ms,
     socket,
 };
-use knytos_syscall::IpcRights;
 use knytos_launch::{
     deployment,
     security_probe_status as status,
 };
+use knytos_syscall::IpcRights;
 
 const AVAILABLE: &[u8] = b"secavail";
 const MISSING: &[u8] = b"security.missing";

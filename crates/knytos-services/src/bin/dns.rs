@@ -100,6 +100,10 @@ use catten_services::{
     wait_for_registered_name_owned,
     wait_reply,
 };
+use knytos_protocol_msg::{
+    IPC_MESSAGE_HEADER_SIZE,
+    parse_ipc_message_header,
+};
 use knytos_syscall::{
     IpcRights,
     close as completion_close,
@@ -121,10 +125,6 @@ use knytos_syscall::{
     poll as completion_poll,
     submit_detached_timer,
     thread_exit,
-};
-use knytos_protocol_msg::{
-    IPC_MESSAGE_HEADER_SIZE,
-    parse_ipc_message_header,
 };
 
 #[path = "dns/catalog.rs"]
@@ -1217,11 +1217,8 @@ fn ingress_policy_command(
     trust: &knytos_launch::trust::AdmissionTrust,
     time: ConnectionRef<'_>,
 ) -> Result<Vec<u8>, i64> {
-    match knytos_launch::ingress_policy::verify(
-        envelope,
-        &trust.cluster_id,
-        &trust.operations_key,
-    ) {
+    match knytos_launch::ingress_policy::verify(envelope, &trust.cluster_id, &trust.operations_key)
+    {
         knytos_launch::ingress_policy::VerifyOutcome::Valid => {}
         knytos_launch::ingress_policy::VerifyOutcome::Invalid
         | knytos_launch::ingress_policy::VerifyOutcome::WrongCluster
@@ -1505,9 +1502,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         _ => 300,
     };
     let ingress_services = match ctx.manifest_value(INGRESS_SERVICES_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => knytos_launch::ingress::decode(bytes)
-            .unwrap_or_else(|| fatal(23))
-            .collect::<Vec<_>>(),
+        Some(ManifestValue::Bytes(bytes)) => {
+            knytos_launch::ingress::decode(bytes).unwrap_or_else(|| fatal(23)).collect::<Vec<_>>()
+        }
         Some(_) => fatal(23),
         None => Vec::new(),
     };
@@ -1790,9 +1787,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             let (free_frames, usable_frames, cpu_load_permille, packed, features) =
                 knytos_syscall::node_pressure();
-            let target = knytos_launch::execution_target::ExecutionTarget::from_pressure(
-                packed, features,
-            );
+            let target =
+                knytos_launch::execution_target::ExecutionTarget::from_pressure(packed, features);
             if let (Some(node_key), Some(boot_nonce), Some(target)) =
                 (node_identity::key_from_name(&node_name), capacity_boot_nonce, target)
             {
@@ -3440,8 +3436,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_SHUTDOWN_SUBMIT => {
-                    let envelope =
-                        read_moved_bytes(&message, knytos_launch::shutdown::ENCODED_LEN);
+                    let envelope = read_moved_bytes(&message, knytos_launch::shutdown::ENCODED_LEN);
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
                             match submit_deferred(
@@ -3512,10 +3507,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_INGRESS_POLICY_SUBMIT => {
-                    let envelope = read_moved_bytes(
-                        &message,
-                        knytos_launch::ingress_policy::MAX_ENCODED_LEN,
-                    );
+                    let envelope =
+                        read_moved_bytes(&message, knytos_launch::ingress_policy::MAX_ENCODED_LEN);
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
                             match submit_deferred(
@@ -3799,12 +3792,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if message.memory != 0 {
                         memory_close(message.memory);
                     }
-                    let service = knytos_launch::ingress::ServiceId::unpack(message.arg0)
-                        .and_then(|service| {
+                    let service = knytos_launch::ingress::ServiceId::unpack(message.arg0).and_then(
+                        |service| {
                             effective_ingress_bindings(&catalog, &ingress_services)
                                 .into_iter()
                                 .find(|binding| binding.service == service)
-                        });
+                        },
+                    );
                     let snapshot = service
                         .filter(|_| {
                             node.can_serve_bounded_read(frouter::SNAPSHOT_SOURCE_MAX_AGE_MS)

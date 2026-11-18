@@ -68,6 +68,11 @@ use catten_services::{
     },
     sleep_ms,
 };
+use knytos_launch::raft_status as status;
+use knytos_protocol_disco::{
+    ROLE_LEADER,
+    parse_cluster_answer,
+};
 use knytos_syscall::{
     IpcRights,
     cq_read,
@@ -89,11 +94,6 @@ use knytos_syscall::{
     memory_unmap,
     submit_detached_timer,
     thread_exit,
-};
-use knytos_launch::raft_status as status;
-use knytos_protocol_disco::{
-    ROLE_LEADER,
-    parse_cluster_answer,
 };
 
 const LOOP_TICK_MS: u64 = 25;

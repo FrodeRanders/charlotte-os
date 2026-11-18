@@ -12,11 +12,11 @@ use catten_rt::{
     Context,
     config,
 };
+use knytos_launch::smoke_status as status;
 use knytos_syscall::{
     el0_log,
     thread_exit,
 };
-use knytos_launch::smoke_status as status;
 
 fn main(_ctx: Context) -> ! {
     config::write::<u32>(status::MARKER, 0xdead_beef);

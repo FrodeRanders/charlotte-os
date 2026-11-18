@@ -212,8 +212,8 @@ fn decode_policy(reply: CallResult) -> Result<alloc::string::String, i64> {
         mapping.as_slice().get(..len).ok_or(clusterctl::ERR_NOT_FOUND)?,
     )
     .ok_or(clusterctl::ERR_NOT_FOUND)?;
-    let policy = knytos_launch::ingress_policy::decode(&entry.envelope)
-        .ok_or(clusterctl::ERR_NOT_FOUND)?;
+    let policy =
+        knytos_launch::ingress_policy::decode(&entry.envelope).ok_or(clusterctl::ERR_NOT_FOUND)?;
     Ok(format!(
         "{{\"generation\":{},\"sequence\":{},\"assignments\":{},\"not_before_unix_seconds\":{},\"\
          expires_unix_seconds\":{}}}\n",

@@ -951,8 +951,7 @@ fn selected_variant<'a>(
     let position = entry.replica_nodes.binary_search(&node).ok()?;
     let variant = descriptor.variant(usize::from(*entry.replica_variants.get(position)?))?;
     let (_, _, _, packed, features) = knytos_syscall::node_pressure();
-    let target =
-        knytos_launch::execution_target::ExecutionTarget::from_pressure(packed, features)?;
+    let target = knytos_launch::execution_target::ExecutionTarget::from_pressure(packed, features)?;
     if !target.supports(variant.target) {
         return None;
     }

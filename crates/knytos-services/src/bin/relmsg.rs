@@ -30,22 +30,6 @@ use catten_services::{
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
-use knytos_syscall::{
-    cq_read,
-    ipc_recv,
-    ipc_reply,
-    ipc_reply_move,
-    ipc_scalar_call,
-    ipc_scalar_call_move,
-    ipc_status,
-    memory_alloc,
-    memory_close,
-    memory_map_any,
-    memory_size,
-    memory_unmap,
-    submit_detached_timer,
-    thread_exit,
-};
 use knytos_launch::relmsg_status as status;
 use knytos_protocol_msg::{
     FLAG_ACK,
@@ -67,6 +51,22 @@ use knytos_protocol_msg::{
     wire_session_is_newer,
 };
 use knytos_protocol_net::decode_status;
+use knytos_syscall::{
+    cq_read,
+    ipc_recv,
+    ipc_reply,
+    ipc_reply_move,
+    ipc_scalar_call,
+    ipc_scalar_call_move,
+    ipc_status,
+    memory_alloc,
+    memory_close,
+    memory_map_any,
+    memory_size,
+    memory_unmap,
+    submit_detached_timer,
+    thread_exit,
+};
 
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);

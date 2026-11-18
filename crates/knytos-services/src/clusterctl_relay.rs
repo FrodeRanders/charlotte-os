@@ -374,9 +374,7 @@ fn reply_bound(opcode: u32, len: usize, backing: usize) -> bool {
             22 + knytos_launch::deployment::MAX_DESCRIPTOR_LEN + usize::from(u16::MAX) * 10
         }
         clusterctl::OP_ROLLOUT => clusterctl::ROLLOUT_STATUS_LEN,
-        clusterctl::OP_INGRESS_POLICY_STATUS => {
-            8 + knytos_launch::ingress_policy::MAX_ENCODED_LEN
-        }
+        clusterctl::OP_INGRESS_POLICY_STATUS => 8 + knytos_launch::ingress_policy::MAX_ENCODED_LEN,
         _ => return false,
     };
     len != 0 && len <= maximum && len <= backing && backing <= maximum.div_ceil(4096) * 4096

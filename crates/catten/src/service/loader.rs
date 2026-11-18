@@ -596,8 +596,7 @@ fn try_load_domain_with_capacity(
     if platform {
         crate::memory::budget::mark_platform(address_space);
     }
-    let roles = if metadata.class == knytos_launch::signature_note::ArtifactClass::Administration
-    {
+    let roles = if metadata.class == knytos_launch::signature_note::ArtifactClass::Administration {
         knytos_syscall::domain_roles::POLICY_ADMIN | knytos_syscall::domain_roles::SERVICE_MANAGER
     } else {
         0

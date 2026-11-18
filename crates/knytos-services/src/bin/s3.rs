@@ -41,10 +41,6 @@ use catten_services::{
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::{
-    IpcRights,
-    thread_exit,
-};
 use knytos_launch::{
     s3_status as status,
     sha256::Sha256,
@@ -70,6 +66,10 @@ use knytos_s3::{
         hex_lower,
         sign,
     },
+};
+use knytos_syscall::{
+    IpcRights,
+    thread_exit,
 };
 use zeroize::{
     Zeroize,

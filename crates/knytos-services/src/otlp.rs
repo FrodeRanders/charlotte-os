@@ -306,9 +306,7 @@ mod tests {
         sample.values[r::CPU_BUSY_TICKS] = 10;
         let bytes = metrics("node", 123456, 1000, sample, None).unwrap();
         assert!(
-            bytes
-                .windows(b"knytos.heap.allocated".len())
-                .any(|b| b == b"knytos.heap.allocated")
+            bytes.windows(b"knytos.heap.allocated".len()).any(|b| b == b"knytos.heap.allocated")
         );
         let mut timestamp = alloc::vec![25];
         timestamp.extend_from_slice(&123456u64.to_le_bytes());

@@ -1,10 +1,10 @@
-use knytos_launch::{
-    ingress,
-    ingress_policy,
-};
 use ed25519_compact::{
     KeyPair,
     Signature,
+};
+use knytos_launch::{
+    ingress,
+    ingress_policy,
 };
 
 fn signed_policy(

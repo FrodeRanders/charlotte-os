@@ -36,12 +36,12 @@ use catten_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
+use knytos_launch::time_status as status;
 use knytos_syscall::{
     cq_read,
     monotonic_clock,
     thread_exit,
 };
-use knytos_launch::time_status as status;
 
 catten_rt::entry!(main);
 

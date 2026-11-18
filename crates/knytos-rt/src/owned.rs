@@ -14,13 +14,13 @@ use core::{
     slice,
 };
 
+use knytos_lifecycle::ThreadIdentity;
 use knytos_syscall::{
     self,
     DmaDirection,
     IpcRights,
     OpCode,
 };
-use knytos_lifecycle::ThreadIdentity;
 
 mod completion;
 mod device;
@@ -1389,13 +1389,9 @@ mod tests {
         let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
         let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
         kernel::update(|state| state.scoped_principal = 0x8000_abcd);
-        let mut domain = launch_scoped_artifact(
-            artifact,
-            1,
-            descriptor,
-            knytos_launch::deployment::HEADER_LEN,
-        )
-        .expect("scoped launch");
+        let mut domain =
+            launch_scoped_artifact(artifact, 1, descriptor, knytos_launch::deployment::HEADER_LEN)
+                .expect("scoped launch");
         assert_eq!(domain.asid(), 2);
         assert_eq!(domain.principal(), 0x8000_abcd);
         assert_eq!(
@@ -1419,13 +1415,9 @@ mod tests {
         kernel::update(|state| state.scoped_principal = 0x8000_dcba);
         let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
         let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
-        let domain = launch_scoped_artifact(
-            artifact,
-            1,
-            descriptor,
-            knytos_launch::deployment::HEADER_LEN,
-        )
-        .expect("scoped launch");
+        let domain =
+            launch_scoped_artifact(artifact, 1, descriptor, knytos_launch::deployment::HEADER_LEN)
+                .expect("scoped launch");
         drop(domain);
         assert_eq!(
             kernel::events(),
@@ -1678,10 +1670,7 @@ mod tests {
         let _guard = setup();
         let envelope = unsafe { OwnedMemory::from_raw(15) }.expect("shutdown envelope");
 
-        assert_eq!(
-            request_node_shutdown(envelope, knytos_launch::shutdown::ENCODED_LEN),
-            Ok(())
-        );
+        assert_eq!(request_node_shutdown(envelope, knytos_launch::shutdown::ENCODED_LEN), Ok(()));
         assert_eq!(
             kernel::events(),
             [kernel::Event::RequestNodeShutdown(15, knytos_launch::shutdown::ENCODED_LEN,)]
@@ -1708,13 +1697,8 @@ mod tests {
         let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
 
         assert_eq!(
-            launch_scoped_artifact(
-                artifact,
-                1,
-                descriptor,
-                knytos_launch::deployment::HEADER_LEN,
-            )
-            .err(),
+            launch_scoped_artifact(artifact, 1, descriptor, knytos_launch::deployment::HEADER_LEN,)
+                .err(),
             Some(ArtifactLaunchError::Rejected)
         );
         assert_eq!(

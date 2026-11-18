@@ -1,13 +1,13 @@
+use ed25519_compact::{
+    KeyPair,
+    Signature,
+};
 use knytos_launch::operations::{
     self,
     EnvelopeFields,
     OpenError,
     PROFILE_KIND_KAFKA,
     VerifyOutcome,
-};
-use ed25519_compact::{
-    KeyPair,
-    Signature,
 };
 use rand_core::UnwrapErr;
 use zeroize::Zeroizing;

@@ -26,11 +26,11 @@ use catten_services::{
     ns,
     stage_name_owned,
 };
+use knytos_launch::echo_status as status;
 use knytos_syscall::{
     IpcRights,
     thread_exit,
 };
-use knytos_launch::echo_status as status;
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1); // stage: started

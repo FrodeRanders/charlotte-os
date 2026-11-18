@@ -29,6 +29,7 @@ use catten_services::{
     sleep_ms,
     spin_reply,
 };
+use knytos_launch::block_driver_status as status;
 use knytos_syscall::{
     DmaDirection,
     IpcRights,
@@ -48,7 +49,6 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use knytos_launch::block_driver_status as status;
 
 const PAGE_SIZE: usize = 4096;
 

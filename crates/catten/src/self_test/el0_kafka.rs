@@ -334,10 +334,7 @@ extern "C" fn verify_el0_kafka() {
             )
         };
         let route_count = unsafe {
-            crate::self_test::status_u32(
-                service_status,
-                knytos_launch::kafka_status::ROUTE_COUNT,
-            )
+            crate::self_test::status_u32(service_status, knytos_launch::kafka_status::ROUTE_COUNT)
         };
         let output_route_produced = unsafe {
             crate::self_test::status_i64(
@@ -347,10 +344,7 @@ extern "C" fn verify_el0_kafka() {
             )
         };
         let consumer_lag = unsafe {
-            crate::self_test::status_i64(
-                service_status,
-                knytos_launch::kafka_status::CONSUMER_LAG,
-            )
+            crate::self_test::status_i64(service_status, knytos_launch::kafka_status::CONSUMER_LAG)
         };
         if input_error != 0 || step_error != 0 {
             logln!(

@@ -1,3 +1,7 @@
+use ed25519_compact::{
+    KeyPair,
+    Signature,
+};
 use knytos_launch::{
     deployment::{
         self,
@@ -18,10 +22,6 @@ use knytos_launch::{
         self,
         ReleaseFields,
     },
-};
-use ed25519_compact::{
-    KeyPair,
-    Signature,
 };
 use rand_core::UnwrapErr;
 

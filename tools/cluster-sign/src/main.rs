@@ -32,6 +32,22 @@ use std::{
     process::ExitCode,
 };
 
+use ed25519_compact::{
+    KeyPair,
+    PublicKey,
+    SecretKey,
+    Signature,
+};
+use http_client::Deadline;
+#[cfg(test)]
+use http_client::{
+    read_framed_http_response,
+    HTTP_RESPONSE_LIMIT,
+};
+use key_input::{
+    normalize_key_text,
+    MAX_KEY_FILE_BYTES,
+};
 use knytos_launch::{
     deployment::{
         self,
@@ -53,22 +69,6 @@ use knytos_launch::{
         NOTE_TYPE_SIGNATURE,
         SIGNATURE_LEN,
     },
-};
-use ed25519_compact::{
-    KeyPair,
-    PublicKey,
-    SecretKey,
-    Signature,
-};
-use http_client::Deadline;
-#[cfg(test)]
-use http_client::{
-    read_framed_http_response,
-    HTTP_RESPONSE_LIMIT,
-};
-use key_input::{
-    normalize_key_text,
-    MAX_KEY_FILE_BYTES,
 };
 use rand_core::UnwrapErr;
 use zeroize::Zeroizing;
@@ -1079,9 +1079,8 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         ));
     }
     let image = read_bounded_regular(image_path, knytos_launch::MAX_ARTIFACT_ELF_SIZE)?;
-    let architecture =
-        knytos_launch::execution_target::ExecutionTarget::elf_architecture(&image)
-            .ok_or_else(|| "unsupported ELF architecture".to_owned())?;
+    let architecture = knytos_launch::execution_target::ExecutionTarget::elf_architecture(&image)
+        .ok_or_else(|| "unsupported ELF architecture".to_owned())?;
     let artifact_digest = knytos_launch::sha256::digest(&image);
     let node_key =
         parse_required_u64(args.get(4).ok_or_else(|| "missing node key".to_owned())?, "node key")?;
@@ -2058,8 +2057,7 @@ fn run() -> Result<()> {
             Ok(())
         }
         Some("selftest") => {
-            if knytos_launch::sha256::digest(b"abc") != knytos_launch::sha256::TEST_VECTOR_ABC
-            {
+            if knytos_launch::sha256::digest(b"abc") != knytos_launch::sha256::TEST_VECTOR_ABC {
                 return Err("SHA-256 self-test failed".to_owned());
             }
             let metadata = ArtifactMetadata::new(
@@ -2886,10 +2884,9 @@ mod tests {
         let bytes = fs::read(&args[0]).unwrap();
         let descriptor = deployment::decode(&bytes).unwrap();
         assert_eq!(descriptor.variants().count(), 2);
-        assert!(descriptor
-            .variants()
-            .all(|v| v.artifact_digest
-                == knytos_launch::sha256::digest(&fs::read(&image).unwrap())));
+        assert!(descriptor.variants().all(
+            |v| v.artifact_digest == knytos_launch::sha256::digest(&fs::read(&image).unwrap())
+        ));
     }
 
     #[cfg(unix)]

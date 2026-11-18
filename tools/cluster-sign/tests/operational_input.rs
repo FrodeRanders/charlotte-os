@@ -22,6 +22,10 @@ use std::{
     },
 };
 
+use ed25519_compact::{
+    KeyPair,
+    Seed,
+};
 use knytos_launch::{
     deployment,
     execution_target,
@@ -29,10 +33,6 @@ use knytos_launch::{
     operations_bundle,
     release,
     sha256,
-};
-use ed25519_compact::{
-    KeyPair,
-    Seed,
 };
 
 fn hex(bytes: &[u8]) -> String {

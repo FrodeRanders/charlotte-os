@@ -49,24 +49,6 @@ use catten_services::{
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
-use knytos_syscall::{
-    cq_read,
-    ipc_close,
-    ipc_recv,
-    ipc_reply,
-    ipc_reply_move,
-    ipc_reply_poll,
-    ipc_reply_poll_with_memory,
-    ipc_scalar_call,
-    ipc_scalar_call_move,
-    ipc_status,
-    memory_alloc,
-    memory_close,
-    memory_map_any,
-    memory_unmap,
-    submit_detached_timer,
-    thread_exit,
-};
 use knytos_launch::disco_status as status;
 use knytos_protocol_disco::{
     BROADCAST_MAC,
@@ -88,6 +70,24 @@ use knytos_protocol_disco::{
     parse_disco_frame,
 };
 use knytos_protocol_net::decode_status;
+use knytos_syscall::{
+    cq_read,
+    ipc_close,
+    ipc_recv,
+    ipc_reply,
+    ipc_reply_move,
+    ipc_reply_poll,
+    ipc_reply_poll_with_memory,
+    ipc_scalar_call,
+    ipc_scalar_call_move,
+    ipc_status,
+    memory_alloc,
+    memory_close,
+    memory_map_any,
+    memory_unmap,
+    submit_detached_timer,
+    thread_exit,
+};
 
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;

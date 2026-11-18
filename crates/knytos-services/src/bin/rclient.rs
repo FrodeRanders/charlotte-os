@@ -13,7 +13,6 @@ use catten_services::{
     relmsg,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::relmsg_client_status as status;
 use knytos_protocol_msg::{
     IPC_MESSAGE_HEADER_SIZE,
@@ -21,6 +20,7 @@ use knytos_protocol_msg::{
     parse_ipc_message_header,
     unpack_mac,
 };
+use knytos_syscall::thread_exit;
 
 const SENTINEL: u32 = 0xc0de_cafe;
 /// Larger than v2's 65,535-byte ceiling, exercising v3's 32-bit IPC and wire

@@ -145,8 +145,7 @@ fn test_namespace_metadata() {
     assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
     assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
-    let other_principal =
-        knytos_launch::artifact_principal_id(b"root-metadata-recovery-successor");
+    let other_principal = knytos_launch::artifact_principal_id(b"root-metadata-recovery-successor");
     let successor = principal_root(other_principal);
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);

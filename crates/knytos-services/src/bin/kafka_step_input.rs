@@ -15,18 +15,14 @@ use catten_services::{
     sleep_ms,
     wait_for_registered_name_bytes_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::kafka_step_input_status as status;
 use knytos_protocol_kafka::RecordRequest;
+use knytos_syscall::thread_exit;
 
 catten_rt::entry!(main);
 
-const INPUTS: [&[u8]; 4] = [
-    b"knytos-step-input",
-    b"knytos-step-retry",
-    b"knytos-step-timeout",
-    b"knytos-step-dlq",
-];
+const INPUTS: [&[u8]; 4] =
+    [b"knytos-step-input", b"knytos-step-retry", b"knytos-step-timeout", b"knytos-step-dlq"];
 const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main/transactional";
 
 fn fail(code: u32) -> ! {

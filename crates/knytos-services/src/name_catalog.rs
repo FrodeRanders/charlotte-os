@@ -337,8 +337,7 @@ fn parse_operational_tail(
             command.get(after_object_len + 32..after_object_len + 48)?.try_into().ok()?;
         let signing_key_id: [u8; knytos_launch::operations::KEY_ID_LEN] =
             command.get(after_object_len + 48..after_object_len + 64)?.try_into().ok()?;
-        let authorization_signature: [u8;
-            knytos_launch::operations_bundle::BINDING_SIGNATURE_LEN] =
+        let authorization_signature: [u8; knytos_launch::operations_bundle::BINDING_SIGNATURE_LEN] =
             command.get(after_object_len + 64..after_object_len + 128)?.try_into().ok()?;
         let target_start = after_object_len + 128;
         let target_end = target_start.checked_add(usize::from(target_len))?;
@@ -1001,9 +1000,8 @@ impl NameCatalog {
                 else {
                     return Vec::new();
                 };
-                let every_node = descriptor.placement.flags
-                    & knytos_launch::placement::EVERY_ELIGIBLE_NODE
-                    != 0;
+                let every_node =
+                    descriptor.placement.flags & knytos_launch::placement::EVERY_ELIGIBLE_NODE != 0;
                 if descriptor.node_key != 0
                     || (!every_node && nodes.len() != usize::from(descriptor.placement.replicas))
                 {

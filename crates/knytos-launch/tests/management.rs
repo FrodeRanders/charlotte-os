@@ -1,3 +1,4 @@
+use ed25519_compact::KeyPair;
 use knytos_launch::{
     management::{
         self,
@@ -12,7 +13,6 @@ use knytos_launch::{
     operations,
     trust::AdmissionTrust,
 };
-use ed25519_compact::KeyPair;
 use rand_core::UnwrapErr;
 use zeroize::Zeroizing;
 

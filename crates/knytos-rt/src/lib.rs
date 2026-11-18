@@ -36,9 +36,9 @@ pub mod deadline;
 pub mod entropy;
 pub mod log;
 pub mod owned;
+pub use knytos_launch::manifest_key;
 /// ABI constants and register types for protocol adapters; prefer owned operations.
 pub use knytos_syscall as abi;
-pub use knytos_launch::manifest_key;
 pub use owned::NodeShutdownRequestError;
 
 // ---- entry macro -----------------------------------------------------------

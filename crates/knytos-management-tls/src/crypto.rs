@@ -18,12 +18,12 @@ use aes_gcm::{
     AeadInPlace,
     KeyInit,
 };
+use embassy_crypto::p256 as ec;
 use knytos_launch::sha256::{
     HmacSha256,
     Sha256,
     digest,
 };
-use embassy_crypto::p256 as ec;
 use p256::pkcs8::{
     DecodePrivateKey,
     EncodePublicKey,

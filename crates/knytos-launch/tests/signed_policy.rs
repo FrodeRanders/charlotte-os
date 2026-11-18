@@ -1,3 +1,7 @@
+use ed25519_compact::{
+    KeyPair,
+    Seed,
+};
 use knytos_launch::{
     operations,
     trust::{
@@ -11,10 +15,6 @@ use knytos_launch::{
             PolicyExpectation,
         },
     },
-};
-use ed25519_compact::{
-    KeyPair,
-    Seed,
 };
 
 // Deterministic, publicly known test seeds, never provisioned material.

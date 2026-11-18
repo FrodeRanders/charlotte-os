@@ -52,11 +52,11 @@ use catten_services::{
     ns,
     sleep_ms,
 };
+use knytos_launch::nvme_status as status;
 use knytos_syscall::{
     ipc_status,
     *,
 };
-use knytos_launch::nvme_status as status;
 
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;

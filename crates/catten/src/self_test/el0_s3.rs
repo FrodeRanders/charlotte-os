@@ -73,12 +73,10 @@ extern "C" fn verify_el0_s3() {
     };
     let deadline = crate::self_test::results::Deadline::after_millis(180_000);
     loop {
-        let stage = unsafe {
-            crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::STAGE)
-        };
-        let error = unsafe {
-            crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::ERROR)
-        };
+        let stage =
+            unsafe { crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::STAGE) };
+        let error =
+            unsafe { crate::self_test::status_u32(status, knytos_launch::s3_smoke_status::ERROR) };
         let service_error = unsafe {
             crate::self_test::status_u32(service_status, knytos_launch::s3_status::ERROR)
         };
@@ -95,10 +93,7 @@ extern "C" fn verify_el0_s3() {
                 crate::self_test::status_u32(time_status, knytos_launch::time_status::SYNC_STATE)
             };
             let time_failures = unsafe {
-                crate::self_test::status_u32(
-                    time_status,
-                    knytos_launch::time_status::NTP_FAILURES,
-                )
+                crate::self_test::status_u32(time_status, knytos_launch::time_status::NTP_FAILURES)
             };
             let time_setup_phase = unsafe {
                 crate::self_test::status_u32(

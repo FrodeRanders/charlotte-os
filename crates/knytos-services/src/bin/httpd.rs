@@ -85,6 +85,10 @@ use catten_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
+use knytos_launch::httpd_status as status;
+use knytos_protocol_disco::parse_peer_list;
+use knytos_protocol_msg::unpack_mac;
+use knytos_protocol_net::decode_status;
 use knytos_syscall::{
     OBSERVABILITY_NONE,
     THREAD_STATISTICS_DOMAIN_RECORD_U64S,
@@ -97,10 +101,6 @@ use knytos_syscall::{
     thread_statistics_header as thread_header,
     thread_statistics_record as thread_record,
 };
-use knytos_launch::httpd_status as status;
-use knytos_protocol_disco::parse_peer_list;
-use knytos_protocol_msg::unpack_mac;
-use knytos_protocol_net::decode_status;
 
 const HTTP_PORT: u16 = knytos_launch::MANAGEMENT_STATUS_PORT;
 static TRACE_PHASES: AtomicBool = AtomicBool::new(false);

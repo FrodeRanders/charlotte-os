@@ -113,8 +113,8 @@ pub fn wrap_snapshot_payload_with_membership_epoch(
                     "LEARNER"
                 };
                 format!(
-                    "{{\"id\":{},\"role\":\"{role}\",\"address\":{{\"host\":\"knytos:{:016x}\",\
-                     \"port\":0}}}}",
+                    "{{\"id\":{},\"role\":\"{role}\",\"address\":{{\"host\":\"knytos:{:016x}\",\"\
+                     port\":0}}}}",
                     quote_json(&peer.id),
                     peer.service_name
                 )

@@ -41,9 +41,9 @@ use catten_services::{
     sleep_ms,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::IpcRights;
 use knytos_launch::objstore_status as status;
 use knytos_protocol_objstore::disk::*;
+use knytos_syscall::IpcRights;
 
 const PAGE_SIZE: usize = 4096;
 const MAX_IO_BYTES: usize = 512 * 1024;

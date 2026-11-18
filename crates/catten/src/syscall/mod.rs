@@ -1956,8 +1956,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         || descriptor_cap == elf_cap
         || elf_size.is_none_or(|size| size == 0 || size > knytos_launch::MAX_ARTIFACT_ELF_SIZE)
         || descriptor_size.is_none_or(|size| {
-            !(knytos_launch::deployment::HEADER_LEN
-                ..=knytos_launch::deployment::MAX_DESCRIPTOR_LEN)
+            !(knytos_launch::deployment::HEADER_LEN..=knytos_launch::deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&size)
         })
     {
@@ -2087,8 +2086,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                     &trust.artifact_key,
                     pickup.binding.target_artifact,
                 ) != knytos_launch::signature_note::VerifyOutcome::Valid
-                || knytos_launch::sha256::digest(pickup.envelope)
-                    != pickup.binding.envelope_digest
+                || knytos_launch::sha256::digest(pickup.envelope) != pickup.binding.envelope_digest
                 || envelope.cluster_id != trust.cluster_id
                 || envelope.release_digest != pickup.binding.release_digest
                 || envelope.profile_name != pickup.binding.profile_name
@@ -2209,10 +2207,9 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
         frame.regs[0] = u64::MAX;
         return;
     }
-    let envelope =
-        actor.and_then(|actor| snapshot_buffers::Class::capture(actor).ok()).and_then(|class| {
-            class.snapshot(envelope_cap, knytos_launch::shutdown::ENCODED_LEN).ok()
-        });
+    let envelope = actor
+        .and_then(|actor| snapshot_buffers::Class::capture(actor).ok())
+        .and_then(|class| class.snapshot(envelope_cap, knytos_launch::shutdown::ENCODED_LEN).ok());
     close_input();
     let Some(trust) = crate::service::admission::configured_admission_trust() else {
         frame.regs[0] = u64::MAX;

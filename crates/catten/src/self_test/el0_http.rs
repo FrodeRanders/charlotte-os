@@ -316,21 +316,14 @@ mod inner {
         };
         logln!(
             "[http] tcpip initial status: stage={} error={:#x} detail={}",
-            unsafe {
-                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
-            },
-            unsafe {
-                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::ERROR)
-            },
-            unsafe {
-                crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::DETAIL)
-            }
+            unsafe { crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE) },
+            unsafe { crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::ERROR) },
+            unsafe { crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::DETAIL) }
         );
 
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe {
-            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
-        } < 6
+        while unsafe { crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE) }
+            < 6
         {
             let error = unsafe {
                 crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::ERROR)
@@ -385,8 +378,7 @@ mod inner {
                     // (1=follower, 2=candidate, 3=leader), then register a name so the report's dns
                     // section has a real entry.
                     let kernel_ns = kernel_ns_connection(ns);
-                    if wait_for_value(dns_cfg, knytos_launch::dns_status::RAFT_STATE, 3, 20_000)
-                    {
+                    if wait_for_value(dns_cfg, knytos_launch::dns_status::RAFT_STATE, 3, 20_000) {
                         logln!("[http] dns is the single-node cluster leader.");
                         let dns_conn = lookup_service(kernel_ns, DNS_NAME).unwrap_or(0);
                         if let Some(result) = fire_catalog_marker(dns_conn) {
@@ -418,9 +410,8 @@ mod inner {
         // round trip is performed by the host via --http-test afterwards.
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe {
-            crate::self_test::status_u32(httpd_cfg, knytos_launch::httpd_status::STAGE)
-        } < 6
+        while unsafe { crate::self_test::status_u32(httpd_cfg, knytos_launch::httpd_status::STAGE) }
+            < 6
         {
             spins += 1;
             if spins.is_multiple_of(200_000) {

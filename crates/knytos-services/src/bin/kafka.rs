@@ -41,10 +41,6 @@ use catten_services::{
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::{
-    IpcRights,
-    thread_exit,
-};
 use knytos_kafka::{
     self as wire,
     ProducerIdentity,
@@ -54,6 +50,10 @@ use knytos_protocol_kafka::{
     Authentication,
     DeliveredRecord,
     RecordRequest,
+};
+use knytos_syscall::{
+    IpcRights,
+    thread_exit,
 };
 use zeroize::Zeroizing;
 

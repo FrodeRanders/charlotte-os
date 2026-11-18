@@ -304,9 +304,8 @@ extern "C" fn verify_el0_service() {
     );
     let echoed =
         unsafe { crate::self_test::status_u32(config, knytos_launch::client_status::ECHOED) };
-    let generation = unsafe {
-        crate::self_test::status_u32(config, knytos_launch::client_status::GENERATION)
-    };
+    let generation =
+        unsafe { crate::self_test::status_u32(config, knytos_launch::client_status::GENERATION) };
     assert_eq!(echoed, ECHO_VALUE as u32, "[service] client echoed value mismatch: {:#x}", echoed);
     assert_eq!(generation, 1, "[service] first echo instance must be generation 1");
     logln!("[service] EL0 client completed name lookup and echo call (generation 1)");
@@ -413,16 +412,10 @@ extern "C" fn verify_el0_service() {
     logln!(
         "[service] manager upgrade replied: stage={}, error={}",
         unsafe {
-            crate::self_test::status_u32(
-                mgr_status,
-                knytos_launch::service_manager_status::STAGE,
-            )
+            crate::self_test::status_u32(mgr_status, knytos_launch::service_manager_status::STAGE)
         },
         unsafe {
-            crate::self_test::status_u32(
-                mgr_status,
-                knytos_launch::service_manager_status::ERROR,
-            )
+            crate::self_test::status_u32(mgr_status, knytos_launch::service_manager_status::ERROR)
         }
     );
     let upgrade_reply = ipc::poll_reply(kclient2_asid, upgrade)

@@ -88,12 +88,10 @@ mod inner {
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         let mut next_report = 0u64;
         loop {
-            let stage = unsafe {
-                crate::self_test::status_u32(status, knytos_launch::raft_status::STAGE)
-            };
-            let state = unsafe {
-                crate::self_test::status_u32(status, knytos_launch::raft_status::STATE)
-            };
+            let stage =
+                unsafe { crate::self_test::status_u32(status, knytos_launch::raft_status::STAGE) };
+            let state =
+                unsafe { crate::self_test::status_u32(status, knytos_launch::raft_status::STATE) };
             let term = unsafe {
                 crate::self_test::status_u32(status, knytos_launch::raft_status::CURRENT_TERM)
             };

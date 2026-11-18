@@ -1,9 +1,9 @@
+use ed25519_compact::KeyPair;
 use knytos_launch::shutdown::{
     self,
     ShutdownFields,
     VerifyOutcome,
 };
-use ed25519_compact::KeyPair;
 
 fn fields() -> ShutdownFields {
     ShutdownFields {

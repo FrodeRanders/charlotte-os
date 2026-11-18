@@ -153,10 +153,7 @@ pub(crate) fn run() {
             knytos_launch::signature_note::VerifyOutcome::Valid
         );
         assert_ne!(
-            knytos_launch::signature_note::verify_elf(
-                image,
-                &knytos_launch::CLUSTER_PUBLIC_KEY
-            ),
+            knytos_launch::signature_note::verify_elf(image, &knytos_launch::CLUSTER_PUBLIC_KEY),
             knytos_launch::signature_note::VerifyOutcome::Valid
         );
         assert!(crate::service::supervisor::persistent_elf_is_trusted(image));

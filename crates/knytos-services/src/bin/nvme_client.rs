@@ -17,8 +17,8 @@ use catten_services::{
     block,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::nvme_client_status as status;
+use knytos_syscall::thread_exit;
 
 fn main(ctx: Context) -> ! {
     let ns_connection = match ctx.bootstrap_connection() {

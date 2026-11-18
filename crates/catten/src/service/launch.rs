@@ -1182,9 +1182,8 @@ pub(crate) fn local_node_key() -> Option<u64> {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
     let mut any = false;
     for index in 0..6 {
-        let byte = unsafe {
-            core::ptr::read_volatile(base.add(knytos_launch::net_status::MAC + index))
-        };
+        let byte =
+            unsafe { core::ptr::read_volatile(base.add(knytos_launch::net_status::MAC + index)) };
         any |= byte != 0;
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x1000_0000_01b3);

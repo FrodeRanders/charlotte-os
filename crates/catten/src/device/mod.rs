@@ -1337,8 +1337,7 @@ fn map_mmio_at(
     cap: DeviceCap,
     mapping: MmioMapping,
 ) -> Result<(), DeviceError> {
-    if !knytos_launch::user_address::valid_application_pages(mapping.base.into(), mapping.pages)
-    {
+    if !knytos_launch::user_address::valid_application_pages(mapping.base.into(), mapping.pages) {
         return Err(DeviceError::InvalidRange);
     }
     for index in 0..mapping.pages {

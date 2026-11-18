@@ -159,9 +159,8 @@ mod inner {
         // exchange completes, so first wait for it to answer OP_STATUS, then
         // poll the reported address until the lease lands.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe {
-            crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE)
-        } < 6
+        while unsafe { crate::self_test::status_u32(tcpip_cfg, knytos_launch::tcpip_status::STAGE) }
+            < 6
         {
             deadline.assert_pending("EL0 dhcp tcpip service startup");
             yield_lp();

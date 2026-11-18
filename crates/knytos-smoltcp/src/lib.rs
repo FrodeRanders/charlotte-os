@@ -32,6 +32,7 @@ extern crate alloc;
 
 use alloc::collections::VecDeque;
 
+use knytos_protocol_net::OP_SEND;
 use knytos_syscall::{
     ipc_close,
     ipc_reply_wait,
@@ -42,7 +43,6 @@ use knytos_syscall::{
     memory_map_any,
     memory_unmap,
 };
-use knytos_protocol_net::OP_SEND;
 use smoltcp::{
     phy::{
         Device,

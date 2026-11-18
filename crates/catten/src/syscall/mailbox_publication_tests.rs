@@ -204,8 +204,7 @@ fn abandoned() {
         preparing.0.reservation =
             Some(preparing.0.authority.as_mut().unwrap().reserve_in_lifecycle(&lifecycle).unwrap());
     }
-    let retired_principal =
-        knytos_launch::artifact_principal_id(b"mailbox-retired-node-retained");
+    let retired_principal = knytos_launch::artifact_principal_id(b"mailbox-retired-node-retained");
     let space = memory::AddressSpace::try_new_principal_user(
         false,
         memory::prepare_principal_backing(retired_principal, false).unwrap(),

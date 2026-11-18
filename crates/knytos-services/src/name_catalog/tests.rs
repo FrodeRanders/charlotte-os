@@ -228,9 +228,8 @@ fn signed_operational_bundle(
         &mut envelope,
     )
     .unwrap();
-    let signature: Signature = operational
-        .sk
-        .sign(knytos_launch::operations::signature_digest(&envelope).unwrap(), None);
+    let signature: Signature =
+        operational.sk.sign(knytos_launch::operations::signature_digest(&envelope).unwrap(), None);
     assert!(knytos_launch::operations::set_signature(
         &mut envelope,
         signature.as_ref().try_into().unwrap()
@@ -396,8 +395,7 @@ fn deployment_generation_survives_activation_and_snapshot() {
         catalog.apply_with_result(1, &deploy_fixture(b"orders", 0x89ab_cdef, 1)),
         1u64.to_le_bytes()
     );
-    let prepared =
-        catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:89abcdef", 1));
+    let prepared = catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:89abcdef", 1));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", service_generation));
 
@@ -424,8 +422,7 @@ fn ingress_placement_requires_the_exact_ready_deployment_generation() {
         })
     );
 
-    let prepared =
-        catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:89abcdef", 1));
+    let prepared = catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:89abcdef", 1));
     let first_service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", first_service_generation));
     assert_eq!(
@@ -448,8 +445,7 @@ fn ingress_placement_requires_the_exact_ready_deployment_generation() {
         })
     );
 
-    let prepared =
-        catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:1234abcd", 2));
+    let prepared = catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:1234abcd", 2));
     let second_service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", second_service_generation));
     assert_eq!(
@@ -492,8 +488,7 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
     let first = catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:11111111", 1));
     let first = u64::from_le_bytes(first.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", first));
-    let second =
-        catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:22222222", 1));
+    let second = catalog.apply_with_result(1, &encode_register(b"orders", b"knytos:22222222", 1));
     let second = u64::from_le_bytes(second.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", second));
     assert_eq!(
@@ -867,8 +862,7 @@ fn rollout_status_and_remote_registration_are_canonical() {
     };
     assert_eq!(crate::clusterctl::RolloutStatus::decode(&status.encode()), Some(status));
 
-    let frame =
-        crate::rregister::encode_request(3, 9, b"knytos:1234abcd", b"orders", 7).unwrap();
+    let frame = crate::rregister::encode_request(3, 9, b"knytos:1234abcd", b"orders", 7).unwrap();
     assert_eq!(
         crate::rregister::decode_request(
             &[&[crate::rregister::TAG_REQUEST], frame.as_slice()].concat()

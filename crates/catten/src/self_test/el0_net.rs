@@ -93,10 +93,7 @@ extern "C" fn verify_el0_net() {
         } < 4
         {
             let stage = unsafe {
-                crate::self_test::status_u32(
-                    frouter_status,
-                    knytos_launch::frouter_status::STAGE,
-                )
+                crate::self_test::status_u32(frouter_status, knytos_launch::frouter_status::STAGE)
             };
             if stage != last_stage {
                 logln!("[frouter] waiting for serving stage (current={stage})");
@@ -408,8 +405,7 @@ extern "C" fn verify_el0_net() {
         }
     };
 
-    let ds =
-        unsafe { crate::self_test::status_u32(driver_cfg, knytos_launch::net_status::STAGE) };
+    let ds = unsafe { crate::self_test::status_u32(driver_cfg, knytos_launch::net_status::STAGE) };
     assert!(ds >= 6, "[net] driver must reach serving stage (got {})", ds);
 
     #[cfg(feature = "relmsg_net_test")]

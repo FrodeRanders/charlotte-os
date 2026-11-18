@@ -17,11 +17,11 @@ use catten_services::{
     objstore,
     wait_for_registered_name_owned,
 };
+use knytos_launch::objstore_client_status as status;
 use knytos_syscall::{
     IpcRights,
     thread_exit,
 };
-use knytos_launch::objstore_client_status as status;
 
 const OBJECT_ID: u64 = 0x7fff_ffff_ffff_ff00;
 /// Kernel-owned ordinary object staged by the NVMe verifier before this

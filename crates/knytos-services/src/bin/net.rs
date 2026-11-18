@@ -28,6 +28,7 @@ use catten_services::{
     publication,
     virtio,
 };
+use knytos_launch::net_status as status;
 use knytos_syscall::{
     DmaDirection,
     device_irq_ack,
@@ -46,7 +47,6 @@ use knytos_syscall::{
     memory_unmap,
     thread_exit,
 };
-use knytos_launch::net_status as status;
 
 // The kernel-assigned base of the delegated virtio BAR, set once at map
 // time. The device-config/ISR/doorbell helpers must read it: the old fixed

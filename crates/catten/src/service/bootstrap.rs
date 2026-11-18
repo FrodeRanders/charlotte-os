@@ -159,10 +159,7 @@ pub fn write_launch_header(config_frame: PAddr, heap_bytes: usize) {
         );
         let state = &*(base.add(knytos_launch::lifecycle::CONTROL_STATE_OFFSET)
             as *const core::sync::atomic::AtomicU32);
-        state.store(
-            knytos_launch::lifecycle::STATE_RUNNING,
-            core::sync::atomic::Ordering::Release,
-        );
+        state.store(knytos_launch::lifecycle::STATE_RUNNING, core::sync::atomic::Ordering::Release);
     }
 }
 

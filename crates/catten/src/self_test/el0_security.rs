@@ -640,8 +640,7 @@ extern "C" fn verify() {
     let start_ms = tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS);
     let start_cycles = tcpip_word(knytos_launch::tcpip_status::REACTOR_CYCLES);
     let pressure_deadline = crate::self_test::results::Deadline::after_millis(10_000);
-    while tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)
-    {
+    while tcpip_word(knytos_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000) {
         pressure_deadline.assert_pending("TCP/IP clock progress under admitted client pressure");
         sleep_millis(10);
     }

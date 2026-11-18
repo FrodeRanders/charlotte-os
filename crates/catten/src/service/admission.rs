@@ -159,8 +159,7 @@ static BOOT_TRUST: Mutex<BootState> = Mutex::new(BootState::empty());
 /// services start. Verification/key preparation runs outside the slot guard.
 pub(crate) fn initialize_boot_policy() {
     #[cfg(not(feature = "boot_trust_test"))]
-    let (cluster, prepared) =
-        (b"knytos".as_slice(), PreparedBootTrust::development(b"knytos"));
+    let (cluster, prepared) = (b"knytos".as_slice(), PreparedBootTrust::development(b"knytos"));
     #[cfg(feature = "boot_trust_test")]
     let (cluster, prepared) = (boot_fixture::CLUSTER, boot_fixture::prepare());
     select_into(&BOOT_TRUST, cluster, prepared)

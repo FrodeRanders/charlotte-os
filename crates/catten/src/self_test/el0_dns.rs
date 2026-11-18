@@ -138,12 +138,8 @@ mod inner {
         )
         .expect("NS generation fixture encoding");
         let opcode = match action {
-            knytos_protocol_ns::Action::Observe => {
-                knytos_protocol_ns::OP_PUBLICATION_GENERATION
-            }
-            knytos_protocol_ns::Action::Retire => {
-                knytos_protocol_ns::OP_UNREGISTER_GENERATION
-            }
+            knytos_protocol_ns::Action::Observe => knytos_protocol_ns::OP_PUBLICATION_GENERATION,
+            knytos_protocol_ns::Action::Retire => knytos_protocol_ns::OP_UNREGISTER_GENERATION,
         };
         call_with_memory(connection, opcode, request.len() as u64, &request)
     }
@@ -345,10 +341,7 @@ mod inner {
                 knytos_launch::deployment::decode(bytes).expect("current fixture descriptor");
             if descriptor.node_key == node && descriptor.sequence == sequence {
                 assert_eq!(
-                    knytos_launch::deployment::verify(
-                        bytes,
-                        &knytos_launch::CLUSTER_PUBLIC_KEY
-                    ),
+                    knytos_launch::deployment::verify(bytes, &knytos_launch::CLUSTER_PUBLIC_KEY),
                     knytos_launch::deployment::VerifyOutcome::Valid
                 );
                 return bytes;
@@ -560,8 +553,8 @@ mod inner {
         // transport ACK: relmsg may exhaust the bounded retry lease for an
         // ACK that was lost after the application reply was already
         // delivered.
-        let remote_calls_before_migration = is_leader
-            .then(|| status_word(dns_cfg, knytos_launch::dns_status::REMOTE_CALLS_SERVED));
+        let remote_calls_before_migration =
+            is_leader.then(|| status_word(dns_cfg, knytos_launch::dns_status::REMOTE_CALLS_SERVED));
         if is_leader {
             let descriptor = fixture_descriptor(my_key, 2);
             let request = descriptor;
@@ -694,8 +687,7 @@ mod inner {
                 "[deploy] zero-grace retirement must take the forced path"
             );
         } else {
-            while status_word(agent_cfg, knytos_launch::agent_status::STAGE)
-                != AGENT_STAGE_SERVING
+            while status_word(agent_cfg, knytos_launch::agent_status::STAGE) != AGENT_STAGE_SERVING
             {
                 deadline.assert_pending("EL0 deploy forced return migration");
                 crate::cpu::scheduler::sleep_millis(10);

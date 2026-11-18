@@ -30,9 +30,9 @@ use catten_services::{
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
-use knytos_syscall::thread_exit;
 use knytos_launch::tcpclient_status as status;
 use knytos_protocol_net::decode_status;
+use knytos_syscall::thread_exit;
 
 const SENTINEL: u32 = 0x5345_4e54;
 const PAYLOAD: &[u8] = b"Knytos tcpip cross-node";

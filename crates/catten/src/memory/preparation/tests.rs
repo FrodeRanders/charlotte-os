@@ -100,11 +100,9 @@ fn test_preparation(kind: Kind) {
         bytes[..4].copy_from_slice(b"PREP");
     });
     let frame = preparation
-        .map_with(
-            VAddr::from(knytos_launch::HEAP_VADDR),
-            PageType::UserData,
-            |space, mapping| space.map_existing_page(mapping).is_ok(),
-        )
+        .map_with(VAddr::from(knytos_launch::HEAP_VADDR), PageType::UserData, |space, mapping| {
+            space.map_existing_page(mapping).is_ok()
+        })
         .unwrap();
     let bytes: *const u8 = frame.into();
     assert_eq!(unsafe { core::slice::from_raw_parts(bytes, 4) }, b"PREP");
@@ -234,10 +232,7 @@ fn test_unconfirmed_publication(kind: Kind, phase: usize) {
         });
         assert_eq!(allocator.free_frames(), mapped);
         drop(allocator);
-        assert_eq!(
-            space.translate_address(VAddr::from(knytos_launch::HEAP_VADDR)).unwrap(),
-            frame
-        );
+        assert_eq!(space.translate_address(VAddr::from(knytos_launch::HEAP_VADDR)).unwrap(), frame);
         assert_eq!(account(space, kind).pages(), 1);
     }
     memory::close_user_address_space_handle(owner).unwrap();
