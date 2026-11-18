@@ -230,5 +230,12 @@ bytes independently key HMAC-SHA-256 counter-based ephemeral-port selection in
 49152–65535. Port selection is not a public ascending sequence, and disclosure
 of smoltcp's seed does not reveal the port key. Keys are wiped when dropped.
 
+The HMAC input is the exact ASCII label `Knytos TCP/IP ephemeral port v1`
+followed by the eight-byte little-endian counter. The low 14 bits of the first
+little-endian digest halfword select the offset from 49152. Label changes require
+regenerating the independent Python HMAC vectors in the shared host/EL0 contract
+and the large-counter host tests; the recipe lives in
+`crates/knytos-services/src/network_random/contract.rs`.
+
 This hardens startup random state; it does not replace smoltcp's internal RNG
 with a cryptographic generator or authenticate network peers.

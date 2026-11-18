@@ -66,8 +66,9 @@ mod tests {
     #[test]
     fn large_counters_keep_the_exact_little_endian_hmac_input() {
         let mut random = contract::seeded();
+        // Generated independently with the Python recipe in contract.rs.
         for (counter, expected) in
-            [(255, 58108), (65535, 58483), (u32::MAX as u64, 53431), (u64::MAX - 1, 51846)]
+            [(255, 53383), (65535, 60212), (u32::MAX as u64, 55291), (u64::MAX - 1, 57925)]
         {
             random.counter = counter;
             assert_eq!(random.ephemeral_port(), expected);
