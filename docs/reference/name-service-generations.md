@@ -169,7 +169,7 @@ ordinary echo launches keep only their existing local registrations.
 
 ## Formal publication projection
 
-[`KnytosNamePublication`](../tla/KnytosNamePublication.tla) covers public
+[`NamePublication`](../tla/NamePublication.tla) covers public
 issuance/replacement gates, watch-before-mutation admission, serialized policy
 and registry publication, current-watch confirmation, logical retirement and
 watch-before-source disposal. A matching stale CQ hint cannot substitute for the

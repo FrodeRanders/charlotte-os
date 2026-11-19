@@ -64,7 +64,7 @@ formats and runtime ABI remain unchanged.
 
 ## Executable model
 
-[`KnytosRaftStream`](../../tla/KnytosRaftStream.tla) separates continuation
+[`RaftStream`](../../tla/RaftStream.tla) separates continuation
 identity from the existing durable snapshot and application-rejection models.
 Its two senders share one boundary, with two election terms and unit-sized
 prefix/final chunks. Term change may retain the leader or select its replacement;

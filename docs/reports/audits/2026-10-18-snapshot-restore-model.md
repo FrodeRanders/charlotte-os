@@ -4,7 +4,7 @@
 
 Baseline `21155f0` commits the preceding boot-trust model batch. This review
 compares application snapshot rejection in the current Raft/catalog source and
-adds [`KnytosSnapshotRestore`](../../tla/KnytosSnapshotRestore.tla).
+adds [`SnapshotRestore`](../../tla/SnapshotRestore.tla).
 Existing source already enforces the reviewed rejection ordering. No Rust change,
 new runtime fix or audit-finding closure is claimed.
 
@@ -53,7 +53,7 @@ A join admission records index one. A successfully restored newer snapshot can
 clear it only when membership includes self. Recovery of the same old snapshot
 retains admission even when that membership includes self. The model abstracts
 full current/next peer sets and roles to these classes; the separate
-[`KnytosRaftSnapshot`](../../tla/KnytosRaftSnapshot.tla) retains chunk,
+[`RaftSnapshot`](../../tla/RaftSnapshot.tla) retains chunk,
 suffix and membership-set coverage.
 
 Streamed application restore precedes durable snapshot replacement. Definite

@@ -71,7 +71,7 @@ Both calls now execute in normal rejecting control flow. Additional controls
 exercise fixed replicas and every-eligible-node placement, with rejecting tight
 capacity and accepting roomy capacity in both profiles.
 
-`KnytosPlacementControl` already charges promises in `Admit` and rejects
+`PlacementControl` already charges promises in `Admit` and rejects
 reserve overcommit. Its safe configuration passes with **145,800 distinct states**
 and depth 25. The reserve and dwell negative configurations each produce their
 expected invariant violation. The model remains unchanged; its

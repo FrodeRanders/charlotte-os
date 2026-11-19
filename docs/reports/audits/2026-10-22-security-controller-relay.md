@@ -147,7 +147,7 @@ formatting, shell syntax and diff checks pass. The manual PDF is unchanged.
 The full formal suite passes 44 safe configurations and 127 expected
 counterexamples across 41 modules (171 cases, 213 hashed inputs).
 
-`KnytosControllerRelay` starts with one admitted preflight/mutation and one
+`ControllerRelay` starts with one admitted preflight/mutation and one
 query, under a two-tick budget. Its safe configuration explores 684 distinct
 states (2,281 generated), depth 12, with all ten required actions exercised.
 Four negatives violate `MutationRequiresCheckedQuery`, `OriginalBudget`,

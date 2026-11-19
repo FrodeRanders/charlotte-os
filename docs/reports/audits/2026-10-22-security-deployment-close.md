@@ -109,7 +109,7 @@ new contract; the existing manual PDF remains unchanged. The signed fixture
 retains its initial connection refusal and two HTTP 409/error -23 admissions
 before acceptance, alongside the final successful receipt/readiness result.
 
-`KnytosDeploymentClose` starts with two already owned sockets. The safe
+`DeploymentClose` starts with two already owned sockets. The safe
 configuration explores 783 states at depth 12. It checks accepted-once submission,
 retained owners until acknowledgement, original budget, admission backoff and
 complete wait interests. Accepted replay violates `AcceptedOnce`; releasing a

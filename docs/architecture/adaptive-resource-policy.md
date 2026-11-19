@@ -363,7 +363,7 @@ The design this implements is:
 
 Because this protocol acquires and releases a finite resource across a fault
 edge, it is modeled in TLA+ before implementation: see
-`docs/tla/KnytosStackGrowth.tla`, registered in `docs/tla/check.sh`. The
+`docs/tla/StackGrowth.tla`, registered in `docs/tla/check.sh`. The
 model's safety invariants are:
 
 - `CommittedWithinBudget`: a domain never commits more stack pages than its
@@ -458,7 +458,7 @@ filtered updates, total reassignments, and topology-forced reassignments.
   rebuild state from the surviving reporters after failover. This also guards
   the transport's tag-included receive convention for relayed `rcapacity`
   frames.
-- `KnytosPlacementControl.tla` checks filtered candidate selection,
+- `PlacementControl.tla` checks filtered candidate selection,
   dwell/cooldown enforcement, topology-forced movement, and preservation of
   static reservation headroom. The cluster-ingress model separately covers
   generation-safe replacement and readiness. Direct pressure injection and

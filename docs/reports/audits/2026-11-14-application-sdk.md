@@ -50,7 +50,7 @@ The exported SDK created and host-tested an independent starter, built
 layout-verified ELFs for both targets, and signed artifacts with an explicit
 restricted development key. The signer lockfile resolved `hpke 0.14.0`.
 An additional exported AArch64 application compiled `WakeReactor`,
-`KnytosReactor` and `ShardExecutor::run` against CI's immutable Sitas revision
+`Reactor` and `ShardExecutor::run` against CI's immutable Sitas revision
 `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`. The working sibling checkout used by
 repository builds was `6d63266eb52492c1958c45f3ed71c8c7a451489a`; it additionally exposes `try_run`, which the
 new probe deliberately does not require. This is source compatibility evidence

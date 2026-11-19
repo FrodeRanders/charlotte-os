@@ -4,50 +4,50 @@ This directory contains forty-four finite, executable specification modules:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
-| Principal-history candidates and permanent published storage | `KnytosPrincipalHistory.tla` | `KnytosPrincipalHistory_small.cfg` |
-| Thread context/node admission and original-charge disposal | `KnytosThreadMetadata.tla` | `KnytosThreadMetadata_small.cfg` |
-| Aggregate principal backing across instances and retained generations | `KnytosPrincipalBacking.tla` | `KnytosPrincipalBacking_small.cfg` |
-| Controller server preflight evidence, original budget and independent replies | `KnytosControllerRelay.tla` | `KnytosControllerRelay_small.cfg` |
-| Deployment listener creation, setup and idle accept | `KnytosDeploymentListener.tla` | `KnytosDeploymentListener_small.cfg` |
-| Namespace token selection, peer close and Pending revalidation | `KnytosNamespaceDrain.tla` | `KnytosNamespaceDrain_small.cfg` |
-| Logical socket-close ownership, acknowledgement and admission | `KnytosDeploymentClose.tla` | `KnytosDeploymentClose_small.cfg`, `KnytosDeploymentClose_blocking.cfg` |
-| Deployment response prefix receipts and original output budgets | `KnytosDeploymentOutput.tla` | `KnytosDeploymentOutput_small.cfg` |
-| Deployment controller ownership and independent reply observation | `KnytosDeploymentControl.tla` | `KnytosDeploymentControl_small.cfg` |
-| Deployment input isolation and original deadlines | `KnytosDeploymentInput.tla` | `KnytosDeploymentInput_small.cfg` |
-| Endpoint IPC and memory transfer | `KnytosIPC.tla` | `KnytosIPC_small.cfg` |
-| IPC attachment rollback and reply waits | `KnytosIpcTransaction.tla` | `KnytosIpcTransaction_small.cfg` |
-| Captured capability admission and hidden IPC delivery | `KnytosIpcPublication.tla` | `KnytosIpcPublication_small.cfg` |
-| Endpoint readiness and close observers | `KnytosEndpointObservers.tla` | `KnytosEndpointObservers_small.cfg` |
-| Local NS publication classes and exact death watches | `KnytosNamePublication.tla` | `KnytosNamePublication_small.cfg`, `KnytosNamePublication_exhaustion.cfg` |
-| Boot publication and conditional protected installation | `KnytosBootTrust.tla` | `KnytosBootTrust_fixture.cfg`, `KnytosBootTrust_contract.cfg` |
-| Completion queues and waits | `KnytosCQ.tla` | `KnytosCQ_mini.cfg` |
-| Timed-wait wake races | `KnytosTimedWait.tla` | `KnytosTimedWait_small.cfg` |
-| Fallible checked waits and retained operations | `KnytosCheckedWait.tla` | `KnytosCheckedWait_small.cfg` |
-| Scheduler thread lifecycle | `KnytosScheduler.tla` | `KnytosScheduler_small.cfg` |
-| Generation-bound thread joins | `KnytosThreadJoin.tla` | `KnytosThreadJoin_small.cfg` |
-| Demand-grown stack budgets | `KnytosStackGrowth.tla` | `KnytosStackGrowth_small.cfg` |
-| Reusable ASID generation identity | `KnytosAddressSpace.tla` | `KnytosAddressSpace_small.cfg` |
-| Root leases, retirement and failed cleanup | `KnytosRootRetirement.tla` | `KnytosRootRetirement_small.cfg` |
-| AArch64 hardware-ASID recycling | `KnytosHardwareAsid.tla` | `KnytosHardwareAsid_small.cfg` |
-| Deferred interrupt-route reuse | `KnytosInterruptRoute.tla` | `KnytosInterruptRoute_small.cfg` |
-| Service publication and teardown | `KnytosServiceLifecycle.tla` | `KnytosServiceLifecycle_small.cfg` |
-| Unified tagged capability namespace | `KnytosCapability.tla` | `KnytosCapability_small.cfg` |
-| Authorization policy and capability issuance | `KnytosAuthorization.tla` | `KnytosAuthorization_small.cfg` |
-| DMA pinning and SMMUv3 teardown | `KnytosDMA.tla` | `KnytosDMA_small.cfg` |
-| DMA unit admission and uncertain map/unmap ownership | `KnytosDmaOperation.tla` | `KnytosDmaOperation_small.cfg` |
-| Raft election and durable voting | `KnytosRaft.tla` | `KnytosRaft_small.cfg` |
-| Raft log replication and commit safety | `KnytosRaftLog.tla` | `KnytosRaftLog_small.cfg` |
-| Raft delayed responses and confirmed progress | `KnytosRaftResponse.tla` | `KnytosRaftResponse_small.cfg` |
-| Raft read commit/application prerequisites | `KnytosRaftRead.tla` | `KnytosRaftRead_small.cfg` |
-| Raft joint membership and decommissioning | `KnytosRaftMembership.tla` | `KnytosRaftMembership_small.cfg` |
-| Raft pre-membership join admission | `KnytosRaftJoin.tla` | `KnytosRaftJoin_small.cfg` |
-| Raft snapshot installation and recovery | `KnytosRaftSnapshot.tla` | `KnytosRaftSnapshot_small.cfg` |
-| Raft snapshot sender episodes and chunk order | `KnytosRaftStream.tla` | `KnytosRaftStream_small.cfg` |
-| Application snapshot rejection and recovery | `KnytosSnapshotRestore.tla` | `KnytosSnapshotRestore_small.cfg` |
-| Joint cluster placement, readiness, drain, and DSR ingress | `KnytosClusterIngress.tla` | `KnytosClusterIngress_small.cfg` |
-| Filtered placement control, dwell, and reservations | `KnytosPlacementControl.tla` | `KnytosPlacementControl_small.cfg` |
-| Remote-call identity, uncertainty, and bounded deduplication | `KnytosRemoteCall.tla` | `KnytosRemoteCall_small.cfg` |
-| Reliable-message restart/retry sessions | `KnytosReliableMessage.tla` | `KnytosReliableMessage_small.cfg` |
+| Principal-history candidates and permanent published storage | `PrincipalHistory.tla` | `PrincipalHistory_small.cfg` |
+| Thread context/node admission and original-charge disposal | `ThreadMetadata.tla` | `ThreadMetadata_small.cfg` |
+| Aggregate principal backing across instances and retained generations | `PrincipalBacking.tla` | `PrincipalBacking_small.cfg` |
+| Controller server preflight evidence, original budget and independent replies | `ControllerRelay.tla` | `ControllerRelay_small.cfg` |
+| Deployment listener creation, setup and idle accept | `DeploymentListener.tla` | `DeploymentListener_small.cfg` |
+| Namespace token selection, peer close and Pending revalidation | `NamespaceDrain.tla` | `NamespaceDrain_small.cfg` |
+| Logical socket-close ownership, acknowledgement and admission | `DeploymentClose.tla` | `DeploymentClose_small.cfg`, `DeploymentClose_blocking.cfg` |
+| Deployment response prefix receipts and original output budgets | `DeploymentOutput.tla` | `DeploymentOutput_small.cfg` |
+| Deployment controller ownership and independent reply observation | `DeploymentControl.tla` | `DeploymentControl_small.cfg` |
+| Deployment input isolation and original deadlines | `DeploymentInput.tla` | `DeploymentInput_small.cfg` |
+| Endpoint IPC and memory transfer | `Ipc.tla` | `Ipc_small.cfg` |
+| IPC attachment rollback and reply waits | `IpcTransaction.tla` | `IpcTransaction_small.cfg` |
+| Captured capability admission and hidden IPC delivery | `IpcPublication.tla` | `IpcPublication_small.cfg` |
+| Endpoint readiness and close observers | `EndpointObservers.tla` | `EndpointObservers_small.cfg` |
+| Local NS publication classes and exact death watches | `NamePublication.tla` | `NamePublication_small.cfg`, `NamePublication_exhaustion.cfg` |
+| Boot publication and conditional protected installation | `BootTrust.tla` | `BootTrust_fixture.cfg`, `BootTrust_contract.cfg` |
+| Completion queues and waits | `Cq.tla` | `Cq_mini.cfg` |
+| Timed-wait wake races | `TimedWait.tla` | `TimedWait_small.cfg` |
+| Fallible checked waits and retained operations | `CheckedWait.tla` | `CheckedWait_small.cfg` |
+| Scheduler thread lifecycle | `Scheduler.tla` | `Scheduler_small.cfg` |
+| Generation-bound thread joins | `ThreadJoin.tla` | `ThreadJoin_small.cfg` |
+| Demand-grown stack budgets | `StackGrowth.tla` | `StackGrowth_small.cfg` |
+| Reusable ASID generation identity | `AddressSpace.tla` | `AddressSpace_small.cfg` |
+| Root leases, retirement and failed cleanup | `RootRetirement.tla` | `RootRetirement_small.cfg` |
+| AArch64 hardware-ASID recycling | `HardwareAsid.tla` | `HardwareAsid_small.cfg` |
+| Deferred interrupt-route reuse | `InterruptRoute.tla` | `InterruptRoute_small.cfg` |
+| Service publication and teardown | `ServiceLifecycle.tla` | `ServiceLifecycle_small.cfg` |
+| Unified tagged capability namespace | `Capability.tla` | `Capability_small.cfg` |
+| Authorization policy and capability issuance | `Authorization.tla` | `Authorization_small.cfg` |
+| DMA pinning and SMMUv3 teardown | `Dma.tla` | `Dma_small.cfg` |
+| DMA unit admission and uncertain map/unmap ownership | `DmaOperation.tla` | `DmaOperation_small.cfg` |
+| Raft election and durable voting | `Raft.tla` | `Raft_small.cfg` |
+| Raft log replication and commit safety | `RaftLog.tla` | `RaftLog_small.cfg` |
+| Raft delayed responses and confirmed progress | `RaftResponse.tla` | `RaftResponse_small.cfg` |
+| Raft read commit/application prerequisites | `RaftRead.tla` | `RaftRead_small.cfg` |
+| Raft joint membership and decommissioning | `RaftMembership.tla` | `RaftMembership_small.cfg` |
+| Raft pre-membership join admission | `RaftJoin.tla` | `RaftJoin_small.cfg` |
+| Raft snapshot installation and recovery | `RaftSnapshot.tla` | `RaftSnapshot_small.cfg` |
+| Raft snapshot sender episodes and chunk order | `RaftStream.tla` | `RaftStream_small.cfg` |
+| Application snapshot rejection and recovery | `SnapshotRestore.tla` | `SnapshotRestore_small.cfg` |
+| Joint cluster placement, readiness, drain, and DSR ingress | `ClusterIngress.tla` | `ClusterIngress_small.cfg` |
+| Filtered placement control, dwell, and reservations | `PlacementControl.tla` | `PlacementControl_small.cfg` |
+| Remote-call identity, uncertainty, and bounded deduplication | `RemoteCall.tla` | `RemoteCall_small.cfg` |
+| Reliable-message restart/retry sessions | `ReliableMessage.tla` | `ReliableMessage_small.cfg` |
 
 The [23 October table/stack follow-up](../reports/audits/2026-10-23-security-principal-structure.md)
 extends aggregate backing to unequal charged footprints: one-page object/table
@@ -143,7 +143,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 ```
 
 Select one module for a focused run with a second argument, for example
-`docs/tla/check.sh /path/to/tla2tools.jar KnytosPrincipalHistory`. An unknown
+`docs/tla/check.sh /path/to/tla2tools.jar PrincipalHistory`. An unknown
 module rejects without running configurations. CI uses the unfiltered suite.
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
@@ -164,112 +164,112 @@ The individual commands are:
 
 ```sh
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosIPC -config KnytosIPC_small.cfg -workers auto -coverage 1
+  Ipc -config Ipc_small.cfg -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosIpcTransaction -config KnytosIpcTransaction_small.cfg \
+  IpcTransaction -config IpcTransaction_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosIpcPublication -config KnytosIpcPublication_small.cfg \
+  IpcPublication -config IpcPublication_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosEndpointObservers -config KnytosEndpointObservers_small.cfg \
+  EndpointObservers -config EndpointObservers_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosCQ -config KnytosCQ_mini.cfg -workers auto -coverage 1
+  Cq -config Cq_mini.cfg -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosTimedWait -config KnytosTimedWait_small.cfg \
+  TimedWait -config TimedWait_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosCheckedWait -config KnytosCheckedWait_small.cfg \
+  CheckedWait -config CheckedWait_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosScheduler -config KnytosScheduler_small.cfg -workers auto -coverage 1
+  Scheduler -config Scheduler_small.cfg -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosThreadJoin -config KnytosThreadJoin_small.cfg \
+  ThreadJoin -config ThreadJoin_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosStackGrowth -config KnytosStackGrowth_small.cfg \
+  StackGrowth -config StackGrowth_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosAddressSpace -config KnytosAddressSpace_small.cfg \
+  AddressSpace -config AddressSpace_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRootRetirement -config KnytosRootRetirement_small.cfg \
+  RootRetirement -config RootRetirement_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosHardwareAsid -config KnytosHardwareAsid_small.cfg \
+  HardwareAsid -config HardwareAsid_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosInterruptRoute -config KnytosInterruptRoute_small.cfg \
+  InterruptRoute -config InterruptRoute_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosServiceLifecycle -config KnytosServiceLifecycle_small.cfg \
+  ServiceLifecycle -config ServiceLifecycle_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosCapability -config KnytosCapability_small.cfg \
+  Capability -config Capability_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosAuthorization -config KnytosAuthorization_small.cfg \
+  Authorization -config Authorization_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosDMA -config KnytosDMA_small.cfg \
+  Dma -config Dma_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosDmaOperation -config KnytosDmaOperation_small.cfg \
+  DmaOperation -config DmaOperation_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRaft -config KnytosRaft_small.cfg \
+  Raft -config Raft_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRaftLog -config KnytosRaftLog_small.cfg \
+  RaftLog -config RaftLog_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRaftMembership -config KnytosRaftMembership_small.cfg \
+  RaftMembership -config RaftMembership_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRaftJoin -config KnytosRaftJoin_small.cfg \
+  RaftJoin -config RaftJoin_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRaftSnapshot -config KnytosRaftSnapshot_small.cfg \
+  RaftSnapshot -config RaftSnapshot_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosClusterIngress -config KnytosClusterIngress_small.cfg \
+  ClusterIngress -config ClusterIngress_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosPlacementControl -config KnytosPlacementControl_small.cfg \
+  PlacementControl -config PlacementControl_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosRemoteCall -config KnytosRemoteCall_small.cfg \
+  RemoteCall -config RemoteCall_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
-  KnytosReliableMessage -config KnytosReliableMessage_small.cfg \
+  ReliableMessage -config ReliableMessage_small.cfg \
   -workers auto -coverage 1
 ```
 
@@ -297,7 +297,7 @@ that was never enabled.
 
 ## IPC model
 
-`KnytosIPC.tla` models:
+`Ipc.tla` models:
 
 - a system-wide monotonic capability-handle namespace;
 - per-address-space capability possession;
@@ -338,7 +338,7 @@ borrows as part of the same abstract transition that completes the call.
 
 ## IPC attachment transaction model
 
-`KnytosIpcTransaction.tla` refines the attachment work deliberately
+`IpcTransaction.tla` refines the attachment work deliberately
 collapsed in the base IPC model. Concrete vector calls carry multiple memory
 entries, while scalar calls can carry a connection and copied memory; the
 model composes those paths into a stronger cross-registry rollback obligation
@@ -396,7 +396,7 @@ corresponding implementation paths are correct.
 
 ## Capability and IPC publication model
 
-`KnytosIpcPublication.tla` separates shared capability authority from payload
+`IpcPublication.tla` separates shared capability authority from payload
 delivery. One transaction prepares owning memory and a delegated connection,
 validates the whole batch, then publishes both as hidden attachments in a
 request queue or an unobserved reply. Application lookup remains unavailable
@@ -432,7 +432,7 @@ refinement proof follows from this bounded projection.
 
 ## Completion-queue model
 
-`KnytosCQ.tla` models:
+`Cq.tla` models:
 
 - operation submission, completion, failure, deferred cancellation, and observation;
 - CQ ring capacity and a non-lossy kernel backlog;
@@ -478,13 +478,13 @@ counter cannot wrap.
 
 ## Endpoint-observer model
 
-`KnytosEndpointObservers.tla` separates endpoint readability waiters from
+`EndpointObservers.tla` separates endpoint readability waiters from
 endpoint-close completion watchers. Message arrival signals only readability;
 endpoint closure signals both classes. Its principal invariant,
 `CloseSignalImpliesClosed`, makes a close completion authoritative evidence of
 the endpoint lifecycle rather than a generic readiness notification.
 
-`KnytosEndpointObservers_unsafe.cfg` enables `UnsafeMessageWake`, which
+`EndpointObservers_unsafe.cfg` enables `UnsafeMessageWake`, which
 models the former shared observer queue. The model runner requires this
 configuration to violate `CloseSignalImpliesClosed`: an ordinary message wakes
 the close watcher while the endpoint remains open. The repaired configuration
@@ -493,7 +493,7 @@ trace by sending a message while a close watch is armed.
 
 ## Checked-wait model
 
-`KnytosCheckedWait.tla` begins with one accepted operation and its live
+`CheckedWait.tla` begins with one accepted operation and its live
 memory borrow. It splits watchdog/source preparation, admission rejection,
 registration, the final park recheck, wake delivery, and result observation.
 Time can advance during preparation. An unrelated wake or a changed source
@@ -515,7 +515,7 @@ safety, without assuming eventual completion or eventual admission.
 
 ## Root-retirement model
 
-`KnytosRootRetirement.tla` follows one reusable ASID through two generations,
+`RootRetirement.tla` follows one reusable ASID through two generations,
 with two possible operation leases and a bounded invalidation retry count.
 Staged close fences new ordinary leases, preserves existing and abandoned
 leases, and detaches only after device, IPC and memory cleanup have completed.
@@ -534,11 +534,11 @@ Thread quiescence, hardware acknowledgements and subsystem completion are
 explicit boundary assumptions. The model does not prove their producers,
 allocation under guards, intermediate frame-walk interruption, registry ticket
 reuse, aggregate budgets or restart authorization. The older
-`KnytosAddressSpace` model continues to check stale-handle rejection.
+`AddressSpace` model continues to check stale-handle rejection.
 
 ## Scheduler lifecycle model
 
-`KnytosScheduler.tla` separates scheduler-table phase from physical
+`Scheduler.tla` separates scheduler-table phase from physical
 execution (`onCpu`). This distinction represents the interval after a thread
 blocks or is remotely aborted but before its owning LP switches away from the
 thread's stack. Remote abort is split into `RequestRemoteAbort` and
@@ -559,14 +559,14 @@ owner-CPU abort retirement, no redispatch after an abort request, a doomed
 thread population after domain abort, matching blocked-waker generations, and
 migration authority for movable threads.
 
-`KnytosScheduler_unsafe.cfg` deliberately enables `UnsafeRemoteAbort`, an
+`Scheduler_unsafe.cfg` deliberately enables `UnsafeRemoteAbort`, an
 abstraction of the former immediate cross-LP removal. The model runner requires
 this configuration to violate `ReapOnlyOffCpu`; if the old transition stops
 producing its counterexample, the suite fails. Thus the repaired model is
 checked positively and the original bug trace is retained as an executable
 negative regression rather than generated TLC trace files.
 
-`KnytosScheduler_domain_abort_unsafe.cfg` deliberately publishes a new
+`Scheduler_domain_abort_unsafe.cfg` deliberately publishes a new
 sibling after the abort snapshot and must violate `AbortingThreadsDoomed`. The
 implementation's generation-aware publication gate makes the snapshot and
 thread-table publication mutually exclusive and remains held through the
@@ -605,7 +605,7 @@ generated, depth 22) without an invariant violation.
 
 ## Service lifecycle model
 
-`KnytosServiceLifecycle.tla` now models the current signed-artifact and
+`ServiceLifecycle.tla` now models the current signed-artifact and
 two-phase catalog protocol. An untrusted image is rejected before `Load`;
 replicated `Prepare` allocates a fresh generation but makes the name
 unresolvable; `PublishLocal` installs the node-local connection; and only an
@@ -624,7 +624,7 @@ on generation exhaustion instead of saturating or wrapping.
 
 ## Unified capability model
 
-`KnytosCapability.tla` models the authoritative per-address-space tag table
+`Capability.tla` models the authoritative per-address-space tag table
 in `capability.rs`. Allocation and public delegation use fresh monotonically
 increasing handles. Removal validates both owner and expected object kind.
 A move is split into begin/commit/rollback transitions so TLC explores the
@@ -637,7 +637,7 @@ authority to remain revoked.
 
 ## Authorization policy model
 
-`KnytosAuthorization.tla` is a target contract for policy-controlled
+`Authorization.tla` is a target contract for policy-controlled
 capability issuance. It keeps catalog publication and policy evaluation as
 separate logical roles even if the first implementation co-locates them in the
 name-service process. Policy administrators set versioned subject/service
@@ -670,7 +670,7 @@ admission are still outside this authorization model.
 
 ## Boot trust and installation ordering
 
-`KnytosBootTrust.tla` distinguishes authenticating a policy from authorizing
+`BootTrust.tla` distinguishes authenticating a policy from authorizing
 its use at boot. The shared verifier accepts either the exact installed record
 or a signed direct successor naming its predecessor. Shared `verify_for_boot`
 accepts only the exact installed revision/digest, producing `VerifiedBootPolicy`
@@ -711,7 +711,7 @@ adds selection/bootstrap/platform transitions and two required controls.
 
 ## Local name publication model
 
-`KnytosNamePublication.tla` follows the local registry's connection and
+`NamePublication.tla` follows the local registry's connection and
 persistent endpoint-death watch through preparation, policy publication,
 registry replacement, deferred lookup and logical retirement. Public lookup
 cannot issue a policy-published connection, including when lookup was queued
@@ -745,7 +745,7 @@ records source correspondence, checked bounds, counterexamples and evidence.
 
 ## DMA and SMMUv3 model
 
-`KnytosDMA.tla` separates CPU mappings, IPC loans, coherent and exclusive
+`Dma.tla` separates CPU mappings, IPC loans, coherent and exclusive
 DMA pinning, page-table installation, translation revocation, pin release,
 driver exit, and memory reclamation. A domain-destruction timeout enters a
 quarantined state: mappings and pins remain live because hardware may still
@@ -764,12 +764,12 @@ stream-table entry before releasing pins. The implementation now rolls
 pre-installation failures back, retains an unpublished pinned mapping after an
 uncertain invalidation, and quarantines a domain on teardown failure.
 
-`KnytosDMA_unsafe.cfg` deliberately creates an exclusive pin without the
+`Dma_unsafe.cfg` deliberately creates an exclusive pin without the
 ownership precondition and must violate `ExclusiveDmaHasNoCpuAuthority`.
 
 ## DMA operation model
 
-`KnytosDmaOperation.tla` supplements the pinning model with one map and its
+`DmaOperation.tla` supplements the pinning model with one map and its
 owned unmap/CPU teardown. Map admission retains the original root, public
 capability claim, pending pin and source storage through fallible preparation
 and waiting. The same fixed unit must supply both its actual engine and domain
@@ -801,12 +801,12 @@ Exact root/sponsor capture, typed backend acknowledgements and confirmed
 physical release are boundary inputs. The model omits actual MMIO/cache/IRQ
 mechanics, byte and metadata admission, multiple simultaneous public operations,
 grant creation/cancellation, and reset-based quarantine recovery. The older
-`KnytosDMA` model continues to check stream ownership and CPU/loan exclusion.
+`Dma` model continues to check stream ownership and CPU/loan exclusion.
 Neither is a composed Rust refinement proof or a liveness result.
 
 ## Raft election model
 
-`KnytosRaft.tla` is the first layer of the consensus specification. It
+`Raft.tla` is the first layer of the consensus specification. It
 models a fixed voter set, durable term and vote updates, election retries,
 majority formation, higher-term step-down, crashes, restarts, lost requests,
 and duplicate grants. A three-voter, two-term configuration explores 22,838
@@ -818,7 +818,7 @@ to hold a majority, and at most one leader per term. Log matching, commit
 safety, snapshots, and temporal election liveness are not hidden inside this
 election model. Membership changes are checked by a separate layer below.
 
-`KnytosRaftLog.tla` is the second layer. It composes the election layer's
+`RaftLog.tla` is the second layer. It composes the election layer's
 one-leader-per-term guarantee with durable log append, one-entry
 `AppendEntries` conflict repair, current-term majority commit, commit
 propagation, crash, and restart. Its bounded three-node configuration explores
@@ -834,7 +834,7 @@ was corrected to reflect it. Snapshots and membership changes are checked by
 the following layers; storage write failures, state-machine application, and
 temporal replication liveness remain outside this model.
 
-`KnytosRaftMembership.tla` models stable and joint configurations, separate
+`RaftMembership.tla` models stable and joint configurations, separate
 voter/learner roles, old-configuration commitment of JOINT, joint-majority
 commitment of FINALIZE, and automatic proposal after every proposed remote
 member reaches the JOINT fence. This restores the Graft Java/Rust catch-up
@@ -850,7 +850,7 @@ catch-up, eligible-leader and dual-quorum boundaries. The
 records the failed Knytos role regression and its correction. This model
 covers automatic proposal; explicit/manual FINALIZE commands are outside it.
 
-`KnytosRaftJoin.tla` models the MAC-level admission layer that precedes
+`RaftJoin.tla` models the MAC-level admission layer that precedes
 joint consensus. A non-member selects one anchor, cannot campaign while
 joining, accepts replication only from that anchor, and cannot be promoted
 until the old configuration committed its `JOIN` entry and the joiner caught
@@ -863,7 +863,7 @@ violate `RestartPreservesAdmission`. The implementation snapshots the joint
 membership before clearing the durable fence; volatile-storage deployments do
 not attempt dynamic admission.
 
-`KnytosRaftSnapshot.tla` adds chunked snapshot reception, stale-snapshot
+`RaftSnapshot.tla` adds chunked snapshot reception, stale-snapshot
 discard, atomic durable installation of the state-machine image and current/
 next membership, matching-suffix retention, activation, crash, and restart.
 Its fast configuration explores 145,170 distinct states.
@@ -882,7 +882,7 @@ restores on construction, acknowledges stale snapshots without installing
 them, retains a suffix with a matching boundary term, and serializes snapshot
 metadata, bytes, and log suffix into one copy-on-write object.
 
-`KnytosRaftStream.tla` separately checks continuation ownership when different
+`RaftStream.tla` separately checks continuation ownership when different
 leaders share a snapshot boundary. Its safe instance explores 400 distinct
 states: each partial buffer belongs to its captured leader and RPC term, term
 changes discard it, and installation requires strict offsets. Two controls
@@ -894,7 +894,7 @@ The model assumes immutable bytes within one sender/term/boundary and abstracts
 rejected packets as observations; Rust tests exercise their exact fields.
 Authentication, same-episode image replacement and allocation are outside scope.
 
-`KnytosRaftResponse.tla` checks delayed acknowledgements separately from log
+`RaftResponse.tla` checks delayed acknowledgements separately from log
 replication. An honest response for an old prefix cannot commit a new prefix at
 the same index after re-election. Current-term append and completed-snapshot
 successes preserve confirmed progress; failure backoff retains that floor.
@@ -904,7 +904,7 @@ required counterexamples. Transport authenticity, request correlation and read
 lease timing remain separate. The [source regression and evidence](../reports/audits/2026-10-18-raft-response-fencing.md)
 record the unsafe commit before correction and the passing repeat.
 
-`KnytosRaftRead.tla` now checks fresh per-read log fences, including delayed
+`RaftRead.tla` now checks fresh per-read log fences, including delayed
 replies and an external leader replacement unseen by the old node. Admission
 appends a new no-op; a prior acknowledgement cannot prove its index. A captured
 quorum acknowledgement of that fence can arrive later, so the proof concerns
@@ -924,7 +924,7 @@ Allocation, physical cleanup, byte codecs and readiness delivery are outside
 this projection. Bounded status/ingress observations retain receive-time
 freshness separately; no general lease qualification is claimed.
 
-`KnytosSnapshotRestore.tla` checks the application acceptance boundary
+`SnapshotRestore.tla` checks the application acceptance boundary
 separately. Unsupported headers and malformed later sections leave application
 state, durable snapshots, Raft progress, membership and durable join admission
 unchanged. Recovery exposes a node only after restore succeeds. A newer accepted
@@ -948,7 +948,7 @@ record the corresponding host tests and limits.
 
 ## Cluster placement and DSR ingress model
 
-`KnytosClusterIngress.tla` begins after Raft commits a control-plane
+`ClusterIngress.tla` begins after Raft commits a control-plane
 mutation. It models stable and joint membership, deployment generations,
 replica replacement, exact-generation readiness, drain intent, discovery
 routes, immutable per-router snapshots, VIP advertisement, and flow bindings
@@ -987,11 +987,11 @@ graceful path that keeps established flows and blocks new ones.
 
 Three negative configurations preserve the cross-layer hazards:
 
-- `KnytosClusterIngress_stale_snapshot_unsafe.cfg` admits a new SYN through
+- `ClusterIngress_stale_snapshot_unsafe.cfg` admits a new SYN through
   an old snapshot after its freshness lease expires;
-- `KnytosClusterIngress_history_unsafe.cfg` evicts an epoch still named by
+- `ClusterIngress_history_unsafe.cfg` evicts an epoch still named by
   a flow and then remaps that flow through the current snapshot; and
-- `KnytosClusterIngress_readiness_unsafe.cfg` treats readiness from an old
+- `ClusterIngress_readiness_unsafe.cfg` treats readiness from an old
   deployment generation as authority for its replacement.
 
 All three are retained regressions. The frame router now gives each complete
@@ -1003,7 +1003,7 @@ pretending that asynchronous policy delivery is instantaneous.
 
 ## Placement feedback-control model
 
-`KnytosPlacementControl.tla` isolates the controller that precedes a
+`PlacementControl.tla` isolates the controller that precedes a
 generation-fenced placement replacement. Raw per-node observations and the
 filtered control signal are separate state. Candidate selection reads only the
 filtered value; pressure movement requires a stable dwell and an expired
@@ -1019,7 +1019,7 @@ response speed, not the checked authority and sequencing properties.
 
 ## Remote-call model
 
-`KnytosRemoteCall.tla` models the complete caller-node/session/call identity,
+`RemoteCall.tla` models the complete caller-node/session/call identity,
 target-generation fencing, execution, reply delivery, explicit uncertain
 timeouts, duplicate requests, transport settlement, session retirement, and a
 bounded completed-result cache. Its contract is deliberately narrower than
@@ -1037,7 +1037,7 @@ remain outside it.
 
 ## Reliable-message session model
 
-`KnytosReliableMessage.tla` models session allocation across bounded send
+`ReliableMessage.tla` models session allocation across bounded send
 retries and unilateral service restart, together with receive-side session
 replacement. A session is the ordered pair `(service generation, retry
 epoch)`. The invariants require that distinct logical epochs never share one
@@ -1074,7 +1074,7 @@ temporal liveness properties are later steps; neither is claimed here.
 
 ## Thread metadata admission
 
-`KnytosThreadMetadata` follows two unequal prepaid context/node bundles
+`ThreadMetadata` follows two unequal prepaid context/node bundles
 through allocation, publication, confirmed context disposal, node deallocation
 and refund. Two roots share a principal; one slot can retire and restart under
 another principal while its old charge remains. Byte/count ceilings and original
@@ -1090,7 +1090,7 @@ are outside it. See [policy](../reference/thread-metadata-admission.md) and
 
 ## Principal-history storage
 
-`KnytosPrincipalHistory` follows three nodes through preparation, attachment,
+`PrincipalHistory` follows three nodes through preparation, attachment,
 new-record/reuse decisions, logical exit, confirmed root disposal and abandonment.
 Two candidates can resolve to one principal with different captured classes.
 Original classification and charges survive reuse; published records remain for
@@ -1109,10 +1109,10 @@ expected counterexamples across 44 modules. See
 
 
 The [IPC namespace publication follow-up](../reports/audits/2026-10-24-security-ipc-namespace-publication.md)
-rechecks `KnytosRootRetirement` and `KnytosNamespaceDrain`: two safe cases
+rechecks `RootRetirement` and `NamespaceDrain`: two safe cases
 and seven expected counterexamples pass. The existing operation lease projects
 the fresh-root publication hold. Namespace allocation and IPC relinking remain
-native qualification; `KnytosIpcPublication` assumes already-live namespaces.
+native qualification; `IpcPublication` assumes already-live namespaces.
 No model/configuration changed, and the preceding 190-case full-suite checkpoint
 is preserved. See the [conformance boundary](CONFORMANCE.md#ipc-namespace-construction-and-root-handoff).
 

@@ -51,7 +51,7 @@ model.
 
 ## Executable response model
 
-[`KnytosRaftResponse`](../../tla/KnytosRaftResponse.tla) separates delayed
+[`RaftResponse`](../../tla/RaftResponse.tla) separates delayed
 acknowledgements from the existing log model's atomic replication action. The
 finite schedule crosses terms one, two and three, with a fixed self-plus-one
 voter quorum and distinct learner/pending-joiner progress. Indices are bounded

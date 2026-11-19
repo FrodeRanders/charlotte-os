@@ -103,7 +103,7 @@ and the AArch64 current-source reproduction check verifies the signed bytes.
 Native manifests match those bundles. Formatting, diff and model-runner shell
 checks pass. The existing manual PDF is unchanged; only its LaTeX sources change.
 
-The existing `KnytosDeploymentClose` adds a one-owner blocking configuration.
+The existing `DeploymentClose` adds a one-owner blocking configuration.
 It explores 69 states at depth 7. `RetainAdmission` represents terminal unstarted
 retention; `UnsafeFallback` re-enables work from that state and must violate
 `NoReentry`. Existing accepted-replay and premature-release negative controls

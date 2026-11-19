@@ -90,7 +90,7 @@ at total exhaustion. They check duplicate and failed-invalidation retention,
 post-deallocation refund and guarded abandonment. Host allocation tracing checks
 the charged map's payload/node/refund order.
 
-The finite `KnytosPrincipalHistory` projection checks shared ceilings,
+The finite `PrincipalHistory` projection checks shared ceilings,
 new-record publication, duplicate/root retention, original classification and
 boot-lifetime records. Allocator free and root-invalidation proofs are boundary
 inputs. General heap admission, vector/control-block capacity, lookup/IRQ hold

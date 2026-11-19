@@ -103,7 +103,7 @@ repeat was needed for this batch. Strict base-kernel Clippy passes on both
 architectures; workspace formatting and whitespace checks pass. No userspace
 service source changed, and the checked-in manual PDF is preserved.
 
-The updated `KnytosPrincipalBacking` model distinguishes one-page
+The updated `PrincipalBacking` model distinguishes one-page
 object/table footprints from two-page reserved stack capacity. A growth event
 consumes prepaid capacity. Its safe graph has **72,344 distinct / 290,961 generated
 states**, depth **14**. The two new expected counterexamples refund an abandoned

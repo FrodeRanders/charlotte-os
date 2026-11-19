@@ -135,7 +135,7 @@ under controlled scheduling/host load remain follow-up work.
 
 ## Formal checks
 
-The new `KnytosThreadMetadata` projection checks unequal prepaid bundles,
+The new `ThreadMetadata` projection checks unequal prepaid bundles,
 separate construction/disposal/free/refund steps, byte/count limits, abandonment
 and original sponsorship across root reuse. Its safe graph has **4,132 distinct /
 12,559 generated states**, depth **15**, with every required action exercised.
@@ -144,7 +144,7 @@ refund abandonment or bill a replacement principal.
 
 The first formal invocation completed the safe graph but the harness rejected
 missing action coverage: `error: required action AllocateNode had no TLC coverage
-in KnytosThreadMetadata`. A shared action helper hid the individual labels.
+in ThreadMetadata`. A shared action helper hid the individual labels.
 Inlining those transitions exposes their coverage; no invariant was weakened.
 The failed harness result is retained separately in the evidence.
 

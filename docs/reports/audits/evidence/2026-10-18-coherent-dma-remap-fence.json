@@ -11,8 +11,8 @@
     "crates/catten/src/memory/object/retirement_tests.rs": "5b1366e7c16c07c1be534bd74d48dd6a0d74100b2de8c967f75cff81759192d9",
     "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "docs/tla/KnytosDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
-    "docs/tla/KnytosDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
-    "docs/tla/KnytosDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362"
+    "docs/tla/DmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+    "docs/tla/DmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362"
   },
   "runs": [
     {

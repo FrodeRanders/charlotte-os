@@ -108,7 +108,7 @@ separately. The final source was restored byte for byte before passing runs.
 
 ## Formal scope and tool limitation
 
-The unchanged `KnytosRootRetirement` and `KnytosPrincipalBacking`
+The unchanged `RootRetirement` and `PrincipalBacking`
 projections pass **two safe configurations and eleven expected counterexamples**.
 Required actions execute; unsafe cases violate their named invariants.
 

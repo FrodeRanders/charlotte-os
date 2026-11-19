@@ -284,7 +284,7 @@ cannot make that node an application backend, and an application readiness
 registration cannot override the signed desired replica set.
 The composed control-plane/DSR model and the counterexamples for stale router
 state and bounded epoch history are documented in
-[`KnytosClusterIngress.tla`](../tla/KnytosClusterIngress.tla).
+[`ClusterIngress.tla`](../tla/ClusterIngress.tla).
 
 Only the reuse-safe address-space identity selected by the supervisor may use
 the spawn/retire syscalls. Merely registering the name `agent` grants no

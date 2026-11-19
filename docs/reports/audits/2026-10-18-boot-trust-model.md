@@ -3,7 +3,7 @@
 ## Scope
 
 Baseline `adae8b2f` commits the preceding security/model batches. This follow-up
-adds [`KnytosBootTrust`](../../tla/KnytosBootTrust.tla), two safe
+adds [`BootTrust`](../../tla/BootTrust.tla), two safe
 configurations and ten required counterexamples. No Rust or production behavior
 changes are introduced. The existing signed-policy verifier, x86 fixture and
 one-shot kernel handoff already enforce their reviewed checks.

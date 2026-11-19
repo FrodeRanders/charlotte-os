@@ -443,8 +443,8 @@
     "suite_rerun": false,
     "qualification": "Existing deployment-output projection begins with admitted deferred sends and abstract prefix receipts; selector width and frame parsing are outside it. No new immediate-send formal refinement claim. Baseline evidence records 41 safe configurations and 118 expected counterexamples; not presented as a rerun for this follow-up.",
     "relevant_unchanged_input_sha256": {
-      "docs/tla/KnytosDeploymentOutput.tla": "8dc953edd288250d4a4733346243663a10760980042d7f6909925cb6a24c7f4c",
-      "docs/tla/KnytosDeploymentOutput_small.cfg": "e2f21c3070aee113fe46a330225c182af3455ed81c30566bdf402050a1c936c9",
+      "docs/tla/DeploymentOutput.tla": "8dc953edd288250d4a4733346243663a10760980042d7f6909925cb6a24c7f4c",
+      "docs/tla/DeploymentOutput_small.cfg": "e2f21c3070aee113fe46a330225c182af3455ed81c30566bdf402050a1c936c9",
       "docs/tla/CONFORMANCE.md": "bee6e1296496e739ec6101e919a2214cc8434203853179fc5918116133114bb0"
     }
   },

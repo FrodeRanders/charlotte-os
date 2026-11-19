@@ -133,9 +133,9 @@ named invariants through their intended actions.
 
 | Model | Distinct / generated states | Depth |
 | --- | --- | --- |
-| `KnytosIpcPublication` | 7,634,722 / 36,122,253 | 42 |
-| `KnytosIpcTransaction` | 26 / 71 | 11 |
-| `KnytosRootRetirement` | 2,978 / 3,733 | 33 |
+| `IpcPublication` | 7,634,722 / 36,122,253 | 42 |
+| `IpcTransaction` | 26 / 71 | 11 |
+| `RootRetirement` | 2,978 / 3,733 | 33 |
 
 No model/configuration changed. Existing atomic authority/delivery, rollback,
 non-terminal timeout and exact-root projections remain. Iterator membership

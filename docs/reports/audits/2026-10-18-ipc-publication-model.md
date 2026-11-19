@@ -4,7 +4,7 @@
 
 This follows the [root and wait synchronization](2026-10-18-security-model-sync.md)
 against implementation `1c6963a2`. It adds
-[`KnytosIpcPublication`](../../tla/KnytosIpcPublication.tla), one safe
+[`IpcPublication`](../../tla/IpcPublication.tla), one safe
 configuration and ten separately weakened specifications to the existing
 formal harness. No production Rust changes are part of this batch.
 

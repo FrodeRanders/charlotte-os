@@ -74,7 +74,7 @@ budget. Signed central-store release validates the unchanged request framing,
 receipt binding, pull, verification, launch and named readiness. Development
 fixture trust and plaintext transport do not establish production enrollment.
 
-`KnytosDeploymentControl` adds a two-call finite safety projection. Its safe
+`DeploymentControl` adds a two-call finite safety projection. Its safe
 configuration explores 688 states at depth 10. A serial wait beside a ready
 reply violates `ParkCoversAll`; replay after timeout violates `SubmittedOnce`.
 The model separates caller expiry from receiver backing release and retains

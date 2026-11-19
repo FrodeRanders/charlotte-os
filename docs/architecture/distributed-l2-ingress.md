@@ -165,7 +165,7 @@ Bindings can be lost through bounded eviction or simultaneous membership
 change and ingress failure; that is an explicit first-version limitation.
 Failure of the selected backend may terminate its TCP connections.
 
-[`KnytosClusterIngress.tla`](../tla/KnytosClusterIngress.tla) composes
+[`ClusterIngress.tla`](../tla/ClusterIngress.tla) composes
 membership, placement, exact-generation readiness, drain, router snapshots and
 flow epochs. Its safe specification now matches the implemented lease and
 fail-closed tombstone contract. Negative configurations retain the former

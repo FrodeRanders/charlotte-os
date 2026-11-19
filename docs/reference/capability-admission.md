@@ -425,7 +425,7 @@ model does not model these admission lifetimes.
 
 ## Formal publication coverage
 
-[`KnytosIpcPublication`](../tla/KnytosIpcPublication.tla) now supplements
+[`IpcPublication`](../tla/IpcPublication.tla) now supplements
 the serial-authority model with bounded captured reservation/escrow lifetimes,
 move/copy plus connection publication, hidden request/reply attachments,
 receive failure, first observation and exact-account metadata disposal. Its

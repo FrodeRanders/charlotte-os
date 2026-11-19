@@ -140,10 +140,10 @@ named invariants through the intended actions.
 
 | Model | Distinct / generated states | Depth |
 | --- | --- | --- |
-| `KnytosIpcPublication` | 7,634,722 / 36,122,253 | 42 |
-| `KnytosIpcTransaction` | 26 / 71 | 11 |
-| `KnytosRootRetirement` | 2,978 / 3,733 | 33 |
-| `KnytosPrincipalBacking` | 72,344 / 290,961 | 14 |
+| `IpcPublication` | 7,634,722 / 36,122,253 | 42 |
+| `IpcTransaction` | 26 / 71 | 11 |
+| `RootRetirement` | 2,978 / 3,733 | 33 |
+| `PrincipalBacking` | 72,344 / 290,961 | 14 |
 
 No model/configuration changed. Existing authority/delivery, rollback,
 non-terminal timeout, exact-root, physical-once and original-principal charge

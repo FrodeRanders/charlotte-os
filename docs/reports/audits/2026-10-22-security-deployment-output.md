@@ -104,7 +104,7 @@ records one connection refusal and two HTTP 409/error -23 admissions before its
 accepted release and ready result; those intermediate diagnostics remain in
 the evidence.
 
-`KnytosDeploymentOutput` adds two admitted outputs with two abstract prefixes
+`DeploymentOutput` adds two admitted outputs with two abstract prefixes
 each. Its safe configuration explores 299 states at depth 11. Replay of an
 uncertain prefix violates `PrefixesOnce`; restarting a chunk's budget violates
 `OriginalBudget`. Safe checks also prohibit parking with a ready receipt or

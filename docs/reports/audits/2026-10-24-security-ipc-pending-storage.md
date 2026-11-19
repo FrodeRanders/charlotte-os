@@ -122,10 +122,10 @@ generated states**, depth 42; root retirement explores **2,978 / 3,733**, depth
 33. All required safe actions execute; each unsafe case violates its named
 invariant through the intended action.
 
-No model/configuration changed. `KnytosIpcPublication` projects joint shared
+No model/configuration changed. `IpcPublication` projects joint shared
 capability/memory publication, hidden delivery, rollback and charge retention;
 its storage preparation is shared authority staging, not this family's node or
-call/reply count dimensions. `KnytosRootRetirement` projects the retained
+call/reply count dimensions. `RootRetirement` projects the retained
 caller lease and cleanup gate. Node allocation/disposal and the count's actual
 allocation lifetime are native/host qualification. The preceding complete
 **190-case** run remains the separate full-suite checkpoint. These results give

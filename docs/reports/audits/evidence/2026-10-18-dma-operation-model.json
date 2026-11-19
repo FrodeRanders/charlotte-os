@@ -29,126 +29,126 @@
     "limit": "Earlier draft inputs were not separately archived. Only final full-suite inputs are hashed."
   },
   "checked_input_sha256": {
-    "docs/tla/KnytosAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
-    "docs/tla/KnytosAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
-    "docs/tla/KnytosAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
-    "docs/tla/KnytosAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
-    "docs/tla/KnytosAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
-    "docs/tla/KnytosAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
-    "docs/tla/KnytosAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
-    "docs/tla/KnytosAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
-    "docs/tla/KnytosAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
-    "docs/tla/KnytosAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+    "docs/tla/AddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+    "docs/tla/AddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+    "docs/tla/AddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+    "docs/tla/Authorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+    "docs/tla/Authorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+    "docs/tla/Authorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+    "docs/tla/Authorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+    "docs/tla/Authorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+    "docs/tla/Authorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+    "docs/tla/Authorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
     "docs/tla/KnytosCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
     "docs/tla/KnytosCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
     "docs/tla/KnytosCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
-    "docs/tla/KnytosCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
-    "docs/tla/KnytosCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
-    "docs/tla/KnytosCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
-    "docs/tla/KnytosCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
-    "docs/tla/KnytosCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
-    "docs/tla/KnytosCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
-    "docs/tla/KnytosCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
-    "docs/tla/KnytosCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
-    "docs/tla/KnytosCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
-    "docs/tla/KnytosCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
-    "docs/tla/KnytosClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
-    "docs/tla/KnytosClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
-    "docs/tla/KnytosClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
-    "docs/tla/KnytosClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
-    "docs/tla/KnytosClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+    "docs/tla/Capability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+    "docs/tla/Capability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+    "docs/tla/CheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+    "docs/tla/CheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+    "docs/tla/CheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+    "docs/tla/CheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+    "docs/tla/CheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+    "docs/tla/CheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+    "docs/tla/CheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+    "docs/tla/CheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+    "docs/tla/ClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+    "docs/tla/ClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+    "docs/tla/ClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+    "docs/tla/ClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+    "docs/tla/ClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
     "docs/tla/KnytosDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
     "docs/tla/KnytosDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
     "docs/tla/KnytosDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
-    "docs/tla/KnytosDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
-    "docs/tla/KnytosDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
-    "docs/tla/KnytosDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
-    "docs/tla/KnytosDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
-    "docs/tla/KnytosDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
-    "docs/tla/KnytosDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
-    "docs/tla/KnytosDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
-    "docs/tla/KnytosDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
-    "docs/tla/KnytosDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
-    "docs/tla/KnytosDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
-    "docs/tla/KnytosDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
-    "docs/tla/KnytosDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
-    "docs/tla/KnytosDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
-    "docs/tla/KnytosDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
-    "docs/tla/KnytosDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
-    "docs/tla/KnytosEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
-    "docs/tla/KnytosEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
-    "docs/tla/KnytosEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
-    "docs/tla/KnytosHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
-    "docs/tla/KnytosHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
-    "docs/tla/KnytosHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+    "docs/tla/DmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+    "docs/tla/DmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+    "docs/tla/DmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+    "docs/tla/DmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+    "docs/tla/DmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+    "docs/tla/DmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+    "docs/tla/DmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+    "docs/tla/DmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+    "docs/tla/DmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+    "docs/tla/DmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+    "docs/tla/DmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+    "docs/tla/DmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+    "docs/tla/DmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+    "docs/tla/DmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+    "docs/tla/DmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+    "docs/tla/EndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+    "docs/tla/EndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+    "docs/tla/EndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+    "docs/tla/HardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+    "docs/tla/HardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+    "docs/tla/HardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
     "docs/tla/KnytosIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
     "docs/tla/KnytosIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
-    "docs/tla/KnytosInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
-    "docs/tla/KnytosInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
-    "docs/tla/KnytosInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
-    "docs/tla/KnytosIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
-    "docs/tla/KnytosIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
-    "docs/tla/KnytosIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
-    "docs/tla/KnytosIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
-    "docs/tla/KnytosIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
-    "docs/tla/KnytosIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
-    "docs/tla/KnytosIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
-    "docs/tla/KnytosIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
-    "docs/tla/KnytosIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
-    "docs/tla/KnytosIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
-    "docs/tla/KnytosIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
-    "docs/tla/KnytosIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
-    "docs/tla/KnytosIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
-    "docs/tla/KnytosIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
-    "docs/tla/KnytosIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
-    "docs/tla/KnytosIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
-    "docs/tla/KnytosPlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
-    "docs/tla/KnytosPlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
-    "docs/tla/KnytosPlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
-    "docs/tla/KnytosPlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
-    "docs/tla/KnytosRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
-    "docs/tla/KnytosRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
-    "docs/tla/KnytosRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
-    "docs/tla/KnytosRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
-    "docs/tla/KnytosRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
-    "docs/tla/KnytosRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
-    "docs/tla/KnytosRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
-    "docs/tla/KnytosRaftMembership.tla": "c25a25ca001a24f0dc4944bed2c36b046f92d2e57abd0f9526554ba9ee2b46a4",
-    "docs/tla/KnytosRaftMembership_small.cfg": "f1729e757e37e9ac065e419b7ed3cb4c276f936cf7943e984d64428055bdbb9f",
-    "docs/tla/KnytosRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
-    "docs/tla/KnytosRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
-    "docs/tla/KnytosRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
-    "docs/tla/KnytosReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
-    "docs/tla/KnytosReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
-    "docs/tla/KnytosReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
-    "docs/tla/KnytosReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
-    "docs/tla/KnytosRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
-    "docs/tla/KnytosRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
-    "docs/tla/KnytosRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
-    "docs/tla/KnytosRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
-    "docs/tla/KnytosRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
-    "docs/tla/KnytosRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
-    "docs/tla/KnytosRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
-    "docs/tla/KnytosRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
-    "docs/tla/KnytosRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
-    "docs/tla/KnytosScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
-    "docs/tla/KnytosScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
-    "docs/tla/KnytosScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
-    "docs/tla/KnytosScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
-    "docs/tla/KnytosServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
-    "docs/tla/KnytosServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
-    "docs/tla/KnytosServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
-    "docs/tla/KnytosStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
-    "docs/tla/KnytosStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
-    "docs/tla/KnytosStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
-    "docs/tla/KnytosStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
-    "docs/tla/KnytosThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
-    "docs/tla/KnytosThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
-    "docs/tla/KnytosThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
-    "docs/tla/KnytosThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
-    "docs/tla/KnytosTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
-    "docs/tla/KnytosTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
-    "docs/tla/KnytosTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+    "docs/tla/InterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+    "docs/tla/InterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+    "docs/tla/InterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+    "docs/tla/IpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+    "docs/tla/IpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+    "docs/tla/IpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+    "docs/tla/IpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+    "docs/tla/IpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+    "docs/tla/IpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+    "docs/tla/IpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+    "docs/tla/IpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+    "docs/tla/IpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+    "docs/tla/IpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+    "docs/tla/IpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+    "docs/tla/IpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+    "docs/tla/IpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+    "docs/tla/IpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+    "docs/tla/IpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+    "docs/tla/IpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+    "docs/tla/PlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+    "docs/tla/PlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+    "docs/tla/PlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+    "docs/tla/PlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+    "docs/tla/Raft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+    "docs/tla/RaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+    "docs/tla/RaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+    "docs/tla/RaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+    "docs/tla/RaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+    "docs/tla/RaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+    "docs/tla/RaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+    "docs/tla/RaftMembership.tla": "c25a25ca001a24f0dc4944bed2c36b046f92d2e57abd0f9526554ba9ee2b46a4",
+    "docs/tla/RaftMembership_small.cfg": "f1729e757e37e9ac065e419b7ed3cb4c276f936cf7943e984d64428055bdbb9f",
+    "docs/tla/RaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+    "docs/tla/RaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+    "docs/tla/Raft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+    "docs/tla/ReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+    "docs/tla/ReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+    "docs/tla/ReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+    "docs/tla/ReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+    "docs/tla/RemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+    "docs/tla/RemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+    "docs/tla/RootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+    "docs/tla/RootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+    "docs/tla/RootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+    "docs/tla/RootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+    "docs/tla/RootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+    "docs/tla/RootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+    "docs/tla/RootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+    "docs/tla/Scheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+    "docs/tla/Scheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+    "docs/tla/Scheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+    "docs/tla/Scheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+    "docs/tla/ServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+    "docs/tla/ServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+    "docs/tla/ServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+    "docs/tla/StackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+    "docs/tla/StackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+    "docs/tla/StackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+    "docs/tla/StackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+    "docs/tla/ThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+    "docs/tla/ThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+    "docs/tla/ThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+    "docs/tla/ThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+    "docs/tla/TimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+    "docs/tla/TimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+    "docs/tla/TimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
     "docs/tla/check.sh": "5b425d5f9addb7b312935199ffeab8afd2e6908cd102e5a03a435e6e04e32756"
   },
   "reviewed_source_sha256": {
@@ -215,8 +215,8 @@
       "depth": 13
     },
     {
-      "module": "KnytosIpcTransaction",
-      "config": "KnytosIpcTransaction_small.cfg",
+      "module": "IpcTransaction",
+      "config": "IpcTransaction_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "BeginVector": {
@@ -266,8 +266,8 @@
       "depth": 11
     },
     {
-      "module": "KnytosIpcTransaction",
-      "config": "KnytosIpcTransaction_rollback_unsafe.cfg",
+      "module": "IpcTransaction",
+      "config": "IpcTransaction_rollback_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRollback": {
@@ -278,8 +278,8 @@
       "violated_invariant": "RollbackRestoresAll"
     },
     {
-      "module": "KnytosIpcTransaction",
-      "config": "KnytosIpcTransaction_timeout_unsafe.cfg",
+      "module": "IpcTransaction",
+      "config": "IpcTransaction_timeout_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeTimeoutRelease": {
@@ -290,8 +290,8 @@
       "violated_invariant": "TimeoutRetainsLoan"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_small.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Begin": {
@@ -409,8 +409,8 @@
       "depth": 42
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_memory_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_memory_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeUseMemory": {
@@ -421,8 +421,8 @@
       "violated_invariant": "UseRequiresDelivery"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_connection_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_connection_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeUseConnection": {
@@ -433,8 +433,8 @@
       "violated_invariant": "UseRequiresDelivery"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_batch_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_batch_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafePublishPrefix": {
@@ -445,8 +445,8 @@
       "violated_invariant": "AtomicPublication"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_serial_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_serial_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReuseSerial": {
@@ -457,8 +457,8 @@
       "violated_invariant": "SerialsConsumed"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_cancel_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_cancel_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeCancelSuccessor": {
@@ -469,8 +469,8 @@
       "violated_invariant": "ReplacementIntact"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_restore_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_restore_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRestoreSuccessor": {
@@ -481,8 +481,8 @@
       "violated_invariant": "ReplacementIntact"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_refund_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_refund_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRefundRetained": {
@@ -493,8 +493,8 @@
       "violated_invariant": "RetainedNodesCharged"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_readiness_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_readiness_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReadinessDelivers": {
@@ -505,8 +505,8 @@
       "violated_invariant": "VisibleRequiresDelivery"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_observe_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_observe_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRepublishObserved": {
@@ -517,8 +517,8 @@
       "violated_invariant": "ObservedCloseStaysClosed"
     },
     {
-      "module": "KnytosIpcPublication",
-      "config": "KnytosIpcPublication_rollback_unsafe.cfg",
+      "module": "IpcPublication",
+      "config": "IpcPublication_rollback_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRollbackNeedsAdmission": {
@@ -529,8 +529,8 @@
       "violated_invariant": "RollbackRestoresCapturedSource"
     },
     {
-      "module": "KnytosEndpointObservers",
-      "config": "KnytosEndpointObservers_small.cfg",
+      "module": "EndpointObservers",
+      "config": "EndpointObservers_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "ArmReadiness": {
@@ -564,8 +564,8 @@
       "depth": 5
     },
     {
-      "module": "KnytosEndpointObservers",
-      "config": "KnytosEndpointObservers_unsafe.cfg",
+      "module": "EndpointObservers",
+      "config": "EndpointObservers_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeMessageWake": {
@@ -635,8 +635,8 @@
       "violated_invariant": "NonTerminalBufferRemainsLoaned"
     },
     {
-      "module": "KnytosTimedWait",
-      "config": "KnytosTimedWait_small.cfg",
+      "module": "TimedWait",
+      "config": "TimedWait_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "ArmWait": {
@@ -666,8 +666,8 @@
       "depth": 8
     },
     {
-      "module": "KnytosTimedWait",
-      "config": "KnytosTimedWait_unsafe.cfg",
+      "module": "TimedWait",
+      "config": "TimedWait_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeTimerFire": {
@@ -678,8 +678,8 @@
       "violated_invariant": "TimeoutObservedNoWork"
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_small.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "BeginWait": {
@@ -749,8 +749,8 @@
       "depth": 13
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_rejection_unsafe.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_rejection_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRejectedRelease": {
@@ -761,8 +761,8 @@
       "violated_invariant": "PendingRetainsOwnerAndLoan"
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_replay_unsafe.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_replay_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReplay": {
@@ -773,8 +773,8 @@
       "violated_invariant": "OneSubmission"
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_deadline_unsafe.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_deadline_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRestartDeadline": {
@@ -785,8 +785,8 @@
       "violated_invariant": "DeadlineUnchanged"
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_result_unsafe.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_result_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeWakeAdoptsResult": {
@@ -797,8 +797,8 @@
       "violated_invariant": "ResultNeedsTerminalProof"
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_park_unsafe.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_park_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeParkWithoutRecheck": {
@@ -809,8 +809,8 @@
       "violated_invariant": "ParkedTerminalHasWake"
     },
     {
-      "module": "KnytosCheckedWait",
-      "config": "KnytosCheckedWait_timeout_unsafe.cfg",
+      "module": "CheckedWait",
+      "config": "CheckedWait_timeout_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAdmissionTimeout": {
@@ -821,8 +821,8 @@
       "violated_invariant": "TimeoutRespectsDeadline"
     },
     {
-      "module": "KnytosScheduler",
-      "config": "KnytosScheduler_small.cfg",
+      "module": "Scheduler",
+      "config": "Scheduler_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Spawn": {
@@ -892,8 +892,8 @@
       "depth": 22
     },
     {
-      "module": "KnytosScheduler",
-      "config": "KnytosScheduler_unsafe.cfg",
+      "module": "Scheduler",
+      "config": "Scheduler_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRemoteAbort": {
@@ -904,8 +904,8 @@
       "violated_invariant": "ReapOnlyOffCpu"
     },
     {
-      "module": "KnytosScheduler",
-      "config": "KnytosScheduler_domain_abort_unsafe.cfg",
+      "module": "Scheduler",
+      "config": "Scheduler_domain_abort_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeSpawnDuringAbort": {
@@ -916,8 +916,8 @@
       "violated_invariant": "AbortingThreadsDoomed"
     },
     {
-      "module": "KnytosStackGrowth",
-      "config": "KnytosStackGrowth_small.cfg",
+      "module": "StackGrowth",
+      "config": "StackGrowth_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Fault": {
@@ -943,8 +943,8 @@
       "depth": 14
     },
     {
-      "module": "KnytosStackGrowth",
-      "config": "KnytosStackGrowth_grow_unsafe.cfg",
+      "module": "StackGrowth",
+      "config": "StackGrowth_grow_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeGrowOverBudget": {
@@ -955,8 +955,8 @@
       "violated_invariant": "CommittedWithinBudget"
     },
     {
-      "module": "KnytosStackGrowth",
-      "config": "KnytosStackGrowth_leak_unsafe.cfg",
+      "module": "StackGrowth",
+      "config": "StackGrowth_leak_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeKillWithoutRelease": {
@@ -967,8 +967,8 @@
       "violated_invariant": "DeadDomainsReleaseFrames"
     },
     {
-      "module": "KnytosThreadJoin",
-      "config": "KnytosThreadJoin_small.cfg",
+      "module": "ThreadJoin",
+      "config": "ThreadJoin_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Spawn": {
@@ -1002,8 +1002,8 @@
       "depth": 10
     },
     {
-      "module": "KnytosThreadJoin",
-      "config": "KnytosThreadJoin_unsafe.cfg",
+      "module": "ThreadJoin",
+      "config": "ThreadJoin_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeObserveJoin": {
@@ -1014,8 +1014,8 @@
       "violated_invariant": "ObserverMatchesCapturedHandle"
     },
     {
-      "module": "KnytosThreadJoin",
-      "config": "KnytosThreadJoin_wrap_unsafe.cfg",
+      "module": "ThreadJoin",
+      "config": "ThreadJoin_wrap_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeSpawnWrap": {
@@ -1026,8 +1026,8 @@
       "violated_invariant": "GenerationNeverReused"
     },
     {
-      "module": "KnytosAddressSpace",
-      "config": "KnytosAddressSpace_small.cfg",
+      "module": "AddressSpace",
+      "config": "AddressSpace_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Allocate": {
@@ -1049,8 +1049,8 @@
       "depth": 9
     },
     {
-      "module": "KnytosAddressSpace",
-      "config": "KnytosAddressSpace_unsafe.cfg",
+      "module": "AddressSpace",
+      "config": "AddressSpace_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeStaleClose": {
@@ -1061,8 +1061,8 @@
       "violated_invariant": "ReplacementSurvivesStaleHandle"
     },
     {
-      "module": "KnytosRootRetirement",
-      "config": "KnytosRootRetirement_small.cfg",
+      "module": "RootRetirement",
+      "config": "RootRetirement_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Allocate": {
@@ -1136,8 +1136,8 @@
       "depth": 33
     },
     {
-      "module": "KnytosRootRetirement",
-      "config": "KnytosRootRetirement_lease_unsafe.cfg",
+      "module": "RootRetirement",
+      "config": "RootRetirement_lease_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeDetachWithLease": {
@@ -1148,8 +1148,8 @@
       "violated_invariant": "LeasesRetainRoot"
     },
     {
-      "module": "KnytosRootRetirement",
-      "config": "KnytosRootRetirement_release_unsafe.cfg",
+      "module": "RootRetirement",
+      "config": "RootRetirement_release_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReleaseBeforeInvalidation": {
@@ -1160,8 +1160,8 @@
       "violated_invariant": "PhysicalRequiresInvalidation"
     },
     {
-      "module": "KnytosRootRetirement",
-      "config": "KnytosRootRetirement_physical_unsafe.cfg",
+      "module": "RootRetirement",
+      "config": "RootRetirement_physical_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRetryPhysical": {
@@ -1172,8 +1172,8 @@
       "violated_invariant": "PhysicalOnce"
     },
     {
-      "module": "KnytosRootRetirement",
-      "config": "KnytosRootRetirement_abandon_unsafe.cfg",
+      "module": "RootRetirement",
+      "config": "RootRetirement_abandon_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAdoptAbandoned": {
@@ -1184,8 +1184,8 @@
       "violated_invariant": "TerminalAbandonment"
     },
     {
-      "module": "KnytosRootRetirement",
-      "config": "KnytosRootRetirement_refund_unsafe.cfg",
+      "module": "RootRetirement",
+      "config": "RootRetirement_refund_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRefundPartial": {
@@ -1196,8 +1196,8 @@
       "violated_invariant": "BackingCharged"
     },
     {
-      "module": "KnytosHardwareAsid",
-      "config": "KnytosHardwareAsid_small.cfg",
+      "module": "HardwareAsid",
+      "config": "HardwareAsid_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Allocate": {
@@ -1223,8 +1223,8 @@
       "depth": 7
     },
     {
-      "module": "KnytosHardwareAsid",
-      "config": "KnytosHardwareAsid_unsafe.cfg",
+      "module": "HardwareAsid",
+      "config": "HardwareAsid_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAllocate": {
@@ -1235,8 +1235,8 @@
       "violated_invariant": "NoDirtyTagReuse"
     },
     {
-      "module": "KnytosInterruptRoute",
-      "config": "KnytosInterruptRoute_small.cfg",
+      "module": "InterruptRoute",
+      "config": "InterruptRoute_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Bind": {
@@ -1262,8 +1262,8 @@
       "depth": 6
     },
     {
-      "module": "KnytosInterruptRoute",
-      "config": "KnytosInterruptRoute_unsafe.cfg",
+      "module": "InterruptRoute",
+      "config": "InterruptRoute_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "DrainUnsafe": {
@@ -1274,8 +1274,8 @@
       "violated_invariant": "NoStaleWakeDelivery"
     },
     {
-      "module": "KnytosServiceLifecycle",
-      "config": "KnytosServiceLifecycle_small.cfg",
+      "module": "ServiceLifecycle",
+      "config": "ServiceLifecycle_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "StageTrusted": {
@@ -1361,8 +1361,8 @@
       "depth": 37
     },
     {
-      "module": "KnytosServiceLifecycle",
-      "config": "KnytosServiceLifecycle_unsafe.cfg",
+      "module": "ServiceLifecycle",
+      "config": "ServiceLifecycle_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeStaleUnregister": {
@@ -1373,8 +1373,8 @@
       "violated_invariant": "ReplacementSurvivesStaleUnregister"
     },
     {
-      "module": "KnytosCapability",
-      "config": "KnytosCapability_small.cfg",
+      "module": "Capability",
+      "config": "Capability_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Allocate": {
@@ -1412,8 +1412,8 @@
       "depth": 13
     },
     {
-      "module": "KnytosAuthorization",
-      "config": "KnytosAuthorization_small.cfg",
+      "module": "Authorization",
+      "config": "Authorization_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "PublishService": {
@@ -1455,8 +1455,8 @@
       "depth": 12
     },
     {
-      "module": "KnytosAuthorization",
-      "config": "KnytosAuthorization_policy_unsafe.cfg",
+      "module": "Authorization",
+      "config": "Authorization_policy_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeSetPolicy": {
@@ -1467,8 +1467,8 @@
       "violated_invariant": "PolicyMutationAuthorized"
     },
     {
-      "module": "KnytosAuthorization",
-      "config": "KnytosAuthorization_principal_unsafe.cfg",
+      "module": "Authorization",
+      "config": "Authorization_principal_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRedeemOtherPrincipal": {
@@ -1479,8 +1479,8 @@
       "violated_invariant": "MintBoundToPrincipal"
     },
     {
-      "module": "KnytosAuthorization",
-      "config": "KnytosAuthorization_policy_version_unsafe.cfg",
+      "module": "Authorization",
+      "config": "Authorization_policy_version_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRedeemStalePolicy": {
@@ -1491,8 +1491,8 @@
       "violated_invariant": "MintUsesCurrentPolicy"
     },
     {
-      "module": "KnytosAuthorization",
-      "config": "KnytosAuthorization_generation_unsafe.cfg",
+      "module": "Authorization",
+      "config": "Authorization_generation_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRedeemStaleBinding": {
@@ -1503,8 +1503,8 @@
       "violated_invariant": "MintTargetsCurrentBinding"
     },
     {
-      "module": "KnytosAuthorization",
-      "config": "KnytosAuthorization_rights_unsafe.cfg",
+      "module": "Authorization",
+      "config": "Authorization_rights_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAmplifyRights": {
@@ -1614,8 +1614,8 @@
       "violated_invariant": "ExclusiveDmaHasNoCpuAuthority"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_small.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "BeginMap": {
@@ -1757,8 +1757,8 @@
       "depth": 24
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_cell_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_cell_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeClaimDetachedCell": {
@@ -1769,8 +1769,8 @@
       "violated_invariant": "ClaimNeedsCompleteUnit"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_readiness_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_readiness_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReadinessCompletes": {
@@ -1781,8 +1781,8 @@
       "violated_invariant": "ReadinessIsNotCompletion"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_preparation_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_preparation_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRejectDropsPreparation": {
@@ -1793,8 +1793,8 @@
       "violated_invariant": "PreclaimRetainsPreparation"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_map_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_map_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReplayMap": {
@@ -1805,8 +1805,8 @@
       "violated_invariant": "MapSubmittedOnce"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_rearm_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_rearm_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRearmStartedUnmap": {
@@ -1817,8 +1817,8 @@
       "violated_invariant": "StartedFailureNotRearmed"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_drop_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_drop_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeDropResubmits": {
@@ -1829,8 +1829,8 @@
       "violated_invariant": "UncertainAttemptNotResubmitted"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_confirmation_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_confirmation_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeForgetDmaConfirmation": {
@@ -1841,8 +1841,8 @@
       "violated_invariant": "ConfirmationSticky"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_access_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_access_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeFailedSharedAccess": {
@@ -1853,8 +1853,8 @@
       "violated_invariant": "FailedSharedRestricted"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_cpu_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_cpu_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeCpuUnmapDischargesDma": {
@@ -1865,8 +1865,8 @@
       "violated_invariant": "PossibleDmaRetainsBacking"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_abandon_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_abandon_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAbandonReleases": {
@@ -1877,8 +1877,8 @@
       "violated_invariant": "AbandonmentRetainsOwner"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_context_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_context_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeWaitMasked": {
@@ -1889,8 +1889,8 @@
       "violated_invariant": "WaitNeedsQualifiedContext"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_public_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_public_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeFinalBusyRearms": {
@@ -1901,8 +1901,8 @@
       "violated_invariant": "PublicRejectionRetainsAttempt"
     },
     {
-      "module": "KnytosDmaOperation",
-      "config": "KnytosDmaOperation_remap_unsafe.cfg",
+      "module": "DmaOperation",
+      "config": "DmaOperation_remap_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeCoherentRemap": {
@@ -1913,8 +1913,8 @@
       "violated_invariant": "CpuOwnerNeedsNoDma"
     },
     {
-      "module": "KnytosRaft",
-      "config": "KnytosRaft_small.cfg",
+      "module": "Raft",
+      "config": "Raft_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "StartElection": {
@@ -1948,8 +1948,8 @@
       "depth": 13
     },
     {
-      "module": "KnytosRaftLog",
-      "config": "KnytosRaftLog_small.cfg",
+      "module": "RaftLog",
+      "config": "RaftLog_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Elect": {
@@ -1987,8 +1987,8 @@
       "depth": 17
     },
     {
-      "module": "KnytosRaftMembership",
-      "config": "KnytosRaftMembership_small.cfg",
+      "module": "RaftMembership",
+      "config": "RaftMembership_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Elect": {
@@ -2030,8 +2030,8 @@
       "depth": 13
     },
     {
-      "module": "KnytosRaftJoin",
-      "config": "KnytosRaftJoin_small.cfg",
+      "module": "RaftJoin",
+      "config": "RaftJoin_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Elect": {
@@ -2077,8 +2077,8 @@
       "depth": 13
     },
     {
-      "module": "KnytosRaftJoin",
-      "config": "KnytosRaftJoin_unsafe.cfg",
+      "module": "RaftJoin",
+      "config": "RaftJoin_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeReplicateToJoiner": {
@@ -2089,8 +2089,8 @@
       "violated_invariant": "JoiningAcceptsOnlySelectedAnchor"
     },
     {
-      "module": "KnytosRaftJoin",
-      "config": "KnytosRaftJoin_restart_unsafe.cfg",
+      "module": "RaftJoin",
+      "config": "RaftJoin_restart_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeRestartForgetsAdmission": {
@@ -2101,8 +2101,8 @@
       "violated_invariant": "RestartPreservesAdmission"
     },
     {
-      "module": "KnytosRaftSnapshot",
-      "config": "KnytosRaftSnapshot_small.cfg",
+      "module": "RaftSnapshot",
+      "config": "RaftSnapshot_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "AppendLog": {
@@ -2148,8 +2148,8 @@
       "depth": 11
     },
     {
-      "module": "KnytosClusterIngress",
-      "config": "KnytosClusterIngress_small.cfg",
+      "module": "ClusterIngress",
+      "config": "ClusterIngress_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "PublishReady": {
@@ -2227,8 +2227,8 @@
       "depth": 17
     },
     {
-      "module": "KnytosClusterIngress",
-      "config": "KnytosClusterIngress_stale_snapshot_unsafe.cfg",
+      "module": "ClusterIngress",
+      "config": "ClusterIngress_stale_snapshot_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeStartStaleFlow": {
@@ -2239,8 +2239,8 @@
       "violated_invariant": "NewFlowsRequireFreshLease"
     },
     {
-      "module": "KnytosClusterIngress",
-      "config": "KnytosClusterIngress_history_unsafe.cfg",
+      "module": "ClusterIngress",
+      "config": "ClusterIngress_history_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeFallbackExistingPacket": {
@@ -2251,8 +2251,8 @@
       "violated_invariant": "FlowBackendStable"
     },
     {
-      "module": "KnytosClusterIngress",
-      "config": "KnytosClusterIngress_readiness_unsafe.cfg",
+      "module": "ClusterIngress",
+      "config": "ClusterIngress_readiness_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAdmitStaleReadiness": {
@@ -2263,8 +2263,8 @@
       "violated_invariant": "CommittedPoliciesAreDerived"
     },
     {
-      "module": "KnytosPlacementControl",
-      "config": "KnytosPlacementControl_small.cfg",
+      "module": "PlacementControl",
+      "config": "PlacementControl_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Observe": {
@@ -2302,8 +2302,8 @@
       "depth": 25
     },
     {
-      "module": "KnytosPlacementControl",
-      "config": "KnytosPlacementControl_dwell_unsafe.cfg",
+      "module": "PlacementControl",
+      "config": "PlacementControl_dwell_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeEarlyPressureMove": {
@@ -2314,8 +2314,8 @@
       "violated_invariant": "PressureRespectsStability"
     },
     {
-      "module": "KnytosPlacementControl",
-      "config": "KnytosPlacementControl_reserve_unsafe.cfg",
+      "module": "PlacementControl",
+      "config": "PlacementControl_reserve_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "UnsafeAdmit": {
@@ -2326,8 +2326,8 @@
       "violated_invariant": "ReservationsPreserveReserve"
     },
     {
-      "module": "KnytosRemoteCall",
-      "config": "KnytosRemoteCall_small.cfg",
+      "module": "RemoteCall",
+      "config": "RemoteCall_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "Start": {
@@ -2381,8 +2381,8 @@
       "depth": 15
     },
     {
-      "module": "KnytosReliableMessage",
-      "config": "KnytosReliableMessage_small.cfg",
+      "module": "ReliableMessage",
+      "config": "ReliableMessage_small.cfg",
       "expected_counterexample": false,
       "required_action_coverage": {
         "AbandonSession": {
@@ -2404,8 +2404,8 @@
       "depth": 6
     },
     {
-      "module": "KnytosReliableMessage",
-      "config": "KnytosReliableMessage_identity_unsafe.cfg",
+      "module": "ReliableMessage",
+      "config": "ReliableMessage_identity_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "RestartService": {
@@ -2416,8 +2416,8 @@
       "violated_invariant": "SessionIdentityUnique"
     },
     {
-      "module": "KnytosReliableMessage",
-      "config": "KnytosReliableMessage_regression_unsafe.cfg",
+      "module": "ReliableMessage",
+      "config": "ReliableMessage_regression_unsafe.cfg",
       "expected_counterexample": true,
       "required_action_coverage": {
         "AcceptDelayedSession": {
@@ -2431,7 +2431,7 @@
   "new_model_negative_traces": {
     "capture": "Separate repeat of all thirteen final negative configurations; full suite independently checked each named violation and action coverage. Complete action sequences retained here because the harness removes transient traces.",
     "cases": {
-      "KnytosDmaOperation_abandon_unsafe.cfg": {
+      "DmaOperation_abandon_unsafe.cfg": {
         "log_sha256": "a7bb33ace221b9f978d2e8a4ed55c80108281b38753e9a452cdd5f56fecd9b9b",
         "actions": [
           "BeginMap",
@@ -2442,7 +2442,7 @@
         "invariant": "AbandonmentRetainsOwner",
         "exit_code": 12
       },
-      "KnytosDmaOperation_access_unsafe.cfg": {
+      "DmaOperation_access_unsafe.cfg": {
         "log_sha256": "dde2d8d76e2fd769c313e11619e7ea09119e7422b6e38676ffeaf1424816961d",
         "actions": [
           "BeginMap",
@@ -2454,7 +2454,7 @@
         "invariant": "FailedSharedRestricted",
         "exit_code": 12
       },
-      "KnytosDmaOperation_cell_unsafe.cfg": {
+      "DmaOperation_cell_unsafe.cfg": {
         "log_sha256": "f4b1c37efe7ef9b2430cf9db112bd303056560faca2c1cf82acdd017a7e7291f",
         "actions": [
           "BeginMap",
@@ -2463,7 +2463,7 @@
         "invariant": "ClaimNeedsCompleteUnit",
         "exit_code": 12
       },
-      "KnytosDmaOperation_confirmation_unsafe.cfg": {
+      "DmaOperation_confirmation_unsafe.cfg": {
         "log_sha256": "c56566195e0d24acfc9b9ec731d532323fdfe266d15fc0d048a256b63f6bb962",
         "actions": [
           "BeginMap",
@@ -2480,7 +2480,7 @@
         "invariant": "ConfirmationSticky",
         "exit_code": 12
       },
-      "KnytosDmaOperation_context_unsafe.cfg": {
+      "DmaOperation_context_unsafe.cfg": {
         "log_sha256": "d05cf113a7d10999cd09d9b64622e8e70d178cba7a683acfd469e694d574a607",
         "actions": [
           "BeginMap",
@@ -2489,7 +2489,7 @@
         "invariant": "WaitNeedsQualifiedContext",
         "exit_code": 12
       },
-      "KnytosDmaOperation_cpu_unsafe.cfg": {
+      "DmaOperation_cpu_unsafe.cfg": {
         "log_sha256": "918548f1d4a4e4c469464df4aee6c95209baab1f4a1fe55ead2a767e3ec3932b",
         "actions": [
           "BeginMap",
@@ -2501,7 +2501,7 @@
         "invariant": "PossibleDmaRetainsBacking",
         "exit_code": 12
       },
-      "KnytosDmaOperation_drop_unsafe.cfg": {
+      "DmaOperation_drop_unsafe.cfg": {
         "log_sha256": "3078d465f5230d4086c2990d9ea239c82fbf0641be683b89947d5bd244fa8c4c",
         "actions": [
           "BeginMap",
@@ -2517,7 +2517,7 @@
         "invariant": "UncertainAttemptNotResubmitted",
         "exit_code": 12
       },
-      "KnytosDmaOperation_map_unsafe.cfg": {
+      "DmaOperation_map_unsafe.cfg": {
         "log_sha256": "dec91ff8d6491d21dc3e02674999e552f0694ac7a4d2235c737650e40f3e8079",
         "actions": [
           "BeginMap",
@@ -2529,7 +2529,7 @@
         "invariant": "MapSubmittedOnce",
         "exit_code": 12
       },
-      "KnytosDmaOperation_preparation_unsafe.cfg": {
+      "DmaOperation_preparation_unsafe.cfg": {
         "log_sha256": "5f34043666473d98529a5793bf3630d984dcb74799a8f832cff0503e60ddf10a",
         "actions": [
           "BeginMap",
@@ -2539,7 +2539,7 @@
         "invariant": "PreclaimRetainsPreparation",
         "exit_code": 12
       },
-      "KnytosDmaOperation_public_unsafe.cfg": {
+      "DmaOperation_public_unsafe.cfg": {
         "log_sha256": "dde934e8ef57c5b72ede3e9c8f60e1d6c0eec02dde441368468c8b5c1b2b97ad",
         "actions": [
           "BeginMap",
@@ -2555,7 +2555,7 @@
         "invariant": "PublicRejectionRetainsAttempt",
         "exit_code": 12
       },
-      "KnytosDmaOperation_readiness_unsafe.cfg": {
+      "DmaOperation_readiness_unsafe.cfg": {
         "log_sha256": "a2bf220ab9d83fdde6a5243190b762b1d7885d6264f583d3d6ed76ecf6df3894",
         "actions": [
           "BeginMap",
@@ -2568,7 +2568,7 @@
         "invariant": "ReadinessIsNotCompletion",
         "exit_code": 12
       },
-      "KnytosDmaOperation_rearm_unsafe.cfg": {
+      "DmaOperation_rearm_unsafe.cfg": {
         "log_sha256": "0538daa6af3979cfa6cf2986bd5d73623a0790b56b8afde982534489a5cacf6b",
         "actions": [
           "BeginMap",
@@ -2584,7 +2584,7 @@
         "invariant": "StartedFailureNotRearmed",
         "exit_code": 12
       },
-      "KnytosDmaOperation_remap_unsafe.cfg": {
+      "DmaOperation_remap_unsafe.cfg": {
         "log_sha256": "856d9f6a7bb03dc0cbc0fc8be8bad5d598d77b2b9ec6ea8b0b5e1d2b6e0744df",
         "actions": [
           "BeginMap",

@@ -12,7 +12,7 @@ the implementation must preserve.
 |---|---|---|
 | Ethernet RX | `frouter` exclusively owns the NIC driver's deferred `net::OP_RECV` | Classify VIP frames here, before `tcpip` and smoltcp |
 | Ethernet TX | NIC `net::OP_SEND` accepts a moved memory object and is safe for multiple producers | Move remotely selected frames directly from `frouter` to the NIC |
-| smoltcp adapter | `KnytosEthDevice` receives frames queued by `tcpip::OP_FRAME` and transmits through `net::OP_SEND` | Local selections follow the existing path unchanged |
+| smoltcp adapter | `EthDevice` receives frames queued by `tcpip::OP_FRAME` and transmits through `net::OP_SEND` | Local selections follow the existing path unchanged |
 | ARP | smoltcp answers for addresses installed on its interface | Deliver VIP ARP only on the selected advertiser; accepting a VIP and advertising it remain separate decisions |
 | IP ownership | `tcpip` installs DHCP/static addresses in the smoltcp interface | Install the configured VIP as an additional local address on every backend |
 | TCP dispatch | One `tcpip` domain owns its smoltcp `SocketSet`; applications use the capability-oriented socket API | The selected backend, never the ingress node, owns TCP state |

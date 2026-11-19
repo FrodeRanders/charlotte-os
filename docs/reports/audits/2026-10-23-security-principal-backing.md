@@ -76,7 +76,7 @@ rejected physical release, uncertain publication and partial root destruction.
 Preparation Drop additionally runs beneath the principal lock alongside its
 original table/allocator/pool guards.
 
-The finite `KnytosPrincipalBacking` model checks three unit backings and three
+The finite `PrincipalBacking` model checks three unit backings and three
 root slots, including one slot reused by a different authenticated principal.
 Its safe configuration explores **38,504 distinct / 148,457 generated states**
 to depth **13**. Four negative configurations find the expected violations for
