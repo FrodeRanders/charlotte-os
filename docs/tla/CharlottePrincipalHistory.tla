@@ -1,4 +1,4 @@
--------------------- MODULE CharlottePrincipalHistory --------------------
+-------------------- MODULE KnytosPrincipalHistory --------------------
 \* Three candidate nodes share total/ordinary admission. Nodes 1/3 resolve to
 \* the same principal with different captured classes. Node 2 is independent.
 \* Actual allocator free and root-invalidation proofs are boundary inputs.

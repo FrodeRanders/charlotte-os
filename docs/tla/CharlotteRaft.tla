@@ -1,4 +1,4 @@
------------------------------ MODULE CharlotteRaft -----------------------------
+----------------------------- MODULE KnytosRaft -----------------------------
 \* Election safety and durable term/vote recovery for a fixed voter set.
 \* Message loss is represented by simply not taking GrantVote; duplication is
 \* represented by its idempotent same-candidate case.

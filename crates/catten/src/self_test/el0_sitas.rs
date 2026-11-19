@@ -7,7 +7,7 @@
 //! derived from ELF flags.
 //!
 //! The binary calls `basic_kv::basic_kv_test`, which exercises `ShardedKv`
-//! over `CharlotteReactor`: it creates a KV store, puts keys, reads one back,
+//! over `KnytosReactor`: it creates a KV store, puts keys, reads one back,
 //! and writes the total key count to the result page. It then runs
 //! `mailbox_index::mailbox_index_test`, the sharded scanner -> mailbox ->
 //! assembler index demo, which writes its verified record count next to it,

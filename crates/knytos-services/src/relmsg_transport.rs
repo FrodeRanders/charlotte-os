@@ -9,7 +9,7 @@
 //! - Requests are handed to the owning reactor (which drives `RaftNode::handle_*`) and answered
 //!   with a tagged response back to the source MAC.
 //! - Responses are buffered and exposed through `poll_completions`, exactly like
-//!   `CharlotteTransport`.
+//!   `KnytosTransport`.
 //!
 //! Both NIC and relmsg calls retain moved memory until completion, so outbound
 //! traffic is queued per peer and drained one call at a time.

@@ -1,4 +1,4 @@
---------------------------- MODULE CharlotteTimedWait ---------------------------
+--------------------------- MODULE KnytosTimedWait ---------------------------
 \* Race between a completion generation change, wake delivery, and a timeout.
 
 EXTENDS Naturals

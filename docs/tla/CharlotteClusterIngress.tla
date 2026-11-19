@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteClusterIngress ----------------------
+---------------------- MODULE KnytosClusterIngress ----------------------
 \* Joint cluster-control and DSR-ingress safety model.
 \*
 \* The existing Raft models establish how a command becomes committed. This

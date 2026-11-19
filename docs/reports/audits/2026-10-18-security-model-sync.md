@@ -9,10 +9,10 @@ ownership and failure phases absent from several existing atomic actions.
 
 This batch adds two focused safety models and eleven required counterexamples:
 
-- [`CharlotteRootRetirement`](../../tla/CharlotteRootRetirement.tla) projects
+- [`KnytosRootRetirement`](../../tla/KnytosRootRetirement.tla) projects
   live root leases, staged close, complete-owner invalidation retry,
   abandonment, physical release and original backing charges.
-- [`CharlotteCheckedWait`](../../tla/CharlotteCheckedWait.tla) projects an
+- [`KnytosCheckedWait`](../../tla/KnytosCheckedWait.tla) projects an
   accepted operation and its buffer borrow through fallible wait admission,
   source episode changes, unrelated wakes, timeout and result observation.
 

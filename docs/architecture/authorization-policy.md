@@ -181,7 +181,7 @@ model before being treated as a safety mechanism.
 
 ## TLA+ model
 
-[`CharlotteAuthorization.tla`](../tla/CharlotteAuthorization.tla) models the
+[`KnytosAuthorization.tla`](../tla/KnytosAuthorization.tla) models the
 target issuance protocol. It includes authenticated policy and publication
 roles, versioned subject/service rules, generation-fenced service bindings,
 rights attenuation, single-use decisions, capability close, and the fact that

@@ -1,4 +1,4 @@
------------------- MODULE CharlotteEndpointObservers ------------------
+------------------ MODULE KnytosEndpointObservers ------------------
 \* Endpoint readiness and endpoint closure are distinct observable events.
 \*
 \* The repaired kernel stores their observers in separate queues. The

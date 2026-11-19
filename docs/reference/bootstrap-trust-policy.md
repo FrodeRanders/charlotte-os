@@ -224,7 +224,7 @@ Usage: [signing and trust guide](../guides/signing-and-trust.md#signed-trust-pol
 
 ## Formal ordering projection
 
-[`CharlotteBootTrust`](../tla/CharlotteBootTrust.tla) checks current verifier,
+[`KnytosBootTrust`](../tla/KnytosBootTrust.tla) checks current verifier,
 fixture and one-shot handoff behavior separately from a **conditional** protected
 installation contract. The latter assumes atomic rollback-resistant state and
 trusted platform/custody inputs; those boundaries remain unimplemented. It

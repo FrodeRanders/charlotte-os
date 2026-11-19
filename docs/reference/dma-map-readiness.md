@@ -71,7 +71,7 @@ Readiness is neither DMA completion nor authority to destroy or reuse backing.
 
 ## Formal ownership projection
 
-[`CharlotteDmaOperation`](../tla/CharlotteDmaOperation.tla) now supplements the
+[`KnytosDmaOperation`](../tla/KnytosDmaOperation.tla) now supplements the
 earlier pinning model with fixed-unit admission, source preparation/wake races,
 captured owner retention, typed unmap rejection versus completion and restricted
 runtime failure owners. The

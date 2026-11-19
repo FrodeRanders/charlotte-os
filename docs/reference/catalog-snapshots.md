@@ -54,7 +54,7 @@ discards the pending stream and returns unsuccessful/not-done with offset zero;
 a supported stream can then start again. Normal term/vote and leader-contact
 processing still precede application validation.
 
-The [snapshot acceptance model](../tla/CharlotteSnapshotRestore.tla) checks these
+The [snapshot acceptance model](../tla/KnytosSnapshotRestore.tla) checks these
 rejection and recovery ordering rules separately from chunk reception and log
 suffix retention. Its [review evidence](../reports/audits/2026-10-18-snapshot-restore-model.md)
 records the host tests and seven required counterexamples. Persistence failure

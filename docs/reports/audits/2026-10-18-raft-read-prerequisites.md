@@ -64,7 +64,7 @@ keeps that distinction explicit.
 
 ## Finite read model
 
-[`CharlotteRaftRead`](../../tla/CharlotteRaftRead.tla) separates election,
+[`KnytosRaftRead`](../../tla/KnytosRaftRead.tla) separates election,
 old-prefix acknowledgement, current-term commitment, application and query
 admission. Initial state permits either an unknown or known term-one commit.
 Read evidence captures the state at admission, so later contact expiry or

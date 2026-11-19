@@ -72,7 +72,7 @@ The [audit follow-up](../reports/audits/2026-10-23-security-thread-metadata.md)
 records real root/context/node controls, ordinary-pool exhaustion, kernel reserve
 admission, late release after ASID reuse, independent byte/count denial and
 abandonment under accounting/root/allocator guards. Host tracing checks refund
-after actual node deallocation. The finite `CharlotteThreadMetadata` projection
+after actual node deallocation. The finite `KnytosThreadMetadata` projection
 checks admission and disposal ordering, with four expected unsafe controls.
 
 This pool covers two requested layouts per thread. It excludes the master

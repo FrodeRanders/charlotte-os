@@ -1,4 +1,4 @@
--------------------------------- MODULE CharlotteCQ ----------------------------------
+-------------------------------- MODULE KnytosCQ ----------------------------------
 \* TLA+ model of Knytos Completion Queues.
 \*
 \* Covers: operation lifecycle (submit/in-flight/complete/cancel/observe),

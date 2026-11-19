@@ -99,7 +99,7 @@ public fixture slots, without claiming ARM Secure Boot or protected enrollment.
 
 ### Formal and manual correspondence
 
-Both unchanged `CharlotteBootTrust` instances run freshly:
+Both unchanged `KnytosBootTrust` instances run freshly:
 
 | Instance | Generated | Distinct | Depth |
 |---|---:|---:|---:|

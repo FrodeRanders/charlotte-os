@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteNamePublication ----------------------
+---------------------- MODULE KnytosNamePublication ----------------------
 \* Serialized local NS publication. A live entry owns its connection and watch.
 \* CQ hints may alias; only the current watch's own result establishes death.
 EXTENDS Naturals, FiniteSets

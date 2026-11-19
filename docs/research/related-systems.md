@@ -224,12 +224,12 @@ Several now have concrete, qualified answers:
 
 | Question | Current answer |
 |---|---|
-| Authority invariants over capability tables | **Specified and bounded-model-checked.** `CharlotteCapability.tla` checks the unified tagged namespace, fresh handles, kind-correct removal, delegation, move rollback, and whole-AS teardown. `CharlotteIPC.tla` composes authority with endpoints, reply tokens, and memory transfers. |
+| Authority invariants over capability tables | **Specified and bounded-model-checked.** `KnytosCapability.tla` checks the unified tagged namespace, fresh handles, kind-correct removal, delegation, move rollback, and whole-AS teardown. `KnytosIPC.tla` composes authority with endpoints, reply tokens, and memory transfers. |
 | Explicit derivation information | **Answered negatively for the current design.** Delegation attenuates rights and creates a fresh handle, but the kernel does not retain a general capability-derivation tree. Consequently selective transitive revocation and confinement proofs remain open. |
 | Atomic, formally specified memory ownership transitions | **Partially answered.** Copy, move, read/write borrow, cancellation, close, and teardown are executable TLA+ actions with mapped Rust linearization points. Concrete multi-registry atomicity is reviewed in the conformance map, but no refinement proof establishes equivalence to Rust. |
 | Declarative bootstrap authority | **Partially implemented.** A typed launch manifest and typed bootstrap capability vector describe values and explicitly delegated name-service, device, state, endpoint, and system-observer authority. Launch policy is still assembled procedurally by the supervisor rather than derived from a complete declarative authority specification. |
 | Reply-token invariants | **Implemented and model-checked in a bounded abstraction.** A token belongs to one pending call, becomes receiver-visible only on delivery, is consumable once, and is invalidated by cancellation, caller death, or endpoint teardown. |
-| Cancellation, teardown, and lending state machines | **Yes, at the abstract safety level.** `CharlotteIPC`, `CharlotteCQ`, `CharlotteServiceLifecycle`, and `CharlotteDMA` cover these paths; the conformance document maps their actions to Rust. |
+| Cancellation, teardown, and lending state machines | **Yes, at the abstract safety level.** `KnytosIPC`, `KnytosCQ`, `KnytosServiceLifecycle`, and `KnytosDMA` cover these paths; the conformance document maps their actions to Rust. |
 | Access-control or information-flow proof | **Open.** Kind/owner/rights checks and an explicitly delegated system-observer capability provide useful enforcement mechanisms, but there is no noninterference or whole-system access-control proof. |
 
 The executable specifications live in [`tla/`](../tla/README.md). They do not
@@ -517,7 +517,7 @@ waiting mechanism.
 
 The relevant implementation is in `completion`, with boot self-tests for
 completion state, CQ integration, overflow/backlog delivery, cancellation, and
-blocking waits. `CharlotteCQ.tla` checks the corresponding bounded safety
+blocking waits. `KnytosCQ.tla` checks the corresponding bounded safety
 projection.
 
 ---

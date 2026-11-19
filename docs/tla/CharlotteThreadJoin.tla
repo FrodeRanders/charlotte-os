@@ -1,4 +1,4 @@
--------------------------- MODULE CharlotteThreadJoin --------------------------
+-------------------------- MODULE KnytosThreadJoin --------------------------
 \* Generation-bound EL0 thread handles and delayed exit-observer registration.
 
 EXTENDS Naturals, FiniteSets

@@ -495,17 +495,17 @@ pub enum CancelState { AlreadyComplete, CancelRequested }
 // ---- how the Sitas backend binds to it --------------------------------------
 
 /// Sketch of the Knytos impl of Sitas' `ReactorBackend`.
-struct CharlotteReactor { cq: CompletionQueueId }
+struct KnytosReactor { cq: CompletionQueueId }
 
-impl ReactorBackend for CharlotteReactor {
+impl ReactorBackend for KnytosReactor {
     type Waker  = CompletionQueueId;       // wake() -> wake(cq)
     type Handle = CompletionCap;           // the Phase-1 "what is an interest" answer
-    type Event  = CharlotteEvent;
+    type Event  = KnytosEvent;
 
     fn waker(&self) -> CompletionQueueId { self.cq }
 
     fn wait(&self, _read: &[CompletionCap], _write: &[CompletionCap],
-            timeout: Option<Duration>) -> io::Result<CharlotteEvent> {
+            timeout: Option<Duration>) -> io::Result<KnytosEvent> {
         // Interests are registered at submit-time, so this call receives none.
         // The shard watches its single CQ. Drain into an owned Event after
         // waking.
@@ -526,7 +526,7 @@ The type sketch above is no longer only on paper. A **reference model of this
 ABI now exists and is tested in the Sitas repository** (branch
 the reactor-handle integration branch (`src/knytos_abi.rs`): an in-memory `MockKernel`
 implementing the five operations (`submit`/`wait`/`wake`/`cancel`/`close`), plus
-a `CharlotteReactor` that implements Sitas' `ReactorBackend` contract with
+a `KnytosReactor` that implements Sitas' `ReactorBackend` contract with
 `Handle = CompletionCap`. It is not a Unix backend and talks to no kernel — it
 is the ABI's semantics made executable, so the shapes can be exercised before
 any kernel path exists.
@@ -729,7 +729,7 @@ it. The zero-syscall completion loop is fully wired on the kernel side.
    + `Closure` variant for arbitrary cross-LP work dispatch.)**
 5. **Feed back into Option A:** generalize Sitas' `ReactorBackend::Handle` from
    `RawFd` to an associated type end-to-end (the readiness layer), then implement
-   `CharlotteReactor` against a mock of this ABI to validate the shapes before the
+   `KnytosReactor` against a mock of this ABI to validate the shapes before the
    kernel path exists. **(Done — see §9.1.)**
 
 ---

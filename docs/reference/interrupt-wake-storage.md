@@ -67,6 +67,6 @@ LP already claiming that mailbox rather than assuming its local drain wins.
 These checks concern storage and deferred publication. They do not prove every
 cross-LP mask/rearm interleaving, interrupt-controller pending-bit behavior,
 physical-device recovery or driver scheduling progress. The existing
-`CharlotteInterruptRoute` model abstracts generation fencing for one route;
+`KnytosInterruptRoute` model abstracts generation fencing for one route;
 it does not model mailbox capacity, atomic publication/claim interleavings or
 controller MMIO.

@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteInterruptRoute ----------------------
+---------------------- MODULE KnytosInterruptRoute ----------------------
 \* Deferred device-interrupt wakes across driver route teardown and reuse.
 
 EXTENDS Naturals

@@ -39,7 +39,7 @@ assembly, a missing fragment and an over-ceiling state.
 
 ## SEC-32: fail-safe transmit reservation
 
-[`CharlotteEthDevice`](../../../crates/knytos-smoltcp/src/lib.rs#L99) now
+[`KnytosEthDevice`](../../../crates/knytos-smoltcp/src/lib.rs#L99) now
 reserves one persistent mapped page at first transmit/receive use. `transmit`
 and `receive` return `None` when the reservation is unavailable, so smoltcp
 drops the packet instead of receiving a zero-length buffer; a queued receive

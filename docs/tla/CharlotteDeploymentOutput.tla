@@ -1,4 +1,4 @@
--------------------- MODULE CharlotteDeploymentOutput --------------------
+-------------------- MODULE KnytosDeploymentOutput --------------------
 \* Two bounded output owners. A producer receipt acknowledges one enqueued
 \* prefix; wakes alone cannot advance it. Cancellation leaves enqueue uncertain.
 EXTENDS Naturals, FiniteSets

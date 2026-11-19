@@ -1,4 +1,4 @@
------------------------ MODULE CharlotteAddressSpace -----------------------
+----------------------- MODULE KnytosAddressSpace -----------------------
 \* Reusable numeric ASID slots and generation-fenced lifecycle authority.
 
 EXTENDS Naturals

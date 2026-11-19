@@ -5,7 +5,7 @@
 This continues the [DMA model synchronization](2026-10-18-dma-operation-model.md)
 against baseline `1c6963a2887d7d69472af9179374f81ecd0750d4`, preserving earlier
 uncommitted work. The new
-[`CharlotteNamePublication`](../../tla/CharlotteNamePublication.tla) projects the
+[`KnytosNamePublication`](../../tla/KnytosNamePublication.tla) projects the
 local name-service registry's publication classes, persistent death watches,
 replacement, deferred lookup and logical retirement. Two safe instances and
 thirteen required counterexamples supplement the authorization, endpoint-observer

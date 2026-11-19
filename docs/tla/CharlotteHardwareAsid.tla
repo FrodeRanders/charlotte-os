@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteHardwareAsid ------------------------
+---------------------- MODULE KnytosHardwareAsid ------------------------
 \* Hardware TLB-tag allocation, retirement, invalidation, and safe reuse.
 
 EXTENDS FiniteSets

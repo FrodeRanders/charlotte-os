@@ -99,7 +99,7 @@ Failed host attempts are kept separately:
 
 ## Model and manual correspondence
 
-`CharlotteBootTrust` now separates authority selection, bootstrap loading and
+`KnytosBootTrust` now separates authority selection, bootstrap loading and
 later platform loading from final publication. Loaded-image authority is a
 symbolic set; it abstracts signature verification and compresses all images
 loaded before publication into one bootstrap transition. Publication requires

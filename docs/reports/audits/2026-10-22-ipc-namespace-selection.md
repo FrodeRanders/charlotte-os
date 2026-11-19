@@ -77,7 +77,7 @@ The manual PDF remains unchanged.
 
 ## Finite model
 
-`CharlotteNamespaceDrain` checks one poll of an already-fenced namespace with
+`KnytosNamespaceDrain` checks one poll of an already-fenced namespace with
 two nonreused tokens. Peer close/claim completion can remove a selection before
 preparation. Rejected preparation rechecks absence before rescan; a live
 selection returns Pending. Namespace completion requires all represented tokens

@@ -111,14 +111,14 @@ PDF is preserved; living Markdown and LaTeX sources describe the new boundary.
 ## Formal qualification
 
 Nine focused checks pass: two safe configurations and seven expected
-counterexamples from `CharlotteRootRetirement` and `CharlotteNamespaceDrain`.
+counterexamples from `KnytosRootRetirement` and `KnytosNamespaceDrain`.
 The root graph has **2,978 distinct / 3,733 generated states**, depth 33; namespace
 drain has **58 / 71**, depth 6. Required safe actions execute; every negative
 case fails its named invariant through the intended unsafe action.
 
 No model/configuration changed. The existing root model projects the publication
 lease as an active operation that prevents cleanup/detachment; namespace drain
-projects the existing exact-token boundary. `CharlotteIpcPublication` assumes
+projects the existing exact-token boundary. `KnytosIpcPublication` assumes
 already-live namespaces and does not model their allocations or this handoff.
 Those implementation boundaries are qualified by the native controls above.
 The preceding complete **190-case** run remains the full-suite checkpoint,

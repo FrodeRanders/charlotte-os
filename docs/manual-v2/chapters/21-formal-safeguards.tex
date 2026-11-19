@@ -187,12 +187,12 @@ notes follow the table, grouped by resource accounting and request lifecycle.
     receiver-visible reply authority; exclusive write borrow; every remaining
     borrow backed by a live token; no dangling moved-memory capability. \\
 \hline
-\tlbreak{CharlotteIpc}{Transaction} & Multi-entry vector preparation,
+\tlbreak{KnytosIpc}{Transaction} & Multi-entry vector preparation,
     connection attachment, rollback, delivery, reply and non-terminal timeout &
     Failed preparation restores every affected registry; attached connections
     cannot escape their transaction; timeout cannot release a live call's loan. \\
 \hline
-\tlbreak{CharlotteIpc}{Publication} & Captured reservation, move escrow,
+\tlbreak{KnytosIpc}{Publication} & Captured reservation, move escrow,
     hidden memory/connection delivery and namespace replacement & Publication
     validates the whole batch; receive/observation grants access once; late
     cleanup preserves successor authority and original metadata charges. \\
@@ -262,12 +262,12 @@ notes follow the table, grouped by resource accounting and request lifecycle.
     a subject, policy version, service generation and rights; redemption is
     single-use and cannot amplify authority. \\
 \hline
-\tlbreak{CharlotteName}{Publication} & Local public/policy classes, prepared
+\tlbreak{KnytosName}{Publication} & Local public/policy classes, prepared
     death watches, replacement and retirement & Public paths cannot issue
     policy-published connections; watch admission precedes mutation; stale hints
     need the current producer's own result; disposal preserves watch/source order. \\
 \hline
-\tlbreak{CharlotteBoot}{Trust} & Verifier, exact installed fixture, one-shot
+\tlbreak{KnytosBoot}{Trust} & Verifier, exact installed fixture, one-shot
     handoff and conditional protected installation & Signed verification does
     not install policy; boot uses committed identity; the slot cannot be replaced;
     bootstrap and later images use one selected authority; future commit/reboot
@@ -279,7 +279,7 @@ notes follow the table, grouped by resource accounting and request lifecycle.
     loan, or second pin; mapped memory stays pinned; failed hardware
     acknowledgement retains rather than prematurely frees authority. \\
 \hline
-\tlbreak{CharlotteDma}{Operation} & Fixed-unit readiness, retained map/unmap
+\tlbreak{KnytosDma}{Operation} & Fixed-unit readiness, retained map/unmap
     owners, typed rejection and CPU teardown & Availability grants no completion
     proof; started attempts cannot replay; confirmed DMA survives CPU-unmap
     failure; uncertain pins retain backing and its original charge. \\
@@ -330,7 +330,7 @@ notes follow the table, grouped by resource accounting and request lifecycle.
     durable state, progress, membership and join admission; recovery must accept
     the snapshot before exposing its node. \\
 \hline
-\tlbreak{CharlotteCluster}{Ingress} & Joint membership, replica placement,
+\tlbreak{KnytosCluster}{Ingress} & Joint membership, replica placement,
     exact-generation readiness, drain, immutable ingress snapshots, and
     retained flow epochs & New flows require a fresh snapshot lease; eligible backends are
     placed, ready, admitted, and non-draining; incomplete snapshots do not
@@ -374,7 +374,7 @@ principal. Moves, retirement and abandonment retain the original charge, and exp
 physical confirmation alone refunds it. Six negative controls include early
 reservation refund and double-charged growth. Object counts, allocator/node
 metadata, hardware and pressure fairness lie outside the projection. See
-\path{docs/tla/CharlottePrincipalBacking.tla}.
+\path{docs/tla/KnytosPrincipalBacking.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Thread metadata}
@@ -387,7 +387,7 @@ or bill the replacement principal. The safe graph has 4,132 distinct states,
 12,559 generated states and depth 15. Stack-release proof is an input, while node
 reserve, allocator overhead, observer/table storage, IRQ contexts and pressure
 fairness lie outside the projection. See
-\path{docs/tla/CharlotteThreadMetadata.tla}.
+\path{docs/tla/KnytosThreadMetadata.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Principal history}
@@ -401,7 +401,7 @@ depth 19. Exact bytes, allocator/hardware/generation proofs and pressure fairnes
 remain outside it. The seven focused cases pass. The 24 October follow-up also completes the full
 190-case suite: 47 safe configurations and 143 expected counterexamples across
 44 modules. See
-\path{docs/tla/CharlottePrincipalHistory.tla}.
+\path{docs/tla/KnytosPrincipalHistory.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Namespace drain}
@@ -411,7 +411,7 @@ selection before cancellation preparation. Rechecking absence permits rescan, bu
 every still-present claim remains Pending. Negative controls restore stale
 Pending or skip live work. Actual root, loan, backing and peer-completion proofs
 are boundary inputs, and later wakes/deadlines lie outside this projection.
-See \path{docs/tla/CharlotteNamespaceDrain.tla}.
+See \path{docs/tla/KnytosNamespaceDrain.tla}.
 \end{implementationdetail}
 
 \subsection{Deployment request lifecycle projections}
@@ -429,7 +429,7 @@ timer. Negative controls replay a phase, restart its budget or park beside a
 ready reply. Binding, producer delivery and atomic turns are assumptions, while
 shutdown, dynamic cross-phase admission, byte validation, TCP state and
 wall-clock fairness remain outside the projection. See
-\path{docs/tla/CharlotteDeploymentListener.tla}.
+\path{docs/tla/KnytosDeploymentListener.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Input admission and turn rotation}
@@ -439,7 +439,7 @@ intervening turns. Negative controls keep a busy input's cursor or restart
 its deadline. Atomic input turns and producer/CQ delivery are assumptions, while
 controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
-\path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
+\path{docs/tla/KnytosDeploymentInput.tla} and its conformance map.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Controller calls}
@@ -449,7 +449,7 @@ once-only submission. Receiver backing may survive caller cancellation until
 its own release action. Negative controls park on one silent call while another
 reply is ready or replay a timed-out request. Preparation, byte admission,
 controller-server execution, response latency and physical teardown are omitted.
-See \path{docs/tla/CharlotteDeploymentControl.tla}.
+See \path{docs/tla/KnytosDeploymentControl.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Controller-server relay}
@@ -460,7 +460,7 @@ may survive local termination until its receiver releases it. Negative controls
 turn unknown into absence, restart time, park beside a ready reply or replay
 mutation. Admission, signature/record validation, shutdown, legacy handlers and
 wall-clock fairness are outside the projection. See
-\path{docs/tla/CharlotteControllerRelay.tla}.
+\path{docs/tla/KnytosControllerRelay.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Output prefixes}
@@ -470,7 +470,7 @@ remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
 keep the original deadline. Negative controls replay an uncertain prefix or
 restart its budget. Byte framing, capacity, actual TCP delivery, socket close,
 wall-clock scheduling and whole-service fairness are outside the projection.
-See \path{docs/tla/CharlotteDeploymentOutput.tla}.
+See \path{docs/tla/KnytosDeploymentOutput.tla}.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Logical close}
@@ -486,7 +486,7 @@ A one-owner blocking configuration also checks terminal unstarted admission
 retention. Its destructor-fallback negative control re-enables work after that
 state and violates \texttt{NoReentry}, and accepted replay has its existing control.
 This is no recoverable custody, deadline-duration, field-destructor or runtime
-abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
+abort proof. See \path{docs/tla/KnytosDeploymentClose.tla}.
 \end{implementationdetail}
 
 \section[Model-driven findings]{How model reasoning changes Knytos}
@@ -531,7 +531,7 @@ the implementation cannot enforce. The practical design is recorded in
 
 \subsection{Boot verification and installation are separate}
 
-\tlbreak{CharlotteBoot}{Trust} distinguishes a signed verification receipt from
+\tlbreak{KnytosBoot}{Trust} distinguishes a signed verification receipt from
 boot authority. Installation verification accepts the current record or its
 direct successor. Shared \texttt{verify\_for\_boot} instead requires the exact
 installed revision and digest, rejecting enrollment and uninstalled successors.
@@ -565,7 +565,7 @@ erasure, outer contexts and physical lifetime remain outside the projection.
 
 \subsection{Local publication owns its death watch}
 
-\tlbreak{CharlotteName}{Publication} follows the node-local registry. A candidate
+\tlbreak{KnytosName}{Publication} follows the node-local registry. A candidate
 owns its source connection before preparing a persistent endpoint-death watch.
 Watch rejection leaves the current publication authoritative. Successful policy
 publication and registry replacement are separate internal steps, but the serialized
@@ -601,7 +601,7 @@ remain boundary assumptions.
 \subsection{IPC attachments are cross-registry transactions}
 
 The base IPC model intentionally collapses vector attachments. The
-\tlbreak{CharlotteIpc}{Transaction} refinement instead represents two or more
+\tlbreak{KnytosIpc}{Transaction} refinement instead represents two or more
 moved entries, a live memory loan, an attached connection, the queue and the
 pending-call registry. Current vector calls carry the memory entries, while
 scalar calls carry connection attachments and may copy memory. The refinement
@@ -617,7 +617,7 @@ release a buffer still reachable by the kernel or receiver. The unsafe timeout
 transition releases that loan while the call remains pending and must violate
 \texttt{TimeoutRetainsLoan}.
 
-\tlbreak{CharlotteIpc}{Publication} follows the owning outputs through a
+\tlbreak{KnytosIpc}{Publication} follows the owning outputs through a
 further boundary. A unified capability entry can be live while its memory or
 connection payload remains hidden in a queued request or unobserved reply.
 Receive commit and first reply observation make those resources usable.
@@ -634,7 +634,7 @@ actual allocator/IRQ/guard contexts remain separate obligations.
 
 \subsection{DMA availability and completion}
 
-\tlbreak{CharlotteDma}{Operation} separates unit availability, backend
+\tlbreak{KnytosDma}{Operation} separates unit availability, backend
 acknowledgement and public completion. Readiness retains the original map
 owner until both the actual command engine and recorded domain cell can be
 claimed. Preparation may lose a race to restoration, and another claimant may
@@ -1309,29 +1309,29 @@ fast configurations produced the following complete state graphs:
 \hline
 \textbf{Model} & \textbf{Generated} & \textbf{Distinct} & \textbf{Depth} \\
 \hline
-\texttt{CharlotteIPC} & 6,118,645 & 1,254,153 & 13 \\
+\texttt{KnytosIPC} & 6,118,645 & 1,254,153 & 13 \\
 \hline
-\texttt{CharlotteCQ} & 1,586,249 & 302,659 & 12 \\
+\texttt{KnytosCQ} & 1,586,249 & 302,659 & 12 \\
 \hline
-\texttt{CharlotteTimedWait} & 22 & 15 & 8 \\
+\texttt{KnytosTimedWait} & 22 & 15 & 8 \\
 \hline
-\texttt{CharlotteScheduler} & 4,308,577 & 819,972 & 22 \\
+\texttt{KnytosScheduler} & 4,308,577 & 819,972 & 22 \\
 \hline
-\texttt{CharlotteThreadJoin} & 46 & 39 & 10 \\
+\texttt{KnytosThreadJoin} & 46 & 39 & 10 \\
 \hline
-\tlbreak{CharlotteIpc}{Transaction} & 71 & 26 & 11 \\
+\tlbreak{KnytosIpc}{Transaction} & 71 & 26 & 11 \\
 \hline
 \tlbreak{Charlotte}{ServiceLifecycle} & 689,321 & 74,232 & 37 \\
 \hline
-\texttt{CharlotteDMA} & 19,331,379 & 2,092,882 & 26 \\
+\texttt{KnytosDMA} & 19,331,379 & 2,092,882 & 26 \\
 \hline
 \tlbreak{Charlotte}{Authorization} & 144,598 & 54,705 & 12 \\
 \hline
-\texttt{CharlotteRaftJoin} & 2,029 & 520 & 13 \\
+\texttt{KnytosRaftJoin} & 2,029 & 520 & 13 \\
 \hline
 \tlbreak{Charlotte}{ReliableMessage} & 30 & 21 & 5 \\
 \hline
-\tlbreak{CharlotteCluster}{Ingress} & 3,522,889 & 576,764 & 17 \\
+\tlbreak{KnytosCluster}{Ingress} & 3,522,889 & 576,764 & 17 \\
 \hline
 \end{longtable}
 

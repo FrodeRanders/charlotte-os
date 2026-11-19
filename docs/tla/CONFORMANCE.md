@@ -26,7 +26,7 @@ unimplemented production boundaries.
 
 ## Namespace token selection
 
-`CharlotteNamespaceDrain` projects one poll of an already-fenced namespace with
+`KnytosNamespaceDrain` projects one poll of an already-fenced namespace with
 quiescent callers and two nonreused token identities. Its peer completion assumes
 the competing owner's typed cleanup proof; it does not manufacture that proof.
 
@@ -131,7 +131,7 @@ allocator/map faults and kernel scheduling remain separate qualification work.
 | `receiverBacking`, `ReleaseReceiver` | moved request memory retained by controller; original kernel sponsor charge | The receiver may retain backing after caller timeout. Releasing an active logical reservation is not proof of physical release or refund. The model abstracts a separate receiver release action, with no hardware/allocator refinement claim. |
 | `Park`, `RejectAdmission` | minimum input/controller deadline on default CQ; shared fail-closed wait policy | Wait covers all pending sources, not one selected controller. Rejected binding/wait retains every current owner through abort. TCP/IP setup/send/close and actual controller-server blocking are separate. |
 
-`CharlotteDeploymentControl` rejects a serial wait while another response is
+`KnytosDeploymentControl` rejects a serial wait while another response is
 ready and a replay after timeout. It is a bounded safety projection of accepted
 calls. It omits dynamic admission, request-byte budgets, response fairness,
 server execution, kernel scheduling and physical teardown. Host budget/owner
@@ -148,7 +148,7 @@ see the [evidence](../reports/audits/2026-10-22-security-deployment-control.md).
 | `ProducerReady`, `bound`, `Park` | deferred TCP/IP accept/receive, `PendingCall::bind_cq`, default-CQ drain then owner polling | Producer and notification delivery are assumptions. The model omits TCP handshake/EOF transitions, binding preparation and CQ overflow; host producer-state tests and native socket probes qualify those separately. |
 | `RejectWait`, `owner` | `reactor::wait` / binding failure `domain_abort` | Terminal abort retains the containing owners; no new submission or cleanup proof follows rejection. Kernel cancellation/physical teardown are omitted. |
 
-`CharlotteDeploymentInput` is a new bounded safety projection. Its cursor
+`KnytosDeploymentInput` is a new bounded safety projection. Its cursor
 negative control starves a ready healthy input for more than four turns; its
 deadline control restarts an existing budget. It covers no incoming admission
 fairness, controller execution, response backpressure, explicit socket close,
@@ -211,7 +211,7 @@ the model runner.
 
 ### Captured admission and hidden delivery
 
-`CharlotteIpcPublication` supplements the older atomic IPC and capability
+`KnytosIpcPublication` supplements the older atomic IPC and capability
 models. Its single `st` record contains one transaction, the exact original
 namespace/account identities, admitted records and detached charged nodes.
 The generation labels distinguish namespace-budget instances; concrete tokens
@@ -289,22 +289,22 @@ corresponding to the repaired model and its retained negative counterexample.
 | `waiters` | Queue observer registration and queue-wide `last_seen_generation`, reduced to one reactor per CQ. |
 | `kernelOwnsBuffer` | Whether an in-flight or cancel-pending operation can still access a submitted mutable buffer. |
 
-`CharlotteCQ_buffer_unsafe.cfg` makes cancellation release the buffer
+`KnytosCQ_buffer_unsafe.cfg` makes cancellation release the buffer
 immediately. TLC must violate `NonTerminalBufferRemainsLoaned`, retaining the
 use-after-cancel scenario as an executable negative regression.
 
-`CharlotteTimedWait` splits work-generation publication from wake delivery,
+`KnytosTimedWait` splits work-generation publication from wake delivery,
 which exposes the interval in which a timer can run after work exists but
 before the ordinary wake is processed. `TimerFire` rechecks the registered
 generation via `classify_timed_wait`, used by `wait_on_cq` and
 `wait_on_cq_timeout`; a changed generation returns work rather than a false
 timeout. (`block_until` rechecks the caller's condition, not the generation.)
-`CharlotteTimedWait_unsafe.cfg` omits that recheck and must violate
+`KnytosTimedWait_unsafe.cfg` omits that recheck and must violate
 `TimeoutObservedNoWork`.
 
 ### Fallible checked waits
 
-`CharlotteCheckedWait` starts after request acceptance. `owner` and `loan`
+`KnytosCheckedWait` starts after request acceptance. `owner` and `loan`
 represent the still-held operation and its buffer borrow; `submissions` stays
 one throughout. `epoch` represents an exact source/claim episode, distinct from
 the enclosing operation's terminal result. It is not a reusable ASID or TID.
@@ -360,22 +360,22 @@ so `RETIREMENTS_IN_FLIGHT` marks the concrete intermediate interval;
 `domain_exited` rejects that interval. This supplies the linearization bridge
 needed for the model's atomic `RetireRemoteAbort`/`AbortNotRunning` projection.
 
-`CharlotteScheduler_unsafe.cfg` enables the former immediate remote-removal
+`KnytosScheduler_unsafe.cfg` enables the former immediate remote-removal
 transition and is required to produce a `ReapOnlyOffCpu` counterexample. This
 negative model corresponds to the stale-AS SVC panic fixed by owner-LP
 retirement; it is not part of the repaired `Spec`.
 
-`CharlotteScheduler_domain_abort_unsafe.cfg` publishes a sibling after the
+`KnytosScheduler_domain_abort_unsafe.cfg` publishes a sibling after the
 abort snapshot and must violate `AbortingThreadsDoomed`. The Rust publication
 gate prevents this trace and also prevents a captured numeric TID from being
 reused by another domain before the sweep reaches it.
 
-`CharlotteThreadJoin` isolates the userspace join contract from the larger
+`KnytosThreadJoin` isolates the userspace join contract from the larger
 scheduler state space. `spawn_thread_with_generation` returns the generation
 captured before thread publication; `ThreadHandle` retains it; and
 `observe_thread_exit_generation` passes it back to
 `observe_thread_exit_with_generation`. A missing or recycled slot completes
-immediately. `CharlotteThreadJoin_unsafe.cfg` restores TID-only registration
+immediately. `KnytosThreadJoin_unsafe.cfg` restores TID-only registration
 and must violate `ObserverMatchesCapturedHandle` after slot reuse. Generation
 allocation uses `knytos_lifecycle::claim_generation` and the scheduler's
 single global atomic `try_update`; it starts at one and reserves `u64::MAX` as
@@ -383,7 +383,7 @@ the exhausted state instead of ever issuing it. Concrete exhaustion panics
 (fail-stop) instead of returning the model's non-fatal `RejectExhaustedSpawn`;
 the never-issued property is preserved. The safe model exercises
 `RejectExhaustedSpawn`, while
-`CharlotteThreadJoin_wrap_unsafe.cfg` wraps to generation one and must violate
+`KnytosThreadJoin_wrap_unsafe.cfg` wraps to generation one and must violate
 `GenerationNeverReused`.
 
 ## Reusable address spaces and interrupt routes
@@ -397,7 +397,7 @@ the never-issued property is preserved. The safe model exercises
 
 ### Root-retirement projection
 
-`CharlotteRootRetirement` supplements the atomic `CharlotteAddressSpace` close.
+`KnytosRootRetirement` supplements the atomic `KnytosAddressSpace` close.
 `slot` is the generation currently holding one reusable numeric ASID;
 per-generation records preserve terminal backing/charge history after reuse.
 Two abstract pages represent complete versus partially rejected physical
@@ -545,9 +545,9 @@ progress remains open. No model source
 or TLC result changed.
 
 The August `memory_map_any` work did not change memory ownership in
-`CharlotteIPC`; it changed address-space placement. Its safety-relevant part
+`KnytosIPC`; it changed address-space placement. Its safety-relevant part
 is the generation-keyed scratch cursor and lifecycle serialization represented
-by `CharlotteAddressSpace` (introduced across the August lifecycle-hardening
+by `KnytosAddressSpace` (introduced across the August lifecycle-hardening
 commits, not by the cursor-arithmetic repair itself), not a new IPC transfer
 mode.
 
@@ -591,7 +591,7 @@ code never performs an indefinite CQ wait plus a detached timer.
 | `BeginMap(..., "Coherent")` | unsafe `dma_map`, `memory::object::pin_for_dma` | The raw coherent-sharing path may coexist with CPU mappings or a previously established loan; synchronization remains the unsafe caller's obligation. It cannot coexist with an exclusive pin. |
 | `BeginMap(..., "Exclusive")` | safe `dma_map_exclusive`, `OwnedMemory::begin_dma` | Direct ownership transfer: requires no CPU mappings, loans, or other DMA pins. The mode remains exclusive until acknowledged unmap and pin release. |
 | `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. A second mapping of the same memory object in one domain is rejected, preserving the model's per-domain uniqueness. |
-| `FailMap` | confirmed partial-PTE cleanup or unstarted rejection, then `memory::object::unpin_dma` | Abstract confirmed rollback only. An error or an incomplete installation does not by itself prove rollback; uncertain started maintenance retains its pin. Admission/completion ownership is split in `CharlotteDmaOperation` below. |
+| `FailMap` | confirmed partial-PTE cleanup or unstarted rejection, then `memory::object::unpin_dma` | Abstract confirmed rollback only. An error or an incomplete installation does not by itself prove rollback; uncertain started maintenance retains its pin. Admission/completion ownership is split in `KnytosDmaOperation` below. |
 | `QuarantineMap` | failed `invalidate_asid` after `Domain::map` | Direct safety policy: the unpublished internal mapping retains its pin because hardware translation state is uncertain. A later acknowledged domain destroy reclaims it. |
 | `RevokeMap` / `ReleasePin` | `Domain::clear_mapping`, `invalidate_asid`, then `unpin_dma` | Direct ordering: translation removal is acknowledged before the object becomes reclaimable. |
 | `BeginDestroy` | `smmu::destroy_domain` before the aborting STE is acknowledged | Abstract in-progress management state under the SMMU lock. |
@@ -601,12 +601,12 @@ code never performs an indefinite CQ wait plus a detached timer.
 | `ReclaimMemory` | final `unpin_dma` for a destroy-pending object | Direct for last-pin removal, capability cleanup and frame reclamation. A destroy-pending object rejects further CPU mapping and DMA pinning, so no mapping can outlive the final unpin. |
 
 `ExclusiveDmaHasNoCpuAuthority` checks that an exclusive pin cannot overlap a
-CPU mapping, IPC loan, or second DMA pin. `CharlotteDMA_unsafe.cfg` removes the
+CPU mapping, IPC loan, or second DMA pin. `KnytosDMA_unsafe.cfg` removes the
 exclusive precondition and must produce a counterexample.
 
 ### DMA operation and readiness projection
 
-`CharlotteDmaOperation` follows one successful or failed map and its possible
+`KnytosDmaOperation` follows one successful or failed map and its possible
 unmap/CPU teardown. Its `root`, `claim`, `pin`, `sourceStorage` and `interest`
 represent separate owners; `unit` holds the actual backend domain/engine
 while their installed cells are absent. `backendAck` is distinct from the
@@ -671,7 +671,7 @@ framing, and temporal liveness are outside this abstraction.
 
 ## Raft response term and progress fencing
 
-`CharlotteRaftResponse` isolates asynchronous acknowledgement handling from the
+`KnytosRaftResponse` isolates asynchronous acknowledgement handling from the
 log model. Its fixed schedule captures an honest term-one acknowledgement for
 index three, replaces the local prefix under term two, then elects this node in
 term three and appends a new no-op at the same index. Election legitimacy and
@@ -700,7 +700,7 @@ establish that the existing receive-time contact lease is linearizable.
 |---|---|---|
 | `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must obtain both current and next voter majorities while joint. Durable voting remains in the election model. Both the model and `ClusterConfiguration::is_voter` admit current or next voters as candidates. `ElectNextOnly` supplies separate positive coverage for the next-only path; both joint voter majorities remain required. |
 | `SubmitJoint` | `submit_joint_configuration`, `submit_command` | Direct for appending the encoded `JOINT` command while the old configuration is authoritative. |
-| `Replicate` | append-response handling and `match_index` | Abstract replication progress for configured voters and learners. Concrete append and completed-snapshot successes now require a matching admitted peer, exact current term and an index within the local tail. Progress retains its maximum and append rejection respects its floor; `CharlotteRaftResponse` checks this boundary. Commit counting reads configured voters. Log contents and conflict repair remain in the log model. |
+| `Replicate` | append-response handling and `match_index` | Abstract replication progress for configured voters and learners. Concrete append and completed-snapshot successes now require a matching admitted peer, exact current term and an index within the local tail. Progress retains its maximum and append rejection respects its floor; `KnytosRaftResponse` checks this boundary. Commit counting reads configured voters. Log contents and conflict repair remain in the log model. |
 | `CommitJoint` | `advance_commit_index`, then `apply_configuration_command(Joint)` | The `JOINT` entry commits under its preceding configuration; applying it activates the old/new union and records the finalization fence. |
 | `SubmitFinalize`, `RejectLaggingFinalize` | `maybe_auto_finalize_joint_configuration` | Restored Graft Java/Rust automatic catch-up policy: JOINT is committed and every proposed remote voter/learner has reached its fence. The leader owns that prefix locally. Explicit/manual FINALIZE submission is outside this automatic-path projection. |
 | `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. A node retained only as a learner becomes a follower immediately, matching the model. It remains a member and keeps its durable vote for the existing term. A captured joint-quorum result is checked even after the model replaces the old voter set. |
@@ -754,7 +754,7 @@ this batch does not qualify those leases.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Elect` | ordinary single-node election before admission | Abstract; durable election safety remains in `CharlotteRaft`. |
+| `Elect` | ordinary single-node election before admission | Abstract; durable election safety remains in `KnytosRaft`. |
 | `BeginJoining` | `RaftNode::begin_joining` | Direct: persists the selected anchor and pre-admission snapshot index before stepping down, disabling the election deadline, and clearing candidate votes. |
 | `SubmitJoin` / `CommitJoin` | `submit_join`; application of `ConfigurationCommand::Join` | The JOIN is idempotently appended and commits under the existing configuration. Only then does `pending_joiners` expose its fence. |
 | `ReplicateToJoiner` | `accepts_joining_leader`; `handle_append_entries` / `handle_install_snapshot` | Direct source fence: a non-member accepts log/snapshot authority only from `joining_from`. |
@@ -774,12 +774,12 @@ preserve the admission fence.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Abstracts bounded chunk accumulation. Exact offset and sender/term binding are checked by `CharlotteRaftStream` and Rust regressions below. |
+| `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Abstracts bounded chunk accumulation. Exact offset and sender/term binding are checked by `KnytosRaftStream` and Rust regressions below. |
 | `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. The concrete early return also clears any pending snapshot buffer, which the model leaves unchanged. |
 | `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, current/next membership, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
-| `ActivateSnapshot` | commit/last-applied update and membership reconstruction after successful `StateMachine::restore` | Application restore rejects before durable snapshot publication; the model's split represents successful logical activation after persistence. Application rejection and temporary restoration before a failed write are checked separately by `CharlotteSnapshotRestore` below. Membership activation also recomputes local decommissioning. |
+| `ActivateSnapshot` | commit/last-applied update and membership reconstruction after successful `StateMachine::restore` | Application restore rejects before durable snapshot publication; the model's split represents successful logical activation after persistence. Application rejection and temporary restoration before a failed write are checked separately by `KnytosSnapshotRestore` below. Membership activation also recomputes local decommissioning. |
 | `Crash` | service-domain exit | Pending chunks and volatile state-machine contents disappear; the atomically published log-state object survives. |
-| `Restart` | `disk_raft::open`, then fallible `RaftNode::new` | The tagged state/log pair validates jointly before construction restores snapshot bytes and current/next membership and exposes its index as committed and applied. Incomplete/unsupported pairs or rejected application snapshots stop recovery without migration or reset. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. Application validation is abstracted separately by `CharlotteSnapshotRestore`. |
+| `Restart` | `disk_raft::open`, then fallible `RaftNode::new` | The tagged state/log pair validates jointly before construction restores snapshot bytes and current/next membership and exposes its index as committed and applied. Incomplete/unsupported pairs or rejected application snapshots stop recovery without migration or reset. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. Application validation is abstracted separately by `KnytosSnapshotRestore`. |
 
 The model abstracts snapshot contents to one value, membership to peer-ID sets,
 and chunks to a bounded count. It omits peer roles and addresses within those
@@ -788,7 +788,7 @@ exhaustion, and state-machine-specific validation of snapshot bytes.
 
 ## Raft snapshot stream ownership
 
-[`CharlotteRaftStream`](CharlotteRaftStream.tla) isolates sender/term and offset
+[`KnytosRaftStream`](KnytosRaftStream.tla) isolates sender/term and offset
 checks from the durable snapshot model. Both senders share one snapshot boundary;
 matching that boundary cannot establish continuation ownership.
 
@@ -814,7 +814,7 @@ retain the failing mixed-byte installation and cross-port source comparison.
 
 ## Application snapshot acceptance and rejection
 
-`CharlotteSnapshotRestore` isolates the rejection boundary from the chunk/suffix
+`KnytosSnapshotRestore` isolates the rejection boundary from the chunk/suffix
 model above. Its `exposed` flag means the calling Raft operation can return or
 continue with the node; it is not a global endpoint-availability assertion.
 
@@ -844,7 +844,7 @@ queries, allocator failure and endpoint teardown remain outside this model.
 
 ## Cluster placement, readiness, and DSR ingress
 
-`CharlotteClusterIngress` composes already committed Raft application state
+`KnytosClusterIngress` composes already committed Raft application state
 with its asynchronous projection into the frame router. It deliberately does
 not duplicate log replication: `PublishReady`, `ReplaceDeployment`,
 `CommitDrain`, `BeginJoint`, and `FinalizeJoint` begin at their state-machine
@@ -858,7 +858,7 @@ catalog application of the resulting Raft command.
 | `ReplaceDeployment` | deployment application in `NameCatalog`; leader `reconcile_replica_placements` | Abstract for a committed generation and sorted concrete replica set. Artifact verification, descriptor decoding, and placement ranking are outside this model. |
 | `CommitDrain` | application of a signed shutdown intent; `NameCatalog::ingress_draining_nodes` | Direct for adding a generation-bearing drain decision to applied catalog state. Signature, expiry, and trusted UTC checks precede this boundary. |
 | `CommitIngressAssignment` | `NameCatalog::apply` for `CMD_INGRESS_POLICY`; `effective_ingress_bindings`; frame-router and TCP/IP assignment polling | Abstracts the signed multi-service table to one service and an assigned/withdrawn Boolean. The monotonic sequence corresponds directly to the catalog replay fence and is hashed into each service epoch, so a policy replacement is visible even when placement, readiness, and membership inputs are unchanged. |
-| `BeginJoint` / `FinalizeJoint` | application of Raft `JOINT` and `FINALIZE`; `active_voting_members` | Abstract membership projection. Quorum and durable ordering are established by `CharlotteRaftMembership`; this layer checks the old/new voter intersection during joint consensus and the final voter set afterward. |
+| `BeginJoint` / `FinalizeJoint` | application of Raft `JOINT` and `FINALIZE`; `active_voting_members` | Abstract membership projection. Quorum and durable ordering are established by `KnytosRaftMembership`; this layer checks the old/new voter intersection during joint consensus and the final voter set afterward. |
 | `LearnRoute` / `ForgetRoute` | `RelmsgRaftTransport::mac_for_peer`; discovery updates | Abstract availability of an authenticated node-to-MAC route. The trusted-L2 assumption and frame authentication are not proved. |
 | `InstallSnapshot` | `RaftNode::can_serve_bounded_read`, `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for a cluster-fresh, all-or-nothing materialization and immutable bounded history. A leader needs quorum contact; a follower needs a recent successful leader-log match. Bindings may outlive history entries but remain pinned tombstones. The router holds at most one membership request in flight per service and installs each response in request order, so an older snapshot cannot replace a newer one; re-installing the current epoch is a content no-op that renews the lease. |
 | `ExpireLease` | terminal observation of the monotonic `snapshot_lease` timer | Abstract timing correspondence. Weak fairness says an unrenewed lease eventually expires; Rust fixes the interval at five seconds. |
@@ -900,8 +900,8 @@ ingress participants.
 
 ## Cluster placement feedback control
 
-`CharlottePlacementControl` models the leader-local controller before its
-output enters `CharlotteClusterIngress` as `ReplaceDeployment`.
+`KnytosPlacementControl` models the leader-local controller before its
+output enters `KnytosClusterIngress` as `ReplaceDeployment`.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
@@ -984,7 +984,7 @@ decisions; and minting cannot amplify rights.
 
 ## Demand-grown stack budget
 
-`CharlotteStackGrowth.tla` models the resource accounting the guard-fault paths
+`KnytosStackGrowth.tla` models the resource accounting the guard-fault paths
 implement. The mapping below is implemented on both architectures.
 
 | TLA+ action | Knytos implementation | Correspondence |
@@ -1002,7 +1002,7 @@ checks that successful growth cannot consume the pressure reserve.
 
 ## Local NS publication and death watches
 
-`CharlotteNamePublication` supplements authorization and endpoint-observer models.
+`KnytosNamePublication` supplements authorization and endpoint-observer models.
 Names and authenticated principals are distinct atoms. One registry mutation runs
 at a time; kernel endpoint closure and CQ hints can occur during it. All real CQ
 hints may alias a current watch in the projection, so a stale matching hint still
@@ -1030,7 +1030,7 @@ parsing, outer contexts and physical cleanup remain separate C18 work.
 
 ## Boot trust and conditional protected installation
 
-`CharlotteBootTrust` has two explicitly different configurations. `fixture`
+`KnytosBootTrust` has two explicitly different configurations. `fixture`
 projects existing development boot and the x86 test fixture, with protected
 production support absent. `contract` assumes that missing boundary to explore
 installation ordering; it is a specification obligation, not implemented storage
@@ -1067,7 +1067,7 @@ The [release-generation audit](../reports/audits/2026-10-21-security-release-gen
 found two concrete `reserve_node_capacity` mutations inside `debug_assert!`.
 Optimized Rust omitted those charges, violating the intended cumulative promise
 boundary. They now execute as ordinary rejecting control flow for singleton and
-replica placement. `CharlottePlacementControl` already updates `reserved` in
+replica placement. `KnytosPlacementControl` already updates `reserved` in
 `Admit` and checks the reserve invariant; its overcommit negative control
 retains the forbidden behavior. No model transition is weakened to match the bug.
 Both Rust profiles and the selected safe/negative TLC controls qualify the fix.
@@ -1127,7 +1127,7 @@ records seven focused checks; no expanded full-suite result is inferred.
 
 The [24 October root metadata batch](../reports/audits/2026-10-24-security-root-metadata-admission.md)
 attaches requested-byte/count charges to the three existing root policy/usage/
-authority nodes. `CharlotteRootRetirement` already projects retained metadata
+authority nodes. `KnytosRootRetirement` already projects retained metadata
 and confirmation before release; it does not represent the individual three-node
 quota or partial allocation rollback. Those boundaries are checked by native
 one/two-slot, allocator rejection and real-node exhaustion controls plus the
@@ -1142,15 +1142,15 @@ IRQ-context or pressure-fairness proof.
 The [24 October namespace batch](../reports/audits/2026-10-24-security-ipc-namespace-publication.md)
 adds a first exact-root operation lease to the existing root-registration owner.
 It protects prepared namespace publication after lifecycle/table unlock; it is
-released only after IPC unlock. `CharlotteRootRetirement` projects that lease as
+released only after IPC unlock. `KnytosRootRetirement` projects that lease as
 an active operation: cleanup/detachment require all such leases to finish and
-abandoned operations retain the root. `CharlotteNamespaceDrain` checks the
+abandoned operations retain the root. `KnytosNamespaceDrain` checks the
 existing exact-token drain boundary before namespace removal.
 
 Nine focused cases pass: two safe configurations and seven expected
 counterexamples. The prior complete 190-case result remains the full-suite
 checkpoint; no model/configuration changes accompany this implementation batch.
-`CharlotteIpcPublication` starts with live namespaces and does not model their
+`KnytosIpcPublication` starts with live namespaces and does not model their
 three allocations or the registration handoff. Native phase-rejection,
 heap-held relinking/detachment, missing-namespace rejection and early-close
 controls qualify those boundaries. These checks provide no executable
@@ -1166,10 +1166,10 @@ finish post-guard and the root finishes last. Publication only relinks storage;
 close/cancellation retain detached nodes until explicit disposal before refund.
 Abandonment retains the whole preparation.
 
-`CharlotteIpcPublication` checks joint shared-authority publication, hidden
+`KnytosIpcPublication` checks joint shared-authority publication, hidden
 payload delivery, rollback and charge retention. Its prepared storage represents
 shared authority staging, not these family-record node allocations or the
-call/reply count dimensions. `CharlotteRootRetirement` projects the caller lease
+call/reply count dimensions. `KnytosRootRetirement` projects the caller lease
 that prevents teardown/slot reuse while preparation is live. The allocation,
 post-IPC disposal and counter lifetime are qualified by native controls and the
 shared collection host test of late-bound admission through actual node free.
@@ -1189,8 +1189,8 @@ detached notifications. Original token classification supplies later claim-sourc
 admission and survives caller promotion and root reuse.
 
 Twenty focused cases pass: three safe configurations and 17 expected
-counterexamples from `CharlotteIpcPublication`, `CharlotteIpcTransaction` and
-`CharlotteRootRetirement`. Shared authority/delivery, rollback, non-terminal
+counterexamples from `KnytosIpcPublication`, `KnytosIpcTransaction` and
+`KnytosRootRetirement`. Shared authority/delivery, rollback, non-terminal
 timeout and exact-root gates are their existing projections. The two family
 record allocations, token count's node lifetime, guard exit and source-class
 copy are not explicit model variables; native controls and shared collection
@@ -1207,8 +1207,8 @@ through FIFO replacement; post-IPC disposal precedes refund. Existing cleanup
 owners carry final closed endpoint nodes. Complete fallback retains all fields.
 
 Twenty focused cases pass: three safe configurations and 17 expected
-counterexamples from `CharlotteIpcPublication`, `CharlotteIpcTransaction` and
-`CharlotteRootRetirement`. Their shared authority/delivery, rollback,
+counterexamples from `KnytosIpcPublication`, `KnytosIpcTransaction` and
+`KnytosRootRetirement`. Their shared authority/delivery, rollback,
 non-terminal timeout and root gates remain unchanged. Endpoint node allocation,
 atomic record/slot admission, old-backing lifetime, post-guard disposal and
 source-class preservation are native/host qualification; these models do not
@@ -1224,9 +1224,9 @@ Existing owners keep unused preparation and detached payload/shared-authority
 pairs through post-IPC disposal; connection counts follow node lifetime.
 Speculative receive rollback and scalar/claimed reply share these owners.
 
-`CharlotteIpcPublication` projects joint authority/delivery and rollback;
-`CharlotteIpcTransaction` checks rollback and non-terminal timeout;
-`CharlotteRootRetirement` projects existing exact-root gates. Private IPC payload
+`KnytosIpcPublication` projects joint authority/delivery and rollback;
+`KnytosIpcTransaction` checks rollback and non-terminal timeout;
+`KnytosRootRetirement` projects existing exact-root gates. Private IPC payload
 node allocation, its shared-count prefix, paired metadata disposal, field-drop
 contexts and linear traversal remain native/host qualification. No
 model/configuration changes accompany this batch. All 20 focused cases pass:
@@ -1260,9 +1260,9 @@ existing reservations/escrows twice under one capability hold, validating the
 whole set before mutation. Existing containing roots, pins, copied backing and
 charges remain unchanged.
 
-`CharlotteIpcPublication` retains its atomic authority/delivery projection;
-`CharlotteIpcTransaction` retains rollback/non-terminal timeout;
-`CharlotteRootRetirement` retains exact-root gates. Iterator membership stability,
+`KnytosIpcPublication` retains its atomic authority/delivery projection;
+`KnytosIpcTransaction` retains rollback/non-terminal timeout;
+`KnytosRootRetirement` retains exact-root gates. Iterator membership stability,
 actual auxiliary storage, allocation/guard boundaries and 257-member execution
 remain native qualification. Mixed memory payload maps still allocate after the
 authority gate. No model/configuration changes accompany this batch. All 20 focused cases
@@ -1296,7 +1296,7 @@ Confirmed cleanup carries the selected node and detached shared authority past
 memory unlock; borrower free precedes authority admission release. Existing
 physical proof and final-object ownership remain unchanged.
 
-Focused `CharlotteIpcTransaction` and `CharlotteRootRetirement` safe/negative
+Focused `KnytosIpcTransaction` and `KnytosRootRetirement` safe/negative
 checks are rerun. Models/configurations are unchanged. Concrete node allocation,
 deallocation/refund order, containing destructors and registry/heap/IRQ contexts
 are native/host qualification, without executable refinement or pressure proof.

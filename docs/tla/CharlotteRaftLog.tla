@@ -1,4 +1,4 @@
---------------------------- MODULE CharlotteRaftLog ---------------------------
+--------------------------- MODULE KnytosRaftLog ---------------------------
 \* Bounded Raft log replication, conflict repair, commit, and durable restart.
 
 EXTENDS Naturals, FiniteSets, Sequences
@@ -36,7 +36,7 @@ ElectionQuorum(candidate) ==
 Elect(candidate, newTerm) ==
     /\ up[candidate]
     /\ newTerm \in 1..MaxTerm
-    \* CharlotteRaft supplies election safety: a replacement leader is from a
+    \* KnytosRaft supplies election safety: a replacement leader is from a
     \* strictly newer term than every leader epoch already represented here.
     /\ \A n \in Node : newTerm > currentTerm[n]
     /\ Cardinality(ElectionQuorum(candidate)) * 2 > Cardinality(Node)

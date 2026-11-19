@@ -1,4 +1,4 @@
--------------------- MODULE CharlotteDeploymentControl --------------------
+-------------------- MODULE KnytosDeploymentControl --------------------
 \* Already admitted controller calls. A ready healthy response must remain
 \* observable while another call is pending. Receiver backing survives caller
 \* timeout until the receiver separately releases it. No physical proof here.

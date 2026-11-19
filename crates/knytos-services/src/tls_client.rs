@@ -138,7 +138,7 @@ pub struct StreamError;
 /// A verified TLS byte stream that owns all resources needed by the session.
 #[must_use = "dropping the stream closes its TLS session and owned socket"]
 pub struct OwnedTlsStream<'connection> {
-    connection: Option<CharlotteTls<'connection>>,
+    connection: Option<KnytosTls<'connection>>,
     _buffers: TlsRecordBuffers,
     receive_chunk_len: usize,
 }
@@ -384,7 +384,7 @@ impl<'config, 'data> PreparedHandshake<'config, 'data> {
     }
 }
 
-type CharlotteTls<'connection> = TlsConnection<'connection, SocketIo<'connection>, Aes128GcmSha256>;
+type KnytosTls<'connection> = TlsConnection<'connection, SocketIo<'connection>, Aes128GcmSha256>;
 
 fn tls_error_code(error: &TlsError) -> u32 {
     match error {

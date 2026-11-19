@@ -1,4 +1,4 @@
---------------------- MODULE CharlotteReliableMessage ---------------------
+--------------------- MODULE KnytosReliableMessage ---------------------
 \* Reliable-message session identity across retry abandonment and unilateral
 \* service restart. A wire session is the pair (service generation, retry
 \* epoch), packed monotonically by the implementation.

@@ -1,4 +1,4 @@
--------------------------- MODULE CharlotteRemoteCall -------------------------
+-------------------------- MODULE KnytosRemoteCall -------------------------
 \* Bounded remote-call identity, generation fencing, uncertainty, and dedup.
 \*
 \* A Call denotes the complete (caller node, caller session, call id) identity.

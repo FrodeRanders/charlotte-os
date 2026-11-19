@@ -44,7 +44,7 @@ capability/name-service contract.
 `InMemoryLogStore` and `InMemoryPersistentStateStore`. A restarted DNS replica
 forgets its term and vote and can vote twice in one term. This invalidates the
 durable-vote assumption used by Raft election safety and by
-`CharlotteRaft.tla`.
+`KnytosRaft.tla`.
 
 Follow-up:
 

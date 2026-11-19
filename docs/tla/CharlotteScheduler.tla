@@ -1,4 +1,4 @@
--------------------------- MODULE CharlotteScheduler --------------------------
+-------------------------- MODULE KnytosScheduler --------------------------
 \* Finite safety model of Knytos thread admission, physical execution,
 \* blocking/wakeup, migration, cross-LP abort, owner-LP retirement, reaping,
 \* generation-safe wakeup, and address-space teardown.
@@ -249,7 +249,7 @@ Spec == Init /\ [][Next]_vars
 \* Regression model of the former implementation: a remote caller removed a
 \* Running thread from scheduler/master-table authority while the target was
 \* still physically executing on its LP. This action is intentionally excluded
-\* from Spec and enabled only by CharlotteScheduler_unsafe.cfg, whose TLC run
+\* from Spec and enabled only by KnytosScheduler_unsafe.cfg, whose TLC run
 \* must produce a ReapOnlyOffCpu counterexample.
 UnsafeRemoteAbort(t, requester) ==
     /\ phase[t] = "Running"

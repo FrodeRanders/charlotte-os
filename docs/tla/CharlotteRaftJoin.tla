@@ -1,4 +1,4 @@
---------------------------- MODULE CharlotteRaftJoin ---------------------------
+--------------------------- MODULE KnytosRaftJoin ---------------------------
 \* Pre-membership Raft admission: a joiner selects one authoritative anchor,
 \* a JOIN entry commits under the old configuration, the joiner catches up to
 \* that fence, and only then may the leader submit/commit the joint change.

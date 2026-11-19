@@ -1,4 +1,4 @@
------------------- MODULE CharlotteDeploymentListener ------------------
+------------------ MODULE KnytosDeploymentListener ------------------
 \* Fixed positions, one original setup budget and one accepted call per phase.
 \* Replies/binding are abstract producer contracts. A completed position moves
 \* to input/close; this projection grants no physical socket cleanup proof.

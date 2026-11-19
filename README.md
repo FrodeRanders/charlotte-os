@@ -1,9 +1,10 @@
 # The Knytos Operating System
 
 This repository was initially forked from the
-[CharlotteOS project](https://github.com/knytos/knytos). CharlotteOS,
-its original architecture, and the substantial foundation on which this work
-builds were created by the upstream project and its contributors. 
+[CharlotteOS project](https://github.com/charlotte-os/charlotte-os).
+CharlotteOS, its original architecture, and the substantial foundation
+on which this work builds were created by the upstream project and its
+contributors. 
 
 The purpose of this fork began as an exploration of additional operating-system
 mechanisms while retaining CharlotteOS' core functionality. Over time, this project

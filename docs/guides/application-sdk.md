@@ -80,7 +80,7 @@ the [broker review](../reports/audits/2026-11-14-broker-sdk-review.md).
 `knytos-app-sitas` uses the existing Sitas `ShardExecutor` and reactor backend.
 Construct `WakeReactor::new(backend, cq, capacity)` before the executor and retain
 its `handle()`. The selected `cq` must be the queue actually waited by `backend`, and
-for a default `CharlotteReactor::new(lp)` use queue zero. The backend is the sole
+for a default `KnytosReactor::new(lp)` use queue zero. The backend is the sole
 ring consumer. Register an accepted call with
 `calls.call(pending, Some(deadline))`, then await the returned future.
 Registration or binding failure returns `(PendingCall, RegistrationError)`.

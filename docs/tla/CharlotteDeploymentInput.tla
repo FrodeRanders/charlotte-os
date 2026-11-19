@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteDeploymentInput ----------------------
+---------------------- MODULE KnytosDeploymentInput ----------------------
 \* Bounded input scheduling only. One healthy complete request competes with
 \* incomplete readable inputs. A turn abstracts poll/observe/append/rearm; it
 \* does not abstract controller, send, close, TCP or kernel scheduling latency.

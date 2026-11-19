@@ -62,7 +62,7 @@ submission and acknowledgement; a failed shutdown is subsequently treated as
 already stopped. The entry thread completes its shutdown request after its
 accept scope returns, without joining session or partition workers.
 
-At the pinned Sitas revision, `CharlotteJoinHandle` contains a raw exit-observer
+At the pinned Sitas revision, `KnytosJoinHandle` contains a raw exit-observer
 completion and has no `Drop` implementation; only consuming `join` closes it.
 Discarding the handle therefore leaves that observer unclosed until domain
 teardown. This is source evidence, not a measured exhaustion campaign. The

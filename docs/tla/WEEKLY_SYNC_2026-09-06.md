@@ -21,15 +21,15 @@ making the cross-layer assumptions executable.
 | Model area | Later implementation change | Result |
 |---|---|---|
 | Raft membership and catalog | Membership, desired replica sets, deployment generations, readiness, and shutdown intent now contribute to ingress policy | Existing Raft models remain applicable to commitment. Added a composition layer over their committed output. |
-| Service lifecycle | A service may have several concrete owners and per-node readiness for one desired generation | The singleton lifecycle model remains useful locally. Replica readiness is modeled separately in `CharlotteClusterIngress`. |
-| DSR ingress | A VIP advertiser selects ready placed backends, retains established flows by epoch, and forwards at L2 | Material new state machine. Added `CharlotteClusterIngress`, one safe configuration, and three negative configurations. |
+| Service lifecycle | A service may have several concrete owners and per-node readiness for one desired generation | The singleton lifecycle model remains useful locally. Replica readiness is modeled separately in `KnytosClusterIngress`. |
+| DSR ingress | A VIP advertiser selects ready placed backends, retains established flows by epoch, and forwards at L2 | Material new state machine. Added `KnytosClusterIngress`, one safe configuration, and three negative configurations. |
 | Cluster shutdown | Committed drain must stop new placement and new flows before service teardown | The new model includes the control-plane-to-ingress portion. Reverse-order local service and device shutdown remains outside it. |
 | Role-separated operational launch | Signed references, replay fences, S3 retrieval, and transient HPKE decryption now precede connector launch | Not yet modeled. A future admission model should abstract cryptography and check role, sequence, expiry, digest, binding, and plaintext-lifetime state. |
 | Kafka transactional step | Consumer generation, procedure call, produce, offset inclusion, commit, abort, retry, and DLQ now form a service workflow | Not yet modeled. It merits a separate transaction/fencing specification rather than expansion of the cluster-ingress model. |
 
 ## New model boundary
 
-`CharlotteClusterIngress.tla` represents:
+`KnytosClusterIngress.tla` represents:
 
 - stable voters and the old/new voter intersection during joint consensus as
   the set eligible to participate in ingress;

@@ -1,4 +1,4 @@
------------------------ MODULE CharlotteRaftMembership -----------------------
+----------------------- MODULE KnytosRaftMembership -----------------------
 \* Replicated voter/learner membership, joint-consensus quorum changes,
 \* automatic finalization, and decommissioning.
 
@@ -78,7 +78,7 @@ Init ==
         [n \in Node |-> n \notin Members(InitialVoters, {})]
 
 \* Election is abstracted to the membership admission decision. The separate
-\* CharlotteRaft model checks durable voting and one leader per term.
+\* KnytosRaft model checks durable voting and one leader per term.
 Elect(n, votes) ==
     /\ leader = NoNode
     /\ up[n]

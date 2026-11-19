@@ -103,7 +103,7 @@ fences, compaction past a fence, identity/membership/term changes, domain
 replacement, preparation rejection and non-leader rejection. Earlier
 receive-time tests now qualify bounded observations rather than query authority.
 
-The revised [`CharlotteRaftRead`](../../tla/CharlotteRaftRead.tla) includes the
+The revised [`KnytosRaftRead`](../../tla/KnytosRaftRead.tla) includes the
 external leader replacement and delayed-response environment in its safe case.
 It passes **38,300 generated states, 9,916 distinct states, depth 15**. All
 fourteen required actions have positive successor coverage.

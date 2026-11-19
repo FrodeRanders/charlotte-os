@@ -1,4 +1,4 @@
--------------------- MODULE CharlotteControllerRelay --------------------
+-------------------- MODULE KnytosControllerRelay --------------------
 \* Two already admitted server relays, one preflight/mutation and one query.
 \* Binding and producer delivery are assumed. Reply classification abstracts
 \* checked absence/newer-state evidence; errors never supply that evidence.

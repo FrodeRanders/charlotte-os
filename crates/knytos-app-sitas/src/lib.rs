@@ -1,6 +1,6 @@
 //! Bounded owned call futures for the existing Sitas ShardExecutor.
 //!
-//! Wrap the selected CharlotteReactor in WakeReactor before giving it to the
+//! Wrap the selected KnytosReactor in WakeReactor before giving it to the
 //! executor. IPC reply readiness is a CQ wake, not necessarily a cookie record:
 //! every backend wake rechecks the bounded set of registered pending owners.
 //! This crate never consumes a CQ ring independently of the selected backend.

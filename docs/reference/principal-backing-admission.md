@@ -145,7 +145,7 @@ before thread publication. Its sibling workers retain their common signed
 principal and ordinary classification. This isolates exact-page restoration
 checks without treating a shared principal ceiling as private capacity.
 
-The finite `CharlottePrincipalBacking` model checks unequal object/table/stack
+The finite `KnytosPrincipalBacking` model checks unequal object/table/stack
 footprints, prepaid data growth, transfer, retirement, explicit physical confirmation
 and one reused root slot. Negative controls also charge growth twice or refund an
 abandoned reservation. It abstracts page counts and does not model object-count

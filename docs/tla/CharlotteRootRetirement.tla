@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteRootRetirement ----------------------
+---------------------- MODULE KnytosRootRetirement ----------------------
 \* One reusable ASID, exact-generation leases, and complete retirement owners.
 \* Thread quiescence and each subsystem's cleanup proof are boundary inputs.
 

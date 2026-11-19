@@ -1,4 +1,4 @@
-------------------------- MODULE CharlotteRaftStream -------------------------
+------------------------- MODULE KnytosRaftStream -------------------------
 \* Snapshot continuation ownership. Boundary index/term are fixed and equal
 \* across senders, so they cannot accidentally supply the missing identity.
 EXTENDS Naturals, Sequences, FiniteSets

@@ -92,7 +92,7 @@ was tested in this batch.
 
 ## Membership model
 
-The existing [membership model](../../tla/CharlotteRaftMembership.tla) now
+The existing [membership model](../../tla/KnytosRaftMembership.tla) now
 explicitly covers automatic catch-up, a next-only voter election, and a
 finalized leader becoming a learner. The safe instance passes with **35,565
 generated states, 6,232 distinct states and depth 13**. All ten required actions

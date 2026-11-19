@@ -100,7 +100,7 @@ The processor limit bounds Java workers; no invariant, configuration or required
 action coverage was changed. Models/configurations are unchanged in this batch;
 the full run verifies the registered expanded suite.
 
-`CharlotteRootRetirement` already projects metadata retention through rejected
+`KnytosRootRetirement` already projects metadata retention through rejected
 invalidation and confirmation before release. The three-node byte/count pool and
 partial-allocation rollback are not explicit in that model. Those implementation
 boundaries are qualified by the native controls and common charged-collection

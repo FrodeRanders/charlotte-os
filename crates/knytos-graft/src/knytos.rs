@@ -32,7 +32,7 @@ use crate::{
 const TRANSPORT_SCRATCH_VADDR: usize = 0x0000_0000_0081_0000;
 const RPC_TIMEOUT_MILLIS: u64 = 1_000;
 
-pub struct CharlotteTransport {
+pub struct KnytosTransport {
     peer_connections: spin::Mutex<BTreeMap<String, u64>>,
     pending_calls: spin::Mutex<Vec<PendingRpc>>,
     current_millis: spin::Mutex<u64>,
@@ -55,7 +55,7 @@ enum RpcType {
     InstallSnapshot,
 }
 
-impl CharlotteTransport {
+impl KnytosTransport {
     pub fn new() -> Self {
         Self {
             peer_connections: spin::Mutex::new(BTreeMap::new()),
@@ -156,13 +156,13 @@ impl CharlotteTransport {
     }
 }
 
-impl Default for CharlotteTransport {
+impl Default for KnytosTransport {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RaftTransport for CharlotteTransport {
+impl RaftTransport for KnytosTransport {
     fn set_current_millis(&self, current_millis: u64) {
         *self.current_millis.lock() = current_millis;
     }

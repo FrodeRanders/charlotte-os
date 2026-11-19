@@ -1,4 +1,4 @@
-------------------------- MODULE CharlotteIpcTransaction -------------------------
+------------------------- MODULE KnytosIpcTransaction -------------------------
 \* IPC attachment transactions across memory, IPC-capability, queue, and
 \* pending-call registries. Vector calls carry the memory entries; scalar
 \* calls carry a connection attachment and may also carry copied memory. The

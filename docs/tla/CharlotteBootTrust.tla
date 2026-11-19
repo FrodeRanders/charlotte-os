@@ -1,4 +1,4 @@
--------------------------- MODULE CharlotteBootTrust --------------------------
+-------------------------- MODULE KnytosBootTrust --------------------------
 \* Existing verifier/fixture/handoff, plus a separately configured conditional
 \* protected-installation contract. No protected installer exists in Rust yet.
 EXTENDS Naturals, FiniteSets

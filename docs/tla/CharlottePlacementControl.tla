@@ -1,4 +1,4 @@
---------------------- MODULE CharlottePlacementControl ---------------------
+--------------------- MODULE KnytosPlacementControl ---------------------
 \* Safety core of the cluster placement feedback controller.
 \*
 \* Raw observations remain diagnostic data. Placement selects candidates from

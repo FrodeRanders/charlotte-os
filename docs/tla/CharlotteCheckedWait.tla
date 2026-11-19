@@ -1,4 +1,4 @@
-------------------------- MODULE CharlotteCheckedWait -------------------------
+------------------------- MODULE KnytosCheckedWait -------------------------
 \* One already accepted operation and its borrowed buffer. Source epochs are
 \* readiness episodes, not operation completion proofs or replay permission.
 

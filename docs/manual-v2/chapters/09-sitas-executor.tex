@@ -336,7 +336,7 @@ user thread has no ``returned'' trap, so the trampoline must ask the kernel
 to reap it), and the kernel's \texttt{ObserveThreadExit} syscall registers a
 completion capability as an exit-observer of that thread: when the kernel
 reaps the thread, the capability fires through the ordinary completion ABI.
-The backend's \texttt{CharlotteJoinHandle} wraps this behavior. \texttt{join}
+The backend's \texttt{KnytosJoinHandle} wraps this behavior. \texttt{join}
 blocks in the kernel's completion wait and then reads the closure's return
 value from a per-spawn result slot, and \texttt{is\_finished} polls the
 capability. The \texttt{knytos-user} join probe exercises it: it spawns two

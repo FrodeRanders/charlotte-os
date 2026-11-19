@@ -96,7 +96,7 @@ checked-in manual PDF is preserved, with Markdown/LaTeX contracts updated togeth
 
 ## Focused formal verification
 
-`CharlottePrincipalHistory` models three nodes, shared total/ordinary ceilings,
+`KnytosPrincipalHistory` models three nodes, shared total/ordinary ceilings,
 new-record/duplicate decisions, attachment, logical exit, confirmed disposal and
 abandonment. Two candidates can resolve to one principal with different captured
 classes. Its safe graph has **2,539 distinct / 5,410 generated states**, depth
@@ -107,7 +107,7 @@ refund abandonment, reclassify a charge, evict published history or release an
 attached node before confirmation. All **seven focused cases** pass through:
 
 ```sh
-docs/tla/check.sh /path/to/tla2tools.jar CharlottePrincipalHistory
+docs/tla/check.sh /path/to/tla2tools.jar KnytosPrincipalHistory
 ```
 
 The harness now accepts an optional module selector; unknown modules reject

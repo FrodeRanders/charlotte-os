@@ -1,4 +1,4 @@
------------------------ MODULE CharlotteRaftResponse -----------------------
+----------------------- MODULE KnytosRaftResponse -----------------------
 \* Delayed acknowledgements across a replaced log prefix. Election and log
 \* selection are assumed from the separate Raft layers, not proved here.
 EXTENDS Naturals

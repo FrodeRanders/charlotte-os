@@ -99,312 +99,312 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
-run_model CharlottePrincipalHistory CharlottePrincipalHistory_small.cfg \
+run_model KnytosPrincipalHistory KnytosPrincipalHistory_small.cfg \
     Prepare Attach Decide Exit Confirm ReleaseRoot Cancel Abandon
-run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_ordinary_unsafe.cfg \
+run_expected_violation KnytosPrincipalHistory KnytosPrincipalHistory_ordinary_unsafe.cfg \
     OrdinaryCeiling UnsafeIgnoreOrdinary
-run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_exit_unsafe.cfg \
+run_expected_violation KnytosPrincipalHistory KnytosPrincipalHistory_exit_unsafe.cfg \
     Accounted UnsafeExitRefund
-run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_drop_unsafe.cfg \
+run_expected_violation KnytosPrincipalHistory KnytosPrincipalHistory_drop_unsafe.cfg \
     Accounted UnsafeDropRefund
-run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_class_unsafe.cfg \
+run_expected_violation KnytosPrincipalHistory KnytosPrincipalHistory_class_unsafe.cfg \
     OriginalClass UnsafeReclassify
-run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_evict_unsafe.cfg \
+run_expected_violation KnytosPrincipalHistory KnytosPrincipalHistory_evict_unsafe.cfg \
     HistoryRetained UnsafeEvict
-run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_early_unsafe.cfg \
+run_expected_violation KnytosPrincipalHistory KnytosPrincipalHistory_early_unsafe.cfg \
     RootProof UnsafeRootFree
-run_model CharlotteThreadMetadata CharlotteThreadMetadata_small.cfg \
+run_model KnytosThreadMetadata KnytosThreadMetadata_small.cfg \
     Admit AllocateNode AllocateContext Publish DisposeContext FreeNode Refund Abandon Retire Reuse
-run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_generation_unsafe.cfg \
+run_expected_violation KnytosThreadMetadata KnytosThreadMetadata_generation_unsafe.cfg \
     PrincipalCeiling UnsafeGenerationOnly
-run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_early_unsafe.cfg \
+run_expected_violation KnytosThreadMetadata KnytosThreadMetadata_early_unsafe.cfg \
     Accounted UnsafeEarlyRefund
-run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_drop_unsafe.cfg \
+run_expected_violation KnytosThreadMetadata KnytosThreadMetadata_drop_unsafe.cfg \
     Accounted UnsafeDropRefund
-run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_reuse_unsafe.cfg \
+run_expected_violation KnytosThreadMetadata KnytosThreadMetadata_reuse_unsafe.cfg \
     OriginalSponsor UnsafeReplacementSponsor
-run_model CharlottePrincipalBacking CharlottePrincipalBacking_small.cfg \
+run_model KnytosPrincipalBacking KnytosPrincipalBacking_small.cfg \
     Allocate Grow Move Retire Restart ConfirmRelease
-run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_generation_unsafe.cfg \
+run_expected_violation KnytosPrincipalBacking KnytosPrincipalBacking_generation_unsafe.cfg \
     PrincipalCeiling UnsafeGenerationOnly
-run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_refund_unsafe.cfg \
+run_expected_violation KnytosPrincipalBacking KnytosPrincipalBacking_refund_unsafe.cfg \
     Accounted UnsafeRetirementRefund
-run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_move_unsafe.cfg \
+run_expected_violation KnytosPrincipalBacking KnytosPrincipalBacking_move_unsafe.cfg \
     Accounted UnsafeMoveSponsor
-run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_reuse_unsafe.cfg \
+run_expected_violation KnytosPrincipalBacking KnytosPrincipalBacking_reuse_unsafe.cfg \
     Accounted UnsafeReuseSponsor
-run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_growth_unsafe.cfg \
+run_expected_violation KnytosPrincipalBacking KnytosPrincipalBacking_growth_unsafe.cfg \
     Accounted UnsafeGrowCharge
-run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_drop_unsafe.cfg \
+run_expected_violation KnytosPrincipalBacking KnytosPrincipalBacking_drop_unsafe.cfg \
     Accounted UnsafeDropRefund
-run_model CharlotteControllerRelay CharlotteControllerRelay_small.cfg \
+run_model KnytosControllerRelay KnytosControllerRelay_small.cfg \
     ProducerReply CheckedPreflight RejectPreflight ObserveTerminal Expire ReleaseReceiver Park Wake Tick AbortBindingOrWait
-run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_unknown_unsafe.cfg \
+run_expected_violation KnytosControllerRelay KnytosControllerRelay_unknown_unsafe.cfg \
     MutationRequiresCheckedQuery UnsafeUnknownAsMissing
-run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_budget_unsafe.cfg \
+run_expected_violation KnytosControllerRelay KnytosControllerRelay_budget_unsafe.cfg \
     OriginalBudget UnsafeRestart
-run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_serial_unsafe.cfg \
+run_expected_violation KnytosControllerRelay KnytosControllerRelay_serial_unsafe.cfg \
     ParkCoversAll UnsafeSerialWait
-run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_replay_unsafe.cfg \
+run_expected_violation KnytosControllerRelay KnytosControllerRelay_replay_unsafe.cfg \
     AcceptedOnce UnsafeReplay
-run_model CharlotteDeploymentListener CharlotteDeploymentListener_small.cfg \
+run_model KnytosDeploymentListener KnytosDeploymentListener_small.cfg \
     Admit RejectQueue ProducerReply Observe RejectConfirmed Abort Park Wake Tick
-run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_replay_unsafe.cfg \
+run_expected_violation KnytosDeploymentListener KnytosDeploymentListener_replay_unsafe.cfg \
     AcceptedOnce UnsafeReplay
-run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_budget_unsafe.cfg \
+run_expected_violation KnytosDeploymentListener KnytosDeploymentListener_budget_unsafe.cfg \
     OriginalBudget UnsafeRestart
-run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_serial_unsafe.cfg \
+run_expected_violation KnytosDeploymentListener KnytosDeploymentListener_serial_unsafe.cfg \
     ParkCoversAll UnsafeSerialPark
-run_model CharlotteNamespaceDrain CharlotteNamespaceDrain_small.cfg \
+run_model KnytosNamespaceDrain KnytosNamespaceDrain_small.cfg \
     Select SelectEmpty ClosePeer FinishClaim CancelSelected RejectPreparation RecheckMissing ReturnPending
-run_expected_violation CharlotteNamespaceDrain CharlotteNamespaceDrain_stale_unsafe.cfg \
+run_expected_violation KnytosNamespaceDrain KnytosNamespaceDrain_stale_unsafe.cfg \
     NoStalePending UnsafeStalePending
-run_expected_violation CharlotteNamespaceDrain CharlotteNamespaceDrain_skip_unsafe.cfg \
+run_expected_violation KnytosNamespaceDrain KnytosNamespaceDrain_skip_unsafe.cfg \
     CompleteOnlyDrained UnsafeSkipLive
-run_model CharlotteDeploymentClose CharlotteDeploymentClose_blocking.cfg \
+run_model KnytosDeploymentClose KnytosDeploymentClose_blocking.cfg \
     RejectQueue Admit ProducerAck ProducerUnavailable ObserveAck Expire RejectWaitOrObservation Park Wake Tick RetainAdmission
-run_expected_violation CharlotteDeploymentClose CharlotteDeploymentClose_fallback_unsafe.cfg \
+run_expected_violation KnytosDeploymentClose KnytosDeploymentClose_fallback_unsafe.cfg \
     NoReentry UnsafeFallback
-run_model CharlotteDeploymentClose CharlotteDeploymentClose_small.cfg \
+run_model KnytosDeploymentClose KnytosDeploymentClose_small.cfg \
     RejectQueue Admit ProducerAck ProducerUnavailable ObserveAck Expire RejectWaitOrObservation Park Wake Tick
-run_expected_violation CharlotteDeploymentClose CharlotteDeploymentClose_replay_unsafe.cfg \
+run_expected_violation KnytosDeploymentClose KnytosDeploymentClose_replay_unsafe.cfg \
     AcceptedOnce UnsafeReplay
-run_expected_violation CharlotteDeploymentClose CharlotteDeploymentClose_release_unsafe.cfg \
+run_expected_violation KnytosDeploymentClose KnytosDeploymentClose_release_unsafe.cfg \
     OwnersUntilAck UnsafeRelease
-run_model CharlotteDeploymentOutput CharlotteDeploymentOutput_small.cfg \
+run_model KnytosDeploymentOutput KnytosDeploymentOutput_small.cfg \
     ProducerReceipt ObservePrefix EndUncertain Tick Park Wake RejectWait
-run_expected_violation CharlotteDeploymentOutput CharlotteDeploymentOutput_replay_unsafe.cfg \
+run_expected_violation KnytosDeploymentOutput KnytosDeploymentOutput_replay_unsafe.cfg \
     PrefixesOnce UnsafeReplay
-run_expected_violation CharlotteDeploymentOutput CharlotteDeploymentOutput_budget_unsafe.cfg \
+run_expected_violation KnytosDeploymentOutput KnytosDeploymentOutput_budget_unsafe.cfg \
     OriginalBudget UnsafeRestartBudget
-run_model CharlotteDeploymentControl CharlotteDeploymentControl_small.cfg \
+run_model KnytosDeploymentControl KnytosDeploymentControl_small.cfg \
     Bind Complete Observe Expire ReleaseReceiver Park Tick RejectAdmission
-run_expected_violation CharlotteDeploymentControl CharlotteDeploymentControl_replay_unsafe.cfg \
+run_expected_violation KnytosDeploymentControl KnytosDeploymentControl_replay_unsafe.cfg \
     SubmittedOnce UnsafeReplay
-run_expected_violation CharlotteDeploymentControl CharlotteDeploymentControl_serial_unsafe.cfg \
+run_expected_violation KnytosDeploymentControl KnytosDeploymentControl_serial_unsafe.cfg \
     ParkCoversAll UnsafeSerialWait
-run_model CharlotteDeploymentInput CharlotteDeploymentInput_small.cfg \
+run_model KnytosDeploymentInput KnytosDeploymentInput_small.cfg \
     Advance ProducerReady Tick Park RejectWait
-run_expected_violation CharlotteDeploymentInput CharlotteDeploymentInput_cursor_unsafe.cfg \
+run_expected_violation KnytosDeploymentInput KnytosDeploymentInput_cursor_unsafe.cfg \
     HealthyTurnBound UnsafeKeepCursor
-run_expected_violation CharlotteDeploymentInput CharlotteDeploymentInput_deadline_unsafe.cfg \
+run_expected_violation KnytosDeploymentInput KnytosDeploymentInput_deadline_unsafe.cfg \
     OriginalBudget UnsafeRestartBudget
-run_model CharlotteIPC CharlotteIPC_small.cfg \
+run_model KnytosIPC KnytosIPC_small.cfg \
     MemoryCreate ScalarCallMove ScalarCallBorrowRead ScalarCallBorrowWrite \
     ScalarCallCopy Receive ReplyReturnMemory EndpointClose \
     DomainTeardown
-run_model CharlotteIpcTransaction CharlotteIpcTransaction_small.cfg \
+run_model KnytosIpcTransaction KnytosIpcTransaction_small.cfg \
     BeginVector TransferMove BeginBorrow AttachConnection Commit \
     FailAndRollback Deliver WaitTimeout Reply ObserveReply
-run_expected_violation CharlotteIpcTransaction \
-    CharlotteIpcTransaction_rollback_unsafe.cfg \
+run_expected_violation KnytosIpcTransaction \
+    KnytosIpcTransaction_rollback_unsafe.cfg \
     RollbackRestoresAll UnsafeRollback
-run_expected_violation CharlotteIpcTransaction \
-    CharlotteIpcTransaction_timeout_unsafe.cfg \
+run_expected_violation KnytosIpcTransaction \
+    KnytosIpcTransaction_timeout_unsafe.cfg \
     TimeoutRetainsLoan UnsafeTimeoutRelease
-run_model CharlotteIpcPublication CharlotteIpcPublication_small.cfg \
+run_model KnytosIpcPublication KnytosIpcPublication_small.cfg \
     Begin PrepareRecord RejectStorage Reserve RejectReservation PrepareMemory \
     PrepareConnection Commit RejectCommit FinishPreparation AbortPreparation \
     Readiness PrepareReceive RejectReceive ReceiveWriteFailed CommitReceive \
     ObserveReply RepeatObservation Use ApplicationClose CancelHidden Fill \
     RetireNamespace DetachNamespace ReplaceNamespace ReleaseRetired Abandon
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_memory_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_memory_unsafe.cfg \
     UseRequiresDelivery UnsafeUseMemory
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_connection_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_connection_unsafe.cfg \
     UseRequiresDelivery UnsafeUseConnection
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_batch_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_batch_unsafe.cfg \
     AtomicPublication UnsafePublishPrefix
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_serial_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_serial_unsafe.cfg \
     SerialsConsumed UnsafeReuseSerial
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_cancel_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_cancel_unsafe.cfg \
     ReplacementIntact UnsafeCancelSuccessor
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_restore_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_restore_unsafe.cfg \
     ReplacementIntact UnsafeRestoreSuccessor
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_refund_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_refund_unsafe.cfg \
     RetainedNodesCharged UnsafeRefundRetained
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_readiness_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_readiness_unsafe.cfg \
     VisibleRequiresDelivery UnsafeReadinessDelivers
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_observe_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_observe_unsafe.cfg \
     ObservedCloseStaysClosed UnsafeRepublishObserved
-run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_rollback_unsafe.cfg \
+run_expected_violation KnytosIpcPublication KnytosIpcPublication_rollback_unsafe.cfg \
     RollbackRestoresCapturedSource UnsafeRollbackNeedsAdmission
-run_model CharlotteEndpointObservers CharlotteEndpointObservers_small.cfg \
+run_model KnytosEndpointObservers KnytosEndpointObservers_small.cfg \
     ArmReadiness ArmCloseWatch Send Receive Close ObserveClose
-run_expected_violation CharlotteEndpointObservers CharlotteEndpointObservers_unsafe.cfg \
+run_expected_violation KnytosEndpointObservers KnytosEndpointObservers_unsafe.cfg \
     CloseSignalImpliesClosed UnsafeMessageWake
-run_model CharlotteNamePublication CharlotteNamePublication_small.cfg \
+run_model KnytosNamePublication KnytosNamePublication_small.cfg \
     Begin RejectBeforeWatch PrepareWatch RejectPolicy PublishPolicy Install \
     Lookup QueueLookup ResolveDeferred FinishInstall CloseEndpoint CqHint \
     ObservePending ObserveUnrelated RetireDeath RetireExplicit RejectRetirement \
     CancelWatch CloseSource WatchError WaitRejected LifecycleAbort PublicationAbort
-run_model CharlotteNamePublication CharlotteNamePublication_exhaustion.cfg \
+run_model KnytosNamePublication KnytosNamePublication_exhaustion.cfg \
     Begin PrepareWatch PublishPolicy Install FinishInstall ExhaustionRetire \
     CancelWatch CloseSource RejectExhausted
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_public_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_public_unsafe.cfg \
     PublicIssuance UnsafePublicLookup
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_deferred_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_deferred_unsafe.cfg \
     PublicIssuance UnsafeDeferredLookup
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_replacement_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_replacement_unsafe.cfg \
     ReplacementProtected UnsafePublicReplacement
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_watch_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_watch_unsafe.cfg \
     BeforeWatchUnchanged UnsafeMutationBeforeWatch
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_hint_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_hint_unsafe.cfg \
     DeathNeedsExactResult UnsafeHintRetires
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_stale_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_stale_unsafe.cfg \
     DeathNeedsExactResult UnsafeStaleHint
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_disposal_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_disposal_unsafe.cfg \
     WatchRetainsSource UnsafeCloseSourceFirst
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_quota_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_quota_unsafe.cfg \
     LiveBound UnsafeNewAtCapacity
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_abort_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_abort_unsafe.cfg \
     AbortRetainsOwners UnsafeAbortDisposes
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_retire_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_retire_unsafe.cfg \
     RetirementAuthorized UnsafeUnauthorizedRetire
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_wrap_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_wrap_unsafe.cfg \
     GenerationNotReused UnsafeGenerationWrap
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_exhausted_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_exhausted_unsafe.cfg \
     PolicyGenerationRepresentable UnsafePublishExhausted
-run_expected_violation CharlotteNamePublication CharlotteNamePublication_serial_unsafe.cfg \
+run_expected_violation KnytosNamePublication KnytosNamePublication_serial_unsafe.cfg \
     GrantGenerationCoherent UnsafeLookupDuringPublish
-run_model CharlotteBootTrust CharlotteBootTrust_fixture.cfg \
+run_model KnytosBootTrust KnytosBootTrust_fixture.cfg \
     ReadInstalled ReadFailure Verify RejectRecord AcquireRecipient PrepareSigned \
     RejectRecipient PrepareDevelopment SelectAuthority LoadBootstrap LoadPlatform \
     Publish RejectPublication BorrowView DropPreparation Reboot
-run_model CharlotteBootTrust CharlotteBootTrust_contract.cfg \
+run_model KnytosBootTrust KnytosBootTrust_contract.cfg \
     ReadInstalled ReadEnrollment ReadFailure Verify RejectRecord CommitPolicy \
     CommitFailure CommitInterrupted CompetingCommit AcquireRecipient PrepareSigned \
     RejectRecipient SelectAuthority LoadBootstrap LoadPlatform \
     Publish RejectPublication BorrowView DropPreparation Reboot
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_uninstalled_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_uninstalled_unsafe.cfg \
     InstalledBeforePublication UnsafeUninstalledPublish
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_stale_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_stale_unsafe.cfg \
     NoForkedInstallation UnsafeStaleCommit
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_enrollment_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_enrollment_unsafe.cfg \
     NoEnrollmentFallback UnsafeEnrollmentFallback
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_overwrite_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_overwrite_unsafe.cfg \
     OnePublicationPerBoot UnsafeOverwrite
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_manifest_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_manifest_unsafe.cfg \
     SharedPolicy UnsafeIndependentManifest
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_recipient_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_recipient_unsafe.cfg \
     RecipientBound UnsafeWrongRecipient
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_authenticate_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_authenticate_unsafe.cfg \
     VerifiedAuthenticated UnsafeAuthenticate
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_development_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_development_unsafe.cfg \
     ExplicitDevelopment UnsafeDevelopmentFallback
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_failure_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_failure_unsafe.cfg \
     InstalledBeforePublication UnsafeFailedCommitPublishes
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_boundary_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_boundary_unsafe.cfg \
     ConditionalBoundary UnsafeUnsupportedProduction
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_platform_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_platform_unsafe.cfg \
     PlatformImagesUseSelectedAuthority UnsafePlatformFallback
-run_expected_violation CharlotteBootTrust CharlotteBootTrust_selection_unsafe.cfg \
+run_expected_violation KnytosBootTrust KnytosBootTrust_selection_unsafe.cfg \
     SelectedAuthorityMatchesState UnsafeSelectionOverwrite
-run_model CharlotteCQ CharlotteCQ_mini.cfg \
+run_model KnytosCQ KnytosCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
-run_expected_violation CharlotteCQ CharlotteCQ_buffer_unsafe.cfg \
+run_expected_violation KnytosCQ KnytosCQ_buffer_unsafe.cfg \
     NonTerminalBufferRemainsLoaned UnsafeCancelReleasesBuffer
-run_model CharlotteTimedWait CharlotteTimedWait_small.cfg \
+run_model KnytosTimedWait KnytosTimedWait_small.cfg \
     ArmWait PublishWork DeliverWake TimerFire Consume
-run_expected_violation CharlotteTimedWait CharlotteTimedWait_unsafe.cfg \
+run_expected_violation KnytosTimedWait KnytosTimedWait_unsafe.cfg \
     TimeoutObservedNoWork UnsafeTimerFire
-run_model CharlotteCheckedWait CharlotteCheckedWait_small.cfg \
+run_model KnytosCheckedWait KnytosCheckedWait_small.cfg \
     BeginWait PrepareWatchdog RejectWatchdog PrepareSource RejectSource \
     Register PublishPark PublishTerminal ChangeEpisode Wake UnrelatedWake \
     Recheck ObserveTerminal AdvanceTime Abandon
-run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_rejection_unsafe.cfg \
+run_expected_violation KnytosCheckedWait KnytosCheckedWait_rejection_unsafe.cfg \
     PendingRetainsOwnerAndLoan UnsafeRejectedRelease
-run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_replay_unsafe.cfg \
+run_expected_violation KnytosCheckedWait KnytosCheckedWait_replay_unsafe.cfg \
     OneSubmission UnsafeReplay
-run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_deadline_unsafe.cfg \
+run_expected_violation KnytosCheckedWait KnytosCheckedWait_deadline_unsafe.cfg \
     DeadlineUnchanged UnsafeRestartDeadline
-run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_result_unsafe.cfg \
+run_expected_violation KnytosCheckedWait KnytosCheckedWait_result_unsafe.cfg \
     ResultNeedsTerminalProof UnsafeWakeAdoptsResult
-run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_park_unsafe.cfg \
+run_expected_violation KnytosCheckedWait KnytosCheckedWait_park_unsafe.cfg \
     ParkedTerminalHasWake UnsafeParkWithoutRecheck
-run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_timeout_unsafe.cfg \
+run_expected_violation KnytosCheckedWait KnytosCheckedWait_timeout_unsafe.cfg \
     TimeoutRespectsDeadline UnsafeAdmissionTimeout
-run_model CharlotteScheduler CharlotteScheduler_small.cfg \
+run_model KnytosScheduler KnytosScheduler_small.cfg \
     Spawn Admit Dispatch Preempt Block Wake SwitchOff Migrate \
     RequestRemoteAbort RetireRemoteAbort AbortNotRunning SelfAbort Reap \
     BeginDomainAbort DestroyAddressSpace
-run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
+run_expected_violation KnytosScheduler KnytosScheduler_unsafe.cfg \
     ReapOnlyOffCpu UnsafeRemoteAbort
-run_expected_violation CharlotteScheduler CharlotteScheduler_domain_abort_unsafe.cfg \
+run_expected_violation KnytosScheduler KnytosScheduler_domain_abort_unsafe.cfg \
     AbortingThreadsDoomed UnsafeSpawnDuringAbort
-run_model CharlotteStackGrowth CharlotteStackGrowth_small.cfg \
+run_model KnytosStackGrowth KnytosStackGrowth_small.cfg \
     Fault Grow Kill Exit
-run_expected_violation CharlotteStackGrowth \
-    CharlotteStackGrowth_grow_unsafe.cfg \
+run_expected_violation KnytosStackGrowth \
+    KnytosStackGrowth_grow_unsafe.cfg \
     CommittedWithinBudget UnsafeGrowOverBudget
-run_expected_violation CharlotteStackGrowth \
-    CharlotteStackGrowth_leak_unsafe.cfg \
+run_expected_violation KnytosStackGrowth \
+    KnytosStackGrowth_leak_unsafe.cfg \
     DeadDomainsReleaseFrames UnsafeKillWithoutRelease
-run_model CharlotteThreadJoin CharlotteThreadJoin_small.cfg \
+run_model KnytosThreadJoin KnytosThreadJoin_small.cfg \
     Spawn RejectExhaustedSpawn CaptureHandle Exit ObserveJoin Reap
-run_expected_violation CharlotteThreadJoin CharlotteThreadJoin_unsafe.cfg \
+run_expected_violation KnytosThreadJoin KnytosThreadJoin_unsafe.cfg \
     ObserverMatchesCapturedHandle UnsafeObserveJoin
-run_expected_violation CharlotteThreadJoin CharlotteThreadJoin_wrap_unsafe.cfg \
+run_expected_violation KnytosThreadJoin KnytosThreadJoin_wrap_unsafe.cfg \
     GenerationNeverReused UnsafeSpawnWrap
-run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
+run_model KnytosAddressSpace KnytosAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
-run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \
+run_expected_violation KnytosAddressSpace KnytosAddressSpace_unsafe.cfg \
     ReplacementSurvivesStaleHandle UnsafeStaleClose
-run_model CharlotteRootRetirement CharlotteRootRetirement_small.cfg \
+run_model KnytosRootRetirement KnytosRootRetirement_small.cfg \
     Allocate Acquire FinishOperation AbandonOperation BeginClose ClosePending \
     FinishCleanup Detach BeginInvalidation InvalidationFailed RetainForRetry \
     ClaimRetry InvalidationSucceeded StartPhysical FinishPhysical Abandon
-run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_lease_unsafe.cfg \
+run_expected_violation KnytosRootRetirement KnytosRootRetirement_lease_unsafe.cfg \
     LeasesRetainRoot UnsafeDetachWithLease
-run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_release_unsafe.cfg \
+run_expected_violation KnytosRootRetirement KnytosRootRetirement_release_unsafe.cfg \
     PhysicalRequiresInvalidation UnsafeReleaseBeforeInvalidation
-run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_physical_unsafe.cfg \
+run_expected_violation KnytosRootRetirement KnytosRootRetirement_physical_unsafe.cfg \
     PhysicalOnce UnsafeRetryPhysical
-run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_abandon_unsafe.cfg \
+run_expected_violation KnytosRootRetirement KnytosRootRetirement_abandon_unsafe.cfg \
     TerminalAbandonment UnsafeAdoptAbandoned
-run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_refund_unsafe.cfg \
+run_expected_violation KnytosRootRetirement KnytosRootRetirement_refund_unsafe.cfg \
     BackingCharged UnsafeRefundPartial
-run_model CharlotteHardwareAsid CharlotteHardwareAsid_small.cfg \
+run_model KnytosHardwareAsid KnytosHardwareAsid_small.cfg \
     Allocate CacheTranslation Retire Invalidate
-run_expected_violation CharlotteHardwareAsid CharlotteHardwareAsid_unsafe.cfg \
+run_expected_violation KnytosHardwareAsid KnytosHardwareAsid_unsafe.cfg \
     NoDirtyTagReuse UnsafeAllocate
-run_model CharlotteInterruptRoute CharlotteInterruptRoute_small.cfg \
+run_model KnytosInterruptRoute KnytosInterruptRoute_small.cfg \
     Bind QueueWake Unbind DrainSafe
-run_expected_violation CharlotteInterruptRoute CharlotteInterruptRoute_unsafe.cfg \
+run_expected_violation KnytosInterruptRoute KnytosInterruptRoute_unsafe.cfg \
     NoStaleWakeDelivery DrainUnsafe
-run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
+run_model KnytosServiceLifecycle KnytosServiceLifecycle_small.cfg \
     StageTrusted StageUntrusted RejectUntrustedLoad Load Start Prepare \
     PublishLocal Activate RejectStaleActivate Lookup ClearLookup \
     FencedUnregister RejectStaleUnregister CleanupLocal RequestStop Exit DomainAbort Reap Teardown
-run_expected_violation CharlotteServiceLifecycle CharlotteServiceLifecycle_unsafe.cfg \
+run_expected_violation KnytosServiceLifecycle KnytosServiceLifecycle_unsafe.cfg \
     ReplacementSurvivesStaleUnregister UnsafeStaleUnregister
-run_model CharlotteCapability CharlotteCapability_small.cfg \
+run_model KnytosCapability KnytosCapability_small.cfg \
     Allocate Remove DelegateCopy BeginMove CommitMove RollbackMove CloseAddressSpace
-run_model CharlotteAuthorization CharlotteAuthorization_small.cfg \
+run_model KnytosAuthorization KnytosAuthorization_small.cfg \
     PublishService ReplaceService UnpublishService SetPolicy IssueTicket \
     CancelTicket Redeem CloseCapability
-run_expected_violation CharlotteAuthorization \
-    CharlotteAuthorization_policy_unsafe.cfg \
+run_expected_violation KnytosAuthorization \
+    KnytosAuthorization_policy_unsafe.cfg \
     PolicyMutationAuthorized UnsafeSetPolicy
-run_expected_violation CharlotteAuthorization \
-    CharlotteAuthorization_principal_unsafe.cfg \
+run_expected_violation KnytosAuthorization \
+    KnytosAuthorization_principal_unsafe.cfg \
     MintBoundToPrincipal UnsafeRedeemOtherPrincipal
-run_expected_violation CharlotteAuthorization \
-    CharlotteAuthorization_policy_version_unsafe.cfg \
+run_expected_violation KnytosAuthorization \
+    KnytosAuthorization_policy_version_unsafe.cfg \
     MintUsesCurrentPolicy UnsafeRedeemStalePolicy
-run_expected_violation CharlotteAuthorization \
-    CharlotteAuthorization_generation_unsafe.cfg \
+run_expected_violation KnytosAuthorization \
+    KnytosAuthorization_generation_unsafe.cfg \
     MintTargetsCurrentBinding UnsafeRedeemStaleBinding
-run_expected_violation CharlotteAuthorization \
-    CharlotteAuthorization_rights_unsafe.cfg \
+run_expected_violation KnytosAuthorization \
+    KnytosAuthorization_rights_unsafe.cfg \
     NoRightsAmplification UnsafeAmplifyRights
-run_model CharlotteDMA CharlotteDMA_small.cfg \
+run_model KnytosDMA KnytosDMA_small.cfg \
     CreateMemory CreateDomain CpuMap CpuUnmap BeginLoan EndLoan BeginMap \
     CommitMap QuarantineMap FailMap RevokeMap ReleasePin \
     BeginDestroy AcknowledgeDestroy QuarantineDestroy FinalizeDomain \
     CloseMemory ExitDriver ReclaimMemory
-run_expected_violation CharlotteDMA CharlotteDMA_unsafe.cfg \
+run_expected_violation KnytosDMA KnytosDMA_unsafe.cfg \
     ExclusiveDmaHasNoCpuAuthority UnsafeBeginExclusiveMap
-run_model CharlotteDmaOperation CharlotteDmaOperation_small.cfg \
+run_model KnytosDmaOperation KnytosDmaOperation_small.cfg \
     BeginMap ClaimMap PrepareInterest RejectSourcePreparation RejectContext \
     LinkInterest ReadyDuringPreparation RejectWaiter Park ObserveClosedSource \
     RestoreUnit NotifySource CompetingClaim AbandonExternal CleanupUnstarted \
@@ -412,148 +412,148 @@ run_model CharlotteDmaOperation CharlotteDmaOperation_small.cfg \
     RejectUnmapAdmission ClaimUnmap FinishUnmap CompleteUnmapPublic \
     RejectUnmapPublicCompletion CpuUnmapFailure CpuUnmapSuccess \
     FailedSharedCpuUnmap FreshCpuMap PrepareLocalDrop DropLocal ReleaseBacking RejectRootClose Abandon
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_cell_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_cell_unsafe.cfg \
     ClaimNeedsCompleteUnit UnsafeClaimDetachedCell
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_readiness_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_readiness_unsafe.cfg \
     ReadinessIsNotCompletion UnsafeReadinessCompletes
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_preparation_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_preparation_unsafe.cfg \
     PreclaimRetainsPreparation UnsafeRejectDropsPreparation
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_map_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_map_unsafe.cfg \
     MapSubmittedOnce UnsafeReplayMap
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_rearm_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_rearm_unsafe.cfg \
     StartedFailureNotRearmed UnsafeRearmStartedUnmap
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_drop_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_drop_unsafe.cfg \
     UncertainAttemptNotResubmitted UnsafeDropResubmits
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_confirmation_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_confirmation_unsafe.cfg \
     ConfirmationSticky UnsafeForgetDmaConfirmation
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_access_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_access_unsafe.cfg \
     FailedSharedRestricted UnsafeFailedSharedAccess
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_cpu_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_cpu_unsafe.cfg \
     PossibleDmaRetainsBacking UnsafeCpuUnmapDischargesDma
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_abandon_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_abandon_unsafe.cfg \
     AbandonmentRetainsOwner UnsafeAbandonReleases
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_context_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_context_unsafe.cfg \
     WaitNeedsQualifiedContext UnsafeWaitMasked
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_public_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_public_unsafe.cfg \
     PublicRejectionRetainsAttempt UnsafeFinalBusyRearms
-run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_remap_unsafe.cfg \
+run_expected_violation KnytosDmaOperation KnytosDmaOperation_remap_unsafe.cfg \
     CpuOwnerNeedsNoDma UnsafeCoherentRemap
-run_model CharlotteRaft CharlotteRaft_small.cfg \
+run_model KnytosRaft KnytosRaft_small.cfg \
     StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart
-run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \
+run_model KnytosRaftLog KnytosRaftLog_small.cfg \
     Elect AppendLeader ReplicateOne CommitLeader PropagateCommit Crash Restart
-run_model CharlotteRaftResponse CharlotteRaftResponse_small.cfg \
+run_model KnytosRaftResponse KnytosRaftResponse_small.cfg \
     CaptureOldReply ReplacePrefix Reelect Replicate Acknowledge Failure \
     RejectOld RejectInvalid Commit ObserveHigherTerm
-run_expected_violation CharlotteRaftResponse \
-    CharlotteRaftResponse_oldterm_unsafe.cfg \
+run_expected_violation KnytosRaftResponse \
+    KnytosRaftResponse_oldterm_unsafe.cfg \
     CommitHasCurrentPrefix UnsafeOldTermAck
-run_expected_violation CharlotteRaftResponse \
-    CharlotteRaftResponse_regress_unsafe.cfg \
+run_expected_violation KnytosRaftResponse \
+    KnytosRaftResponse_regress_unsafe.cfg \
     ConfirmedProgressRetained UnsafeRegressSuccess
-run_expected_violation CharlotteRaftResponse \
-    CharlotteRaftResponse_backoff_unsafe.cfg \
+run_expected_violation KnytosRaftResponse \
+    KnytosRaftResponse_backoff_unsafe.cfg \
     BackoffRespectsConfirmedPrefix UnsafeBackoff
-run_expected_violation CharlotteRaftResponse \
-    CharlotteRaftResponse_invalid_unsafe.cfg \
+run_expected_violation KnytosRaftResponse \
+    KnytosRaftResponse_invalid_unsafe.cfg \
     AcknowledgementsHaveProof UnsafeInvalidCredit
-run_model CharlotteRaftRead CharlotteRaftRead_small.cfg \
+run_model KnytosRaftRead KnytosRaftRead_small.cfg \
     Elect AdmitRead CaptureReply ReceiveOldPrefix CommitQuorum DeliverReply Apply Read RejectRead \
     CancelRead ChangeLeader StepDown ChangeEpoch ReplaceDomain
-run_expected_violation CharlotteRaftRead CharlotteRaftRead_commit_unsafe.cfg \
+run_expected_violation KnytosRaftRead KnytosRaftRead_commit_unsafe.cfg \
     ReadHasCurrentCommit UnsafeReadBeforeCommit
-run_expected_violation CharlotteRaftRead CharlotteRaftRead_apply_unsafe.cfg \
+run_expected_violation KnytosRaftRead KnytosRaftRead_apply_unsafe.cfg \
     ReadHasAppliedCommit UnsafeReadBeforeApply
-run_expected_violation CharlotteRaftRead CharlotteRaftRead_lease_unsafe.cfg \
+run_expected_violation KnytosRaftRead KnytosRaftRead_lease_unsafe.cfg \
     ReadHasFenceProof UnsafeReceiveLease
-run_expected_violation CharlotteRaftRead CharlotteRaftRead_binding_unsafe.cfg \
+run_expected_violation KnytosRaftRead KnytosRaftRead_binding_unsafe.cfg \
     ReadBoundToAdmission UnsafeReadBinding
-run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
+run_model KnytosRaftMembership KnytosRaftMembership_small.cfg \
     Elect ElectNextOnly SubmitJoint Replicate CommitJoint SubmitFinalize \
     RejectLaggingFinalize CommitFinalize Crash Restart
-run_expected_violation CharlotteRaftMembership \
-    CharlotteRaftMembership_beforecatchup_unsafe.cfg \
+run_expected_violation KnytosRaftMembership \
+    KnytosRaftMembership_beforecatchup_unsafe.cfg \
     ProposedMembersCaughtUp UnsafeFinalizeBeforeCatchUp
-run_expected_violation CharlotteRaftMembership \
-    CharlotteRaftMembership_learnerleader_unsafe.cfg \
+run_expected_violation KnytosRaftMembership \
+    KnytosRaftMembership_learnerleader_unsafe.cfg \
     LeaderIsEligible UnsafeFinalizeLearnerLeader
-run_expected_violation CharlotteRaftMembership \
-    CharlotteRaftMembership_oldonly_unsafe.cfg \
+run_expected_violation KnytosRaftMembership \
+    KnytosRaftMembership_oldonly_unsafe.cfg \
     FinalizationHasBothQuorums UnsafeFinalizeOldOnly
-run_model CharlotteRaftJoin CharlotteRaftJoin_small.cfg \
+run_model KnytosRaftJoin KnytosRaftJoin_small.cfg \
     Elect BeginJoining Crash Restart SubmitJoin CommitJoin ReplicateToJoiner SubmitJoint CommitJoint
-run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_unsafe.cfg \
+run_expected_violation KnytosRaftJoin KnytosRaftJoin_unsafe.cfg \
     JoiningAcceptsOnlySelectedAnchor UnsafeReplicateToJoiner
-run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_restart_unsafe.cfg \
+run_expected_violation KnytosRaftJoin KnytosRaftJoin_restart_unsafe.cfg \
     RestartPreservesAdmission UnsafeRestartForgetsAdmission
-run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
+run_model KnytosRaftSnapshot KnytosRaftSnapshot_small.cfg \
     AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
     DiscardStale Crash Restart
-run_model CharlotteRaftStream CharlotteRaftStream_small.cfg \
+run_model KnytosRaftStream KnytosRaftStream_small.cfg \
     BeginReceive RestartOffsetZero ChangeTerm RecognizeLeader ReceiveChunk \
     CancelReceive RejectStale RejectLeader RejectOffset RejectBoundary
-run_expected_violation CharlotteRaftStream CharlotteRaftStream_owner_unsafe.cfg \
+run_expected_violation KnytosRaftStream KnytosRaftStream_owner_unsafe.cfg \
     InstalledSingleOwner ReceiveChunk
-run_expected_violation CharlotteRaftStream CharlotteRaftStream_offset_unsafe.cfg \
+run_expected_violation KnytosRaftStream KnytosRaftStream_offset_unsafe.cfg \
     InstalledInOrder ReceiveChunk
-run_model CharlotteSnapshotRestore CharlotteSnapshotRestore_small.cfg \
+run_model KnytosSnapshotRestore KnytosSnapshotRestore_small.cfg \
     ReadHeader ParseSections RejectUnsupported RejectMalformed Validate Restore \
     Persist DefinitePersistenceFailure AmbiguousPersistenceFailure \
     ActivateStreamJoin ActivateStreamRetained \
     ActivateRecoveryJoin ActivateRecoveryRetained Crash BeginRecovery
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_application_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_application_unsafe.cfg \
     RejectionPreservesApplication UnsafeRejectApplication
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_durable_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_durable_unsafe.cfg \
     RejectionPreservesDurable UnsafeRejectDurable
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_progress_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_progress_unsafe.cfg \
     RejectionPreservesProgress UnsafeRejectProgress
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_membership_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_membership_unsafe.cfg \
     RejectionPreservesMembership UnsafeRejectMembership
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_join_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_join_unsafe.cfg \
     RejectionPreservesJoin UnsafeRejectJoin
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_exposure_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_exposure_unsafe.cfg \
     RecoveryExposureRequiresRestore UnsafeExposeRecovery
-run_expected_violation CharlotteSnapshotRestore \
-    CharlotteSnapshotRestore_ordering_unsafe.cfg \
+run_expected_violation KnytosSnapshotRestore \
+    KnytosSnapshotRestore_ordering_unsafe.cfg \
     PublicationRequiresRestore UnsafePublishBeforeRestore
-run_model CharlotteClusterIngress CharlotteClusterIngress_small.cfg \
+run_model KnytosClusterIngress KnytosClusterIngress_small.cfg \
     PublishReady WithdrawReady ReplaceDeployment CommitDrain BeginJoint \
     FinalizeJoint LearnRoute ForgetRoute InstallSnapshot StartNewFlow \
     ExpireLease ExistingFlowPacket DropStaleNewFlow DropUnretainedFlow \
     DropWithdrawnFlow DropDepartedBackend EndFlow
-run_expected_violation CharlotteClusterIngress \
-    CharlotteClusterIngress_stale_snapshot_unsafe.cfg \
+run_expected_violation KnytosClusterIngress \
+    KnytosClusterIngress_stale_snapshot_unsafe.cfg \
     NewFlowsRequireFreshLease UnsafeStartStaleFlow
-run_expected_violation CharlotteClusterIngress \
-    CharlotteClusterIngress_history_unsafe.cfg \
+run_expected_violation KnytosClusterIngress \
+    KnytosClusterIngress_history_unsafe.cfg \
     FlowBackendStable UnsafeFallbackExistingPacket
-run_expected_violation CharlotteClusterIngress \
-    CharlotteClusterIngress_readiness_unsafe.cfg \
+run_expected_violation KnytosClusterIngress \
+    KnytosClusterIngress_readiness_unsafe.cfg \
     CommittedPoliciesAreDerived UnsafeAdmitStaleReadiness
-run_model CharlottePlacementControl CharlottePlacementControl_small.cfg \
+run_model KnytosPlacementControl KnytosPlacementControl_small.cfg \
     Observe SelectCandidate Tick PressureMove RemoveEligibility ForcedMove Admit
-run_expected_violation CharlottePlacementControl \
-    CharlottePlacementControl_dwell_unsafe.cfg \
+run_expected_violation KnytosPlacementControl \
+    KnytosPlacementControl_dwell_unsafe.cfg \
     PressureRespectsStability UnsafeEarlyPressureMove
-run_expected_violation CharlottePlacementControl \
-    CharlottePlacementControl_reserve_unsafe.cfg \
+run_expected_violation KnytosPlacementControl \
+    KnytosPlacementControl_reserve_unsafe.cfg \
     ReservationsPreserveReserve UnsafeAdmit
-run_model CharlotteRemoteCall CharlotteRemoteCall_small.cfg \
+run_model KnytosRemoteCall KnytosRemoteCall_small.cfg \
     Start ReplaceTarget Execute RejectStale QueueReply DuplicateRequest \
     DeliverReply Timeout SettleTransport RetireUncertainSession Evict
-run_model CharlotteReliableMessage CharlotteReliableMessage_small.cfg \
+run_model KnytosReliableMessage KnytosReliableMessage_small.cfg \
     AbandonSession RestartService AcceptCurrentSession
-run_expected_violation CharlotteReliableMessage \
-    CharlotteReliableMessage_identity_unsafe.cfg \
+run_expected_violation KnytosReliableMessage \
+    KnytosReliableMessage_identity_unsafe.cfg \
     SessionIdentityUnique RestartService
-run_expected_violation CharlotteReliableMessage \
-    CharlotteReliableMessage_regression_unsafe.cfg \
+run_expected_violation KnytosReliableMessage \
+    KnytosReliableMessage_regression_unsafe.cfg \
     ReceiveSessionMonotonic AcceptDelayedSession
 
 if [[ "${selected_cases}" -eq 0 ]]; then

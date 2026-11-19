@@ -116,7 +116,7 @@ for that check passes; no source lint suppression is added. Actual mapping/CQ
 binding faults, malformed attached replies, saturated socket admission and a
 held real TCP/IP setup reply are not injected natively.
 
-`CharlotteDeploymentListener` checks two fixed positions and a two-tick setup
+`KnytosDeploymentListener` checks two fixed positions and a two-tick setup
 budget. The safe configuration explores 3,574 distinct states (6,709 generated),
 with graph depth 23. All nine required actions have positive total coverage.
 Three negative controls violate `AcceptedOnce`, `OriginalBudget` and

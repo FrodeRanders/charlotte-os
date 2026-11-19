@@ -240,12 +240,12 @@ exactly that slice to smoltcp. Invalid lengths and failed mappings close the
 returned object. A host test covers zero, MTU-boundary, oversized, and
 page-oversized lengths.
 
-`CharlotteEthDevice::receive` first calls `ipc_reply_poll`, discards its result
+`KnytosEthDevice::receive` first calls `ipc_reply_poll`, discards its result
 value, and then calls `ipc_reply_poll_with_memory` for the same pending call
 (`../../../crates/knytos-smoltcp`). Re-polling happens to work
 because the kernel retains and copies an observed `ReplyValue`, but it is
 redundant and, more importantly, the code discards the reply scalar that carries
-the actual frame length. `CharlotteRx::consume` consequently always presents
+the actual frame length. `KnytosRx::consume` consequently always presents
 2,048 bytes to smoltcp (`knytos-smoltcp/src/lib.rs:177-190`). Padding or stale
 page contents become part of the apparent Ethernet frame and the supplied size
 can exceed the adapter's advertised MTU.
@@ -254,7 +254,7 @@ Impact: receive traffic can be rejected as oversized or parsed with an invalid
 length; the adapter's compile success does not establish usable networking.
 
 Recommended correction: call only `ipc_reply_poll_with_memory`, retain its
-result length in `CharlotteRx`, validate it against the mapped object and MTU,
+result length in `KnytosRx`, validate it against the mapped object and MTU,
 and give smoltcp exactly that slice. Add a mock-syscall adapter test for pending,
 ready, malformed-length, and back-to-back receives.
 
@@ -749,7 +749,7 @@ keeps an otherwise quiet node able to start an election.
 
 ### Follow-up: modeled DMA teardown
 
-The executable `CharlotteDMA` model separates object pinning, translation
+The executable `KnytosDMA` model separates object pinning, translation
 publication, translation revocation, pin release, driver exit, and delayed
 memory reclamation. It requires an acknowledged aborting SMMU stream-table
 entry before a domain's mappings can release their pins.

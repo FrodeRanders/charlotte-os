@@ -1,4 +1,4 @@
------------------------ MODULE CharlotteAuthorization -----------------------
+----------------------- MODULE KnytosAuthorization -----------------------
 \* Target authorization contract for capability issuance. The policy engine
 \* and name catalog are logically separate even when one process implements
 \* both. A grant is bound to a subject, service generation, rights set, and

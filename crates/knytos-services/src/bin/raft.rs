@@ -14,7 +14,7 @@ use alloc::{
 };
 
 use knytos_graft::{
-    knytos::CharlotteTransport,
+    knytos::KnytosTransport,
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,
@@ -175,7 +175,7 @@ fn poll_peer_discovery(
     peer_id: &str,
     peer_name: u64,
     pending: &mut u64,
-    transport: &CharlotteTransport,
+    transport: &KnytosTransport,
 ) {
     if transport.has_peer(peer_id) {
         return;
@@ -246,7 +246,7 @@ fn fire_event(dns_conn: u64, event_name: &[u8]) -> u64 {
 /// service, while identity-based peers on the network segment route by MAC
 /// through the reliable-message layer. The graft node sees one transport.
 struct ServiceRaftTransport {
-    ns: Arc<CharlotteTransport>,
+    ns: Arc<KnytosTransport>,
     mac: Arc<RelmsgRaftTransport>,
 }
 
@@ -503,7 +503,7 @@ fn main(ctx: Context) -> ! {
         ),
     };
     config::write::<u32>(status::DURABLE, durable as u32);
-    let ns_transport = Arc::new(CharlotteTransport::new());
+    let ns_transport = Arc::new(KnytosTransport::new());
     let mac_transport = Arc::new(RelmsgRaftTransport::new(0));
     // Discovered link MAC, used to reject frames that are not addressed to
     // this node.

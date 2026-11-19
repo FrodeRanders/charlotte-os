@@ -1,4 +1,4 @@
-------------------------- MODULE CharlotteCapability -------------------------
+------------------------- MODULE KnytosCapability -------------------------
 \* Unified tagged, per-address-space object-capability namespace, including
 \* fresh delegation and same-handle transactional rollback.
 

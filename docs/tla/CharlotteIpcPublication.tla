@@ -1,4 +1,4 @@
------------------------ MODULE CharlotteIpcPublication -----------------------
+----------------------- MODULE KnytosIpcPublication -----------------------
 \* One owning-memory plus delegated-connection transaction. Shared authority
 \* publication and payload delivery are separate boundaries. Namespace identity
 \* is an account/generation pair even when numeric handles are reused.

@@ -5,7 +5,7 @@
 This follows the [IPC publication model](2026-10-18-ipc-publication-model.md)
 and [root/wait synchronization](2026-10-18-security-model-sync.md), reviewed
 against implementation `1c6963a2`. It adds
-[`CharlotteDmaOperation`](../../tla/CharlotteDmaOperation.tla), a safe bounded
+[`KnytosDmaOperation`](../../tla/KnytosDmaOperation.tla), a safe bounded
 configuration and thirteen required counterexamples. Source comparison also
 found a fresh CPU-remap gap with coherent DMA pins. The accompanying
 [correction and native regression](2026-10-18-coherent-dma-remap-fence.md)

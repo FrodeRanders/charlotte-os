@@ -1,5 +1,5 @@
----------------------- MODULE CharlotteSnapshotRestore ----------------------
-\* Application acceptance before Raft publication. CharlotteRaftSnapshot covers
+---------------------- MODULE KnytosSnapshotRestore ----------------------
+\* Application acceptance before Raft publication. KnytosRaftSnapshot covers
 \* chunks, suffixes and durable replacement; this model covers the omitted
 \* rejection boundary. Actions inside one handler do not imply reader isolation.
 \* exposed means this Raft caller can return/continue with its node. It does

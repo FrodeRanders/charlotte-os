@@ -1,4 +1,4 @@
--------------------- MODULE CharlottePrincipalBacking --------------------
+-------------------- MODULE KnytosPrincipalBacking --------------------
 \* Three charged footprints: object (one page), reserved stack capacity (two),
 \* and a private table (one). Heap/image billing follows the same unit policy.
 \* Three root slots

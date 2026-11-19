@@ -1,4 +1,4 @@
--------------------- MODULE CharlotteDeploymentClose --------------------
+-------------------- MODULE KnytosDeploymentClose --------------------
 \* Logical-close ownership only. The model starts with already owned sockets.
 \* ACK releases a client position, without granting physical cleanup authority.
 EXTENDS Naturals, FiniteSets

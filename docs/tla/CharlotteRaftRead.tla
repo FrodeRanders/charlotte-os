@@ -1,4 +1,4 @@
-------------------------- MODULE CharlotteRaftRead -------------------------
+------------------------- MODULE KnytosRaftRead -------------------------
 \* Fresh per-read log fences. Quorum/log/election validity is assumed from
 \* the other Raft layers. External authority may change without local notice.
 EXTENDS Naturals

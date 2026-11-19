@@ -1,4 +1,4 @@
--------------------------------- MODULE CharlotteIPC --------------------------------
+-------------------------------- MODULE KnytosIPC --------------------------------
 \* TLA+ model of Knytos IPC state machines.
 \*
 \* Covers: endpoints, connections, scalar send/call/receive/reply, reply tokens,

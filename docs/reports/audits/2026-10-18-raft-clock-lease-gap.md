@@ -82,7 +82,7 @@ time and a shorter lease do not associate a reply with a read's admission.
 
 ## Model qualification
 
-The existing [`CharlotteRaftRead`](../../tla/CharlotteRaftRead.tla) retains its
+The existing [`KnytosRaftRead`](../../tla/KnytosRaftRead.tla) retains its
 safe prerequisite projection: **50 generated states, 20 distinct states,
 depth 7**, with all nine required actions exercised. Its commit and application
 controls still violate their intended invariants.

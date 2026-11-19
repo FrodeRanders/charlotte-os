@@ -42,35 +42,35 @@ replacement must be explicitly designated again. This restriction does not
 authenticate remote Ethernet peers or define per-application VIP/port binding
 policy; those are separate controls.
 
-## The adapter (`CharlotteEthDevice`)
+## The adapter (`KnytosEthDevice`)
 
 ```rust
-struct CharlotteEthDevice {
+struct KnytosEthDevice {
     conn: u64,                     // connection cap to the NIC driver endpoint
     mtu:  usize,                   // 1500 for Ethernet
     rx:   VecDeque<Vec<u8>>,       // frames delivered through OP_FRAME
 }
 
-impl smoltcp::phy::Device for CharlotteEthDevice {
-    type RxToken = CharlotteRx;
-    type TxToken = CharlotteTx;
+impl smoltcp::phy::Device for KnytosEthDevice {
+    type RxToken = KnytosRx;
+    type TxToken = KnytosTx;
 
     fn receive(&mut self, _now) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let frame = self.rx.pop_front()?;
-        Some((CharlotteRx { frame }, CharlotteTx { conn: self.conn }))
+        Some((KnytosRx { frame }, KnytosTx { conn: self.conn }))
     }
 
     fn transmit(&mut self, _now) -> Option<Self::TxToken<'_>> {
-        Some(CharlotteTx { conn: self.conn })
+        Some(KnytosTx { conn: self.conn })
     }
 }
 ```
 
 The tokens do the actual I/O (smoltcp's consume contract):
 
-- `CharlotteRx` hands smoltcp the queued frame bytes directly (no mapping —
+- `KnytosRx` hands smoltcp the queued frame bytes directly (no mapping —
   the bytes were copied when `OP_FRAME` arrived).
-- `CharlotteTx` allocates a page, maps it at a scratch VA, lets smoltcp fill
+- `KnytosTx` allocates a page, maps it at a scratch VA, lets smoltcp fill
   it, moves it to the driver with `OP_SEND`, and reaps the driver's reply so
   the pending-call slot is recycled.
 
@@ -367,7 +367,7 @@ refresh. CQ draining is bounded to the ring capacity and IPC processing to 16
 requests before returning to shutdown checks, packet polling and reclamation.
 This is a cycle bound, not a per-client fairness guarantee.
 
-`CharlotteEthDevice::push_rx(&[u8])` admits at most 32 frames and 64 KiB of queued
+`KnytosEthDevice::push_rx(&[u8])` admits at most 32 frames and 64 KiB of queued
 payload. It checks both limits before copying, prepares allocations fallibly,
 and returns rejection on congestion. TCP/IP returns `ERR_WOULD_BLOCK` to the
 router for that frame and increments its drop counter. Slot/byte capacity

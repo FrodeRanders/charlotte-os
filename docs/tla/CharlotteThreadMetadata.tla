@@ -1,4 +1,4 @@
--------------------- MODULE CharlotteThreadMetadata --------------------
+-------------------- MODULE KnytosThreadMetadata --------------------
 \* One prepaid context/node bundle follows its captured principal through
 \* construction, publication, explicit disposal and actual node deallocation.
 \* Root retirement/reuse and abandonment do not refund storage. Byte/count

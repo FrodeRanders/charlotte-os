@@ -9,13 +9,13 @@
 //! receive slot is owned exclusively by the frouter, which demultiplexes
 //! frames by EtherType and delivers IP/ARP frames to the TCP/IP service via
 //! its `OP_FRAME` ingress.  The service copies each forwarded frame into
-//! [`CharlotteEthDevice::push_rx`]; `receive()` then hands those bytes to
+//! [`KnytosEthDevice::push_rx`]; `receive()` then hands those bytes to
 //! smoltcp.
 //!
 //! ## Usage
 //!
 //! ```ignore
-//! let mut device = CharlotteEthDevice::new(net_conn, 1500);
+//! let mut device = KnytosEthDevice::new(net_conn, 1500);
 //! let mut iface = smoltcp::iface::Interface::new(config, &mut device);
 //! loop {
 //!     // ... on socket::OP_FRAME: device.push_rx(&frame) ...
@@ -96,7 +96,7 @@ const TX_SCRATCH: usize = 0x0000_0000_00c0_1000;
 const TX_SCRATCH_BYTES: usize = 4096;
 const ETHERNET_HEADER_LEN: usize = 14;
 
-pub struct CharlotteEthDevice {
+pub struct KnytosEthDevice {
     /// Connection capability to the NIC driver endpoint.
     conn: u64,
     mtu: usize,
@@ -112,16 +112,16 @@ pub struct CharlotteEthDevice {
     allocate_tx: fn() -> Option<u64>,
 }
 
-pub struct CharlotteRx {
+pub struct KnytosRx {
     frame: alloc::vec::Vec<u8>,
 }
 
-pub struct CharlotteTx {
+pub struct KnytosTx {
     /// The NIC driver connection for sending.
     conn: u64,
 }
 
-impl CharlotteEthDevice {
+impl KnytosEthDevice {
     /// Create a new adapter.  `conn` is a connection cap to the NIC driver
     /// endpoint; `mtu` comes from `OP_STATUS`.
     pub fn new(conn: u64, mtu: usize) -> Self {
@@ -202,13 +202,13 @@ impl CharlotteEthDevice {
     }
 }
 
-impl Device for CharlotteEthDevice {
+impl Device for KnytosEthDevice {
     type RxToken<'a>
-        = CharlotteRx
+        = KnytosRx
     where
         Self: 'a;
     type TxToken<'a>
-        = CharlotteTx
+        = KnytosTx
     where
         Self: 'a;
 
@@ -223,10 +223,10 @@ impl Device for CharlotteEthDevice {
         }
         let frame = self.take_rx()?;
         Some((
-            CharlotteRx {
+            KnytosRx {
                 frame,
             },
-            CharlotteTx {
+            KnytosTx {
                 conn: self.conn,
             },
         ))
@@ -236,7 +236,7 @@ impl Device for CharlotteEthDevice {
         if !self.ensure_tx_scratch() {
             return None;
         }
-        Some(CharlotteTx {
+        Some(KnytosTx {
             conn: self.conn,
         })
     }
@@ -249,7 +249,7 @@ impl Device for CharlotteEthDevice {
     }
 }
 
-impl Drop for CharlotteEthDevice {
+impl Drop for KnytosEthDevice {
     fn drop(&mut self) {
         if let Some(cap) = self.tx_scratch.take() {
             let _ = memory_unmap(cap);
@@ -273,7 +273,7 @@ fn reserve_tx_scratch() -> Option<u64> {
     Some(cap)
 }
 
-impl RxToken for CharlotteRx {
+impl RxToken for KnytosRx {
     fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
@@ -282,7 +282,7 @@ impl RxToken for CharlotteRx {
     }
 }
 
-impl TxToken for CharlotteTx {
+impl TxToken for KnytosTx {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
@@ -333,10 +333,10 @@ mod tests {
         RxToken,
     };
 
-    use super::CharlotteEthDevice;
+    use super::KnytosEthDevice;
 
-    fn device_with_scratch(conn: u64, mtu: usize) -> CharlotteEthDevice {
-        let mut device = CharlotteEthDevice::with_tx_allocator(conn, mtu, || None);
+    fn device_with_scratch(conn: u64, mtu: usize) -> KnytosEthDevice {
+        let mut device = KnytosEthDevice::with_tx_allocator(conn, mtu, || None);
         // Synthetic reservation: the host fixture cannot execute the raw
         // mapping syscalls, but the token path only checks presence.
         device.tx_scratch = Some(0);
@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn sustained_ingress_keeps_count_and_byte_bounds_and_recovers_capacity() {
         for size in [64, 4096] {
-            let mut device = CharlotteEthDevice::new(0, 1500);
+            let mut device = KnytosEthDevice::new(0, 1500);
             let frame = alloc::vec![0x55; size];
             let capacity = super::RX_QUEUE_MAX_FRAMES.min(super::RX_QUEUE_MAX_BYTES / size);
             for _ in 0..capacity {
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn missing_tx_scratch_applies_backpressure_without_a_token() {
         let now = smoltcp::time::Instant::from_millis(0);
-        let mut device = CharlotteEthDevice::with_tx_allocator(0, 1500, || None);
+        let mut device = KnytosEthDevice::with_tx_allocator(0, 1500, || None);
         device.push_rx(&alloc::vec![7u8; 64]);
         // No reservation means no token: the frame stays queued and no
         // zero-length buffer can reach a smoltcp closure.
@@ -413,12 +413,12 @@ mod tests {
 
     #[test]
     fn advertised_mtu_never_exceeds_the_reserved_frame() {
-        let oversized = CharlotteEthDevice::with_tx_allocator(0, 9000, || None);
+        let oversized = KnytosEthDevice::with_tx_allocator(0, 9000, || None);
         assert_eq!(
             oversized.capabilities().max_transmission_unit,
             super::TX_SCRATCH_BYTES - super::ETHERNET_HEADER_LEN
         );
-        let ordinary = CharlotteEthDevice::with_tx_allocator(0, 1500, || None);
+        let ordinary = KnytosEthDevice::with_tx_allocator(0, 1500, || None);
         assert_eq!(ordinary.capabilities().max_transmission_unit, 1500);
     }
 

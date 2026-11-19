@@ -113,8 +113,8 @@ without attributing earlier historical failures.
 ## Formal qualification and limits
 
 Both focused safe configurations and all **seven expected counterexamples** pass
-(the harness checks nine cases). `CharlotteIpcTransaction` explores **26 distinct /
-71 generated states**, depth **11**; `CharlotteRootRetirement` explores
+(the harness checks nine cases). `KnytosIpcTransaction` explores **26 distinct /
+71 generated states**, depth **11**; `KnytosRootRetirement` explores
 **2,978 / 3,733**, depth **33**. Required safe actions execute; negative controls
 violate their intended invariant through the named unsafe action.
 

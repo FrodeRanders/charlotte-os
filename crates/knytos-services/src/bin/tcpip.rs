@@ -70,7 +70,7 @@ use knytos_services::{
 use knytos_launch::tcpip_status as status;
 use knytos_protocol_net::decode_status;
 use knytos_smoltcp::{
-    CharlotteEthDevice,
+    KnytosEthDevice,
     MAX_IPC_REQUESTS_PER_CYCLE,
     ReactorClock,
 };
@@ -448,9 +448,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     config::write::<u32>(status::STAGE, 5);
 
-    // CharlotteEthDevice is the low-level smoltcp/protocol adapter. It borrows
+    // KnytosEthDevice is the low-level smoltcp/protocol adapter. It borrows
     // this owned connection handle for the lifetime of the serving scope.
-    let mut device = CharlotteEthDevice::new(net_conn.as_raw(), mtu);
+    let mut device = KnytosEthDevice::new(net_conn.as_raw(), mtu);
     let hw = HardwareAddress::Ethernet(smoltcp::wire::EthernetAddress(mac));
     let mut cfg = Config::new(hw);
     // Entropy is obtained before the interface emits any protocol state.

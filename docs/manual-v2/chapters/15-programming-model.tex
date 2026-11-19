@@ -352,7 +352,7 @@ When writing code that uses Sitas on Knytos:
 
 \begin{itemize}
     \item A Sitas shard is an LP-affine Knytos user thread.
-    \item \texttt{CharlotteReactor::new(lp\_id)} binds a reactor to the calling
+    \item \texttt{KnytosReactor::new(lp\_id)} binds a reactor to the calling
         shard's LP.
     \item Async operations return kernel-owned completion handles. A completion
         handle is opaque: wait on it, poll it, close it, or pass it through a

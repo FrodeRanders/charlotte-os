@@ -106,8 +106,8 @@ rejections are not guest panics or model counterexamples.
 ## Formal qualification and remaining work
 
 Both focused safe configurations and all **seven expected counterexamples**
-pass their harness checks. `CharlotteIpcTransaction` explores **26 distinct /
-71 generated states**, depth **11**; `CharlotteRootRetirement` explores
+pass their harness checks. `KnytosIpcTransaction` explores **26 distinct /
+71 generated states**, depth **11**; `KnytosRootRetirement` explores
 **2,978 / 3,733**, depth **33**. Required safe actions execute, and unsafe cases
 violate their named invariants through the intended actions.
 

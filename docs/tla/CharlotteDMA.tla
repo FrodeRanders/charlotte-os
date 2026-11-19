@@ -1,4 +1,4 @@
------------------------------- MODULE CharlotteDMA ------------------------------
+------------------------------ MODULE KnytosDMA ------------------------------
 \* DMA memory pinning and Arm SMMUv3 domain teardown.  The model deliberately
 \* separates translation revocation from pin release: frames must remain pinned
 \* whenever hardware might still translate to them.

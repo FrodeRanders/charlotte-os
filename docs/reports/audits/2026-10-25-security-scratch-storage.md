@@ -139,8 +139,8 @@ network/probe failures.
 ## Formal qualification and remaining work
 
 Both focused safe configurations and all **seven expected counterexamples**
-pass their harness checks. `CharlotteIpcTransaction` explores **26 distinct /
-71 generated states**, depth **11**; `CharlotteRootRetirement` explores
+pass their harness checks. `KnytosIpcTransaction` explores **26 distinct /
+71 generated states**, depth **11**; `KnytosRootRetirement` explores
 **2,978 / 3,733**, depth **33**. Required safe actions execute; negative cases
 violate their named invariant through its intended unsafe action.
 

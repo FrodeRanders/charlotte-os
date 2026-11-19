@@ -236,7 +236,7 @@ index 8448c48..6488dbc 100644
      /// this queue so per-shard rings receive isolated, non-stealing wakes.
      cq_id: u32,
  }
-@@ -452,6 +555,9 @@ impl ReactorBackend for CharlotteReactor {
+@@ -452,6 +555,9 @@ impl ReactorBackend for KnytosReactor {
          _write: &[u64],
          timeout: Option<Duration>,
      ) -> Result<CharlEvent, sitas_core::io::ErrorKind> {
@@ -246,7 +246,7 @@ index 8448c48..6488dbc 100644
          loop {
              // Drain whatever the kernel has already posted — no syscall needed.
              let pending = self.cq().pending();
-@@ -471,32 +577,14 @@ impl ReactorBackend for CharlotteReactor {
+@@ -471,32 +577,14 @@ impl ReactorBackend for KnytosReactor {
              // Ring empty: block in the kernel until a completion entry is
              // posted, a peer posts CQ_WAKE to this shard's queue, or the
              // deadline fires.
@@ -286,7 +286,7 @@ index 8448c48..6488dbc 100644
          }
      }
  }
-@@ -541,13 +629,15 @@ impl ShardRuntime for CharlotteReactor {
+@@ -541,13 +629,15 @@ impl ShardRuntime for KnytosReactor {
      }
  
      fn sleep(&self, duration: Duration) {
@@ -309,7 +309,7 @@ index 8448c48..6488dbc 100644
      }
  
      fn parker(&self) -> alloc::sync::Arc<dyn ShardParker> {
-@@ -608,17 +698,15 @@ impl<T> CharlotteJoinHandle<T> {
+@@ -608,17 +698,15 @@ impl<T> KnytosJoinHandle<T> {
  
  /// Parks and wakes shards through the kernel completion queue.
  ///
@@ -330,10 +330,10 @@ index 8448c48..6488dbc 100644
 +/// consumes a shared work-generation cursor, so a competing reader can consume
 +/// that generation. Private per-shard reactors use their own rings and can wait
 +/// without a timer. Removing this backstop needs a per-waiter wake contract.
- pub struct CharlotteParker {
+ pub struct KnytosParker {
      cq_id: u32,
  }
-@@ -642,13 +730,48 @@ impl ShardParker for CharlotteParker {
+@@ -642,13 +730,48 @@ impl ShardParker for KnytosParker {
                  .clamp(1, PARK_INTERVAL_MS),
              None => PARK_INTERVAL_MS,
          };

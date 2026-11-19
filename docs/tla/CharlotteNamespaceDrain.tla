@@ -1,4 +1,4 @@
---------------------- MODULE CharlotteNamespaceDrain ---------------------
+--------------------- MODULE KnytosNamespaceDrain ---------------------
 \* One poll of an already-fenced namespace, with nonreused token identities.
 \* Peer completion assumes its own typed cleanup proof. Root/loan/backing
 \* ownership and physical completion belong to the enclosing retirement model.

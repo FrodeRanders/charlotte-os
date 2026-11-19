@@ -1,4 +1,4 @@
----------------------- MODULE CharlotteServiceLifecycle ----------------------
+---------------------- MODULE KnytosServiceLifecycle ----------------------
 \* Signed service loading plus the replicated two-phase name lifecycle,
 \* generation-fenced removal, scheduler exit/reaping, and AS teardown.
 

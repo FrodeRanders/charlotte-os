@@ -1,4 +1,4 @@
------------------------- MODULE CharlotteStackGrowth -------------------------
+------------------------ MODULE KnytosStackGrowth -------------------------
 \* Demand-grown protected-domain stacks.
 \*
 \* A fault below the committed stack extends it by one page while the domain's

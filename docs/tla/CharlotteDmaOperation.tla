@@ -1,4 +1,4 @@
-------------------------- MODULE CharlotteDmaOperation -------------------------
+------------------------- MODULE KnytosDmaOperation -------------------------
 \* One map followed by owned unmap/CPU teardown. Availability, backend
 \* acknowledgement and public completion are distinct proof boundaries.
 

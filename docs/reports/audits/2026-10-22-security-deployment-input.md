@@ -74,7 +74,7 @@ central-store flow checks upload, atomic release admission, pull, verification,
 launch and named readiness. Public development keys and plaintext fixture
 transport qualify behavior only; they do not establish production enrollment.
 
-`CharlotteDeploymentInput` adds a finite four-slot safety projection. It checks
+`KnytosDeploymentInput` adds a finite four-slot safety projection. It checks
 aggregate bytes, unchanged budgets and a ready healthy input's intervening turn
 bound. The safe configuration explores 684 states at depth 17. Keeping a busy
 input's cursor violates `HealthyTurnBound`; restarting a request budget violates

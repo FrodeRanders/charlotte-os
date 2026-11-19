@@ -1,4 +1,4 @@
------------------------- MODULE CharlotteRaftSnapshot ------------------------
+------------------------ MODULE KnytosRaftSnapshot ------------------------
 \* Crash consistency of chunked snapshot reception, atomic durable replacement,
 \* suffix retention, activation, and restart recovery.
 
