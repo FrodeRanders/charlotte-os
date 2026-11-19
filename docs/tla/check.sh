@@ -16,6 +16,7 @@ selected_module="${2:-}"
 selected_cases=0
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python3 "${script_dir}/check-inputs.py" "${selected_module}"
 model_dir="$(mktemp -d "${TMPDIR:-/tmp}/knytos-tla.XXXXXX")"
 trap 'rm -rf "${model_dir}"' EXIT
 
@@ -560,3 +561,4 @@ if [[ "${selected_cases}" -eq 0 ]]; then
     echo "error: no configurations registered for ${selected_module}" >&2
     exit 1
 fi
+echo ">>> TLC passed: ${selected_cases} configurations"

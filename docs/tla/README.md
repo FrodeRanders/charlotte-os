@@ -148,6 +148,8 @@ module rejects without running configurations. CI uses the unfiltered suite.
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
+- first checks every selected module declaration and configuration filename with
+  exact capitalization, including on case-insensitive filesystems;
 - runs all forty-seven complete fast configurations and 143 expected-failure
   principal-history, thread-metadata, principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
@@ -155,6 +157,11 @@ Alternatively, set `TLA2TOOLS_JAR`. The script:
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
+
+The runner requires Java and Python 3. To validate filenames and module headers
+without running TLC, use `python3 docs/tla/check-inputs.py` (optionally followed
+by one module name). Module/configuration filenames must match the runner's
+capitalization exactly; record case-only Git renames explicitly on macOS.
 
 The `TLA+ safety models` CI job runs this same harness with TLA+ Tools v1.7.4.
 It pins and verifies the tools JAR by SHA-256 before checking both the safe
