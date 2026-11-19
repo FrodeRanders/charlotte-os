@@ -8,6 +8,7 @@ extern crate alloc;
 
 knytos_rt::entry!(main);
 
+use knytos_launch::nvme_client_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -17,7 +18,6 @@ use knytos_services::{
     block,
     wait_for_registered_name_owned,
 };
-use knytos_launch::nvme_client_status as status;
 use knytos_syscall::thread_exit;
 
 fn main(ctx: Context) -> ! {

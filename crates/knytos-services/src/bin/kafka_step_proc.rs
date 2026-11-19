@@ -4,6 +4,8 @@
 
 extern crate alloc;
 
+use knytos_launch::kafka_step_procedure_status as status;
+use knytos_protocol_kafka::DeliveredRecord;
 use knytos_rt::{
     Context,
     config,
@@ -22,8 +24,6 @@ use knytos_services::{
     ns,
     sleep_ms,
 };
-use knytos_launch::kafka_step_procedure_status as status;
-use knytos_protocol_kafka::DeliveredRecord;
 use knytos_syscall::{
     IpcRights,
     thread_exit,

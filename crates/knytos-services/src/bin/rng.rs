@@ -10,6 +10,7 @@ extern crate alloc;
 
 use core::mem::ManuallyDrop;
 
+use knytos_launch::rng_status as status;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -35,7 +36,6 @@ use knytos_services::{
     },
     virtio,
 };
-use knytos_launch::rng_status as status;
 use knytos_syscall::{
     DmaDirection,
     cq_read,

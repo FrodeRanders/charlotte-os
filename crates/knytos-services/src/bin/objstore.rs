@@ -19,6 +19,8 @@ use alloc::{
     vec::Vec,
 };
 
+use knytos_launch::objstore_status as status;
+use knytos_protocol_objstore::disk::*;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -41,8 +43,6 @@ use knytos_services::{
     sleep_ms,
     wait_for_registered_name_owned,
 };
-use knytos_launch::objstore_status as status;
-use knytos_protocol_objstore::disk::*;
 use knytos_syscall::IpcRights;
 
 const PAGE_SIZE: usize = 4096;

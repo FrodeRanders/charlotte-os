@@ -4,6 +4,7 @@
 
 knytos_rt::entry!(main);
 
+use knytos_launch::objstore_client_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -17,7 +18,6 @@ use knytos_services::{
     objstore,
     wait_for_registered_name_owned,
 };
-use knytos_launch::objstore_client_status as status;
 use knytos_syscall::{
     IpcRights,
     thread_exit,

@@ -1,11 +1,11 @@
 //! Local key/path owners use public request fixtures.
 use core::hint::black_box;
 
-use knytos_services::s3 as wire;
 use knytos_s3::{
     request::OwnedRequest,
     sigv4::canonical_uri,
 };
+use knytos_services::s3 as wire;
 mod support;
 use support::observe;
 

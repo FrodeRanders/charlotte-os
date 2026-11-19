@@ -3,9 +3,9 @@
 
 extern crate alloc;
 
-pub mod knytos;
 pub mod clock;
 pub mod configuration;
+pub mod knytos;
 pub mod log_store;
 pub mod membership;
 pub mod node;

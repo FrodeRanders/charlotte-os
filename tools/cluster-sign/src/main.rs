@@ -1587,8 +1587,7 @@ fn ingress_policy_notify(args: &[String]) -> Result<()> {
     ingress_policy::decode(&bytes).ok_or_else(|| "ingress policy is malformed".to_owned())?;
     let header = format!(
         "POST /v1/ingress-policy HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
-         application/vnd.knytos.ingress-policy\r\nContent-Length: {}\r\nConnection: \
-         close\r\n\r\n",
+         application/vnd.knytos.ingress-policy\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
     let response = http_client::exchange(endpoint, header.as_bytes(), &bytes, deadline)?;

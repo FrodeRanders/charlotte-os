@@ -10,6 +10,7 @@
 
 extern crate alloc;
 
+use knytos_launch::client_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -19,7 +20,6 @@ use knytos_services::{
     ns,
     stage_name_owned,
 };
-use knytos_launch::client_status as status;
 use knytos_syscall::thread_exit;
 
 const ECHO_VALUE: u64 = 0x1234_5678;

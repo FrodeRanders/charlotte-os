@@ -18,6 +18,11 @@ use alloc::{
     vec::Vec,
 };
 
+use knytos_launch::{
+    s3_status as status,
+    sha256::Sha256,
+};
+use knytos_protocol_s3::ObjectMetadata;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -29,23 +34,6 @@ use knytos_rt::{
         ReplyToken,
     },
 };
-use knytos_services::{
-    entropy,
-    ns,
-    s3 as protocol,
-    sleep_ms,
-    socket,
-    time,
-    tls_client,
-    try_registered_name_owned,
-    wait_for_local_ready_owned,
-    wait_for_registered_name_owned,
-};
-use knytos_launch::{
-    s3_status as status,
-    sha256::Sha256,
-};
-use knytos_protocol_s3::ObjectMetadata;
 use knytos_s3::{
     http::{
         ChunkedDecoder,
@@ -66,6 +54,18 @@ use knytos_s3::{
         hex_lower,
         sign,
     },
+};
+use knytos_services::{
+    entropy,
+    ns,
+    s3 as protocol,
+    sleep_ms,
+    socket,
+    time,
+    tls_client,
+    try_registered_name_owned,
+    wait_for_local_ready_owned,
+    wait_for_registered_name_owned,
 };
 use knytos_syscall::{
     IpcRights,

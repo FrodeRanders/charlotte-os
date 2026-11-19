@@ -43,6 +43,11 @@ use knytos_graft::{
         encode_vote_response,
     },
 };
+use knytos_launch::raft_status as status;
+use knytos_protocol_disco::{
+    ROLE_LEADER,
+    parse_cluster_answer,
+};
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -67,11 +72,6 @@ use knytos_services::{
         encode_join_request,
     },
     sleep_ms,
-};
-use knytos_launch::raft_status as status;
-use knytos_protocol_disco::{
-    ROLE_LEADER,
-    parse_cluster_answer,
 };
 use knytos_syscall::{
     IpcRights,

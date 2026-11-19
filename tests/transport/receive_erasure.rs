@@ -1,7 +1,6 @@
 //! Public fixtures inspect initialized plaintext bytes before host release.
 use core::hint::black_box;
 
-use knytos_services::tls_client::read_owned_chunk;
 use knytos_kafka::{
     self as wire,
     frame::{
@@ -9,6 +8,7 @@ use knytos_kafka::{
         ReceiveError,
     },
 };
+use knytos_services::tls_client::read_owned_chunk;
 use zeroize::Zeroizing;
 mod support;
 use support::observe;

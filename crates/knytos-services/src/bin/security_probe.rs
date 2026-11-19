@@ -21,6 +21,10 @@ mod rng_device_contract;
 mod status_observation_contract;
 use alloc::vec::Vec;
 
+use knytos_launch::{
+    deployment,
+    security_probe_status as status,
+};
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -47,10 +51,6 @@ use knytos_services::{
     rng_device,
     sleep_ms,
     socket,
-};
-use knytos_launch::{
-    deployment,
-    security_probe_status as status,
 };
 use knytos_syscall::IpcRights;
 

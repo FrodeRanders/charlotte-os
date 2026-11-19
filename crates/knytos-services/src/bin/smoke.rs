@@ -8,11 +8,11 @@
 
 extern crate alloc;
 
+use knytos_launch::smoke_status as status;
 use knytos_rt::{
     Context,
     config,
 };
-use knytos_launch::smoke_status as status;
 use knytos_syscall::{
     el0_log,
     thread_exit,

@@ -1,10 +1,4 @@
 //! Owned destination prepared before release admission or follower relay.
-use knytos_rt::owned::{
-    MappedMemory,
-    OwnedMemory,
-    ReplyToken,
-    Writable,
-};
 use knytos_launch::{
     release,
     release_admission::{
@@ -13,6 +7,12 @@ use knytos_launch::{
         decode_result,
     },
     sha256,
+};
+use knytos_rt::owned::{
+    MappedMemory,
+    OwnedMemory,
+    ReplyToken,
+    Writable,
 };
 
 pub struct PreparedReply {

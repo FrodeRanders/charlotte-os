@@ -601,11 +601,11 @@ mod tests {
         verify_and_encode_with_capacity(bytes, trust, now, nodes, automatic, &profiles(nodes))
     }
 
-    use knytos_graft::state_machine::StateMachine;
     use ed25519_compact::{
         KeyPair,
         Signature,
     };
+    use knytos_graft::state_machine::StateMachine;
     use knytos_launch::{
         deployment::{
             self,

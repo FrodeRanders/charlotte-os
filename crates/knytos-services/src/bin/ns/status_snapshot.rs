@@ -2,8 +2,8 @@
 
 use alloc::vec::Vec;
 
-use knytos_services::ns;
 use knytos_protocol_ns::snapshot;
+use knytos_services::ns;
 
 enum StatusBacking {
     Empty,

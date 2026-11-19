@@ -16,6 +16,16 @@ use alloc::{
     vec::Vec,
 };
 
+use knytos_kafka::{
+    self as wire,
+    ProducerIdentity,
+    RecordInput,
+};
+use knytos_protocol_kafka::{
+    Authentication,
+    DeliveredRecord,
+    RecordRequest,
+};
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -40,16 +50,6 @@ use knytos_services::{
     try_registered_name_owned,
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
-};
-use knytos_kafka::{
-    self as wire,
-    ProducerIdentity,
-    RecordInput,
-};
-use knytos_protocol_kafka::{
-    Authentication,
-    DeliveredRecord,
-    RecordRequest,
 };
 use knytos_syscall::{
     IpcRights,

@@ -22,6 +22,7 @@
 
 extern crate alloc;
 
+use knytos_launch::uart_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -32,7 +33,6 @@ use knytos_services::{
     pl011,
     wait_reply,
 };
-use knytos_launch::uart_status as status;
 use knytos_syscall::{
     IpcRights,
     device_irq_ack,

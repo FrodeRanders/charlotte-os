@@ -12,6 +12,7 @@
 
 extern crate alloc;
 
+use knytos_launch::echo_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -26,7 +27,6 @@ use knytos_services::{
     ns,
     stage_name_owned,
 };
-use knytos_launch::echo_status as status;
 use knytos_syscall::{
     IpcRights,
     thread_exit,

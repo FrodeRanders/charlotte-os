@@ -42,6 +42,7 @@ knytos_rt::entry!(main);
 // Simple bump allocator for queue virtual addresses
 static DMA_DOMAIN: AtomicU64 = AtomicU64::new(0);
 
+use knytos_launch::nvme_status as status;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -52,7 +53,6 @@ use knytos_services::{
     ns,
     sleep_ms,
 };
-use knytos_launch::nvme_status as status;
 use knytos_syscall::{
     ipc_status,
     *,

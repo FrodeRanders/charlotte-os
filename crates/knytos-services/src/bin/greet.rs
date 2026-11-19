@@ -15,6 +15,7 @@
 
 extern crate alloc;
 
+use knytos_launch::greet_status as status;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -27,7 +28,6 @@ use knytos_services::{
     ns,
     sleep_ms,
 };
-use knytos_launch::greet_status as status;
 use knytos_syscall::IpcRights;
 
 fn serve(ctx: &Context) -> ShutdownRequest {

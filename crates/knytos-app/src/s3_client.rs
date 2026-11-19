@@ -7,6 +7,11 @@
 
 use alloc::vec::Vec;
 
+use knytos_protocol_s3::{
+    self as protocol,
+    ObjectMetadata,
+    ObjectRequest,
+};
 use knytos_rt::owned::{
     ConnectionRef,
     IpcError,
@@ -14,11 +19,6 @@ use knytos_rt::owned::{
     OwnedMemory,
     OwnedPayload,
     PayloadError,
-};
-use knytos_protocol_s3::{
-    self as protocol,
-    ObjectMetadata,
-    ObjectRequest,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

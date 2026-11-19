@@ -4,6 +4,7 @@
 
 extern crate alloc;
 
+use knytos_launch::net_client_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -13,7 +14,6 @@ use knytos_services::{
     net,
     wait_for_registered_name_owned,
 };
-use knytos_launch::net_client_status as status;
 use knytos_syscall::thread_exit;
 
 const SENTINEL: u32 = 0xc0de;

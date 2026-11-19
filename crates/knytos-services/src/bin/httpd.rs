@@ -56,6 +56,10 @@ use core::{
     },
 };
 
+use knytos_launch::httpd_status as status;
+use knytos_protocol_disco::parse_peer_list;
+use knytos_protocol_msg::unpack_mac;
+use knytos_protocol_net::decode_status;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -85,10 +89,6 @@ use knytos_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
-use knytos_launch::httpd_status as status;
-use knytos_protocol_disco::parse_peer_list;
-use knytos_protocol_msg::unpack_mac;
-use knytos_protocol_net::decode_status;
 use knytos_syscall::{
     OBSERVABILITY_NONE,
     THREAD_STATISTICS_DOMAIN_RECORD_U64S,

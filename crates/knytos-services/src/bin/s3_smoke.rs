@@ -6,6 +6,15 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use knytos_launch::{
+    s3_smoke_status as status,
+    sha256::Sha256,
+};
+use knytos_protocol_s3::{
+    ERR_TRANSPORT,
+    ERR_UNSYNCHRONIZED,
+    ObjectRequest,
+};
 use knytos_rt::{
     Context,
     config,
@@ -21,15 +30,6 @@ use knytos_services::{
     },
     sleep_ms,
     wait_for_registered_name_owned,
-};
-use knytos_launch::{
-    s3_smoke_status as status,
-    sha256::Sha256,
-};
-use knytos_protocol_s3::{
-    ERR_TRANSPORT,
-    ERR_UNSYNCHRONIZED,
-    ObjectRequest,
 };
 use knytos_syscall::thread_exit;
 

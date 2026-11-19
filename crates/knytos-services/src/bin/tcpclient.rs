@@ -12,6 +12,8 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use knytos_launch::tcpclient_status as status;
+use knytos_protocol_net::decode_status;
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -30,8 +32,6 @@ use knytos_services::{
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
-use knytos_launch::tcpclient_status as status;
-use knytos_protocol_net::decode_status;
 use knytos_syscall::thread_exit;
 
 const SENTINEL: u32 = 0x5345_4e54;

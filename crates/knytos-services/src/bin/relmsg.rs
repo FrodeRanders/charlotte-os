@@ -13,23 +13,6 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use knytos_rt::{
-    Context,
-    ShutdownRequest,
-    config,
-};
-use knytos_services::{
-    net,
-    publication,
-    relmsg,
-    relmsg_reassembly::{
-        Reassembly,
-        assemble,
-        fragment_within_ceiling,
-    },
-    wait_for_registered_name_or_shutdown_owned,
-    wait_reply,
-};
 use knytos_launch::relmsg_status as status;
 use knytos_protocol_msg::{
     FLAG_ACK,
@@ -51,6 +34,23 @@ use knytos_protocol_msg::{
     wire_session_is_newer,
 };
 use knytos_protocol_net::decode_status;
+use knytos_rt::{
+    Context,
+    ShutdownRequest,
+    config,
+};
+use knytos_services::{
+    net,
+    publication,
+    relmsg,
+    relmsg_reassembly::{
+        Reassembly,
+        assemble,
+        fragment_within_ceiling,
+    },
+    wait_for_registered_name_or_shutdown_owned,
+    wait_reply,
+};
 use knytos_syscall::{
     cq_read,
     ipc_recv,

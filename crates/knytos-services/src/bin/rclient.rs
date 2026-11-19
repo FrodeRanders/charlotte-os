@@ -4,6 +4,13 @@
 
 extern crate alloc;
 
+use knytos_launch::relmsg_client_status as status;
+use knytos_protocol_msg::{
+    IPC_MESSAGE_HEADER_SIZE,
+    build_ipc_message_header,
+    parse_ipc_message_header,
+    unpack_mac,
+};
 use knytos_rt::{
     Context,
     config,
@@ -12,13 +19,6 @@ use knytos_rt::{
 use knytos_services::{
     relmsg,
     wait_for_registered_name_owned,
-};
-use knytos_launch::relmsg_client_status as status;
-use knytos_protocol_msg::{
-    IPC_MESSAGE_HEADER_SIZE,
-    build_ipc_message_header,
-    parse_ipc_message_header,
-    unpack_mac,
 };
 use knytos_syscall::thread_exit;
 

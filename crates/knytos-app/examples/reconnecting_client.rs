@@ -2,16 +2,16 @@
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
-use knytos_rt::abi::{
-    IPC_REPLY_CANCELLED,
-    IPC_REPLY_ENDPOINT_CLOSED,
-    ipc_status,
-};
 use knytos_app::{
     grant_client,
     prelude::*,
 };
 use knytos_launch::deployment::RIGHT_CALL;
+use knytos_rt::abi::{
+    IPC_REPLY_CANCELLED,
+    IPC_REPLY_ENDPOINT_CLOSED,
+    ipc_status,
+};
 
 // Protocol of the repository's deployed greeting test service.
 const OP_GET: u32 = 1;

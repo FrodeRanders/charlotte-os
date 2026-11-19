@@ -41,6 +41,10 @@ use knytos_graft::{
         Peer,
     },
 };
+use knytos_protocol_msg::{
+    IPC_MESSAGE_HEADER_SIZE,
+    parse_ipc_message_header,
+};
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -99,10 +103,6 @@ use knytos_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
     wait_reply,
-};
-use knytos_protocol_msg::{
-    IPC_MESSAGE_HEADER_SIZE,
-    parse_ipc_message_header,
 };
 use knytos_syscall::{
     IpcRights,

@@ -45,6 +45,8 @@ use alloc::{
     vec::Vec,
 };
 
+use knytos_launch::tcpip_status as status;
+use knytos_protocol_net::decode_status;
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -67,8 +69,6 @@ use knytos_services::{
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
-use knytos_launch::tcpip_status as status;
-use knytos_protocol_net::decode_status;
 use knytos_smoltcp::{
     KnytosEthDevice,
     MAX_IPC_REQUESTS_PER_CYCLE,

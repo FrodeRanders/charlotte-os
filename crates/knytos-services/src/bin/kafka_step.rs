@@ -6,6 +6,11 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use knytos_launch::kafka_step_status as status;
+use knytos_protocol_kafka::{
+    DeliveredRecord,
+    RecordRequest,
+};
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -32,11 +37,6 @@ use knytos_services::{
     },
     sleep_ms,
     wait_for_registered_name_bytes_owned,
-};
-use knytos_launch::kafka_step_status as status;
-use knytos_protocol_kafka::{
-    DeliveredRecord,
-    RecordRequest,
 };
 use knytos_syscall::thread_exit;
 

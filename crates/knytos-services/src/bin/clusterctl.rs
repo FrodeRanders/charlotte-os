@@ -20,6 +20,11 @@ extern crate alloc;
 
 knytos_rt::entry!(main);
 
+use knytos_launch::clusterctl_status as status;
+use knytos_protocol_disco::{
+    ROLE_LEADER,
+    parse_cluster_answer,
+};
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -42,11 +47,6 @@ use knytos_services::{
     raft,
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
-};
-use knytos_launch::clusterctl_status as status;
-use knytos_protocol_disco::{
-    ROLE_LEADER,
-    parse_cluster_answer,
 };
 use knytos_syscall::*;
 

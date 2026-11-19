@@ -31,24 +31,6 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use knytos_rt::{
-    Context,
-    ManifestValue,
-    ShutdownRequest,
-    config,
-};
-use knytos_services::{
-    clusterctl,
-    disco,
-    net,
-    ns,
-    publication,
-    raft,
-    sleep_ms_or_shutdown,
-    wait_for_local_ready_or_shutdown,
-    wait_for_registered_name_or_shutdown_owned,
-    wait_reply,
-};
 use knytos_launch::disco_status as status;
 use knytos_protocol_disco::{
     BROADCAST_MAC,
@@ -70,6 +52,24 @@ use knytos_protocol_disco::{
     parse_disco_frame,
 };
 use knytos_protocol_net::decode_status;
+use knytos_rt::{
+    Context,
+    ManifestValue,
+    ShutdownRequest,
+    config,
+};
+use knytos_services::{
+    clusterctl,
+    disco,
+    net,
+    ns,
+    publication,
+    raft,
+    sleep_ms_or_shutdown,
+    wait_for_local_ready_or_shutdown,
+    wait_for_registered_name_or_shutdown_owned,
+    wait_reply,
+};
 use knytos_syscall::{
     cq_read,
     ipc_close,

@@ -15,6 +15,10 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use knytos_authorization::{
+    AuthorizationRights,
+    wire,
+};
 use knytos_rt::{
     Context,
     owned::{
@@ -27,10 +31,6 @@ use knytos_rt::{
 use knytos_services::{
     grant,
     ns,
-};
-use knytos_authorization::{
-    AuthorizationRights,
-    wire,
 };
 use knytos_syscall::IpcRights;
 

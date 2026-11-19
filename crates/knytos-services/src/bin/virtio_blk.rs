@@ -16,6 +16,7 @@ use core::sync::atomic::{
     Ordering,
 };
 
+use knytos_launch::block_driver_status as status;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -28,7 +29,6 @@ use knytos_services::{
     spin_reply,
     virtio,
 };
-use knytos_launch::block_driver_status as status;
 use knytos_syscall::{
     DmaDirection,
     IpcRights,

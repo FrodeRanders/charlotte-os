@@ -2,6 +2,7 @@
 #![no_std]
 extern crate alloc;
 
+pub use knytos_protocol_grant as grant;
 pub use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -9,7 +10,6 @@ pub use knytos_rt::{
     logln,
     owned,
 };
-pub use knytos_protocol_grant as grant;
 pub mod client;
 pub mod grant_client;
 #[cfg(feature = "kafka")]

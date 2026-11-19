@@ -23,6 +23,9 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use knytos_launch::frouter_status as status;
+use knytos_protocol_disco::DISCO_ETHERTYPE;
+use knytos_protocol_msg::MSG_ETHERTYPE;
 use knytos_rt::{
     Context,
     ManifestValue,
@@ -65,9 +68,6 @@ use knytos_services::{
     socket,
     wait_for_registered_name_owned,
 };
-use knytos_launch::frouter_status as status;
-use knytos_protocol_disco::DISCO_ETHERTYPE;
-use knytos_protocol_msg::MSG_ETHERTYPE;
 use knytos_syscall::thread_exit;
 
 const IPV4_ETHERTYPE: u16 = 0x0800;

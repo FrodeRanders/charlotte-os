@@ -18,6 +18,7 @@ use alloc::{
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;
 
+use knytos_launch::net_status as status;
 use knytos_rt::{
     Context,
     ShutdownRequest,
@@ -28,7 +29,6 @@ use knytos_services::{
     ns,
     wait_reply,
 };
-use knytos_launch::net_status as status;
 use knytos_syscall::{
     DmaDirection,
     IpcRights,

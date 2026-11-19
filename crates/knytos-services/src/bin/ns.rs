@@ -22,18 +22,6 @@ use alloc::{
     vec::Vec,
 };
 
-use knytos_rt::{
-    Context,
-    config,
-};
-use knytos_services::{
-    MAX_NAME_LEN,
-    broker::{
-        Catalog,
-        EventBroker,
-    },
-    ns,
-};
 use knytos_authorization::{
     AuditLog,
     AuditOutcome,
@@ -46,6 +34,18 @@ use knytos_authorization::{
     wire,
 };
 use knytos_launch::ns_status as status;
+use knytos_rt::{
+    Context,
+    config,
+};
+use knytos_services::{
+    MAX_NAME_LEN,
+    broker::{
+        Catalog,
+        EventBroker,
+    },
+    ns,
+};
 use knytos_syscall::{
     IpcMessage,
     IpcRights,

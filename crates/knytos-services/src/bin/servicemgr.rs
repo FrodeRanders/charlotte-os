@@ -9,6 +9,7 @@
 
 extern crate alloc;
 
+use knytos_launch::service_manager_status as status;
 use knytos_rt::{
     Context,
     config,
@@ -22,7 +23,6 @@ use knytos_services::{
     ns,
     objstore,
 };
-use knytos_launch::service_manager_status as status;
 use knytos_syscall::{
     IpcRights,
     ipc_close,
