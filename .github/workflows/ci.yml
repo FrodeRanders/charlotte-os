@@ -13,7 +13,7 @@ env:
   CARGO_TERM_COLOR: always
   # A global RUSTFLAGS overrides the kernel target's frame-pointer settings.
   CARGO_BUILD_RUSTFLAGS: "-D warnings"
-  SITAS_REV: 272a17efbee24787ade1f0ff25a1cce20e15113d
+  SITAS_REV: 0f5ddc437b6d4e410c90cb2d9f958905da8b1df5
 
 jobs:
   dependency-advisories:
