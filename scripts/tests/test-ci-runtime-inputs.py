@@ -27,7 +27,7 @@ class CiRuntimeInputs(unittest.TestCase):
 
     def sitas_source(self, revision):
         return subprocess.check_output(
-            ["git", "-C", str(SITAS), "show", f"{revision}:crates/sitas-charlotte/src/lib.rs"],
+            ["git", "-C", str(SITAS), "show", f"{revision}:crates/sitas-knytos/src/lib.rs"],
             text=True,
         )
 

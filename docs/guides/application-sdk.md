@@ -109,13 +109,13 @@ explicitly coordinate shutdown across their other queues.
 
 ```sh
 scripts/export-app-sdk.sh --output /tmp/knytos-app-sdk.tar.gz
-mkdir -p /tmp/charlotte-sdk
+mkdir -p /tmp/knytos-sdk
 # Extract into an application-owned directory.
-tar -xzf /tmp/knytos-app-sdk.tar.gz -C /tmp/charlotte-sdk
-/tmp/charlotte-sdk/knytos-app-sdk/charlotte doctor
-/tmp/charlotte-sdk/knytos-app-sdk/charlotte new /tmp/orders
-/tmp/charlotte-sdk/knytos-app-sdk/charlotte test /tmp/orders
-/tmp/charlotte-sdk/knytos-app-sdk/charlotte build /tmp/orders \
+tar -xzf /tmp/knytos-app-sdk.tar.gz -C /tmp/knytos-sdk
+/tmp/knytos-sdk/knytos-app-sdk/knytos doctor
+/tmp/knytos-sdk/knytos-app-sdk/knytos new /tmp/orders
+/tmp/knytos-sdk/knytos-app-sdk/knytos test /tmp/orders
+/tmp/knytos-sdk/knytos-app-sdk/knytos build /tmp/orders \
   --arch aarch64 --output /tmp/orders.elf
 ```
 
@@ -132,7 +132,7 @@ interface with explicitly reviewed Cargo pins, and the builder itself does not
 replace that dependency review.
 
 The SDK contains runtime/client source, the owned async adapter, CI-pinned
-`sitas-core`, `sitas-charlotte` and `sitas-unix`, the `knytos-kafka` client
+`sitas-core`, `sitas-knytos` and `sitas-unix`, the `knytos-kafka` client
 codec for host conformance tests, platform definitions, a standalone signer and
 public development keys. `sdk.json` records runtime ABI, toolchain, OS and Sitas
 revisions, source dirty state and hashes of the exact distributed files. The CLI
@@ -141,14 +141,14 @@ These consistency checks are not signed provenance or a replacement for the
 artifact/deployment trust model. External Cargo dependencies and Rust toolchain
 components are resolved normally, so a fully offline distribution is not provided.
 
-`charlotte.json` is a local development plan and SDK binding. It is **not** a new
+`knytos.json` is a local development plan and SDK binding. It is **not** a new
 kernel/deployment format. Stack pages, thread quota, shutdown grace and grants
 still require the existing reviewed, signed `CDEPLOY6` descriptor.
 
 To sign a built ELF, pass an explicit restricted key file:
 
 ```sh
-/tmp/charlotte-sdk/knytos-app-sdk/charlotte package /tmp/orders \
+/tmp/knytos-sdk/knytos-app-sdk/knytos package /tmp/orders \
   --elf /tmp/orders.elf --key-file /path/to/private-key \
   --version 1 --rollback 1
 ```
@@ -172,7 +172,7 @@ Run package tests from outside the repository's freestanding Cargo configuration
 
 ```sh
 cd /tmp
-cargo +nightly-2026-11-14 test --manifest-path /path/to/charlotte-os/Cargo.toml \
+cargo +nightly-2026-11-14 test --manifest-path /path/to/knytos/Cargo.toml \
   -p knytos-rt -p knytos-app -p knytos-app-sitas --all-features --lib
 ```
 

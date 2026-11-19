@@ -14,4 +14,4 @@ knytos-app-sitas = { path = "../knytos-app-sitas" }
 knytos-rt = { path = "../knytos-rt" }
 knytos-syscall = { path = "../knytos-syscall" }
 sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }
-sitas-charlotte = { path = "../../../../gautelis/sitas/crates/sitas-charlotte" }
+sitas-knytos = { path = "../../../../gautelis/sitas/crates/sitas-knytos" }

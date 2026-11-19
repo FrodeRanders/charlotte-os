@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Knytos SDK command. Copied to the SDK root as `charlotte`."""
+"""Knytos SDK command. Copied to the SDK root as `knytos`."""
 import argparse
 import hashlib
 import json
@@ -92,8 +92,8 @@ fn run(ctx: &Context) -> Result<AppExit, LaunchError> {{
 }}
 knytos_app::entry!(run);
 ''')
-    (project / 'charlotte.json').write_text(json.dumps({'name': name, 'sdk': str(sdk), 'sdk_fingerprint': hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest(), 'stack_pages': 4, 'max_threads': 1, 'shutdown_grace_ms': 5000, 'grants': []}, indent=2) + '\n')
-    (project / '.gitignore').write_text('/target/\n/.charlotte/\n')
+    (project / 'knytos.json').write_text(json.dumps({'name': name, 'sdk': str(sdk), 'sdk_fingerprint': hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest(), 'stack_pages': 4, 'max_threads': 1, 'shutdown_grace_ms': 5000, 'grants': []}, indent=2) + '\n')
+    (project / '.gitignore').write_text('/target/\n/.knytos/\n')
     shutil.copyfile(sdk / 'Cargo.lock', project / 'Cargo.lock')
     print(f'Created {project}; run {sdk / "knytos"} test {project}')
 
@@ -118,10 +118,10 @@ def main():
     project = args.project.resolve()
     if args.command == 'new':
         new_project(sdk, project, lock); return
-    plan = json.loads((project / 'charlotte.json').read_text())
+    plan = json.loads((project / 'knytos.json').read_text())
     fingerprint = hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest()
     if plan['sdk_fingerprint'] != fingerprint or Path(plan['sdk']).resolve() != sdk:
-        raise ValueError('project pins a different SDK; update its reviewed charlotte.json explicitly')
+        raise ValueError('project pins a different SDK; update its reviewed knytos.json explicitly')
     checked_project_sources(sdk, project)
     cargo = ['cargo', f'+{toolchain}']
     if args.command == 'test':
@@ -130,7 +130,7 @@ def main():
         execute([str(sdk / 'build-external-elf.sh'), '--manifest', str(project / 'app/Cargo.toml'), '--bin', plan['name'], '--arch', args.arch, '--output', str(args.output.resolve())], project)
     else:
         # Signer writes only to project-owned state, never to the SDK inputs.
-        signer = project / ('.charlotte/signer-' + fingerprint[:16])
+        signer = project / ('.knytos/signer-' + fingerprint[:16])
         if not signer.exists():
             shutil.copytree(sdk / 'signer', signer)
         execute(cargo + ['build', '--manifest-path', str(signer / 'Cargo.toml')], project)

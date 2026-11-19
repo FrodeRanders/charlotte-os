@@ -2,7 +2,7 @@
 //!
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
 //! ELF produced by the repository's pinned toolchain for the knytos-user target
-//! (which links against sitas-core and sitas-charlotte).  The kernel maps
+//! (which links against sitas-core and sitas-knytos).  The kernel maps
 //! PT_LOAD segments at their linked virtual addresses with page permissions
 //! derived from ELF flags.
 //!

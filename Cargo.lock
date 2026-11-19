@@ -1108,8 +1108,8 @@ dependencies = [
  "knytos-app-sitas",
  "knytos-rt",
  "knytos-syscall",
- "sitas-charlotte",
  "sitas-core",
+ "sitas-knytos",
 ]
 
 [[package]]
@@ -1577,18 +1577,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "sitas-charlotte"
-version = "0.2.0"
+name = "sitas-core"
+version = "0.2.1"
 dependencies = [
- "sitas-core",
- "spin 0.9.9",
+ "spin 0.12.3",
 ]
 
 [[package]]
-name = "sitas-core"
-version = "0.2.0"
+name = "sitas-knytos"
+version = "0.2.1"
 dependencies = [
- "spin 0.9.9",
+ "sitas-core",
+ "spin 0.12.3",
 ]
 
 [[package]]

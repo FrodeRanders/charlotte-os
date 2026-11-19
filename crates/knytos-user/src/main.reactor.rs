@@ -1,6 +1,6 @@
 //! Knytos Sitas integration demo — exercises the full async runtime.
 //!
-//! Creates a `CharlotteReactor` (implements Sitas' `ReactorBackend`),
+//! Creates a `KnytosReactor` (implements Sitas' `ReactorBackend`),
 //! uses it to submit an operation via the kernel's COMPLETION_SUBMIT syscall,
 //! waits for the kernel to complete it, and polls the CQ ring for the result.
 //! The result is written to the result page at 0x12000 as a u64 sentinel.
@@ -10,14 +10,14 @@
 
 use core::panic::PanicInfo;
 
-use sitas_charlotte::CharlotteReactor;
+use sitas_knytos::KnytosReactor;
 
 const RESULT_PAGE: *mut u64 = 0x0000_0000_0001_2000usize as *mut u64;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     // Create a reactor on LP 0.
-    let reactor = CharlotteReactor::new(0);
+    let reactor = KnytosReactor::new(0);
 
     // Submit a NOP operation. The kernel completes it because the test
     // pre-populates the AS with a CQ ring and a capability table.

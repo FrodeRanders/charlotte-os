@@ -71,9 +71,10 @@ for package in knytos-rt knytos-syscall knytos-launch knytos-lifecycle \
         | tar -C "$SDK/crates" -xf -
 done
 SITAS_DIR="${CHARLOTTE_SITAS_DIR:-$ROOT/../../gautelis/sitas}"
-SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "$ROOT/.github/workflows/ci.yml" | head -1)"
+#SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "$ROOT/.github/workflows/ci.yml" | head -1)"
+SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "./.github/workflows/ci.yml" | head -1)"
 [ -n "$SITAS_REVISION" ] || { echo "error: missing pinned Sitas revision" >&2; exit 1; }
-git -C "$SITAS_DIR" archive "$SITAS_REVISION" crates/sitas-core crates/sitas-charlotte crates/sitas-unix \
+git -C "$SITAS_DIR" archive "$SITAS_REVISION" crates/sitas-core crates/sitas-knytos crates/sitas-unix \
     | tar -C "$SDK" -xf -
 # Both source trees now live inside the SDK, without a required sibling checkout.
 python3 - "$SDK/crates/knytos-app-sitas/Cargo.toml" <<'PYSDK'
@@ -89,7 +90,7 @@ resolver = "3"
 EOF
 install -m 0644 "$ROOT/Cargo.lock" "$SDK/Cargo.lock"
 install -m 0644 "$ROOT/Cargo.lock" "$SDK/signer/Cargo.lock"
-install -m 0755 "$ROOT/scripts/app-sdk.py" "$SDK/charlotte"
+install -m 0755 "$ROOT/scripts/app-sdk.py" "$SDK/knytos"
 
 for key in dev-key.hex dev-operations-key.hex dev-operations-key.pub \
     dev-recipient-key.hex dev-recipient-key.pub; do
@@ -144,9 +145,9 @@ Toolchain prerequisites: `rust-src` and `llvm-tools`.
 ```sh
 rustup component add rust-src llvm-tools
 rustup toolchain install "$(sed -n 's/^toolchain=//p' VERSION)"
-./charlotte doctor
-./charlotte new /path/to/my-app
-./charlotte test /path/to/my-app
+./knytos doctor
+./knytos new /path/to/my-app
+./knytos test /path/to/my-app
 ./build-external-elf.sh --manifest /path/to/app/Cargo.toml --bin app --output /tmp/app.elf
 ```
 EOF

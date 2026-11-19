@@ -15,10 +15,10 @@ use knytos_rt::{
     config,
 };
 use knytos_syscall::thread_exit;
-use sitas_charlotte::CharlotteReactor;
+use sitas_knytos::KnytosReactor;
 
 fn main(ctx: Context) -> ! {
-    let reactor = CharlotteReactor::new(0);
+    let reactor = KnytosReactor::new(0);
     let output = config::output_ptr::<u32>();
 
     unsafe {
@@ -41,13 +41,13 @@ fn main(ctx: Context) -> ! {
 }
 
 /// Spawn two shard threads whose closures return values, join both through
-/// the kernel-backed `CharlotteJoinHandle`, and write the sum to `out`.
+/// the kernel-backed `KnytosJoinHandle`, and write the sum to `out`.
 ///
 /// The closures return `40` and `41`, so a correct join probe writes `81`.
 /// The main thread blocks in the kernel's completion wait while joining — the
 /// same wait the shard executors use — and the exit observer fires only after
 /// the kernel has reaped each thread.
-fn run_join_probe(reactor: &CharlotteReactor, out: *mut u32) {
+fn run_join_probe(reactor: &KnytosReactor, out: *mut u32) {
     use alloc::{
         boxed::Box,
         vec::Vec,
@@ -86,7 +86,7 @@ fn run_join_probe(reactor: &CharlotteReactor, out: *mut u32) {
 /// Sequentially alternate the SDK and Sitas readers on the same kernel CQ.
 /// All shard threads have joined; main is the only CQ0 consumer. A shared
 /// monotonic deadline bounds readiness waits, including unrelated wakeups.
-fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
+fn run_cq_probe(ctx: Context, reactor: &KnytosReactor) -> bool {
     let layout = ctx.completion_queue_layout();
     let (started, frequency) = knytos_syscall::monotonic_clock();
     if frequency == 0 {
@@ -188,7 +188,7 @@ fn run_owned_call_probe() -> bool {
     let Some(memory) = incoming.memory.take() else {
         return false;
     };
-    let Ok(backend) = knytos_app_sitas::WakeReactor::new(CharlotteReactor::new(0), 0, 2) else {
+    let Ok(backend) = knytos_app_sitas::WakeReactor::new(KnytosReactor::new(0), 0, 2) else {
         return false;
     };
     let calls = backend.handle();

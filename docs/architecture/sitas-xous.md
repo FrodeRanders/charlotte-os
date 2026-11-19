@@ -24,7 +24,7 @@
 
 Source comparison refreshed 2026-10-18. This is a design/redirection document;
 short API listings later in it describe the intended shape and are not a
-copyable SDK. Use the [manual's implementation appendix](../manual-v2/charlotte.pdf),
+copyable SDK. Use the [manual's implementation appendix](../manual-v2/knytos.pdf),
 [owned-resource guide](../guides/resource-ownership.md) and
 [reconnecting client](../guides/reconnecting-clients.md) for current application
 contracts. The [documentation sweep](../reports/audits/2026-10-18-documentation-reality-sweep.md)
@@ -1970,7 +1970,7 @@ Refactor current completion code around:
 -   buffer return;
 -   CQ batching.
 
-Migrate `sitas-charlotte` to `CQ_WAIT_CHECKED` and remove busy polling.
+Migrate `sitas-knytos` to `CQ_WAIT_CHECKED` and remove busy polling.
 
 ## Phase 7 --- [done] Sitas endpoint backend
 
@@ -2210,7 +2210,7 @@ sitas-unix
     io_uring backend
     thread/affinity backend
 
-sitas-charlotte
+sitas-knytos
     CQ backend
     endpoint backend
     syscall wrappers
@@ -2226,9 +2226,9 @@ should implement native CQ and endpoint event handling.
 Create small versioned protocol crates:
 
 ``` text
-charlotte-protocol-log
-charlotte-protocol-console
-charlotte-protocol-device-manager
+knytos-protocol-log
+knytos-protocol-console
+knytos-protocol-device-manager
 knytos-protocol-network
 ```
 
@@ -2387,8 +2387,7 @@ Current status:
 
 Primary project references:
 
--   Knytos fork: <https://github.com/FrodeRanders/charlotte-os>
--   Upstream Knytos: <https://github.com/charlotte-os/charlotte-os>
+-   Knytos: <https://github.com/FrodeRanders/knytos>
 -   Sitas: <https://github.com/FrodeRanders/sitas>
 -   Xous core: <https://github.com/betrusted-io/xous-core>
 -   Xous kernel documentation: <https://xous.dev/kernel/>

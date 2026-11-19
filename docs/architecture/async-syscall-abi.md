@@ -363,7 +363,7 @@ backpressure across the boundary (`sitas-runtime-model.md` §7.3).
 ### 7.1 Assembled picture (the Knytos `ReactorBackend`)
 
 ```
-sitas-charlotte backend (implements Sitas' ReactorBackend + ShardRuntime)
+sitas-knytos backend (implements Sitas' ReactorBackend + ShardRuntime)
  ├─ Handle          = CompletionCap                     (the Phase-1 "what is an interest" answer)
  ├─ Waker           = CompletionQueueId                 → wake() = wake(cq) syscall
  ├─ wait(_, _, to)  = wait(own_cq, min_complete, deadline) → drain CQ → Event
