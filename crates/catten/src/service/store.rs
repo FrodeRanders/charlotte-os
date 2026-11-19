@@ -46,19 +46,19 @@ const OBJ_EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 // heap before the ELF verifier can reject them.
 const MAX_SERVICE_ELF_SIZE: usize = 4 * 1024 * 1024;
 
-// The embedded bootstrap set. `CATTEN_{ARCH}_SERVICE_BUNDLE` points at the
+// The embedded bootstrap set. `KNYTOS_{ARCH}_SERVICE_BUNDLE` points at the
 // staged, signed bundle (the build pipeline signs every ELF in it).
 #[cfg(target_arch = "aarch64")]
 macro_rules! bootstrap_elf {
     ($name:literal, $file:literal) => {
-        ($name, include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/", $file, ".elf")))
+        ($name, include_bytes!(concat!(env!("KNYTOS_AARCH64_SERVICE_BUNDLE"), "/", $file, ".elf")))
     };
 }
 
 #[cfg(target_arch = "x86_64")]
 macro_rules! bootstrap_elf {
     ($name:literal, $file:literal) => {
-        ($name, include_bytes!(concat!(env!("CATTEN_X86_64_SERVICE_BUNDLE"), "/", $file, ".elf")))
+        ($name, include_bytes!(concat!(env!("KNYTOS_X86_64_SERVICE_BUNDLE"), "/", $file, ".elf")))
     };
 }
 

@@ -22,7 +22,7 @@ def events(text, category):
 
 
 def probe(log, status_port, deployment_port, budget=12, *, scope="leaf"):
-    directory = Path(os.environ["CATTEN_MANAGEMENT_VALIDITY_DIR"])
+    directory = Path(os.environ["KNYTOS_MANAGEMENT_VALIDITY_DIR"])
     if scope not in ("leaf", "issuer"):
         raise ProbeFailure("unknown validity scope")
     records = json.loads((directory / ("validity.json" if scope == "leaf" else "chain-validity.json")).read_text())
@@ -38,7 +38,7 @@ def probe(log, status_port, deployment_port, budget=12, *, scope="leaf"):
     ):
         exchange(healthy, port, request, expected_status, budget)
         for row in records:
-            policy = ssl.create_default_context(cafile=os.environ["CATTEN_MANAGEMENT_CA_FILE"])
+            policy = ssl.create_default_context(cafile=os.environ["KNYTOS_MANAGEMENT_CA_FILE"])
             policy.minimum_version = policy.maximum_version = ssl.TLSVersion.TLSv1_3
             policy.set_alpn_protocols(["http/1.1"])
             policy.load_cert_chain(directory / (row["name"] + ".pem"), directory / (row["name"] + ".key"))

@@ -69,7 +69,7 @@
       "instance": "ipc-pending-arm-final",
       "exit_status": 0,
       "guest_attempt": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19904 CATTEN_DEPLOY_HOST_PORT=20068 scripts/run-aarch64.sh --security-test --http-test --instance ipc-pending-arm-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19904 KNYTOS_DEPLOY_HOST_PORT=20068 scripts/run-aarch64.sh --security-test --http-test --instance ipc-pending-arm-final --fresh-storage --timeout 300",
       "kernel_sha256": "9c1002b7ce1b660c363fd946540c76e584bfc467046b19debaceff4d2e575f9a",
       "boot_image_sha256": "fbec4025101bafb2cc4d16e58727d115b407dc0062b439066577e6e1f68bbb7d",
       "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
@@ -199,7 +199,7 @@
       "instance": "ipc-pending-x86-final",
       "exit_status": 0,
       "guest_attempt": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19905 CATTEN_DEPLOY_HOST_PORT=20069 scripts/run-x86_64.sh --security-test --http-test --instance ipc-pending-x86-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19905 KNYTOS_DEPLOY_HOST_PORT=20069 scripts/run-x86_64.sh --security-test --http-test --instance ipc-pending-x86-final --fresh-storage --timeout 300",
       "kernel_sha256": "934f7d779e07bed0d74687470e6c55d779c83772965ba12a609f136a19036f17",
       "boot_image_sha256": "eeb22c7e6e36fbaf654b568c3ce0b602ef0f38d71257528f2be3074f2f0f8559",
       "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
@@ -343,13 +343,13 @@
       {
         "arch": "aarch64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "0cff6568a6a4cf8aa4f53ab8ded8f7940d164f3083e100b7b7c2167a42832795"
       },
       {
         "arch": "x86_64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "2381e094e71fcaaf70fbcc2715679471d9988d7e7189abd26749d56a8bc722a6"
       }
     ],
@@ -395,7 +395,7 @@
     "runs": [
       {
         "module": "CharlotteIpcPublication",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcPublication",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcPublication",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 7634722,
@@ -468,7 +468,7 @@
       },
       {
         "module": "CharlotteRootRetirement",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteRootRetirement",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteRootRetirement",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 2978,

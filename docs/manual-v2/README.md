@@ -16,8 +16,8 @@ Build the manual from this directory with shell escape enabled:
 
 ```sh
 cd docs/manual-v2
-pdflatex --shell-escape charlotte.tex
-pdflatex --shell-escape charlotte.tex
+pdflatex --shell-escape knytos.tex
+pdflatex --shell-escape knytos.tex
 ```
 
 The second pass resolves the table of contents and clickable cross-references.

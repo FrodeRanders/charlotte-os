@@ -324,7 +324,7 @@ mod inner {
 
     #[cfg(feature = "deploy_net_test")]
     fn fixture_descriptor(node: u64, sequence: u64) -> &'static [u8] {
-        let bundle = include_bytes!(env!("CATTEN_LOCAL_DEPLOYMENT_FIXTURE"));
+        let bundle = include_bytes!(env!("KNYTOS_LOCAL_DEPLOYMENT_FIXTURE"));
         let mut position = 0;
         while position < bundle.len() {
             let len = u32::from_le_bytes(

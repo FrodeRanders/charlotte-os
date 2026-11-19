@@ -70,7 +70,7 @@ inventory of compiler/cryptographic temporary copies.
   failed/pending. Boot-trust assertions and ordinary network/deployment startup
   passed; scoped probe checks were `0xffff` across publication generations 1/2,
   with cancellation traffic retired after 4,704 requests.
-- Direct `CATTEN_TRUST_MODE=production` kernel check: rejected with the expected
+- Direct `KNYTOS_TRUST_MODE=production` kernel check: rejected with the expected
   build-script diagnostic.
 - `cargo fmt --all -- --check`, `git diff --check` and local documentation-link
   checks: passed.

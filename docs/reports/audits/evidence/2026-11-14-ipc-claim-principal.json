@@ -57,15 +57,15 @@
       "result": "pass"
     },
     {
-      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests",
+      "command": "KNYTOS_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests",
       "result": "pass"
     },
     {
-      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi",
+      "command": "KNYTOS_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi",
       "result": "pass; compile only"
     },
     {
-      "command": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo check --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi",
+      "command": "KNYTOS_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo check --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi",
       "result": "pass; compile only"
     }
   ],

@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.dhcp-verifier-scope.v1",
+  "schema": "knytos.dhcp-verifier-scope.v1",
   "date": "2026-11-01",
   "base_revision": "ec2b9e418d56613960a1b48466e97227e194d407",
   "change": "Registered DHCP verification retains TCP/IP serving-stage, expected status magic and actual nonzero address checks. Remove its unrelated optional-management HTTP-listen wait; keep ingress assertions in their existing HTTP/startup observers.",
@@ -21,7 +21,7 @@
       "timeout_seconds": 300,
       "kernel_sha256": "4efd5dd1f894e69db2cf94ff8b5ba8c48e8b2da43e574f8088cbf2e1f383e1be",
       "prepared_utc": "2026-11-01T16:40:39Z",
-      "management_resource_input": "explicitly unset with env -u CATTEN_MANAGEMENT_TLS_RESOURCE",
+      "management_resource_input": "explicitly unset with env -u KNYTOS_MANAGEMENT_TLS_RESOURCE",
       "runner_exit_status": 0,
       "diagnostic_outcome": {
         "reason": "complete",
@@ -53,7 +53,7 @@
       "timeout_seconds": 300,
       "kernel_sha256": "3c12b9305dbd5cc934e03bb99a3f36f0aad1c33eed8e3019de8fa9cb812a856f",
       "prepared_utc": "2026-11-01T16:39:24Z",
-      "management_resource_input": "explicitly unset with env -u CATTEN_MANAGEMENT_TLS_RESOURCE",
+      "management_resource_input": "explicitly unset with env -u KNYTOS_MANAGEMENT_TLS_RESOURCE",
       "runner_exit_status": 0,
       "diagnostic_outcome": {
         "reason": "complete",

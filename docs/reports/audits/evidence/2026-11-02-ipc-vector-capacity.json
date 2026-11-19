@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc-vector-capacity.v1",
+  "schema": "knytos.ipc-vector-capacity.v1",
   "date": "2026-11-02",
   "base_revision": "4bc87817d48592c47c1d8160c86bc1de6c15b6b1",
   "scope": "Requested-byte admission for parsed descriptor entries, capability-ID buffers, PreparedTransfer staging and ReplyToken loan-origin vectors. Shared ByteAllocator mechanics retain captured classification and full allocation lifetime; complete local owners retain roots, authority and cleanup obligations. Descriptor byte snapshots and reply/cancellation revocation-work vectors remain separate work.",

@@ -85,7 +85,7 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_observer_destruction_controls": 4,
       "final_uart_sha256": "3abb6a377010c0520711f949dadb8c4eee5a661f2c53bdf015a4e8221ec235c8",
@@ -135,7 +135,7 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_observer_destruction_controls": 4,
       "final_uart_sha256": "0bed69c5035c50f6b8bc05c69bba489dbf3be7fac6acca7311d32498b6050de3",
@@ -185,8 +185,8 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_SKIP_KERNEL_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_KERNEL_BUILD": "1"
       },
       "final_observer_destruction_controls": 4,
       "final_uart_sha256": "db3d12df3a255c78ea11e4e13f2a27df345487f096b68becf4c03236a1c05d2d",
@@ -236,10 +236,10 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_DEPLOY_HOST_PORT": "19081",
-        "CATTEN_HTTP_HOST_PORT": "19080",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_DEPLOY_HOST_PORT": "19081",
+        "KNYTOS_HTTP_HOST_PORT": "19080",
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_observer_destruction_controls": 4,
       "final_uart_sha256": "c7149680b9b5dfb6ad25abdade751e32b4e5a325204108585200bd5943c7454b",
@@ -276,7 +276,7 @@
       ],
       "private_node_initializations_under_heap_and_queue": 64,
       "qemu_network_arguments": [
-        "user,id=charlotte-net,hostfwd=tcp::19081-:7444"
+        "user,id=knytos-net,hostfwd=tcp::19081-:7444"
       ],
       "runner_exit": 0,
       "scheduled_ipc_close_exit_episodes": 64,
@@ -295,10 +295,10 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_DEPLOY_HOST_PORT": "19181",
-        "CATTEN_HTTP_HOST_PORT": "19180",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_DEPLOY_HOST_PORT": "19181",
+        "KNYTOS_HTTP_HOST_PORT": "19180",
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_observer_destruction_controls": 4,
       "final_uart_sha256": "65add2707cc0b9e2ade839b637b4d79546f3c25fdf22c4e90f83052bdc763409",
@@ -433,8 +433,8 @@
     "format": "cargo fmt --all -- --check",
     "host": "scripts/run-host-tests.sh",
     "strict_clippy": {
-      "aarch64": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-      "x86_64": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+      "aarch64": "KNYTOS_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+      "x86_64": "KNYTOS_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings"
     },
     "whitespace": "git diff --check"
   }

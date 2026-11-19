@@ -369,7 +369,7 @@ security failure. No existing guest or store was stopped or reset.
 Successful guest command:
 
 ```sh
-CATTEN_HTTP_HOST_PORT=18185 CATTEN_DEPLOY_HOST_PORT=17485 \
+KNYTOS_HTTP_HOST_PORT=18185 KNYTOS_DEPLOY_HOST_PORT=17485 \
   scripts/run-aarch64.sh --security-test \
   --instance renewed-audit-20261005-approved --fresh-storage --timeout 100
 ```

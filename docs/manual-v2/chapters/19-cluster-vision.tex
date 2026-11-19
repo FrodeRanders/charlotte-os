@@ -718,7 +718,7 @@ need an operator view whose subject is the cluster. The implemented
 the Raft leader, term, commit index, and membership epoch with admitted and
 draining nodes, filtered capacity freshness, desired and ready replicas, and
 the advertiser and eligible backend set for each VIP. The schema is explicitly
-versioned as \texttt{charlotte.cluster.v2}.
+versioned as \texttt{knytos.cluster.v2}.
 
 DNS constructs the underlying, bounded \texttt{CLOBSV2} record from one
 locally applied catalog view. It serves the record only while the same
@@ -1385,7 +1385,7 @@ Artifact validation uses Ed25519 signatures embedded in the ELF. The private
 cluster key remains off-cluster in the
 \repodir|tools/cluster-sign| host tool. The signature is stored in a standard
 ELF \texttt{SHT\_NOTE} section named
-\path{.note.charlotte-sig}, with note type \texttt{"CLS2"}. Its descriptor
+\path{.note.knytos-sig}, with note type \texttt{"CLS2"}. Its descriptor
 contains the logical name, artifact class and flags, release, rollback
 counter, signing-key id, optional provenance digest, and the 64-byte
 signature.
@@ -1459,7 +1459,7 @@ atomic publication and disk erasure remain separate work.
 
 Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode
-(\texttt{CATTEN\_TRUST\_MODE}): protected bootstrap trust and recipient-key provisioning
+(\texttt{KNYTOS\_TRUST\_MODE}): protected bootstrap trust and recipient-key provisioning
 are not implemented. Independently generated role keys and protected boot
 remain prerequisites for production, so file-based signing alone does not
 establish those properties.

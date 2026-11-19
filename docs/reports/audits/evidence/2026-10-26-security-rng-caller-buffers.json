@@ -68,7 +68,7 @@
   "host": [
     {
       "mode": "debug",
-      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p knytos-transport-tests --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 374,
@@ -76,7 +76,7 @@
       "explicitly_ignored_documentation_examples": 2,
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_rt-7565f8c504a110ab)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/debug/deps/knytos_rt-7565f8c504a110ab)",
           "passed": 53,
           "failed": 0,
           "ignored": 0,
@@ -84,7 +84,7 @@
           "executable_sha256": "6b717ab9d72e6a3d6263f6472021447aa273247183d161dda57dceedb831c586"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/knytos_services-8baf3ad084f7a274)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/debug/deps/knytos_services-8baf3ad084f7a274)",
           "passed": 244,
           "failed": 0,
           "ignored": 0,
@@ -92,7 +92,7 @@
           "executable_sha256": "116d5b82441e7cc30b58d94930cf0d3881f94d4037158f73f9aef460bdb170da"
         },
         {
-          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/charlotte-os/target/debug/examples/reconnecting_client-aa9411a34c7830e7)",
+          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/knytos/target/debug/examples/reconnecting_client-aa9411a34c7830e7)",
           "passed": 3,
           "failed": 0,
           "ignored": 0,
@@ -100,7 +100,7 @@
           "executable_sha256": "0c134130a85802f0df7431396d0f164563fcca9a49c6ee5e945fbf805602f207"
         },
         {
-          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/kafka_profile_erasure-eb984ed6070dc5b0)",
+          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/kafka_profile_erasure-eb984ed6070dc5b0)",
           "passed": 7,
           "failed": 0,
           "ignored": 0,
@@ -108,7 +108,7 @@
           "executable_sha256": "82c2c190886a0126c871b2ba945fb513e04bfe2620a7284a1bf2246f314078d2"
         },
         {
-          "harness": "receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/receive_erasure-1a5870f1652a158e)",
+          "harness": "receive_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/receive_erasure-1a5870f1652a158e)",
           "passed": 9,
           "failed": 0,
           "ignored": 0,
@@ -116,7 +116,7 @@
           "executable_sha256": "06160f61714fcb83022ee024f027da9c7bd45fd17a788148913551d5f9c557ea"
         },
         {
-          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_canonical_erasure-b7d8ece69dd89729)",
+          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_canonical_erasure-b7d8ece69dd89729)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -124,7 +124,7 @@
           "executable_sha256": "976d4e5cc72af659a131c1d7ca2737c4ec01e3698a1cbd55280847624784b349"
         },
         {
-          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_metadata_erasure-3a16b50319ee253d)",
+          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_metadata_erasure-3a16b50319ee253d)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -132,7 +132,7 @@
           "executable_sha256": "573a3890bc23e2aaffceff44b1a68f4345712105aad4804d4be279ad9f4162fb"
         },
         {
-          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_path_erasure-b5c21f95fadacdb1)",
+          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_path_erasure-b5c21f95fadacdb1)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -140,7 +140,7 @@
           "executable_sha256": "dfdb4520955105c5a46ef9e95fe375348fb2d880fe609513f9ce77ed5dbbabfe"
         },
         {
-          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_profile_erasure-cc1e6af1a5ede12f)",
+          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_profile_erasure-cc1e6af1a5ede12f)",
           "passed": 7,
           "failed": 0,
           "ignored": 0,
@@ -148,7 +148,7 @@
           "executable_sha256": "40a548bec629061d2ea384dc4c581fa19a47a02471baa5a6d333a9c5d3a66dcb"
         },
         {
-          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_profile_wire_erasure-1c01906d06cb42fd)",
+          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_profile_wire_erasure-1c01906d06cb42fd)",
           "passed": 6,
           "failed": 0,
           "ignored": 0,
@@ -156,7 +156,7 @@
           "executable_sha256": "03dcdd6cc421ad44beace20d38afbcb4fd5b493ce02c769fb1e1a9eb2fdc7c59"
         },
         {
-          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_request_erasure-f8dc30e03ab0efe9)",
+          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_request_erasure-f8dc30e03ab0efe9)",
           "passed": 5,
           "failed": 0,
           "ignored": 0,
@@ -164,7 +164,7 @@
           "executable_sha256": "577e1b63869428909646182165139ecd56566284584a53949a1dcbdb0cb7a624"
         },
         {
-          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_response_erasure-307afd8d7f878956)",
+          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/s3_response_erasure-307afd8d7f878956)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -172,7 +172,7 @@
           "executable_sha256": "cc0e9e7f6265f305d84650257f795e7f9e36c9b628490e70054607d68f3b47cc"
         },
         {
-          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/scram_initial_erasure-1ef418169f87dff5)",
+          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/knytos/target/debug/deps/scram_initial_erasure-1ef418169f87dff5)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -195,7 +195,7 @@
     },
     {
       "mode": "release",
-      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p knytos-transport-tests --release --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 374,
@@ -203,7 +203,7 @@
       "explicitly_ignored_documentation_examples": 2,
       "harnesses": [
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_rt-f5e796761dc4e325)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/deps/knytos_rt-f5e796761dc4e325)",
           "passed": 53,
           "failed": 0,
           "ignored": 0,
@@ -211,7 +211,7 @@
           "executable_sha256": "9880a33c3c998bf02362c806f2d75abb7051d2c7965f20220f907d885ad4b9e6"
         },
         {
-          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/knytos_services-1557187fb8e52239)",
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/deps/knytos_services-1557187fb8e52239)",
           "passed": 244,
           "failed": 0,
           "ignored": 0,
@@ -219,7 +219,7 @@
           "executable_sha256": "5452e289d2700087d75692777a54ecc3aa78af948495f854d18ebfdc560ac16d"
         },
         {
-          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/charlotte-os/target/release/examples/reconnecting_client-029c9598e8d81890)",
+          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/knytos/target/release/examples/reconnecting_client-029c9598e8d81890)",
           "passed": 3,
           "failed": 0,
           "ignored": 0,
@@ -227,7 +227,7 @@
           "executable_sha256": "bff3a4986950429023b492d57a076da7cb7232d28d60eafcddb6fab9e49ba0d8"
         },
         {
-          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/kafka_profile_erasure-c1cf507805a43098)",
+          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/kafka_profile_erasure-c1cf507805a43098)",
           "passed": 7,
           "failed": 0,
           "ignored": 0,
@@ -235,7 +235,7 @@
           "executable_sha256": "63d2d891f64b449ce41f47f45979b0433e289d25ed61565ac061fc653aca8efb"
         },
         {
-          "harness": "receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/receive_erasure-d05892cb78fd2517)",
+          "harness": "receive_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/receive_erasure-d05892cb78fd2517)",
           "passed": 9,
           "failed": 0,
           "ignored": 0,
@@ -243,7 +243,7 @@
           "executable_sha256": "d3fa3be5643104c4af74f3b0e17c197b028c4488bc7ef899e5e1f6f65f3fe085"
         },
         {
-          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_canonical_erasure-868c4dd2c0873562)",
+          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_canonical_erasure-868c4dd2c0873562)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -251,7 +251,7 @@
           "executable_sha256": "9f8cf77b802187d2ac1ecbc4cffc84a28c891d72b7d93532b58f623142783711"
         },
         {
-          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_metadata_erasure-86c7c432ca3ec0e3)",
+          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_metadata_erasure-86c7c432ca3ec0e3)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -259,7 +259,7 @@
           "executable_sha256": "90aa118de1e899789f86060bd23db1a8e070f7607ad1eb2f1538694ee0c4bfc8"
         },
         {
-          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_path_erasure-8c5ede0cb246dcbf)",
+          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_path_erasure-8c5ede0cb246dcbf)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -267,7 +267,7 @@
           "executable_sha256": "f5a256b927ee235b2285bbcf5745c9a5902948aa7bfb7b2bdf6689e58f0a1ed6"
         },
         {
-          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_profile_erasure-5e9626c78e6aab62)",
+          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_profile_erasure-5e9626c78e6aab62)",
           "passed": 7,
           "failed": 0,
           "ignored": 0,
@@ -275,7 +275,7 @@
           "executable_sha256": "bc2526452beec89404145e3ec25508255f4d842581a1a7a1936e3e245cf84ed0"
         },
         {
-          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_profile_wire_erasure-aaf5ccc3a4a2a8cd)",
+          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_profile_wire_erasure-aaf5ccc3a4a2a8cd)",
           "passed": 6,
           "failed": 0,
           "ignored": 0,
@@ -283,7 +283,7 @@
           "executable_sha256": "d72ac02830f5e7aa89f58f7f25501cc154a1e75dd2fdc09381388032e5eac640"
         },
         {
-          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_request_erasure-e26aa75257da4e2b)",
+          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_request_erasure-e26aa75257da4e2b)",
           "passed": 5,
           "failed": 0,
           "ignored": 0,
@@ -291,7 +291,7 @@
           "executable_sha256": "885dbbfc5f43b4f03fb1f9d88e36712d0c7959a87c60a6f2f7d4cf43e4a6b8f8"
         },
         {
-          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_response_erasure-6e817382d028e3cd)",
+          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/s3_response_erasure-6e817382d028e3cd)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -299,7 +299,7 @@
           "executable_sha256": "41535bcdef08022d3722057fb8842a2522651147718277f13e529938fd4728ed"
         },
         {
-          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/scram_initial_erasure-0a8ae99bb299c830)",
+          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/knytos/target/release/deps/scram_initial_erasure-0a8ae99bb299c830)",
           "passed": 8,
           "failed": 0,
           "ignored": 0,
@@ -560,7 +560,7 @@
   "native": [
     {
       "instance": "rng-caller-s3-arm",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20150 CATTEN_DEPLOY_HOST_PORT=20250 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance rng-caller-s3-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20150 KNYTOS_DEPLOY_HOST_PORT=20250 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance rng-caller-s3-arm --fresh-storage --timeout 300",
       "exit_code": 1,
       "passed": false,
       "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
@@ -605,7 +605,7 @@
         "TimeoutError: timed out",
         "TimeoutError: timed out",
         "error: guest HTTP keyholes did not return both expected JSON views",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-0qmdb1a8"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-0qmdb1a8"
       ],
       "salient_guest_diagnostics": [
         "[+    19.353607] [s3-test] SUCCESS: verified 33-byte object round trip",
@@ -624,7 +624,7 @@
     },
     {
       "instance": "rng-caller-amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20151 CATTEN_DEPLOY_HOST_PORT=20251 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance rng-caller-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20151 KNYTOS_DEPLOY_HOST_PORT=20251 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance rng-caller-amd --fresh-storage --timeout 480",
       "exit_code": 1,
       "passed": false,
       "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
@@ -665,7 +665,7 @@
       ],
       "host_failure_diagnostics": [
         "TimeoutError: timed out",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-csv6my77"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-csv6my77"
       ],
       "salient_guest_diagnostics": [
         "panicked at crates/catten/src/self_test/el0_security.rs:116:9:",
@@ -683,7 +683,7 @@
     },
     {
       "instance": "rng-caller-kafka-arm",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20152 CATTEN_DEPLOY_HOST_PORT=20252 scripts/run-aarch64.sh --kafka-test --smp 4 --instance rng-caller-kafka-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20152 KNYTOS_DEPLOY_HOST_PORT=20252 scripts/run-aarch64.sh --kafka-test --smp 4 --instance rng-caller-kafka-arm --fresh-storage --timeout 300",
       "exit_code": 0,
       "passed": true,
       "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
@@ -732,7 +732,7 @@
     },
     {
       "instance": "rng-caller-s3-arm-final",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20154 CATTEN_DEPLOY_HOST_PORT=20254 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance rng-caller-s3-arm-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20154 KNYTOS_DEPLOY_HOST_PORT=20254 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance rng-caller-s3-arm-final --fresh-storage --timeout 300",
       "exit_code": 0,
       "passed": true,
       "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
@@ -807,7 +807,7 @@
     },
     {
       "instance": "rng-caller-amd-final",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20155 CATTEN_DEPLOY_HOST_PORT=20255 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance rng-caller-amd-final --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20155 KNYTOS_DEPLOY_HOST_PORT=20255 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance rng-caller-amd-final --fresh-storage --timeout 480",
       "exit_code": 0,
       "passed": true,
       "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
@@ -909,13 +909,13 @@
     "correction": "Assert same-domain loan rejection; retain caller memory and map safely afterward. Real read-only mapping/loan revocation uses the distinct signed RNG domain in the kernel pressure fixture. No production ownership rule, deadline or capacity weakened."
   },
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "d631cb6fb273a609ecb55d3ab4f24928ace60b0f25da887001b69b3c80085c50",
     "pages": 252,
     "overfull_warnings": 189,
     "undefined_references": false,
     "source_sha256": {
-      "docs/manual-v2/charlotte.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
+      "docs/manual-v2/knytos.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
       "docs/manual-v2/chapters/13-networking.tex": "3f449e4aa70157d8420ef5e5680e17d240955eb0e9f1698739ad29bad59db928",
       "docs/manual-v2/chapters/22-configuration.tex": "a98999dd89dcc0861337c2dbebeb0abf1c0660d3d8f136cf4d674e2c4eb425f8"
     },

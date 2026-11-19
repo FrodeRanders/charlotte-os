@@ -31,7 +31,7 @@ when the deployment exceeds the assumptions under which it is safe.
 
 ## Scope, evidence, and limitations
 
-- Repository: `charlotte-os`, branch `main`.
+- Repository: `knytos`, branch `main`.
 - Reviewed revision: `42183c57ce4c0b32a6010246f6eee1b6262ebb4e`.
 - Method: static source review, tracing calls across kernel, runtime, protocol,
   service, launch, and signing-tool boundaries; cross-checking architecture

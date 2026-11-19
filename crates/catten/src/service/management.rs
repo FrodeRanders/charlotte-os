@@ -8,7 +8,7 @@ pub(super) fn prepare(
 ) -> Result<Option<PreparedProfile>, knytos_launch::management::sealed::Error> {
     #[cfg(catten_management_resource)]
     {
-        let resource = include_bytes!(env!("CATTEN_MANAGEMENT_TLS_RESOURCE_FILE"));
+        let resource = include_bytes!(env!("KNYTOS_MANAGEMENT_TLS_RESOURCE_FILE"));
         trust.management_profile(resource).map(Some)
     }
     #[cfg(not(catten_management_resource))]

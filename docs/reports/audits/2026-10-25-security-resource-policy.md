@@ -4,7 +4,7 @@ Date: 2026-10-25. Reviewed baseline: `741098ef`.
 
 Kernel hardening capacity settings now come from one typed compile-time resource
 policy. Operators can edit central defaults or select an absolute-file profile
-with `CATTEN_RESOURCE_POLICY`; allocation and cleanup checks keep their existing
+with `KNYTOS_RESOURCE_POLICY`; allocation and cleanup checks keep their existing
 owners. Numerical defaults and original-charge lifetimes are preserved.
 
 The [tracked evidence](evidence/2026-10-25-security-resource-policy.json) records

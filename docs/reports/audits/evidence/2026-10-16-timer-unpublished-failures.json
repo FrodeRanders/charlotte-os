@@ -113,7 +113,7 @@
       },
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
       "instance": "timer-preparation-arm",
@@ -253,7 +253,7 @@
       },
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
       "instance": "timer-preparation-intel",

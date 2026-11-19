@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-security-evidence-v1",
+  "schema": "knytos-security-evidence-v1",
   "report_date": "2026-10-26",
   "reviewed_revision": "5eee8acf940c0790ccc10220b1ee82263e726edd",
   "scope": {
@@ -93,9 +93,9 @@
             "--quiet",
             "--release",
             "--target-dir",
-            "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
+            "/Users/froran/Projects/private/knytos/target/network-random-controls"
           ],
-          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/knytos/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
           "source": "const _: () = assert!(core::mem::needs_drop::<hmac::Hmac<sha2::Sha256>>(),\n    \"legacy HMAC lacks Drop\");\nfn main() {}\n",
           "exit_status": 101,
           "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -114,10 +114,10 @@
             "--quiet",
             "--release",
             "--target-dir",
-            "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
+            "/Users/froran/Projects/private/knytos/target/network-random-controls"
           ],
-          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
-          "source": "#[path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<knytos_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/knytos/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+          "source": "#[path=\"/Users/froran/Projects/private/knytos/crates/knytos-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<knytos_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
           "exit_status": 0,
           "stdout_sha256": "f0e5ab2dbd125c7f8e17f8bb1d3709d60c0ee5fbac66e1f8e447933ced86d304",
           "diagnostics": [],
@@ -368,7 +368,7 @@
       },
       "tracked_diff_sha256": "b647a2a637b218c9f6942875bf8de88052f6d8f5b7550d0647c94126a9cfda56",
       "backend": "smmuv3",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20015 CATTEN_DEPLOY_HOST_PORT=20179 scripts/run-aarch64.sh --security-test --http-test --instance network-hmac-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20015 KNYTOS_DEPLOY_HOST_PORT=20179 scripts/run-aarch64.sh --security-test --http-test --instance network-hmac-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -481,7 +481,7 @@
       },
       "tracked_diff_sha256": "17b0658382e559c76986c61fbb78145b72ac33c23a44b8c7309854e640c5deca",
       "backend": "intel",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20016 CATTEN_DEPLOY_HOST_PORT=20180 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance network-hmac-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20016 KNYTOS_DEPLOY_HOST_PORT=20180 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance network-hmac-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -594,7 +594,7 @@
       },
       "tracked_diff_sha256": "17b0658382e559c76986c61fbb78145b72ac33c23a44b8c7309854e640c5deca",
       "backend": "amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20017 CATTEN_DEPLOY_HOST_PORT=20181 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance network-hmac-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20017 KNYTOS_DEPLOY_HOST_PORT=20181 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance network-hmac-amd --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -661,7 +661,7 @@
   ],
   "unexpected_final_native_failures": [],
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "f4cafda152f0e3be158d6291a4e5779f6bab8d1e3087f3fb9fc8c43a7a58901d",
     "source_sha256": "27ed473ada9eb9e8544a01140d1114fd8671b88e76778f71e7189d92997fa223",
     "two_pass_build": "pass",

@@ -86,9 +86,9 @@ Three AArch64 broker boots completed after the changes:
 
 Preserved captures are in `/private/tmp` under:
 
-- `charlotte-nvme-investigation-first-boot-*`
-- `charlotte-nvme-investigation-persistent-boot-*`
-- `charlotte-nvme-investigation-final-diagnostics-*`
+- `knytos-nvme-investigation-first-boot-*`
+- `knytos-nvme-investigation-persistent-boot-*`
+- `knytos-nvme-investigation-final-diagnostics-*`
 
 The timeout did not reproduce. These runs show that persistent desired state
 and overlap with network/S3 startup do not deterministically cause the storage

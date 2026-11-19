@@ -345,7 +345,7 @@
       ],
       "runner_exit": 1,
       "classification": "TLS resource provided, but the host reader certificate/key variables were omitted. The probe raised KeyError before connecting; this is not a TLS or guest failure.",
-      "host_error": "KeyError: 'CATTEN_MANAGEMENT_READER_CERT_FILE'"
+      "host_error": "KeyError: 'KNYTOS_MANAGEMENT_READER_CERT_FILE'"
     },
     {
       "target": "x86_64-intel",
@@ -375,7 +375,7 @@
       ],
       "runner_exit": 1,
       "classification": "Same host reader-input omission as the separate ARM attempt; retain it independently.",
-      "host_error": "KeyError: 'CATTEN_MANAGEMENT_READER_CERT_FILE'"
+      "host_error": "KeyError: 'KNYTOS_MANAGEMENT_READER_CERT_FILE'"
     },
     {
       "target": "aarch64",

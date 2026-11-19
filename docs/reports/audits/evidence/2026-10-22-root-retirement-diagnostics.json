@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.root-retirement.pending-diagnostics.v1",
+  "schema": "knytos.root-retirement.pending-diagnostics.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "fc9b0f9a98e3f38662aa9247024d0527394a77c2",
   "classification": {
@@ -61,7 +61,7 @@
       "id": "initial_x86_control",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "root-pending-security-x86",
       "kernel_sha256": "503a33262b5791d37d15184cd4f35ab07b8b5242f1791e991ed9da46eb20813d",
@@ -96,7 +96,7 @@
         "assertion `left == right` failed",
         "  left: 1",
         " right: 0",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-7yf199ck"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-7yf199ck"
       ],
       "source_qualification": "Intermediate uncommitted diagnostic implementation expected pending.retirement_pins == 0 in the new unmapped-revocation control. Actual LoanRevocation owns one MappingRetirementPin; corrected expectation is 1. Did not reach live cancellation-stress case. Final source hashes do not identify this intermediate tree; exact binaries and relevant assertion/actual values identify the failed control."
     },
@@ -104,7 +104,7 @@
       "id": "initial_arm_control",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance root-pending-security-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance root-pending-security-arm --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "root-pending-security-arm",
       "kernel_sha256": "15700e985f102979dfb9f4a3e746660399296ab590254bdd236d565a166a0323",
@@ -139,7 +139,7 @@
         "assertion `left == right` failed",
         "  left: 1",
         " right: 0",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-qb4jvjgu"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-qb4jvjgu"
       ],
       "source_qualification": "Intermediate uncommitted diagnostic implementation expected pending.retirement_pins == 0 in the new unmapped-revocation control. Actual LoanRevocation owns one MappingRetirementPin; corrected expectation is 1. Did not reach live cancellation-stress case. Final source hashes do not identify this intermediate tree; exact binaries and relevant assertion/actual values identify the failed control."
     },
@@ -147,7 +147,7 @@
       "id": "first_x86_instrumented",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86-final --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "root-pending-security-x86-final",
       "kernel_sha256": "41437eafd96549a6b32b19614cf84fb7698d243fb1408d0e86d6aa1322ed263f",
@@ -190,7 +190,7 @@
       "id": "final_arm",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance root-pending-security-arm-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance root-pending-security-arm-final --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "root-pending-security-arm-final",
       "kernel_sha256": "3a14b960dd93c9992da59b7b7c76a26153a3576f23fb0a0afab6067a138efa63",
@@ -233,7 +233,7 @@
       "id": "final_x86_repeat",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19284 CATTEN_DEPLOY_HOST_PORT=19448 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86-repeat --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19284 KNYTOS_DEPLOY_HOST_PORT=19448 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86-repeat --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "root-pending-security-x86-repeat",
       "kernel_sha256": "70abeff8690476d255f27d9741148ef445e72fbb1c55eb8710ee818a2096fa24",
@@ -360,8 +360,8 @@
   "checks": {
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
-    "x86_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=<current signed bundle> CATTEN_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,security_test -- -D warnings",
-    "arm_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=<current signed bundle> CATTEN_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,security_test -- -D warnings",
+    "x86_clippy": "KNYTOS_X86_64_SERVICE_BUNDLE=<current signed bundle> KNYTOS_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi,security_test -- -D warnings",
+    "arm_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE=<current signed bundle> KNYTOS_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,security_test -- -D warnings",
     "clippy_capture_sha256": {
       "x86": "7ae9ef04e9307441e58f96971d0cb604af9f8fe1c2bc4ca9dff6a6df0efacb79",
       "arm": "cdfc22d448740e9e3ac0c6a3cfdcccf0a095c31c83ccd25b2c2a763882d34634"

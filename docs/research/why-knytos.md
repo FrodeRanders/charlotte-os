@@ -191,9 +191,9 @@ The name is therefore not an acronym or an attempt to compress an entire researc
 
 ### Project research and direct ancestry
 
-- [Knytos repository](https://github.com/FrodeRanders/charlotte-os) — source-code ancestry and current published research context.
-- [Related Operating-Systems Research](https://github.com/FrodeRanders/charlotte-os/blob/main/docs/research/related-systems.md) — detailed architectural comparisons and research questions.
-- [Cluster-native research lineages](https://github.com/FrodeRanders/charlotte-os/blob/main/docs/research/cluster-native-lineages.md) — mapping of cluster mechanisms to earlier research, with implementation status and unresolved questions.
+- [Knytos repository](https://github.com/FrodeRanders/knytos) — source-code ancestry and current published research context.
+- [Related Operating-Systems Research](https://github.com/FrodeRanders/knytos/blob/main/docs/research/related-systems.md) — detailed architectural comparisons and research questions.
+- [Cluster-native research lineages](https://github.com/FrodeRanders/knytos/blob/main/docs/research/cluster-native-lineages.md) — mapping of cluster mechanisms to earlier research, with implementation status and unresolved questions.
 
 ### Etymology
 

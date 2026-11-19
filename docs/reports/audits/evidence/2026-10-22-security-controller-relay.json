@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.controller-relay.v1",
+  "schema": "knytos.security.controller-relay.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "5ade750be3bbf256da99ea9bcad3256c7d2ae003",
   "classification": {
@@ -67,7 +67,7 @@
       "id": "x86_publication_failure",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-controller-server-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-controller-server-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-controller-server-security-x86",
       "kernel_sha256": "4c930aa92fd213905625c3d6be9ed895d89eb9eeabe07b573de374a016425a7d",
@@ -87,7 +87,7 @@
       "selected_diagnostics": [
         "panicked at crates/catten/src/self_test/el0_security.rs:110:9:",
         "assertion `left != right` failed: security probe failed check 8",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-eclr5qz2"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-eclr5qz2"
       ],
       "failure": {
         "reason": "kernel-panic",
@@ -119,7 +119,7 @@
       "id": "arm_loan_fixture_failure",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-controller-server-security-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-controller-server-security-arm --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-controller-server-security-arm",
       "kernel_sha256": "f73a6f713cc7b4530ef0fb57f7a14341ec5af0f5f42ec85a89b49a310e67a8c5",
@@ -139,7 +139,7 @@
       "selected_diagnostics": [
         "panicked at crates/catten/src/self_test/el0_security.rs:116:9:",
         "security probe exited before adversarial application grant checks",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-lzu79h6f"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-lzu79h6f"
       ],
       "failure": {
         "reason": "kernel-panic",
@@ -152,7 +152,7 @@
       "id": "x86_loan_fixture_failure",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-controller-server-security-x86-repeat --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-controller-server-security-x86-repeat --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-controller-server-security-x86-repeat",
       "kernel_sha256": "20c951dc6cae9aa1ffbe72ec6bf18e6358b256834a8ef276f92e6930a1f67a95",
@@ -172,7 +172,7 @@
       "selected_diagnostics": [
         "panicked at crates/catten/src/self_test/el0_security.rs:116:9:",
         "security probe exited before adversarial application grant checks",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-ema5h38e"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-ema5h38e"
       ],
       "failure": {
         "reason": "kernel-panic",
@@ -185,7 +185,7 @@
       "id": "arm_moved_intermediate",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-controller-server-security-arm-fixed --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-controller-server-security-arm-fixed --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-controller-server-security-arm-fixed",
       "kernel_sha256": "b084685fd618c5a01bfe4430ee2c633404333204852b81b34f974c6ff9fdc4a2",
@@ -215,7 +215,7 @@
       "id": "x86_moved_intermediate",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-controller-server-security-x86-fixed --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-controller-server-security-x86-fixed --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-controller-server-security-x86-fixed",
       "kernel_sha256": "61db2e73c8505e49210a100fb59602ee4b368d27904fb7a0e74e96b395283eb4",
@@ -245,7 +245,7 @@
       "id": "arm_final",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19382 CATTEN_DEPLOY_HOST_PORT=19546 scripts/run-aarch64.sh --security-test --http-test --instance sec06-controller-server-final-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19382 KNYTOS_DEPLOY_HOST_PORT=19546 scripts/run-aarch64.sh --security-test --http-test --instance sec06-controller-server-final-arm --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-controller-server-final-arm",
       "kernel_sha256": "26232adbf981e5c89de94b0fe4ddf5db090e02da50e39e960ccf0952b079e3fd",
@@ -293,7 +293,7 @@
       "id": "x86_final",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19383 CATTEN_DEPLOY_HOST_PORT=19547 scripts/run-x86_64.sh --security-test --http-test --instance sec06-controller-server-final-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19383 KNYTOS_DEPLOY_HOST_PORT=19547 scripts/run-x86_64.sh --security-test --http-test --instance sec06-controller-server-final-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-controller-server-final-x86",
       "kernel_sha256": "7a3ba5d72bdba1f0e41ec833b95b3b3b1d51449b54979e3f4154c07e562a5025",
@@ -341,7 +341,7 @@
       "id": "arm_release",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19482 CATTEN_DEPLOY_HOST_PORT=19646 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-controller-server-release --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19482 KNYTOS_DEPLOY_HOST_PORT=19646 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-controller-server-release --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-controller-server-release",
       "kernel_sha256": "e75b401147d0b7f11efd61066c30a208dad12b0c3c0c187cec3d4197376daf05",
@@ -621,7 +621,7 @@
     }
   },
   "host": {
-    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib",
+    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib",
     "passed": 223,
     "failed": 0,
     "new_relay_tests": 9,
@@ -651,7 +651,7 @@
     }
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe": 44,
     "expected_counterexamples": 127,

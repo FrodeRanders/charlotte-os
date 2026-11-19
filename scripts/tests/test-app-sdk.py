@@ -36,7 +36,7 @@ class SdkTests(unittest.TestCase):
             project = root / 'orders'
             sdk_cli.new_project(sdk, project, lock)
             self.assertEqual(tomllib.loads((project / 'rust-toolchain.toml').read_text())['toolchain']['channel'], channel)
-            config = json.loads((project / 'charlotte.json').read_text())
+            config = json.loads((project / 'knytos.json').read_text())
             self.assertEqual(config['grants'], [])
             self.assertEqual(config['sdk_fingerprint'], hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest())
             self.assertTrue((project / 'logic/src/lib.rs').is_file())

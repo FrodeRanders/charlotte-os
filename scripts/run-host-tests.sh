@@ -44,7 +44,7 @@ toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$repo_root/rust-toolchain.t
 host_cargo="$(rustup which --toolchain "$toolchain" cargo)"
 host_rustc="$(rustup which --toolchain "$toolchain" rustc)"
 host_rustdoc="$(rustup which --toolchain "$toolchain" rustdoc)"
-host_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-host-tests.XXXXXX")"
+host_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/knytos-host-tests.XXXXXX")"
 trap 'rmdir "$host_work_dir"' EXIT
 
 # Cargo discovers .cargo/config.toml from the invocation directory. Knytos'
@@ -105,7 +105,7 @@ EOF
 
 # Compile the actual observer handles, layout admission and policy. This host
 # mutex adapter supplies serialization; native campaigns qualify IRQ/guard use.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name observer_owner_tests - \
     -o "$repo_root/target/host-self-tests/observer-owner-tests" <<EOF
 #![feature(allocator_ext)]
@@ -144,7 +144,7 @@ EOF
 "$repo_root/target/host-self-tests/observer-owner-tests" --test-threads=1
 
 # Production ledger growth and retaining ownership, with real buffer-free tracing.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name iommu_ledger_tests - \
     -o "$repo_root/target/host-self-tests/iommu-ledger-tests" <<EOF
 #![feature(allocator_ext)]
@@ -183,7 +183,7 @@ EOF
 "$repo_root/target/host-self-tests/iommu-ledger-tests" --test-threads=1
 
 # Production object catalogs: original class, retained capacity and real free ordering.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name frame_vector_tests - \
     -o "$repo_root/target/host-self-tests/frame-vector-tests" <<EOF
 #![feature(allocator_ext)]
@@ -228,7 +228,7 @@ EOF
 python3 "$repo_root/scripts/tests/test-frame-tracking.py"
 
 # Production byte allocator: complete growth overlap, real deallocation and original class.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name byte_allocator_tests - \
     -o "$repo_root/target/host-self-tests/byte-allocator-tests" <<EOF
 #![feature(allocator_ext)]
@@ -263,7 +263,7 @@ EOF
 
 
 # Production fixed service-image cache: byte/count ownership and publication.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name service_image_cache_tests - \
     -o "$repo_root/target/host-self-tests/service-image-cache-tests" <<EOF
 #![feature(allocator_ext)]
@@ -298,7 +298,7 @@ EOF
 
 
 # Production queued attachment retirement capacity: real deallocation/refund order.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name attachment_storage_tests - \
     -o "$repo_root/target/host-self-tests/attachment-storage-tests" <<EOF
 #![feature(allocator_ext)]
@@ -369,7 +369,7 @@ EOF
 
 # Diagnostic capture uses the production compile-time resource policy too.
 # Compile both modules together rather than treating snapshot.rs as a crate root.
-CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+KNYTOS_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name snapshot_tests - \
     -o "$repo_root/target/host-self-tests/snapshot-tests" <<EOF
 #![allow(dead_code)]

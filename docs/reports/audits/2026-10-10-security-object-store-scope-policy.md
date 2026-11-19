@@ -81,18 +81,18 @@ validation.
 Guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu intel \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu intel \
   --instance sec12c-intel --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance sec12c-amd --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18859 CATTEN_DEPLOY_HOST_PORT=18159 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18859 KNYTOS_DEPLOY_HOST_PORT=18159 \
   scripts/run-aarch64.sh --live-upgrade-test \
   --instance sec12c-upgrade --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --relmsg-test --net-listen 12058 \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --relmsg-test --net-listen 12058 \
   --instance sec12c-relmsg-a --mac 52:54:00:12:34:01 --fresh-storage --timeout 120
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --relmsg-test --net-connect 127.0.0.1:12058 \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --relmsg-test --net-connect 127.0.0.1:12058 \
   --instance sec12c-relmsg-b --mac 52:54:00:12:34:02 --fresh-storage --timeout 120
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18860 CATTEN_DEPLOY_HOST_PORT=18160 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18860 KNYTOS_DEPLOY_HOST_PORT=18160 \
   scripts/run-aarch64.sh --security-test \
   --instance sec12c-sec --fresh-storage --timeout 180
 ```

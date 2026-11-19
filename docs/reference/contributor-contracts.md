@@ -275,7 +275,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Record batches and remaining candidates in `docs/reference/api-simplification.md`.
   Tooling uses file-only signing-key arguments and repeatable
   `--cluster-service [NAME=]VIP:PORT` assignments. Kernel builds consume only
-  `CATTEN_CLUSTER_SERVICES`; retired singleton variables reject explicitly.
+  `KNYTOS_CLUSTER_SERVICES`; retired singleton variables reject explicitly.
   See `docs/reference/tooling-inputs.md`.
   Preserve historical reports; hardware support and external protocol negotiation
   are not internal backward-compatibility obligations.

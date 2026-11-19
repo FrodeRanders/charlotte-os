@@ -109,11 +109,11 @@ injection.
 Commands for the final guest runs:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance ipc-backing-20261006 --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18500 \
-CATTEN_DEPLOY_HOST_PORT=17800 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18500 \
+KNYTOS_DEPLOY_HOST_PORT=17800 scripts/run-aarch64.sh --security-test \
   --instance ipc-backing-20261006 --fresh-storage --timeout 180
 ```
 

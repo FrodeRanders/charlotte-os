@@ -44,8 +44,8 @@
   "validation_commands": {
     "host": "bash scripts/run-host-tests.sh",
     "formatting": "cargo fmt --all -- --check",
-    "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings",
-    "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "aarch64_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json -- -D warnings",
+    "x86_64_clippy": "KNYTOS_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
     "whitespace": "git diff --check"
   },
   "runs": [
@@ -54,7 +54,7 @@
       "profile": "ARM / SMMUv3",
       "command": "./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance authority-arm",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings"
       },
       "runner_exit": 0,
@@ -165,7 +165,7 @@
       "profile": "Intel VT-d",
       "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --no-network --fresh-storage --timeout 180 --instance authority-intel",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings"
       },
       "runner_exit": 0,
@@ -276,9 +276,9 @@
       "profile": "AMD-Vi",
       "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu amd --no-network --fresh-storage --timeout 180 --instance authority-amd",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_KERNEL_BUILD": "1"
+        "KNYTOS_SKIP_KERNEL_BUILD": "1"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",
@@ -388,11 +388,11 @@
       "profile": "ARM / SMMUv3 security",
       "command": "./scripts/run-aarch64.sh debug --smp 4 --security-test --fresh-storage --timeout 180 --instance authority-arm-security",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_HTTP_HOST_PORT": "19080",
-        "CATTEN_DEPLOY_HOST_PORT": "19081"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_HTTP_HOST_PORT": "19080",
+        "KNYTOS_DEPLOY_HOST_PORT": "19081"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",
@@ -496,7 +496,7 @@
         "scripts/run-aarch64.sh": "63d759b017c3678fbf1f2aa0220a189602513193a1d765ef806e43c1f0202e12"
       },
       "qemu_network_arguments": [
-        "user,id=charlotte-net,hostfwd=tcp::19081-:7444"
+        "user,id=knytos-net,hostfwd=tcp::19081-:7444"
       ]
     },
     {
@@ -504,10 +504,10 @@
       "profile": "Intel VT-d security",
       "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance authority-intel-security",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_HTTP_HOST_PORT": "19180",
-        "CATTEN_DEPLOY_HOST_PORT": "19181"
+        "KNYTOS_HTTP_HOST_PORT": "19180",
+        "KNYTOS_DEPLOY_HOST_PORT": "19181"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",

@@ -11,7 +11,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib/signing-policy.sh"
-catten_require_development_trust
+knytos_require_development_trust
 cd "$ROOT"
 
 MODE="build"
@@ -31,7 +31,7 @@ done
 MANIFEST="crates/knytos-services/Cargo.toml"
 TARGET="crates/knytos-services/aarch64-unknown-none.json"
 OUTPUT="crates/knytos-services/target/aarch64-unknown-none/release"
-catten_service_bundle aarch64 "$BUNDLE_MODE" "$ROOT"
+knytos_service_bundle aarch64 "$BUNDLE_MODE" "$ROOT"
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
@@ -61,7 +61,7 @@ if [ "$MODE" = "embed" ]; then
     rm -rf -- "$BUNDLE"
     mv "$STAGING" "$BUNDLE"
     trap - EXIT
-    catten_validate_service_bundle "$BUNDLE_MODE" aarch64
+    knytos_validate_service_bundle "$BUNDLE_MODE" aarch64
     echo ">>> Staged and signed AArch64 EL0 service bundle at $BUNDLE."
 elif [ "$MODE" = "check" ]; then
     # Reproduce the signed bundle from the just-built binaries and compare it
@@ -73,7 +73,7 @@ elif [ "$MODE" = "check" ]; then
         install -m 0755 "$OUTPUT/$service" "$CHECK_BUNDLE/$service.elf"
     done
     "$ROOT/scripts/sign-service-elfs.sh" "$CHECK_BUNDLE" >/dev/null
-    catten_validate_service_bundle "$BUNDLE_MODE" aarch64
+    knytos_validate_service_bundle "$BUNDLE_MODE" aarch64
     stale=0
     for service in "${SERVICES[@]}"; do
         if [ ! -f "$BUNDLE/$service.elf" ]; then

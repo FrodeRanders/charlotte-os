@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-security-evidence-v1",
+  "schema": "knytos-security-evidence-v1",
   "report_date": "2026-10-26",
   "reviewed_revision": "316404a5381c5327da0a476d496e1f0ad246307f",
   "scope": {
@@ -35,7 +35,7 @@
     "strict_base_kernel_clippy": {
       "aarch64": "pass",
       "x86_64": "pass",
-      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+      "command": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings"
     },
     "frozen_final_source_restored_after_negative": "all seven Rust files byte-identical",
     "resource_policy_harness": {
@@ -137,7 +137,7 @@
       },
       "tracked_diff_sha256": "fb823c20d93c763cd532080e349fd5f8dd760f1874202a0e2133f0b7cbfeee2c",
       "mutation": "Restore uncharged Borrowers/BorrowerStorage/RetiredBorrower aliases and raw try_new factory only; all other final Rust and fixtures unchanged",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --no-network --instance borrower-admission-negative --fresh-storage --timeout 120",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --no-network --instance borrower-admission-negative --fresh-storage --timeout 120",
       "exit_status": 1,
       "result": {
         "reason": "kernel-panic",
@@ -218,7 +218,7 @@
       },
       "tracked_diff_sha256": "3c2d1258bbba996141d545a91926a7bb29eb18ee1800fdf4a3d857f8a5b5d01c",
       "backend": "smmuv3",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20012 CATTEN_DEPLOY_HOST_PORT=20176 scripts/run-aarch64.sh --security-test --http-test --instance borrower-admission-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20012 KNYTOS_DEPLOY_HOST_PORT=20176 scripts/run-aarch64.sh --security-test --http-test --instance borrower-admission-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -334,7 +334,7 @@
       },
       "tracked_diff_sha256": "3b790a8ae3d0547533675a8c6721d6b56f2a14e4d2355c3de6c281a41ed672c5",
       "backend": "intel",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20013 CATTEN_DEPLOY_HOST_PORT=20177 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance borrower-admission-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20013 KNYTOS_DEPLOY_HOST_PORT=20177 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance borrower-admission-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -454,7 +454,7 @@
       },
       "tracked_diff_sha256": "6f15e287d14875f814d1f4b06fcda4a9fe3b4af80f4abc3719629959975bb722",
       "backend": "amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20014 CATTEN_DEPLOY_HOST_PORT=20178 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance borrower-admission-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20014 KNYTOS_DEPLOY_HOST_PORT=20178 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance borrower-admission-amd --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -546,7 +546,7 @@
     "new_terminal_retention_fixture_allocations": 0
   },
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "062c77f1bce92eea34d3ee839a250ffeb5d4eb9bbcc24588b7e17be8a7d760c5",
     "source_sha256": {
       "docs/manual-v2/chapters/06-memory-objects.tex": "694192b8f0a300f10e10e24c02333910e8695ce365c51ee051d9fa983017ae0b",

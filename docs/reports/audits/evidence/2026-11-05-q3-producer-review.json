@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.q3-producer-review.v1",
+  "schema": "knytos.q3-producer-review.v1",
   "date": "2026-11-05",
   "base_revision": "240d14561bcc252af80d1ad86a232ba40f2ab3b8",
   "scope": "Manual family reconciliation of the 738 non-drop selected review records from current two-profile primary-crate MIR, plus named source/dependency/profile supplements. This is Q3 producer classification, not Q4 aggregate admission or Q5 destructor/caller qualification.",
@@ -636,8 +636,8 @@
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
     "crates/catten/Cargo.toml": "6c5803556b781f2aa0bd572aa0a38f532ff9bc790c45bf000bdee9077fe65876",
-    "target_specs/aarch64-unknown-none-catten.json": "8295350cd7123630e381fea157c2ee783c003033b2fb38f61335fab4323e3c69",
-    "target_specs/x86_64-unknown-none-catten.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
+    "target_specs/aarch64-unknown-none-knytos.json": "8295350cd7123630e381fea157c2ee783c003033b2fb38f61335fab4323e3c69",
+    "target_specs/x86_64-unknown-none-knytos.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
     "crates/knytos-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
     "crates/knytos-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
     "crates/knytos-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",

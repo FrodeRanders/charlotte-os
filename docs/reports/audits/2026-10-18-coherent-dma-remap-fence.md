@@ -57,7 +57,7 @@ Reproduction commands (the first run used the pre-fix gate):
 
 ```sh
 CARGO_BUILD_RUSTFLAGS='-D warnings' ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 120 --instance dma-remap-red
-CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings' ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance dma-remap-arm
+KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings' ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance dma-remap-arm
 CARGO_BUILD_RUSTFLAGS='-D warnings' ./scripts/run-x86_64.sh debug --iommu intel --smp 4 --no-network --fresh-storage --timeout 180 --instance dma-remap-intel
 ```
 

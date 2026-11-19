@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-refactoring-evidence-v1",
+  "schema": "knytos-refactoring-evidence-v1",
   "report_date": "2026-10-25",
   "reviewed_revision": "100965a0be313be3e283637c9268d07de7ead798",
   "scope": {
@@ -33,7 +33,7 @@
   },
   "checks": {
     "actual_lifecycle_crate": {
-      "command": "rustc --edition 2024 --test crates/knytos-lifecycle/src/lib.rs -D warnings -o /tmp/charlotte-refactor-lifecycle-tests; /tmp/charlotte-refactor-lifecycle-tests",
+      "command": "rustc --edition 2024 --test crates/knytos-lifecycle/src/lib.rs -D warnings -o /tmp/knytos-refactor-lifecycle-tests; /tmp/knytos-refactor-lifecycle-tests",
       "passed": 34,
       "failed": 0
     },
@@ -49,7 +49,7 @@
       "actual_admission_pool_exercised": true
     },
     "base_kernel_clippy": {
-      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "command": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
       "aarch64": "pass",
       "x86_64": "pass"
     },
@@ -98,7 +98,7 @@
       "diagnostic": "duplicate core::sized, conflicting alloc_error_handler, panic_unwind lacks unwind strategy"
     },
     {
-      "command": "AArch64 base-kernel Clippy without CATTEN_AARCH64_SERVICE_BUNDLE",
+      "command": "AArch64 base-kernel Clippy without KNYTOS_AARCH64_SERVICE_BUNDLE",
       "result": "compile failure before test execution",
       "diagnostic": "eight required bundle env! expansions rejected",
       "corrected_invocation": "pass"
@@ -157,7 +157,7 @@
         "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
       },
       "tracked_diff_sha256": "07b39adc3fdd72860df554fd708f3d38c416274b2d9973c4139e246fe34ce367",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19971 CATTEN_DEPLOY_HOST_PORT=20135 scripts/run-aarch64.sh --security-test --http-test --instance refactor-consolidation-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19971 KNYTOS_DEPLOY_HOST_PORT=20135 scripts/run-aarch64.sh --security-test --http-test --instance refactor-consolidation-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -233,7 +233,7 @@
         "virtio_blk.elf": "e1398a2fcbb24b244ca9b4e7f65f4f52cd2d4c01d73df5b2860137e2b15f5b74"
       },
       "tracked_diff_sha256": "07b39adc3fdd72860df554fd708f3d38c416274b2d9973c4139e246fe34ce367",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19972 CATTEN_DEPLOY_HOST_PORT=20136 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance refactor-consolidation-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19972 KNYTOS_DEPLOY_HOST_PORT=20136 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance refactor-consolidation-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"

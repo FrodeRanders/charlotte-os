@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-raft-membership-parity-evidence-v1",
+  "schema": "knytos-raft-membership-parity-evidence-v1",
   "reviewed_revision": "65eff0f6e4b81fbb67bb94cc6ddc589c530fff03",
   "tooling": {
     "release": "TLA+ Tools v1.7.4",
@@ -201,7 +201,7 @@
     "crates/knytos-graft/src/node.rs": "1e2722009c3416583bbc748a439dc74eaaee18981a0cdd314957af1ae22a7ea3",
     "crates/knytos-graft/src/membership.rs": "0157bd75f9051072d97dd99169e0a7c5f2d2376ce9432828077d467927f8b540",
     "crates/knytos-graft/src/transport.rs": "354b62c5d62ec429c2a9ee14ea241a62c360ad99b36c6c76e3f51868f226b99e",
-    "crates/knytos-graft/src/charlotte.rs": "e46e4e2a7aa41dc62143ad91bd4a9ffe9df6c855361296ffd6282e845d5b00f4",
+    "crates/knytos-graft/src/knytos.rs": "e46e4e2a7aa41dc62143ad91bd4a9ffe9df6c855361296ffd6282e845d5b00f4",
     "crates/knytos-services/src/relmsg_transport.rs": "771136f16d833b5449977de6837b354695f01652e6e26ec7c27a89e6119c6178"
   },
   "upstream_comparison": {
@@ -1559,7 +1559,7 @@
     {
       "instance": "rmfinal-a2",
       "command": "scripts/run-aarch64.sh debug --dns-test --instance rmfinal-a2 --mac 52:54:00:12:34:01 --fresh-storage --timeout 180 --net-listen 12443",
-      "environment": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBEDDED_SERVICE_BUILD=1; second runner also CATTEN_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
+      "environment": "KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_SKIP_EMBEDDED_SERVICE_BUILD=1; second runner also KNYTOS_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
       "exit_status": 0,
       "kernel_sha256": "8fefd47edfe60e750091daa051775f485fa8c6b416e5ecc8c646c47339b67962",
       "runner_log_sha256": "921314a35ae7f9813005cb239f3d13d96d3397307a8918cdc58668fb25f49591",
@@ -1573,7 +1573,7 @@
     {
       "instance": "rmfinal-b2",
       "command": "scripts/run-aarch64.sh debug --dns-test --instance rmfinal-b2 --mac 52:54:00:12:34:02 --fresh-storage --timeout 180 --net-connect 127.0.0.1:12443",
-      "environment": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBEDDED_SERVICE_BUILD=1; second runner also CATTEN_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
+      "environment": "KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_SKIP_EMBEDDED_SERVICE_BUILD=1; second runner also KNYTOS_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
       "exit_status": 0,
       "kernel_sha256": "8fefd47edfe60e750091daa051775f485fa8c6b416e5ecc8c646c47339b67962",
       "runner_log_sha256": "76623896d8e80f0cecaae68a39cf70ed6bf718e181fac07a85089c56fdacd907",

@@ -544,7 +544,7 @@ decisions. A richer semantic bundle could additionally bind the original process
 communication graph, replica policy, affinity rules, and update strategy. Connector profiles are infrastructure inputs,
 not application-visible release secrets; descriptors bind only the names and rights an application may request.
 Execution limits, replica count, every-node policy, and affinity/anti-affinity originate in the retained,
-developer-reviewed `charlotte/resources.yaml`. Durga derives the exact `CDEPLOY6` signing options and requests the CLS2
+developer-reviewed `knytos/resources.yaml`. Durga derives the exact `CDEPLOY6` signing options and requests the CLS2
 parallel-instance blessing when needed; Knytos enforces the execution limits and resolves the placement contract.
 
 ### 12. Bounded cooperative domain shutdown

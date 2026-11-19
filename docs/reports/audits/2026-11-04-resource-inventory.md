@@ -73,16 +73,16 @@ Using the pinned `nightly-2026-07-27` toolchain and existing signed service
 bundles, both production profiles completed the following MIR-only compilation:
 
 ```sh
-CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none" \
+CARGO_NET_OFFLINE=true KNYTOS_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none" \
   cargo rustc --locked -p catten \
-  --target target_specs/aarch64-unknown-none-catten.json \
+  --target target_specs/aarch64-unknown-none-knytos.json \
   --no-default-features --features acpi -- \
   -Zunpretty=mir -Zmir-include-spans=yes -Zdump-mir-exclude-alloc-bytes=yes \
   > target/resource-arm-production.mir
 
-CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE="$PWD/target/embedded-services/x86_64-unknown-none" \
+CARGO_NET_OFFLINE=true KNYTOS_X86_64_SERVICE_BUNDLE="$PWD/target/embedded-services/x86_64-unknown-none" \
   cargo rustc --locked -p catten \
-  --target target_specs/x86_64-unknown-none-catten.json \
+  --target target_specs/x86_64-unknown-none-knytos.json \
   --no-default-features --features acpi -- \
   -Zunpretty=mir -Zmir-include-spans=yes -Zdump-mir-exclude-alloc-bytes=yes \
   > target/resource-x86-production.mir

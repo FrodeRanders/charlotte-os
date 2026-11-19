@@ -150,7 +150,7 @@
     {
       "name": "host debug",
       "exit_code": 0,
-      "command": "cargo +nightly-2026-07-27 test --manifest-path /Users/froran/Projects/private/charlotte-os/target/crypto-migration/embassy-probe/Cargo.toml --target-dir /Users/froran/Projects/private/charlotte-os/target/crypto-migration/host-build --locked --offline",
+      "command": "cargo +nightly-2026-07-27 test --manifest-path /Users/froran/Projects/private/knytos/target/crypto-migration/embassy-probe/Cargo.toml --target-dir /Users/froran/Projects/private/knytos/target/crypto-migration/host-build --locked --offline",
       "cwd": "/private/tmp",
       "passed": 6,
       "failed": 0,
@@ -170,7 +170,7 @@
     {
       "name": "host release",
       "exit_code": 0,
-      "command": "cargo +nightly-2026-07-27 test --manifest-path /Users/froran/Projects/private/charlotte-os/target/crypto-migration/embassy-probe/Cargo.toml --target-dir /Users/froran/Projects/private/charlotte-os/target/crypto-migration/host-build --release --locked --offline",
+      "command": "cargo +nightly-2026-07-27 test --manifest-path /Users/froran/Projects/private/knytos/target/crypto-migration/embassy-probe/Cargo.toml --target-dir /Users/froran/Projects/private/knytos/target/crypto-migration/host-build --release --locked --offline",
       "cwd": "/private/tmp",
       "passed": 6,
       "failed": 0,

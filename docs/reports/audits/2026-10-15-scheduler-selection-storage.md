@@ -189,10 +189,10 @@ boot runners verify native assembly sections. All local links in the changed
 Markdown records are checked before completion.
 
 The no-network kernels are rebuilt; Intel and AMD use the same x86 payload,
-with AMD execution setting `CATTEN_SKIP_KERNEL_BUILD=1`. Security kernels are
+with AMD execution setting `KNYTOS_SKIP_KERNEL_BUILD=1`. Security kernels are
 rebuilt separately. Environment common to execution:
-`CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`.
-Security runs additionally use `CATTEN_ALLOW_SANDBOX_NETWORK=1`, with Arm host
+`KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`.
+Security runs additionally use `KNYTOS_ALLOW_SANDBOX_NETWORK=1`, with Arm host
 HTTP/deployment ports 18880/18881 and x86 18980/18981. All stores are fresh and
 instance-local; QEMU's private diagnostic sockets require permission beyond the
 filesystem sandbox. No service build or service Clippy result is claimed;

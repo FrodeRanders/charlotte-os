@@ -10,19 +10,19 @@ not merge the upstream kernel. Current rules and limits live in
 ## Source and resulting behavior
 
 - Address-map invariants derive from upstream
-  [`aec5f68d`](https://github.com/charlotte-os/charlotte-os/commit/aec5f68df26e5eeb932f6431a477260d354468fd).
+  [`aec5f68d`](https://github.com/knytos/knytos/commit/aec5f68df26e5eeb932f6431a477260d354468fd).
   Checked offset containment and raw exclusive ends correct the lower-region
   wrap and top-region overflow. Layout validation checks contiguous software
   regions. This fork retains its active arena bases and raw ARM TTBR1/HHDM
   addresses; 39/57-bit model controls do not add native paging-mode support.
 - Bus range/revisit rules derive from upstream
-  [`72cc1417`](https://github.com/charlotte-os/charlotte-os/commit/72cc1417b8ddf09013caab1d80dfc389ccfbdf18).
+  [`72cc1417`](https://github.com/knytos/knytos/commit/72cc1417b8ddf09013caab1d80dfc389ccfbdf18).
   A fixed 256-entry worklist replaces recursive topology construction. Flat
   bus ownership and borrowed endpoint iterators remove allocating lookup
   stacks and expose all eight multifunction positions. Endpoint Boxes remain
   stable for existing reset claims; lookup preserves depth-first sibling order.
 - MCFG validation is adapted from upstream
-  [`74def27c`](https://github.com/charlotte-os/charlotte-os/blob/74def27ce686a07aaec621f15ef786b546c54f20/crates/catten/src/environment/acpi/sdt/mcfg.rs).
+  [`74def27c`](https://github.com/knytos/knytos/blob/74def27ce686a07aaec621f15ef786b546c54f20/crates/catten/src/environment/acpi/sdt/mcfg.rs).
   All table/entry geometry, checksums, reserved fields, ranges and aliases are
   checked before mapping. Limits are 32 windows and independent global
   16,384 device/function quotas. Rejection stops mandatory boot. Private

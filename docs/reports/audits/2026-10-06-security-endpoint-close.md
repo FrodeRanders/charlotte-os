@@ -76,11 +76,11 @@ first sandbox ARM launch failed to bind its forwarding ports. The approved
 isolated rerun passed; no existing VM or storage was stopped or reset.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance endpoint-security-20261006 --fresh-storage --timeout 160
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18388 \
-CATTEN_DEPLOY_HOST_PORT=17688 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18388 \
+KNYTOS_DEPLOY_HOST_PORT=17688 scripts/run-aarch64.sh --security-test \
   --instance endpoint-security-20261006-approved --fresh-storage --timeout 150
 ```
 

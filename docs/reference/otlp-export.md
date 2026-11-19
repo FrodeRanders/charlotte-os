@@ -12,7 +12,7 @@ working networking and synchronized time, independently of the management HTTPS
 listener, its client enrollment, or the `--http-test` verifier.
 
 ```sh
-CATTEN_OTLP_ENDPOINT=http://192.0.2.20:4318/v1/metrics \
+KNYTOS_OTLP_ENDPOINT=http://192.0.2.20:4318/v1/metrics \
   scripts/run-aarch64.sh release --minimal
 ```
 
@@ -20,9 +20,9 @@ Both runners and direct kernel Cargo builds accept these inputs:
 
 | Build input | Selection |
 | --- | --- |
-| `CATTEN_OTLP_ENDPOINT` | Unset disables export. Explicit `http://IPv4[:port][/path]` enables it. Defaults: port `4318`, path `/v1/metrics`. |
-| `CATTEN_OTLP_INTERVAL_MS` | Default `30000`; range `1000..=86400000`. |
-| `CATTEN_OTLP_TIMEOUT_MS` | Default `3000`; range `100..=60000`, no greater than the interval. |
+| `KNYTOS_OTLP_ENDPOINT` | Unset disables export. Explicit `http://IPv4[:port][/path]` enables it. Defaults: port `4318`, path `/v1/metrics`. |
+| `KNYTOS_OTLP_INTERVAL_MS` | Default `30000`; range `1000..=86400000`. |
+| `KNYTOS_OTLP_TIMEOUT_MS` | Default `3000`; range `100..=60000`, no greater than the interval. |
 
 Intervals/timeouts without an endpoint reject. Empty/malformed endpoints,
 userinfo, query strings, fragments, multicast and invalid ports reject. Paths
@@ -44,16 +44,16 @@ roster before time and TCP/IP dependencies.
 The service uses [OTLP/HTTP protobuf](https://opentelemetry.io/docs/specs/otlp/):
 HTTP/1.1 POST, `application/x-protobuf`, and an
 `ExportMetricsServiceRequest`. No full OpenTelemetry SDK enters the kernel or
-runtime. Resource attributes are `service.name=charlotte-os` and the node MAC
+runtime. Resource attributes are `service.name=knytos` and the node MAC
 as `service.instance.id`; nodes require distinct MACs. The instrumentation
-scope is `charlotte.telemetry`.
+scope is `knytos.telemetry`.
 
 Each attempt exports the latest sample, not an upload of the entire history
 ring. The interval sets remote observation cadence independently of the
 one-second sampler. Gauges cover threads, domains, logical processors, free/usable/owned frames,
 live/peak heap bytes, reserved/touched stack pages and thread high water. CPU
 utilization divides the non-idle busy-counter delta by elapsed counter ticks
-and processor count. Custom `charlotte.*` names do not claim semantic-convention
+and processor count. Custom `knytos.*` names do not claim semantic-convention
 compatibility. Per-thread idle residency remains available for diagnostics;
 node pressure excludes scheduler-created idle threads, including retirement.
 This measures scheduler residency rather than cycle-accurate utilization;

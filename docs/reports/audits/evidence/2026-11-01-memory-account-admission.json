@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.memory-account-admission.v1",
+  "schema": "knytos.memory-account-admission.v1",
   "date": "2026-11-01",
   "base_revision": "aaa3ebd98fe8147cd5330d52d101639bdeec4ac2",
   "scope": "Generation-owned memory-account registry node, sharing existing root-metadata admission through partial preparation, root close and final outstanding object-charge release.",

@@ -153,7 +153,7 @@ at 14.032316 s, followed by PSCI power-off at 14.101898 s. Routine ingress
 EOF/reset/deadline probes recovered; no failed final guest run is hidden by these
 passes.
 
-Commands used `CATTEN_SKIP_EMBED_BUILD=1` after rebuilding both bundles:
+Commands used `KNYTOS_SKIP_EMBED_BUILD=1` after rebuilding both bundles:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance memory-close-arm-final
@@ -163,7 +163,7 @@ scripts/run-aarch64.sh --shutdown-ingress-test --fresh-storage --timeout 180 --i
 ```
 
 HTTP/deployment ports were 19294/18594, 19295/18595, 19296/18596 and
-19297/18597. AMD used `CATTEN_SKIP_KERNEL_BUILD=1` for the exact successfully
+19297/18597. AMD used `KNYTOS_SKIP_KERNEL_BUILD=1` for the exact successfully
 booted Intel binary. Immutable per-boot kernel hashes, captured before later
 profile builds, and unchanged bundle hashes were:
 

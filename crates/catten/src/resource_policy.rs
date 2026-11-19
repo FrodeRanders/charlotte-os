@@ -337,7 +337,7 @@ mod defaults;
 pub(crate) const DEFAULT: Policy = defaults::POLICY;
 // The selected file is trusted build source, never an application/manifest input.
 mod selected {
-    include!(env!("CATTEN_RESOURCE_POLICY_FILE"));
+    include!(env!("KNYTOS_RESOURCE_POLICY_FILE"));
 }
 pub(crate) const POLICY: Policy = selected::POLICY;
 const _: () = assert!(DEFAULT.validate().is_ok(), "invalid default resource policy");

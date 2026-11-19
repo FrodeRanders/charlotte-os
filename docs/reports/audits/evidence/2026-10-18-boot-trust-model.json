@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-boot-trust-model-evidence-v1",
+  "schema": "knytos-boot-trust-model-evidence-v1",
   "reviewed_revision": "95c66e4f4a437efdb2d6fd7a834f6d613d6c98e5",
   "tooling": {
     "release": "TLA+ Tools v1.7.4",

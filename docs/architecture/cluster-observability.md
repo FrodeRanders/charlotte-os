@@ -13,7 +13,7 @@ questions an operator asks of the cluster rather than of one machine:
   accept new flows.
 
 The first implementation is available at `GET /cluster` and
-`GET /cluster/metrics`. The JSON schema is named `charlotte.cluster.v2`.
+`GET /cluster/metrics`. The JSON schema is named `knytos.cluster.v2`.
 
 ## Authority and data path
 

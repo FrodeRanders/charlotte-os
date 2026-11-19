@@ -120,11 +120,11 @@ an injected rejected-IPI campaign.
 Final commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance namespace-security-20261006-kernel-peer --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18492 \
-CATTEN_DEPLOY_HOST_PORT=17792 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18492 \
+KNYTOS_DEPLOY_HOST_PORT=17792 scripts/run-aarch64.sh --security-test \
   --instance namespace-security-20261006-kernel-peer --fresh-storage --timeout 180
 ```
 

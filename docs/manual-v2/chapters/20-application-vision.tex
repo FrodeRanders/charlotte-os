@@ -18,11 +18,11 @@ requirements, communication structure, and cluster desired state. The tools and
 domain model absorb most platform-specific knowledge.
 
 The implementation already crosses both project boundaries. Durga's
-\texttt{charlotte} target emits a \texttt{no\_std} adapter, Cargo and AArch64
+\texttt{knytos} target emits a \texttt{no\_std} adapter, Cargo and AArch64
 build inputs, capability requests, named Kafka connector profiles, explicit
 stack and thread limits, signed replica and affinity policy, and deployment
 metadata for each BPMN component. A developer-owned
-\texttt{charlotte/resources.yaml} is created once, preserved across later
+\texttt{knytos/resources.yaml} is created once, preserved across later
 regeneration, and must be reviewed before deployment output becomes usable. The
 same reviewed values drive descriptor-signing options.
 
@@ -35,10 +35,10 @@ developer-owned completion points. A richer semantic bundle that binds the BPMN
 model, schemas, and provenance, together with a production release controller,
 remains the next boundary.
 
-\architecturewidefigure{durga-charlotte-generation}
+\architecturewidefigure{durga-knytos-generation}
     {Durga turns process intent into Knytos-native adapters, capability and
     connector requirements, signed release inputs, and cluster desired state.}
-    {fig:durga-charlotte-generation}
+    {fig:durga-knytos-generation}
 
 \section{The application thesis}
 
@@ -404,7 +404,7 @@ contain:
 Execution resources and replica intent deserve special treatment among those estimates. Only the application
 and generator authors know the component's worst-case call depth, generated
 adapter frames, stack-resident data, safe concurrency, and intended replication. Durga therefore
-creates a developer-owned \texttt{charlotte/resources.yaml}. It specifies the
+creates a developer-owned \texttt{knytos/resources.yaml}. It specifies the
 per-thread stack (\texttt{stackPagesPerThread}), active-thread quota
 (\texttt{maxThreads}) and shutdown grace (\texttt{shutdownGraceMillis}), together with replica count,
 every-eligible-node selection, spread, affinity, and anti-affinity. It creates that
@@ -901,7 +901,7 @@ message.
 
 \subsection{Generated output}
 
-The next \texttt{charlotte} increment should add:
+The next \texttt{knytos} increment should add:
 
 \begin{enumerate}
     \item stable request and response schema identities with serialization code;

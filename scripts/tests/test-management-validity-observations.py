@@ -26,7 +26,7 @@ class ValidityObservations(unittest.TestCase):
         self.rows = [{"name": category + "-" + role, "category": category, "role": role}
                      for category in validity.EVENTS for role in ("reader", "administrator")]
         (self.directory / "validity.json").write_text(json.dumps(self.rows))
-        self.patchers = [patch.dict(os.environ, CATTEN_MANAGEMENT_VALIDITY_DIR=str(self.directory), CATTEN_MANAGEMENT_CA_FILE="unused"),
+        self.patchers = [patch.dict(os.environ, KNYTOS_MANAGEMENT_VALIDITY_DIR=str(self.directory), KNYTOS_MANAGEMENT_CA_FILE="unused"),
                          patch.object(validity, "context", return_value=MagicMock()),
                          patch.object(validity.ssl, "create_default_context", return_value=MagicMock())]
         for patcher in self.patchers:

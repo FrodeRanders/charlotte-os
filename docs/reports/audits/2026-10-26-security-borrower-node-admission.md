@@ -58,7 +58,7 @@ The [Configuration guide](../../guides/configuration.md), [resource policy](../.
 [node-admission reference](../../reference/memory-capability-node-admission.md)
 and manual document the shared `memory_capability_nodes` limits and the
 three-node overlap requirement. Selection remains compile-time through
-`CATTEN_RESOURCE_POLICY`; no boot-resource parser or live resizing is added.
+`KNYTOS_RESOURCE_POLICY`; no boot-resource parser or live resizing is added.
 Raising unified capability counts alone does not raise this independent pool.
 
 ## Regression controls

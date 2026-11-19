@@ -76,7 +76,7 @@ error cases. Warning-denied Kafka Clippy and workspace formatting pass.
 Both AArch64 and x86 service bundles build and sign. AArch64 source/signature
 freshness passes. The actual AArch64 connector then runs against three Apache
 Kafka 4.1.1 brokers with verified TLS, required P-256 mTLS and SCRAM-SHA-256.
-The fixture uses its own Compose project, `charlotte-sec15-base64`. The host
+The fixture uses its own Compose project, `knytos-sec15-base64`. The host
 kills route leader `kafka2` during the required fault window. The guest completes
 **20 passed / zero failed / zero pending**, bitmap `0x503ffff`:
 

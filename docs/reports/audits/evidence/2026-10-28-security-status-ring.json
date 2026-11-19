@@ -171,9 +171,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "28443",
-        "CATTEN_DEPLOY_HOST_PORT": "28744"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "28443",
+        "KNYTOS_DEPLOY_HOST_PORT": "28744"
       }
     },
     {
@@ -252,9 +252,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "29443",
-        "CATTEN_DEPLOY_HOST_PORT": "29744"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "29443",
+        "KNYTOS_DEPLOY_HOST_PORT": "29744"
       }
     },
     {
@@ -325,9 +325,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "29443",
-        "CATTEN_DEPLOY_HOST_PORT": "29744"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "29443",
+        "KNYTOS_DEPLOY_HOST_PORT": "29744"
       }
     },
     {
@@ -380,9 +380,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "28443",
-        "CATTEN_DEPLOY_HOST_PORT": "28744"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "28443",
+        "KNYTOS_DEPLOY_HOST_PORT": "28744"
       }
     },
     {
@@ -462,9 +462,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "28444",
-        "CATTEN_DEPLOY_HOST_PORT": "28745"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "28444",
+        "KNYTOS_DEPLOY_HOST_PORT": "28745"
       }
     },
     {
@@ -517,9 +517,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "28445",
-        "CATTEN_DEPLOY_HOST_PORT": "28746"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "28445",
+        "KNYTOS_DEPLOY_HOST_PORT": "28746"
       }
     },
     {
@@ -588,9 +588,9 @@
         "--no-failure-capture"
       ],
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "28544",
-        "CATTEN_DEPLOY_HOST_PORT": "28844"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "28544",
+        "KNYTOS_DEPLOY_HOST_PORT": "28844"
       }
     }
   ],

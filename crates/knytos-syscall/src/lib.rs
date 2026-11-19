@@ -1,4 +1,4 @@
-//! Typed `no_std` wrappers for the Knytos (catten) syscall ABI.
+//! Typed `no_std` wrappers for the Knytos syscall ABI.
 //!
 //! Each function corresponds to exactly one `svc #N` instruction.
 //!

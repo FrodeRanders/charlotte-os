@@ -86,7 +86,7 @@
   "boot_results": [
     {
       "machine": "sbsa-ref",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --sbsa-ref --no-network --fresh-storage --timeout 240 --instance sbsa-limine1296-lpi",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --sbsa-ref --no-network --fresh-storage --timeout 240 --instance sbsa-limine1296-lpi",
       "result": "SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0",
       "serial_sha256": "a007ace062428e8e2c9cc1e098a25cd38efb42a27f766ff8aa70becd1c4dfb62",
       "kernel_sha256": "0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3",
@@ -96,7 +96,7 @@
     },
     {
       "machine": "virt",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_SKIP_KERNEL_BUILD=1 scripts/run-aarch64.sh --fresh-storage --timeout 180 --instance limine1296-virt-lpi",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_SKIP_KERNEL_BUILD=1 scripts/run-aarch64.sh --fresh-storage --timeout 180 --instance limine1296-virt-lpi",
       "result": "SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0",
       "serial_sha256": "6a5fc3a712be06daa334ed1f554b87314b5859e1bcb8815e517fd1c28560695a",
       "kernel_sha256": "0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3"

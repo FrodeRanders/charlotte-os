@@ -22,10 +22,10 @@ def configure_client():
     generator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generator)
     generator.prepare(directory, retain_server_key=True)
-    os.environ.update(CATTEN_MANAGEMENT_CA_FILE=str(directory / "ca.pem"),
-                      CATTEN_MANAGEMENT_CERT_FILE=str(directory / "administrator.pem"),
-                      CATTEN_MANAGEMENT_KEY_FILE=str(directory / "administrator.key"),
-                      CATTEN_MANAGEMENT_SERVER_NAME="127.0.0.1")
+    os.environ.update(KNYTOS_MANAGEMENT_CA_FILE=str(directory / "ca.pem"),
+                      KNYTOS_MANAGEMENT_CERT_FILE=str(directory / "administrator.pem"),
+                      KNYTOS_MANAGEMENT_KEY_FILE=str(directory / "administrator.key"),
+                      KNYTOS_MANAGEMENT_SERVER_NAME="127.0.0.1")
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_3
     context.maximum_version = ssl.TLSVersion.TLSv1_3

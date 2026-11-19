@@ -160,9 +160,9 @@ The five commands are:
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance exit-owner-intel-security
 ```
 
-All use `CATTEN_SKIP_EMBED_BUILD=1` and `CARGO_BUILD_RUSTFLAGS='-D warnings'`.
-AMD adds `CATTEN_SKIP_KERNEL_BUILD=1` after Intel completes; their no-network
-kernel ELF hashes match. Security adds `CATTEN_ALLOW_SANDBOX_NETWORK=1` and
+All use `KNYTOS_SKIP_EMBED_BUILD=1` and `CARGO_BUILD_RUSTFLAGS='-D warnings'`.
+AMD adds `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel completes; their no-network
+kernel ELF hashes match. Security adds `KNYTOS_ALLOW_SANDBOX_NETWORK=1` and
 HTTP/deployment ports 19080/19081 on ARM, 19180/19181 on Intel. All boot images
 use the existing 128 MiB default. Tooling and all staged service hashes/run
 inventories match the preceding baseline; no service or runtime library changed

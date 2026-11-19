@@ -49,9 +49,9 @@ extern "C" fn verify_el0_kafka() {
     use crate::cpu::scheduler::yield_lp;
 
     let ns = unsafe { KAFKA_NS.as_ref() }.expect("[kafka-test] name service missing");
-    let ca_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CA_DER"));
-    let client_certificate_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CLIENT_CERT_DER"));
-    let client_private_key_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CLIENT_KEY_DER"));
+    let ca_der = include_bytes!(env!("KNYTOS_KAFKA_TEST_CA_DER"));
+    let client_certificate_der = include_bytes!(env!("KNYTOS_KAFKA_TEST_CLIENT_CERT_DER"));
+    let client_private_key_der = include_bytes!(env!("KNYTOS_KAFKA_TEST_CLIENT_KEY_DER"));
     let service = crate::service::launch::launch_kafka_profile(
         ns,
         &KafkaProfile {

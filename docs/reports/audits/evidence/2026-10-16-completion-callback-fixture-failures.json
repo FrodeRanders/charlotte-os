@@ -119,7 +119,7 @@
       ],
       "manifest": {
         "arch": "aarch64",
-        "boot_image": "/Users/froran/Projects/private/charlotte-os/os-images/charlotte-aarch64-debug-callback-owner-arm.img",
+        "boot_image": "/Users/froran/Projects/private/knytos/os-images/knytos-aarch64-debug-callback-owner-arm.img",
         "boot_image_sha256": "119b545a252e8530f5a422d0ce290195ef0bbe96a21021b158615bc89b3ce0db",
         "bundle_sha256": {
           "agent.elf": "bd5318e9920dd8b736a7de8c2fa5345e92885525b7123c965136dc0e96e8666b",
@@ -170,11 +170,11 @@
           " M crates/catten/src/completion/callbacks/tests.rs",
           "?? crates/catten/src/completion/callbacks/preparation_tests.rs"
         ],
-        "disk": "/Users/froran/Projects/private/charlotte-os/os-images/nvme-disk-callback-owner-arm.img",
+        "disk": "/Users/froran/Projects/private/knytos/os-images/nvme-disk-callback-owner-arm.img",
         "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
         "instance": "callback-owner-arm",
         "kernel_sha256": "bf39bc9e325ad8bafe9914aff3f13953cadc30909aea16638f73ebde178beb96",
-        "kernel_source": "/Users/froran/Projects/private/charlotte-os/target/aarch64-unknown-none-catten/debug/catten",
+        "kernel_source": "/Users/froran/Projects/private/knytos/target/aarch64-unknown-none-knytos/debug/catten",
         "prepared_utc": "2026-10-16T16:00:45Z",
         "qemu_arguments": [
           "-M",
@@ -184,15 +184,15 @@
           "-bios",
           "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
           "-drive",
-          "file=./os-images/charlotte-aarch64-debug-callback-owner-arm.img,format=raw,if=none,id=boot0",
+          "file=./os-images/knytos-aarch64-debug-callback-owner-arm.img,format=raw,if=none,id=boot0",
           "-device",
           "virtio-blk-pci,drive=boot0,addr=3",
           "-cpu",
           "cortex-a710",
           "-object",
-          "rng-random,filename=/dev/urandom,id=charlotte-rng",
+          "rng-random,filename=/dev/urandom,id=knytos-rng",
           "-device",
-          "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+          "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
           "-smp",
           "4",
           "-drive",
@@ -208,12 +208,12 @@
           "-gdb",
           "unix:/tmp/ctdiag-fc_468zz/gdb.sock,server=on,wait=off",
           "-serial",
-          "file:/tmp/charlotte-callback-owner-arm-serial.log"
+          "file:/tmp/knytos-callback-owner-arm-serial.log"
         ],
         "qemu_pid": 18623,
         "revision": "448c7f4c0d80e80ff608b8f9070dbdbeabc7c2d9",
-        "schema": "charlotte.boot-diagnostics.v1",
-        "serial_log": "/private/tmp/charlotte-callback-owner-arm-serial.log",
+        "schema": "knytos.boot-diagnostics.v1",
+        "serial_log": "/private/tmp/knytos-callback-owner-arm-serial.log",
         "timeout_seconds": 180,
         "tooling_sha256": {
           "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
@@ -312,7 +312,7 @@
       ],
       "manifest": {
         "arch": "x86_64",
-        "boot_image": "/Users/froran/Projects/private/charlotte-os/os-images/charlotte-x86_64-debug-callback-owner-intel.img",
+        "boot_image": "/Users/froran/Projects/private/knytos/os-images/knytos-x86_64-debug-callback-owner-intel.img",
         "boot_image_sha256": "7e082056a3062e7a29bf3beb79340c480b2b43af23f3a35961fd95c0e26eed82",
         "bundle_sha256": {
           "agent.elf": "0c19e40e207015e3f816b13dd3620a9951fbbc40b0fb9f4030177661107af8c8",
@@ -359,11 +359,11 @@
           " M crates/catten/src/completion/callbacks/tests.rs",
           "?? crates/catten/src/completion/callbacks/preparation_tests.rs"
         ],
-        "disk": "/Users/froran/Projects/private/charlotte-os/os-images/x86-data-callback-owner-intel.img",
+        "disk": "/Users/froran/Projects/private/knytos/os-images/x86-data-callback-owner-intel.img",
         "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
         "instance": "callback-owner-intel",
         "kernel_sha256": "5ee0c59903410ce66be61d68cbcaf6eff6ccc71c7355e607e9f7dc82b622943d",
-        "kernel_source": "/Users/froran/Projects/private/charlotte-os/target/x86_64-unknown-none-catten/debug/catten",
+        "kernel_source": "/Users/froran/Projects/private/knytos/target/x86_64-unknown-none-knytos/debug/catten",
         "prepared_utc": "2026-10-16T16:01:35Z",
         "qemu_arguments": [
           "-M",
@@ -377,7 +377,7 @@
           "-drive",
           "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
           "-drive",
-          "if=none,file=./os-images/charlotte-x86_64-debug-callback-owner-intel.img,format=raw,id=esp,readonly=on",
+          "if=none,file=./os-images/knytos-x86_64-debug-callback-owner-intel.img,format=raw,id=esp,readonly=on",
           "-device",
           "qemu-xhci,id=xhci",
           "-device",
@@ -398,12 +398,12 @@
           "-gdb",
           "unix:/tmp/ctdiag-r3x8_ox4/gdb.sock,server=on,wait=off",
           "-serial",
-          "file:/tmp/charlotte-x86-callback-owner-intel-serial.log"
+          "file:/tmp/knytos-x86-callback-owner-intel-serial.log"
         ],
         "qemu_pid": 18994,
         "revision": "448c7f4c0d80e80ff608b8f9070dbdbeabc7c2d9",
-        "schema": "charlotte.boot-diagnostics.v1",
-        "serial_log": "/private/tmp/charlotte-x86-callback-owner-intel-serial.log",
+        "schema": "knytos.boot-diagnostics.v1",
+        "serial_log": "/private/tmp/knytos-x86-callback-owner-intel-serial.log",
         "timeout_seconds": 180,
         "tooling_sha256": {
           "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",

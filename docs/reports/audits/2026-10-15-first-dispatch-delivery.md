@@ -74,7 +74,7 @@ verified during the preceding batches. The current Sitas pin is `d27f7e7`.
 No service source/signature, test deadline or cleanup policy changes here.
 The security runs use `scripts/run-aarch64.sh` / `scripts/run-x86_64.sh debug
 --smp 4 --security-test --fresh-storage --timeout 180`, with
-`CATTEN_SKIP_EMBED_BUILD=1`, `CATTEN_ALLOW_SANDBOX_NETWORK=1` and
+`KNYTOS_SKIP_EMBED_BUILD=1`, `KNYTOS_ALLOW_SANDBOX_NETWORK=1` and
 `CARGO_BUILD_RUSTFLAGS='-D warnings'`. The negative control instead uses ARM's
 ordinary feature set and a 120-second runner window; its new pre-entry assertion
 is independent of the scoped security fixture.

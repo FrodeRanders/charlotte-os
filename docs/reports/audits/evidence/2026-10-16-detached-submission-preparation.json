@@ -152,7 +152,7 @@
       "timeout_seconds": 180
     }
   ],
-  "schema": "charlotte.audit.detached-submission-preparation.v1",
+  "schema": "knytos.audit.detached-submission-preparation.v1",
   "source_limit": "Runtime Rust and native probes were frozen before the matrix. Reviewed per-file hashes cover changed Rust, not a full-tree manifest.",
   "unchanged_service_bundles_sha256": {
     "aarch64": {

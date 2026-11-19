@@ -13,7 +13,7 @@ TRACKER = ROOT / "crates/catten/src/memory/frame_tracking.rs"
 
 def main():
     channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
-    env = dict(os.environ, CATTEN_RESOURCE_POLICY_FILE=str(ROOT / "crates/catten/src/resource_policy/defaults.rs"))
+    env = dict(os.environ, KNYTOS_RESOURCE_POLICY_FILE=str(ROOT / "crates/catten/src/resource_policy/defaults.rs"))
     source = (ROOT / "scripts/tests/fixtures/frame-tracking.rs").read_text()
     paths = dict(SDK="crates/knytos-syscall/src/lib.rs", RESOURCES="crates/knytos-lifecycle/src/resources.rs",
                  POLICY="crates/catten/src/resource_policy.rs", ADMISSION="crates/catten/src/klib/admission.rs")

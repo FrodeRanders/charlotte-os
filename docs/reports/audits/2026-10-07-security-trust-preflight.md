@@ -56,7 +56,7 @@ the previously unlisted October 7 remediation batches.
   directories and FIFOs.
 - Host Clippy for `knytos-launch` and `cluster-sign`, all targets,
   `--locked`, `-D warnings`: passed.
-- Direct `CATTEN_TRUST_MODE=production` kernel check: rejected by the expected
+- Direct `KNYTOS_TRUST_MODE=production` kernel check: rejected by the expected
   build-script trust gate, confirmed by its specific diagnostic. The new
   candidate API does not bypass production refusal.
 - Bundled AArch64 services: `scripts/build-knytos-services.sh --embed`: passed.

@@ -19,7 +19,7 @@ names=(
     release-admission-rollout
     operational-profile-pickup
     role-separated-deployment-trust
-    durga-charlotte-generation
+    durga-knytos-generation
     cooperative-deployment-shutdown
     cluster-management-dsr
     handoff-protocol
@@ -36,7 +36,7 @@ command -v inkscape >/dev/null 2>&1 || {
 }
 
 mkdir -p "$output_dir" "$inkscape_dir"
-render_tmp="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-mermaid.XXXXXX")"
+render_tmp="$(mktemp -d "${TMPDIR:-/tmp}/knytos-mermaid.XXXXXX")"
 trap 'rm -rf -- "$render_tmp"' EXIT
 
 for index in "${!names[@]}"; do

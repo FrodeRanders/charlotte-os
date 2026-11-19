@@ -121,11 +121,11 @@ and runners enforced assembly section permissions. The Arm runner required local
 forwarding-port permission.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance root-registry-intel-final-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance root-registry-amd-final-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18523 CATTEN_DEPLOY_HOST_PORT=17823 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18523 KNYTOS_DEPLOY_HOST_PORT=17823 \
 scripts/run-aarch64.sh --security-test \
   --instance root-registry-arm-final-20261008 --fresh-storage --timeout 180
 ```

@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-security-evidence-v1",
+  "schema": "knytos-security-evidence-v1",
   "report_date": "2026-10-25",
   "reviewed_revision": "30e4aeb7f82c346ae965a4fc5999122d0f63233c",
   "scope": {
@@ -46,7 +46,7 @@
   },
   "checks": {
     "strict_base_kernel_clippy": {
-      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "command": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
       "aarch64": "pass",
       "x86_64": "pass"
     },
@@ -175,7 +175,7 @@
       },
       "tracked_diff_sha256": "95c43bee90f318ba4070bc6e044a12c56c6466d849314e3e915f996a30c336d6",
       "backend": "smmuv3",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20003 CATTEN_DEPLOY_HOST_PORT=20167 scripts/run-aarch64.sh --security-test --http-test --instance memcap-admission-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20003 KNYTOS_DEPLOY_HOST_PORT=20167 scripts/run-aarch64.sh --security-test --http-test --instance memcap-admission-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -287,7 +287,7 @@
       },
       "tracked_diff_sha256": "c8ca27bf8a2d4b05c72789f37e866cbf653339bf5d201f00cbe2848809c38229",
       "backend": "intel",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20004 CATTEN_DEPLOY_HOST_PORT=20168 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance memcap-admission-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20004 KNYTOS_DEPLOY_HOST_PORT=20168 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance memcap-admission-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -399,7 +399,7 @@
       },
       "tracked_diff_sha256": "0c81c3ce531672f6b4d6b3e8b106790af14656347db2e9b2b716a9c78fcd5148",
       "backend": "amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20005 CATTEN_DEPLOY_HOST_PORT=20169 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance memcap-admission-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20005 KNYTOS_DEPLOY_HOST_PORT=20169 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance memcap-admission-amd --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -465,9 +465,9 @@
   ],
   "native_failures": [],
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "0acc127f4bb3c1dd9176cd2ecdac8e49b3d188b4f180a2f8ff7b24e4abce9164",
-    "command": "pdflatex -interaction=nonstopmode -halt-on-error --shell-escape charlotte.tex",
+    "command": "pdflatex -interaction=nonstopmode -halt-on-error --shell-escape knytos.tex",
     "final_two_passes": "pass",
     "overfull_box_warnings_in_final_build": 190,
     "undefined_references_in_final_build": false,

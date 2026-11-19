@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.memory-object-node-admission.v1",
+  "schema": "knytos.memory-object-node-admission.v1",
   "date": "2026-11-02",
   "base_revision": "6fd9575759df9b7f73cab3ef2e8deffd933cbd55",
   "scope": "Memory-object registry records use the existing memory_capability_nodes byte/count admission, alongside capability/namespace/read-borrower metadata. Original backing-sponsor class follows private, published and detached nodes through physical completion and actual node deallocation. Numerical limits, the 22-pool inventory, statistics/register ABI and physical completion rules are unchanged.",

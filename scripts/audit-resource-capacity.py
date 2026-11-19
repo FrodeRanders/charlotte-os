@@ -58,7 +58,7 @@ def sha(path):
 
 def capture(policy, usable_mib):
     channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
-    env = dict(os.environ, CATTEN_RESOURCE_POLICY_FILE=str(policy))
+    env = dict(os.environ, KNYTOS_RESOURCE_POLICY_FILE=str(policy))
     with tempfile.TemporaryDirectory(prefix="knytos-capacity-") as temporary:
         directory = Path(temporary)
         library = directory / "libknytos_syscall.rlib"

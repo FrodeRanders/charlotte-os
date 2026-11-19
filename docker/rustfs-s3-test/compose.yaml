@@ -1,26 +1,26 @@
-name: charlotte-rustfs-test
+name: knytos-rustfs-test
 
 services:
   rustfs:
-    image: ${CATTEN_RUSTFS_IMAGE:-rustfs/rustfs:latest}
+    image: ${KNYTOS_RUSTFS_IMAGE:-rustfs/rustfs:latest}
     ports:
       # Keep localhost-only binding for QEMU fixtures. A bridged VMware guest
-      # can reach the host directly when CATTEN_RUSTFS_BIND_ADDRESS is set to
+      # can reach the host directly when KNYTOS_RUSTFS_BIND_ADDRESS is set to
       # the host's LAN address (or 0.0.0.0 for a deliberately broad fixture).
-      - "${CATTEN_RUSTFS_BIND_ADDRESS:-127.0.0.1}:${CATTEN_RUSTFS_PORT:-19000}:9000"
+      - "${KNYTOS_RUSTFS_BIND_ADDRESS:-127.0.0.1}:${KNYTOS_RUSTFS_PORT:-19000}:9000"
     environment:
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_VOLUMES: /data
       RUSTFS_CONSOLE_ENABLE: "false"
       RUSTFS_REGION: us-east-1
-      RUSTFS_ACCESS_KEY: charlotte-test-access
-      RUSTFS_SECRET_KEY: charlotte-test-secret-2026
+      RUSTFS_ACCESS_KEY: knytos-test-access
+      RUSTFS_SECRET_KEY: knytos-test-secret-2026
       RUSTFS_TLS_PATH: /opt/tls
       RUSTFS_HEALTHCHECK_HOST: rustfs.test
       RUSTFS_HEALTHCHECK_CA: /opt/tls/ca.crt
     volumes:
       - rustfs-data:/data
-      - ${CATTEN_RUSTFS_CERT_DIR:?set CATTEN_RUSTFS_CERT_DIR}:/opt/tls:ro
+      - ${KNYTOS_RUSTFS_CERT_DIR:?set KNYTOS_RUSTFS_CERT_DIR}:/opt/tls:ro
     networks:
       default:
         aliases:
@@ -40,7 +40,7 @@ services:
       start_period: 10s
 
   init:
-    image: ${CATTEN_RUSTFS_CLI_IMAGE:-rustfs/rc:latest}
+    image: ${KNYTOS_RUSTFS_CLI_IMAGE:-rustfs/rc:latest}
     depends_on:
       rustfs:
         condition: service_healthy
@@ -50,13 +50,13 @@ services:
     environment:
       SSL_CERT_FILE: /opt/test-ca/ca.crt
     volumes:
-      - ${CATTEN_RUSTFS_CERT_DIR:?set CATTEN_RUSTFS_CERT_DIR}:/opt/test-ca:ro
+      - ${KNYTOS_RUSTFS_CERT_DIR:?set KNYTOS_RUSTFS_CERT_DIR}:/opt/test-ca:ro
     command:
       - >-
         rc alias set local https://rustfs.test:9000
-        charlotte-test-access charlotte-test-secret-2026
-        && (rc bucket create local/charlotte-test
-        || rc bucket stat local/charlotte-test)
+        knytos-test-access knytos-test-secret-2026
+        && (rc bucket create local/knytos-test
+        || rc bucket stat local/knytos-test)
     networks:
       - default
 

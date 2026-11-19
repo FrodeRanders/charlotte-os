@@ -230,7 +230,7 @@ pub mod ns {
     pub const AUDIT_MAGIC: u32 = 0x3141_5541;
 }
 
-/// Echo-service protocol (`charlotte-protocol-echo` v1).
+/// Echo-service protocol (`knytos-protocol-echo` v1).
 pub mod echo {
     /// Interface id: "ECHO".
     pub const INTERFACE: u64 = super::name(b"ECHO");
@@ -254,7 +254,7 @@ pub mod echo {
     pub const OP_HANDOFF: u32 = 3;
 }
 
-/// Console-driver protocol (`charlotte-protocol-console` v1).
+/// Console-driver protocol (`knytos-protocol-console` v1).
 ///
 /// The reference userspace UART driver serves this interface. It is the
 /// control/data plane a client uses to reach a device the driver owns
@@ -512,7 +512,7 @@ pub fn stage_name_owned(name: &[u8]) -> Option<knytos_rt::owned::OwnedMemory> {
     mapping.unmap().ok()
 }
 
-/// Raft consensus protocol (`charlotte-protocol-raft` v1).
+/// Raft consensus protocol (`knytos-protocol-raft` v1).
 ///
 /// The opcodes are deliberately aligned with the `graft` crate's message
 /// types so that the wire-level encoding stays identical across the
@@ -683,7 +683,7 @@ pub mod block {
     pub const ERR_DEVICE_GONE: i64 = 4;
 }
 
-/// Socket protocol (`charlotte-protocol-socket` v1).
+/// Socket protocol (`knytos-protocol-socket` v1).
 ///
 /// The TCP/IP service exposes this interface. A client looks up "tcpip"
 /// from the name service and calls socket operations on the returned
@@ -1394,7 +1394,7 @@ pub mod fs {
     pub const ERR_DIR_NOT_EMPTY: i64 = 6;
 }
 
-/// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v3).
+/// Reliable Message Layer protocol (`knytos-protocol-relmsg` v3).
 ///
 /// Exposes sequenced, acknowledged, retransmitted message delivery.
 /// Clients send messages addressed to peer service names; the RML
@@ -1892,7 +1892,7 @@ pub mod dns {
 /// Protocol of the cluster-deployment demo artifact: a tiny service that the
 /// per-node deploy agent hosts under whatever name the cluster manifest
 /// assigns it. The artifact is a note-signed ELF in the object store
-/// (`.note.charlotte-sig`); `OP_GET` returns its leading eight bytes as the
+/// (`.note.knytos-sig`); `OP_GET` returns its leading eight bytes as the
 /// scalar result, proving that the calling node reached the exact artifact
 /// the cluster assigned and the serving node verified.
 pub mod deploy {
@@ -1933,7 +1933,7 @@ pub mod clusterctl {
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
-    /// artifact is a note-signed ELF (`.note.charlotte-sig`) produced
+    /// artifact is a note-signed ELF (`.note.knytos-sig`) produced
     /// off-cluster with `tools/cluster-sign elf-sign` and the cluster's
     /// private key. The service stores it as-is at the artifact's derived
     /// id; nodes validate the signature against the cluster public key at

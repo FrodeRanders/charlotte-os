@@ -124,15 +124,15 @@ scripts/run-host-tests.sh
 scripts/build-knytos-services.sh --embed
 scripts/build-knytos-services-x86_64.sh
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18974 CATTEN_DEPLOY_HOST_PORT=18274 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18974 KNYTOS_DEPLOY_HOST_PORT=18274 \
   scripts/run-aarch64.sh --security-test --instance security-followup-complete-20261010 \
   --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18974 CATTEN_DEPLOY_HOST_PORT=18274 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18974 KNYTOS_DEPLOY_HOST_PORT=18274 \
   scripts/run-aarch64.sh --security-test --instance security-followup-complete-20261010 \
   --reuse-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance security-followup-amd-complete-20261010 --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_SKIP_KERNEL_BUILD=1 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_SKIP_KERNEL_BUILD=1 \
   scripts/run-x86_64.sh --no-network --iommu intel \
   --instance security-followup-intel-complete-20261010 --fresh-storage --timeout 150
 ```

@@ -4,7 +4,7 @@
 # with the cluster's private key (the version-controlled development key by
 # default, or the file at $CLUSTER_SIGN_KEY_FILE). Called by the build scripts after
 # staging so that every image the kernel embeds — and therefore every image
-# the EL0 loader accepts — carries a valid .note.charlotte-sig signature.
+# the EL0 loader accepts — carries a valid .note.knytos-sig signature.
 #
 # Usage: scripts/sign-service-elfs.sh <bundle-dir> [service-name ...]
 #
@@ -15,14 +15,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib/signing-policy.sh"
-catten_require_development_trust
+knytos_require_development_trust
 SIGN_TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT/rust-toolchain.toml")"
 BUNDLE="${1:?usage: sign-service-elfs.sh <bundle-dir> [service-name ...]}"
 shift
 BUNDLE="$(cd "$BUNDLE" && pwd)"
 POLICY="$ROOT/crates/knytos-services/artifact-policy.tsv"
 
-KEY_FILE="$(catten_signing_key_file "$ROOT")"
+KEY_FILE="$(knytos_signing_key_file "$ROOT")"
 echo ">>> DEVELOPMENT signing: fixture-root images are not suitable for production."
 
 ELFS=()

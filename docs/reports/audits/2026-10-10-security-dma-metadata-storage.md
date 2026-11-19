@@ -125,9 +125,9 @@ Fresh-storage guests run sequentially, reusing validated embedded service bundle
 because only kernel code changed:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance dma-metadata-intel-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance dma-metadata-amd-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18769 CATTEN_DEPLOY_HOST_PORT=18069 scripts/run-aarch64.sh --security-test --instance dma-metadata-arm-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance dma-metadata-intel-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance dma-metadata-amd-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18769 KNYTOS_DEPLOY_HOST_PORT=18069 scripts/run-aarch64.sh --security-test --instance dma-metadata-arm-20261010 --fresh-storage --timeout 180
 ```
 
 Final x86 passed bitmap is `0x1bbff`. Arm is `0x2003ffff`, with scoped security checks `0xffff` at publication

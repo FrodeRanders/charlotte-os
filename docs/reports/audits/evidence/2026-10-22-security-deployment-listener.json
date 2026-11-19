@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.deployment-listener.v1",
+  "schema": "knytos.security.deployment-listener.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "48ba5f3438327398b89df3fd25bf66d8e78de26a",
   "classification": {
@@ -57,7 +57,7 @@
       "id": "arm_http",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --http-test --instance sec06-listener-http-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --http-test --instance sec06-listener-http-arm --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-listener-http-arm",
       "kernel_sha256": "37224915601eba8b2c0308b77db06fc69d1c4804d58ff4f0bb9072ce82bbe45f",
@@ -102,7 +102,7 @@
       "id": "x86_http",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --http-test --instance sec06-listener-http-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --http-test --instance sec06-listener-http-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-listener-http-x86",
       "kernel_sha256": "92292592bfb3f0382c73f62674b8e3c0119cbba96b9472497498c736deebfba1",
@@ -147,7 +147,7 @@
       "id": "arm_security",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-listener-security-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-listener-security-arm --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-listener-security-arm",
       "kernel_sha256": "6dc25aafdf0825de61620d8092fce5d6db486ac0407b8c484760ef8df8f2d709",
@@ -177,7 +177,7 @@
       "id": "x86_security",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-listener-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-listener-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-listener-security-x86",
       "kernel_sha256": "4e61dc8a2581fa212dd80fd8f621040b4bedc7ebfefd01941e7ad38c5afb503c",
@@ -289,7 +289,7 @@
     }
   },
   "host_tests": {
-    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib",
+    "command": "cd /private/tmp && cargo test --offline --locked --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib",
     "passed": 214,
     "failed": 0,
     "new_listener_tests": 10,
@@ -337,7 +337,7 @@
     }
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe": 43,
     "expected_counterexamples": 123,

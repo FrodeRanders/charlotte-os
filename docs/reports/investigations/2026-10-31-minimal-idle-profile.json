@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.idle-profile.v1",
+  "schema": "knytos.idle-profile.v1",
   "date": "2026-10-31",
   "base_revision": "9c84aab6",
   "platform": {

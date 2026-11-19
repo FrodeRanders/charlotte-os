@@ -39,9 +39,9 @@
     "control_source": "use knytos_protocol_kafka as wire;\nuse zeroize::Zeroizing;\nmod support;\nuse support::observe;\nfn fixture() -> wire::Profile<'static> {\n    wire::Profile {\n        instance_name: b\"ZZZZZZZZ-instance\",\n        authority_endpoints: vec![wire::AuthorityEndpoint {\n            service_name: b\"kafka/ZZZZZZZZ\",\n            rights: wire::ALL_RIGHTS,\n        }],\n        endpoint_ipv4: [192, 0, 2, 1],\n        host: b\"kafka-1.test\",\n        port: 9093,\n        broker_endpoints: vec![wire::BrokerEndpoint {\n            endpoint_ipv4: [192, 0, 2, 2],\n            host: b\"kafka-2.test\",\n            port: 9094,\n        }],\n        tls: true,\n        ca_certificate_der: b\"ZZZZZZZZ-ca\",\n        topic: b\"ZZZZZZZZ-events\",\n        partition: 0,\n        produce_routes: vec![wire::ProduceRoute {\n            topic: b\"ZZZZZZZZ-output\",\n            partition: 1,\n        }],\n        max_produce_routes: 1,\n        group: b\"ZZZZZZZZ-group\",\n        transactional_id: b\"ZZZZZZZZ-transaction\",\n        authentication: wire::Authentication::ScramSha256AndMtlsP256 {\n            username: b\"ZZZZZZZZ-user\",\n            password: b\"ZZZZZZZZ-password\",\n            certificate_der: b\"ZZZZZZZZ-certificate\",\n            private_key_der: b\"ZZZZZZZZ-private-key\",\n        },\n        rights: wire::ALL_RIGHTS,\n        transaction_timeout_ms: 30_000,\n    }\n}\n\nfn auth_offset(profile: &wire::Profile<'_>) -> usize {\n    wire::PROFILE_HEADER_LEN\n        + profile.instance_name.len()\n        + profile.host.len()\n        + profile.ca_certificate_der.len()\n        + profile.topic.len()\n        + profile.group.len()\n        + profile.transactional_id.len()\n}\n\nfn credential_offsets(profile:&wire::Profile<'_>)->(usize,usize){\n let wire::Authentication::ScramSha256AndMtlsP256{username,password,certificate_der,..}=profile.authentication else{unreachable!()};\n let password_offset=auth_offset(profile)+username.len();(password_offset,password_offset+password.len()+certificate_der.len())\n}\n#[test]\nfn encoded_password_release(){\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).0,||drop(p.encode().unwrap()));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n}\n#[test]\nfn encoded_private_key_release(){\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).1,||drop(p.encode().unwrap()));\n assert!(observed.copy_erased,\"private key retained: {observed:?}\");\n}\n#[test]\nfn abandoned_password_release(){\n fn rejected(p:&wire::Profile<'_>)->Option<()>{let _encoded=p.encode().ok()?;None}\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).0,||assert!(rejected(&p).is_none()));\n assert!(observed.copy_erased,\"abandoned password retained: {observed:?}\");\n}\n#[test]\nfn existing_kernel_wrapper_erases(){\n let p=fixture();for offset in [credential_offsets(&p).0,credential_offsets(&p).1]{\n let observed=observe(0,0,offset,||drop(Zeroizing::new(p.encode().unwrap())));\n assert!(observed.copy_erased,\"wrapped credentials retained: {observed:?}\");\n assert_eq!(observed.allocations,1);assert_eq!(observed.growths,0);assert_eq!(observed.copy_releases,1);}\n}\n#[test]\nfn debug_includes_both_credential_fields(){\n let p=fixture();let wire::Authentication::ScramSha256AndMtlsP256{password,private_key_der,..}=p.authentication else{unreachable!()};\n for rendered in [format!(\"{:?}\",p),format!(\"{:?}\",p.authentication)]{\n assert!(rendered.contains(&format!(\"password: {:?}\",password)));\n assert!(rendered.contains(&format!(\"private_key_der: {:?}\",private_key_der)));}\n}\n",
     "control_sha256": "26aa288900be24dc2aadf6c94d072c89c7011fb1a26dbe80b59a6713e28e0fcc",
     "observer_sha256": "744cafafdae8cbc4883483fc24e12e5188038d90afa1f57af24dbf2adb518e0d",
-    "manifest": "[package]\nname=\"knytos-protocol-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n",
+    "manifest": "[package]\nname=\"knytos-protocol-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/knytos/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n",
     "lockfile_sha256": "439822e30687d9722617c77f5937efaa7ec854b6e61196bc92a229fe57e78032",
-    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/charlotte-os');b=Path('/private/tmp/charlotte-sec15-kafka-profile-baseline');(b/'src').mkdir(parents=True,exist_ok=True);(b/'examples').mkdir(exist_ok=True)\n(b/'src/lib.rs').write_bytes(subprocess.check_output(['git','show','2c728b5:crates/knytos-protocol-kafka/src/lib.rs'],cwd=r))\n(b/'Cargo.toml').write_text('''[package]\nname=\"knytos-protocol-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n''')\ns=(r/'tests/transport/kafka_profile_erasure.rs').read_text();a=s.index('fn fixture()');z=s.index('\\n#[test]',a);fixture=s[a:z]\n(b/'support.rs').write_bytes((r/'tests/transport/support.rs').read_bytes())\n(b/'release.rs').write_text('''use knytos_protocol_kafka as wire;\nuse zeroize::Zeroizing;\nmod support;\nuse support::observe;\n'''+fixture+'''\nfn credential_offsets(profile:&wire::Profile<'_>)->(usize,usize){\n let wire::Authentication::ScramSha256AndMtlsP256{username,password,certificate_der,..}=profile.authentication else{unreachable!()};\n let password_offset=auth_offset(profile)+username.len();(password_offset,password_offset+password.len()+certificate_der.len())\n}\n#[test]\nfn encoded_password_release(){\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).0,||drop(p.encode().unwrap()));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n}\n#[test]\nfn encoded_private_key_release(){\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).1,||drop(p.encode().unwrap()));\n assert!(observed.copy_erased,\"private key retained: {observed:?}\");\n}\n#[test]\nfn abandoned_password_release(){\n fn rejected(p:&wire::Profile<'_>)->Option<()>{let _encoded=p.encode().ok()?;None}\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).0,||assert!(rejected(&p).is_none()));\n assert!(observed.copy_erased,\"abandoned password retained: {observed:?}\");\n}\n#[test]\nfn existing_kernel_wrapper_erases(){\n let p=fixture();for offset in [credential_offsets(&p).0,credential_offsets(&p).1]{\n let observed=observe(0,0,offset,||drop(Zeroizing::new(p.encode().unwrap())));\n assert!(observed.copy_erased,\"wrapped credentials retained: {observed:?}\");\n assert_eq!(observed.allocations,1);assert_eq!(observed.growths,0);assert_eq!(observed.copy_releases,1);}\n}\n#[test]\nfn debug_includes_both_credential_fields(){\n let p=fixture();let wire::Authentication::ScramSha256AndMtlsP256{password,private_key_der,..}=p.authentication else{unreachable!()};\n for rendered in [format!(\"{:?}\",p),format!(\"{:?}\",p.authentication)]{\n assert!(rendered.contains(&format!(\"password: {:?}\",password)));\n assert!(rendered.contains(&format!(\"private_key_der: {:?}\",private_key_der)));}\n}\n''')\n(b/'fixture.bin').write_bytes((r/'tests/transport/fixtures/kafka-profile-v7.bin').read_bytes())\n(b/'parity.rs').write_text('use knytos_protocol_kafka as wire;\\n'+fixture+'\\n#[test]\\nfn fixed_wire(){assert_eq!(fixture().encode().unwrap().as_slice(),include_bytes!(\"fixture.bin\"));}\\n')\nfor type_name,short in [('Profile','profile'),('Authentication','authentication')]:\n main=f\"fn requires_debug<T: core::fmt::Debug>() {{}}\\nfn main(){{requires_debug::<knytos_protocol_kafka::{type_name}<'static>>();}}\\n\"\n (b/f'examples/{short}_debug.rs').write_text(main)\n c=Path('/private/tmp/charlotte-sec15-kafka-profile-'+short+'-control');(c/'src').mkdir(parents=True,exist_ok=True);(c/'src/main.rs').write_text(main);(c/'Cargo.toml').write_text(f'''[package]\nname=\"kafka-{short}-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-kafka={{path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-protocol-kafka\"}}\nzeroize={{version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}}\n''')\nprint('Exact baseline protocol sources and pinned controls prepared')\n",
+    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/knytos');b=Path('/private/tmp/knytos-sec15-kafka-profile-baseline');(b/'src').mkdir(parents=True,exist_ok=True);(b/'examples').mkdir(exist_ok=True)\n(b/'src/lib.rs').write_bytes(subprocess.check_output(['git','show','2c728b5:crates/knytos-protocol-kafka/src/lib.rs'],cwd=r))\n(b/'Cargo.toml').write_text('''[package]\nname=\"knytos-protocol-kafka\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-launch={path=\"/Users/froran/Projects/private/knytos/crates/knytos-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n''')\ns=(r/'tests/transport/kafka_profile_erasure.rs').read_text();a=s.index('fn fixture()');z=s.index('\\n#[test]',a);fixture=s[a:z]\n(b/'support.rs').write_bytes((r/'tests/transport/support.rs').read_bytes())\n(b/'release.rs').write_text('''use knytos_protocol_kafka as wire;\nuse zeroize::Zeroizing;\nmod support;\nuse support::observe;\n'''+fixture+'''\nfn credential_offsets(profile:&wire::Profile<'_>)->(usize,usize){\n let wire::Authentication::ScramSha256AndMtlsP256{username,password,certificate_der,..}=profile.authentication else{unreachable!()};\n let password_offset=auth_offset(profile)+username.len();(password_offset,password_offset+password.len()+certificate_der.len())\n}\n#[test]\nfn encoded_password_release(){\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).0,||drop(p.encode().unwrap()));\n assert!(observed.copy_erased,\"password retained: {observed:?}\");\n}\n#[test]\nfn encoded_private_key_release(){\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).1,||drop(p.encode().unwrap()));\n assert!(observed.copy_erased,\"private key retained: {observed:?}\");\n}\n#[test]\nfn abandoned_password_release(){\n fn rejected(p:&wire::Profile<'_>)->Option<()>{let _encoded=p.encode().ok()?;None}\n let p=fixture();let observed=observe(0,0,credential_offsets(&p).0,||assert!(rejected(&p).is_none()));\n assert!(observed.copy_erased,\"abandoned password retained: {observed:?}\");\n}\n#[test]\nfn existing_kernel_wrapper_erases(){\n let p=fixture();for offset in [credential_offsets(&p).0,credential_offsets(&p).1]{\n let observed=observe(0,0,offset,||drop(Zeroizing::new(p.encode().unwrap())));\n assert!(observed.copy_erased,\"wrapped credentials retained: {observed:?}\");\n assert_eq!(observed.allocations,1);assert_eq!(observed.growths,0);assert_eq!(observed.copy_releases,1);}\n}\n#[test]\nfn debug_includes_both_credential_fields(){\n let p=fixture();let wire::Authentication::ScramSha256AndMtlsP256{password,private_key_der,..}=p.authentication else{unreachable!()};\n for rendered in [format!(\"{:?}\",p),format!(\"{:?}\",p.authentication)]{\n assert!(rendered.contains(&format!(\"password: {:?}\",password)));\n assert!(rendered.contains(&format!(\"private_key_der: {:?}\",private_key_der)));}\n}\n''')\n(b/'fixture.bin').write_bytes((r/'tests/transport/fixtures/kafka-profile-v7.bin').read_bytes())\n(b/'parity.rs').write_text('use knytos_protocol_kafka as wire;\\n'+fixture+'\\n#[test]\\nfn fixed_wire(){assert_eq!(fixture().encode().unwrap().as_slice(),include_bytes!(\"fixture.bin\"));}\\n')\nfor type_name,short in [('Profile','profile'),('Authentication','authentication')]:\n main=f\"fn requires_debug<T: core::fmt::Debug>() {{}}\\nfn main(){{requires_debug::<knytos_protocol_kafka::{type_name}<'static>>();}}\\n\"\n (b/f'examples/{short}_debug.rs').write_text(main)\n c=Path('/private/tmp/knytos-sec15-kafka-profile-'+short+'-control');(c/'src').mkdir(parents=True,exist_ok=True);(c/'src/main.rs').write_text(main);(c/'Cargo.toml').write_text(f'''[package]\nname=\"kafka-{short}-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-kafka={{path=\"/Users/froran/Projects/private/knytos/crates/knytos-protocol-kafka\"}}\nzeroize={{version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}}\n''')\nprint('Exact baseline protocol sources and pinned controls prepared')\n",
     "command": "cargo test --release --offline --manifest-path <baseline>/Cargo.toml --test release",
     "scope": "Exact old protocol implementation. Bare encoded password, private-key and early-return password releases fail erasure assertions; existing kernel wrapper erases both credentials. Profile and Authentication Debug fixture confirms credential-field inclusion. No baseline guest run or existing production kernel launch-buffer leak/logging claim."
   },
@@ -58,7 +58,7 @@
     ]
   },
   "wire_reference": {
-    "generator_source": "import struct,hashlib,json\nfrom pathlib import Path\nf=[b'ZZZZZZZZ-instance',b'kafka-1.test',b'ZZZZZZZZ-ca',b'ZZZZZZZZ-events',b'ZZZZZZZZ-group',b'ZZZZZZZZ-transaction',b'ZZZZZZZZ-user',b'ZZZZZZZZ-password',b'ZZZZZZZZ-certificate',b'ZZZZZZZZ-private-key']\nroute=struct.pack('<iH2x',1,len(b'ZZZZZZZZ-output'))+b'ZZZZZZZZ-output'\nbroker=bytes([192,0,2,2])+struct.pack('<HH',9094,len(b'kafka-2.test'))+b'kafka-2.test'\nauthority=struct.pack('<QH6x',7,len(b'kafka/ZZZZZZZZ'))+b'kafka/ZZZZZZZZ'\npayload=b''.join(f)+route+broker+authority\nh=bytearray(112);h[:8]=b'CHKAFP7\\0';struct.pack_into('<HHI',h,8,7,112,112+len(payload));h[48:52]=bytes([192,0,2,1]);struct.pack_into('<HHQIi',h,52,9093,1,7,30000,0)\nstruct.pack_into('<6HI6HI',h,72,1,1,len(f[1]),len(f[3]),len(f[4]),len(f[5]),len(f[2]),1,3,len(f[6]),len(f[7]),len(f[0]),1,len(f[8]));struct.pack_into('<I',h,104,len(f[9]))\nframe=h+payload;frame[16:48]=hashlib.sha256(frame).digest()\np=Path('/Users/froran/Projects/private/charlotte-os/tests/transport/fixtures/kafka-profile-v7.bin');p.write_bytes(frame)\nprint(json.dumps({'length':len(frame),'frame_hex':frame.hex(),'frame_sha256':hashlib.sha256(frame).hexdigest(),'integrity_digest':frame[16:48].hex()}))\n",
+    "generator_source": "import struct,hashlib,json\nfrom pathlib import Path\nf=[b'ZZZZZZZZ-instance',b'kafka-1.test',b'ZZZZZZZZ-ca',b'ZZZZZZZZ-events',b'ZZZZZZZZ-group',b'ZZZZZZZZ-transaction',b'ZZZZZZZZ-user',b'ZZZZZZZZ-password',b'ZZZZZZZZ-certificate',b'ZZZZZZZZ-private-key']\nroute=struct.pack('<iH2x',1,len(b'ZZZZZZZZ-output'))+b'ZZZZZZZZ-output'\nbroker=bytes([192,0,2,2])+struct.pack('<HH',9094,len(b'kafka-2.test'))+b'kafka-2.test'\nauthority=struct.pack('<QH6x',7,len(b'kafka/ZZZZZZZZ'))+b'kafka/ZZZZZZZZ'\npayload=b''.join(f)+route+broker+authority\nh=bytearray(112);h[:8]=b'CHKAFP7\\0';struct.pack_into('<HHI',h,8,7,112,112+len(payload));h[48:52]=bytes([192,0,2,1]);struct.pack_into('<HHQIi',h,52,9093,1,7,30000,0)\nstruct.pack_into('<6HI6HI',h,72,1,1,len(f[1]),len(f[3]),len(f[4]),len(f[5]),len(f[2]),1,3,len(f[6]),len(f[7]),len(f[0]),1,len(f[8]));struct.pack_into('<I',h,104,len(f[9]))\nframe=h+payload;frame[16:48]=hashlib.sha256(frame).digest()\np=Path('/Users/froran/Projects/private/knytos/tests/transport/fixtures/kafka-profile-v7.bin');p.write_bytes(frame)\nprint(json.dumps({'length':len(frame),'frame_hex':frame.hex(),'frame_sha256':hashlib.sha256(frame).hexdigest(),'integrity_digest':frame[16:48].hex()}))\n",
     "generator_sha256": "142ce977aae2ac6a6f9c0aa13ebff64292c4c84bd9021c3c904e355283bbbef8",
     "result": {
       "length": 344,
@@ -113,7 +113,7 @@
           "error: could not compile `kafka-profile-debug-control` (bin \"kafka-profile-debug-control\") due to 1 previous error"
         ],
         "command": "cargo check --offline --manifest-path <control>/Cargo.toml",
-        "manifest": "[package]\nname=\"kafka-profile-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-kafka={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-protocol-kafka\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n",
+        "manifest": "[package]\nname=\"kafka-profile-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-kafka={path=\"/Users/froran/Projects/private/knytos/crates/knytos-protocol-kafka\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n",
         "lockfile_sha256": "9d3560267d603b9831852c047fedea8bf9f0dbb0471dd744ab48c2b4ffa1fc17"
       }
     },
@@ -147,7 +147,7 @@
           "error: could not compile `kafka-authentication-debug-control` (bin \"kafka-authentication-debug-control\") due to 1 previous error"
         ],
         "command": "cargo check --offline --manifest-path <control>/Cargo.toml",
-        "manifest": "[package]\nname=\"kafka-authentication-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-kafka={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-protocol-kafka\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n",
+        "manifest": "[package]\nname=\"kafka-authentication-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-kafka={path=\"/Users/froran/Projects/private/knytos/crates/knytos-protocol-kafka\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n",
         "lockfile_sha256": "7a675f7f01aee66e0901ed3916979148512615b6b36123d0f023078ad84c1b64"
       }
     }
@@ -319,65 +319,65 @@
       ],
       "runtime_tests_passed": 128,
       "compile_fail_doctests_passed": 12,
-      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests"
+      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p knytos-transport-tests"
     },
     "release": {
       "exit_status": 0,
       "log_sha256": "b0149c9f493df9c97fc8e963330361a0eda48904306e4a50b866a02b12dc2cc2",
       "diagnostics": [
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
-        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
+        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
+        "     Running tests/deployment.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
+        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
+        "     Running tests/ingress.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
+        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
+        "     Running tests/operations.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
+        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
+        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
+        "     Running tests/sha256.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
+        "     Running tests/shutdown.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
+        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
         "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s",
-        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
+        "     Running tests/trust.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-kafka/733b224849de1589/out/knytos_protocol_kafka-733b224849de1589)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-protocol-kafka/733b224849de1589/out/knytos_protocol_kafka-733b224849de1589)",
         "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-s3/e698f35f1b93c1ea/out/knytos_protocol_s3-e698f35f1b93c1ea)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-protocol-s3/e698f35f1b93c1ea/out/knytos_protocol_s3-e698f35f1b93c1ea)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/profile.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-s3/bf13b2e57913589f/out/profile-bf13b2e57913589f)",
+        "     Running tests/profile.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-protocol-s3/bf13b2e57913589f/out/profile-bf13b2e57913589f)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/a31e1af5f38a568d/out/kafka_profile_erasure-a31e1af5f38a568d)",
+        "     Running kafka_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/a31e1af5f38a568d/out/kafka_profile_erasure-a31e1af5f38a568d)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/2d56eea12dfdff2a/out/receive_erasure-2d56eea12dfdff2a)",
+        "     Running receive_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/2d56eea12dfdff2a/out/receive_erasure-2d56eea12dfdff2a)",
         "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/a6c3d67b43ec366e/out/s3_canonical_erasure-a6c3d67b43ec366e)",
+        "     Running s3_canonical_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/a6c3d67b43ec366e/out/s3_canonical_erasure-a6c3d67b43ec366e)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/957bd265f4b0e726/out/s3_metadata_erasure-957bd265f4b0e726)",
+        "     Running s3_metadata_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/957bd265f4b0e726/out/s3_metadata_erasure-957bd265f4b0e726)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/17fd30572828a1a0/out/s3_path_erasure-17fd30572828a1a0)",
+        "     Running s3_path_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/17fd30572828a1a0/out/s3_path_erasure-17fd30572828a1a0)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/486ff5a144ca1ed9/out/s3_profile_erasure-486ff5a144ca1ed9)",
+        "     Running s3_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/486ff5a144ca1ed9/out/s3_profile_erasure-486ff5a144ca1ed9)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/bc307b00513ef875/out/s3_profile_wire_erasure-bc307b00513ef875)",
+        "     Running s3_profile_wire_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/bc307b00513ef875/out/s3_profile_wire_erasure-bc307b00513ef875)",
         "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/34a4368b7571fbf6/out/s3_request_erasure-34a4368b7571fbf6)",
+        "     Running s3_request_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/34a4368b7571fbf6/out/s3_request_erasure-34a4368b7571fbf6)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/303eb5b3b629a565/out/s3_response_erasure-303eb5b3b629a565)",
+        "     Running s3_response_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/303eb5b3b629a565/out/s3_response_erasure-303eb5b3b629a565)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
         "   Doc-tests knytos_kafka",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
@@ -392,7 +392,7 @@
       ],
       "runtime_tests_passed": 190,
       "compile_fail_doctests_passed": 13,
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests -p knytos-launch"
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p knytos-transport-tests -p knytos-launch"
     },
     "strict_clippy": {
       "exit_status": 0,
@@ -400,7 +400,7 @@
       "diagnostics": [
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 7.57s"
       ],
-      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests --all-targets -- -D warnings"
+      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-kafka -p knytos-protocol-s3 -p knytos-kafka -p knytos-s3 -p knytos-transport-tests --all-targets -- -D warnings"
     },
     "workspace_fmt": {
       "exit_status": 0,
@@ -524,7 +524,7 @@
       "exit_status": 0,
       "log_sha256": "b26b75c48f95e3d5f9876c9d67920b9ab11a44eee07730f939d5246671d11c2e",
       "diagnostics": [
-        ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
+        ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/knytos/target/embedded-services/aarch64-unknown-none."
       ],
       "command": "scripts/build-knytos-services.sh --embed"
     },
@@ -540,7 +540,7 @@
       "exit_status": 0,
       "log_sha256": "5e4607a0e9410f45240ff23cd00956657c578265e97a0f7022c25ec613709535",
       "diagnostics": [
-        ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/x86_64-unknown-none."
+        ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/knytos/target/embedded-services/x86_64-unknown-none."
       ],
       "command": "scripts/build-knytos-services-x86_64.sh"
     }
@@ -677,7 +677,7 @@
       "[+    33.995446] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x503ffff failed_bitmap=0x0 pending_bitmap=0x0",
       ">>> All registered deferred self-tests passed."
     ],
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-kafka-profile CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_KAFKA_IMAGE=apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 scripts/run-aarch64.sh --kafka-test --instance sec15-kafka-profile --fresh-storage --timeout 300",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-kafka-profile KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_KAFKA_IMAGE=apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 scripts/run-aarch64.sh --kafka-test --instance sec15-kafka-profile --fresh-storage --timeout 300",
     "passed": 20,
     "failed": 0,
     "pending": 0,
@@ -703,12 +703,12 @@
       "containers": {
         "remaining": 0,
         "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "filter": "com.docker.compose.project=charlotte-sec15-kafka-profile"
+        "filter": "com.docker.compose.project=knytos-sec15-kafka-profile"
       },
       "volumes": {
         "remaining": 0,
         "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "filter": "com.docker.compose.project=charlotte-sec15-kafka-profile"
+        "filter": "com.docker.compose.project=knytos-sec15-kafka-profile"
       }
     },
     "image": {
@@ -716,9 +716,9 @@
       "local_pre_run_inspection": "sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a [\"apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40\"]",
       "local_inspection_sha256": "e2b40240c4424febec491f67ef7abeba0f1c1179d07ca0314fff8d3fe00e5d43",
       "running_broker_inspections": [
-        "/charlotte-sec15-kafka-profile-kafka1-1 apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
-        "/charlotte-sec15-kafka-profile-kafka2-1 apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
-        "/charlotte-sec15-kafka-profile-kafka3-1 apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a"
+        "/knytos-sec15-kafka-profile-kafka1-1 apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
+        "/knytos-sec15-kafka-profile-kafka2-1 apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
+        "/knytos-sec15-kafka-profile-kafka3-1 apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a"
       ],
       "running_inspection_sha256": "f2c51045aefee3b776b3f28cf5cd1e77fcb6009c572ddd2f9308cccb451d68d8",
       "all_three_running_broker_ids_captured": true
@@ -922,7 +922,7 @@
     "scope": "Local byte owners/trait bounds are outside existing projections; no new modeled transition or TLC result claimed."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "start_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "final_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "modified_from_head_before_this_batch": false,

@@ -118,13 +118,13 @@ debug/release and minimal/test builds. Live snapshots and the 256-sample memory
 history continue in either mode. With archiving disabled, observe never looks
 up the object store or starts an archive transaction.
 
-Set `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` when building the kernel: `0` disables
+Set `KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS` when building the kernel: `0` disables
 archiving; `1000..=86400000` enables it with that target partial-chunk flush
 interval. Unset selects `0`; empty, malformed and out-of-range values reject.
 For example:
 
 ```sh
-CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000 scripts/run-aarch64.sh release --minimal
+KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS=60000 scripts/run-aarch64.sh release --minimal
 ```
 
 The same input works with the x86 runner and direct kernel Cargo builds. Cargo

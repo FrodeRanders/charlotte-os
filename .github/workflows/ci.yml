@@ -89,23 +89,23 @@ jobs:
           git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           scripts/build-knytos-services.sh --embed
           scripts/build-knytos-user.sh --embed
-          export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
+          export KNYTOS_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
           cargo clippy --locked --workspace \
             --exclude knytos-services --exclude knytos-user --exclude cluster-sign \
-            --target target_specs/aarch64-unknown-none-catten.json \
+            --target target_specs/aarch64-unknown-none-knytos.json \
             -- -D warnings
           cargo clippy --locked -p catten \
-            --target target_specs/aarch64-unknown-none-catten.json \
+            --target target_specs/aarch64-unknown-none-knytos.json \
             --no-default-features --features acpi -- -D warnings
           scripts/build-knytos-services-x86_64.sh
-          export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
+          export KNYTOS_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           cargo clippy --locked --workspace \
             --exclude knytos-services --exclude knytos-user --exclude cluster-sign \
-            --target target_specs/x86_64-unknown-none-catten.json \
+            --target target_specs/x86_64-unknown-none-knytos.json \
             --no-default-features --features acpi \
             -- -D warnings
           cargo clippy --locked -p catten \
-            --target target_specs/x86_64-unknown-none-catten.json \
+            --target target_specs/x86_64-unknown-none-knytos.json \
             --no-default-features --features acpi,kernel_tests -- -D warnings
           cargo clippy --locked \
             --manifest-path crates/knytos-services/Cargo.toml \
@@ -198,8 +198,8 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - aarch64-unknown-none-catten
-          - x86_64-unknown-none-catten
+          - aarch64-unknown-none-knytos
+          - x86_64-unknown-none-knytos
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -209,7 +209,7 @@ jobs:
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-11-14
-          targets: ${{ matrix.target == 'aarch64-unknown-none-catten' && 'aarch64-unknown-none' || 'x86_64-unknown-none' }}
+          targets: ${{ matrix.target == 'aarch64-unknown-none-knytos' && 'aarch64-unknown-none' || 'x86_64-unknown-none' }}
           components: rust-src,llvm-tools
 
       - name: Build kernel
@@ -221,15 +221,15 @@ jobs:
           for mode in minimal test; do
             features=acpi
             if [ "$mode" = test ]; then features=acpi,kernel_tests; fi
-            if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
+            if [ "${{ matrix.target }}" = "aarch64-unknown-none-knytos" ]; then
               scripts/build-knytos-services.sh --embed --mode "$mode"
               if [ "$mode" = test ]; then scripts/build-knytos-user.sh --embed; fi
-              catten_service_bundle aarch64 "$mode" "$GITHUB_WORKSPACE"
-              export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
+              knytos_service_bundle aarch64 "$mode" "$GITHUB_WORKSPACE"
+              export KNYTOS_AARCH64_SERVICE_BUNDLE="$BUNDLE"
             else
               scripts/build-knytos-services-x86_64.sh --mode "$mode"
-              catten_service_bundle x86_64 "$mode" "$GITHUB_WORKSPACE"
-              export CATTEN_X86_64_SERVICE_BUNDLE="$BUNDLE"
+              knytos_service_bundle x86_64 "$mode" "$GITHUB_WORKSPACE"
+              export KNYTOS_X86_64_SERVICE_BUNDLE="$BUNDLE"
             fi
             cargo build --locked --package catten \
               --target "target_specs/${{ matrix.target }}.json" \
@@ -238,14 +238,14 @@ jobs:
               --kernel "target/${{ matrix.target }}/debug/catten" --mode "$mode"
             # HVF hardware fixtures are excluded at their callers and helpers.
             # Keep this reduced profile buildable without requiring a Mac host.
-            if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ] && [ "$mode" = test ]; then
+            if [ "${{ matrix.target }}" = "aarch64-unknown-none-knytos" ] && [ "$mode" = test ]; then
               cargo build --locked --package catten \
-                --target target_specs/aarch64-unknown-none-catten.json \
+                --target target_specs/aarch64-unknown-none-knytos.json \
                 --no-default-features --features acpi,kernel_tests,hvf_compat
               python3 scripts/check-boot-profile.py \
-                --kernel target/aarch64-unknown-none-catten/debug/catten --mode test
+                --kernel target/aarch64-unknown-none-knytos/debug/catten --mode test
               python3 scripts/check-kernel-asm-sections.py \
-                target/aarch64-unknown-none-catten/debug/catten
+                target/aarch64-unknown-none-knytos/debug/catten
             fi
           done
 
@@ -260,19 +260,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-unknown-none-catten
+          - target: aarch64-unknown-none-knytos
             mode: test
             rust_target: aarch64-unknown-none
             boot: scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 180
-          - target: x86_64-unknown-none-catten
+          - target: x86_64-unknown-none-knytos
             mode: test
             rust_target: x86_64-unknown-none
             boot: scripts/run-x86_64.sh debug --tests --smp 4 --timeout 480
-          - target: aarch64-unknown-none-catten
+          - target: aarch64-unknown-none-knytos
             mode: minimal
             rust_target: aarch64-unknown-none
             boot: scripts/run-aarch64.sh release --minimal --smp 4 --timeout 180
-          - target: x86_64-unknown-none-catten
+          - target: x86_64-unknown-none-knytos
             mode: minimal
             rust_target: x86_64-unknown-none
             boot: scripts/run-x86_64.sh release --minimal --smp 4 --timeout 180

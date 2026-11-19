@@ -42,8 +42,8 @@ Then start the second node in another terminal:
 
 `--instance` gives each VM independent boot media, persistent NVMe storage,
 and serial logs. With a timeout, the logs are
-`/tmp/charlotte-node-a-serial.log` and
-`/tmp/charlotte-node-b-serial.log`. These ordinary boots run discovery and
+`/tmp/knytos-node-a-serial.log` and
+`/tmp/knytos-node-b-serial.log`. These ordinary boots run discovery and
 cluster formation; add `--disco-test` only when pass/fail verification is
 desired.
 
@@ -106,7 +106,7 @@ selected by the corresponding committed deployment after they publish
 readiness for the exact generation. A VIP is not advertised while its service
 has no matching ready generation. Use `--cluster-service NAME=VIP:PORT` for
 named assignments; the paired `--cluster-service-name` spelling is retired.
-Builds consume only `CATTEN_CLUSTER_SERVICES`, a semicolon-separated table;
+Builds consume only `KNYTOS_CLUSTER_SERVICES`, a semicolon-separated table;
 the old singleton VIP, port and name variables reject at build time.
 An unnamed assignment selects the platform-service policy that uses every admitted,
 non-draining member for platform services such as the built-in HTTP keyhole.

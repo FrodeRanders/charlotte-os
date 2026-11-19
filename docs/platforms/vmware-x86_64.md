@@ -35,10 +35,10 @@ or pass `--replace` when discarding it is intentional.
 
 The appliance deliberately has two disks:
 
-- `charlotte-boot.vmdk` is a small FAT boot image on a virtual SATA controller.
+- `knytos-boot.vmdk` is a small FAT boot image on a virtual SATA controller.
   It contains `BOOTX64.EFI`, Limine configuration, and the kernel. VMware opens
   it in independent nonpersistent mode.
-- `charlotte-data.vmdk` is a blank persistent virtual NVMe disk. Knytos
+- `knytos-data.vmdk` is a blank persistent virtual NVMe disk. Knytos
   owns it from LBA zero; it is not partitioned or FAT-formatted by the host.
 
 On first boot, the object-store service recognizes an unformatted data disk,
@@ -78,7 +78,7 @@ The supplied VMX configures the qualified combination:
 - four virtual CPUs and 1 GiB RAM;
 - one SATA boot disk and one NVMe data disk;
 - `vvtd.enable = "TRUE"` for protected userspace DMA;
-- COM1 redirected to `charlotte-serial.log`, appending across boots; and
+- COM1 redirected to `knytos-serial.log`, appending across boots; and
 - an E1000E adapter attached to VMware NAT; and
 - one PCIe root-port group, sufficient for the storage controllers and NIC.
 
@@ -94,7 +94,7 @@ Generated reader/administrator client identities and the server CA are in
 or `/metrics` for JSON with an enrolled client. The development certificate also
 covers `management.test`; when DHCP assigns another address, use that certificate
 name with a DNS/hosts mapping (or curl's `--resolve`). Certificates expire after
-two days. A supplied `CATTEN_MANAGEMENT_TLS_RESOURCE` retains its own enrollment
+two days. A supplied `KNYTOS_MANAGEMENT_TLS_RESOURCE` retains its own enrollment
 and caller-managed client files. See [management TLS](../reference/management-tls.md).
 
 Do not replace the NVMe data controller with SCSI or SATA: the current VMware

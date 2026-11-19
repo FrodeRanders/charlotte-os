@@ -113,9 +113,9 @@ deadline expired; this does not resolve the previous Intel timeout.
 Commands (unchanged userspace/ABI; existing signed staged bundles reused):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance published-stack-intel-final-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance published-stack-amd-final-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18569 CATTEN_DEPLOY_HOST_PORT=17869 scripts/run-aarch64.sh --security-test --instance published-stack-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance published-stack-intel-final-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance published-stack-amd-final-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18569 KNYTOS_DEPLOY_HOST_PORT=17869 scripts/run-aarch64.sh --security-test --instance published-stack-arm-20261009 --fresh-storage --timeout 180
 ```
 
 Executed kernel SHA-256:

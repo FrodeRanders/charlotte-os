@@ -326,7 +326,7 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "c3209d497a2865def4eec70ab458b59b9a0eb345bbde328b2a045b4cf1e4e6ca",
       "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
@@ -413,7 +413,7 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "707239351957cc839aa912b51670977d153d9ac1210ef4159e1ffb2bda494e5b",
       "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
@@ -500,8 +500,8 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_SKIP_KERNEL_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_KERNEL_BUILD": "1"
       },
       "final_uart_sha256": "b811c2f084a312d9b4c0b6c265f5cbbac7592ce4de6d3d6df347af3cb00b393c",
       "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
@@ -588,10 +588,10 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_DEPLOY_HOST_PORT": "19081",
-        "CATTEN_HTTP_HOST_PORT": "19080",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_DEPLOY_HOST_PORT": "19081",
+        "KNYTOS_HTTP_HOST_PORT": "19080",
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "598f9e3db00ef317bd96f47cb222084c5784b5d700b1dc9b96603a59d1616848",
       "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
@@ -645,7 +645,7 @@
         "[+    55.811592] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
       "qemu_network_arguments": [
-        "user,id=charlotte-net,hostfwd=tcp::19081-:7444"
+        "user,id=knytos-net,hostfwd=tcp::19081-:7444"
       ],
       "runner_exit": 0,
       "timeout_seconds": 180
@@ -683,10 +683,10 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_DEPLOY_HOST_PORT": "19181",
-        "CATTEN_HTTP_HOST_PORT": "19180",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_DEPLOY_HOST_PORT": "19181",
+        "KNYTOS_HTTP_HOST_PORT": "19180",
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "3916f37417a70e4a2fafc6723ea86b3a21c88f259e5a64aeb88f968bd92f347e",
       "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
@@ -834,8 +834,8 @@
     "format": "cargo fmt --all -- --check",
     "host": "scripts/run-host-tests.sh",
     "strict_clippy": {
-      "aarch64": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-      "x86_64": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+      "aarch64": "KNYTOS_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+      "x86_64": "KNYTOS_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings"
     },
     "whitespace": "git diff --check"
   }

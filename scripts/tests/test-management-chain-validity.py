@@ -124,7 +124,7 @@ def held_upload(policy, directory, port, body, log, end, window, observe_clock):
 
 def probe(log, status_port, deployment_port, budget=12):
     validity.probe(log, status_port, deployment_port, budget, scope="issuer")
-    directory = Path(os.environ["CATTEN_MANAGEMENT_VALIDITY_DIR"])
+    directory = Path(os.environ["KNYTOS_MANAGEMENT_VALIDITY_DIR"])
     cluster_id = (directory / "policy.bin").read_bytes()[24:56].hex()
     bodies = []
     for sequence in (1, 2):

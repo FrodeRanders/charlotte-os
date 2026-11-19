@@ -146,7 +146,7 @@ Raft persistence fail-stop was observed in these five runs; historical incidents
 remain separate. ARM retains certified runtime migration; x86 still qualifies
 only never-dispatched migration.
 
-Commands, with common environment `CATTEN_SKIP_EMBED_BUILD=1
+Commands, with common environment `KNYTOS_SKIP_EMBED_BUILD=1
 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
@@ -158,8 +158,8 @@ CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 ```
 
 AMD reuses the completed Intel no-network kernel with
-`CATTEN_SKIP_KERNEL_BUILD=1`. Security profiles use
-`CATTEN_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment ports 19080/19081 for ARM,
+`KNYTOS_SKIP_KERNEL_BUILD=1`. Security profiles use
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment ports 19080/19081 for ARM,
 19180/19181 for x86. Full staged service inventories match the preceding batch;
 no service sources or bundles changed.
 

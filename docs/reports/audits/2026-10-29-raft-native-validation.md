@@ -43,7 +43,7 @@ existing disks. The baseline invocation was:
 ```
 
 For abrupt recovery, launch the same no-network configuration with a new
-`raft-validation-powercut-20261028-a` instance and set `CATTEN_QEMU_PID_FILE` to a
+`raft-validation-powercut-20261028-a` instance and set `KNYTOS_QEMU_PID_FILE` to a
 new PID file. Observe that instance's serial log for the first durable-term
 verdict, verify the PID's process group against the owned runner, then kill only
 that QEMU process with SIGKILL. Retain its serial capture before starting another

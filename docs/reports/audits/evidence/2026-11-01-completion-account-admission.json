@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.completion-account-admission.v1",
+  "schema": "knytos.completion-account-admission.v1",
   "date": "2026-11-01",
   "base_revision": "7b4322e6b96c87b6025df7939ca8054c3868243e",
   "scope": "Independent allocation-lifetime admission for completion record, CQ and watch account backing. Three typed account families share one fixed-bundle pool; resource budgets and platform grants remain separate.",

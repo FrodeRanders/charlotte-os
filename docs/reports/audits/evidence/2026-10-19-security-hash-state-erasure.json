@@ -834,7 +834,7 @@
     "mapping_limit": "Byte-level erasure and cryptographic internals are outside these models; no transition or proof claim changed."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
     "changed_by_this_batch": false,
     "manual_sources_changed": false

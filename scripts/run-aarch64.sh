@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build a bootable UEFI disk image for Knytos / Catten and run it under
+# Build a bootable UEFI disk image for Knytos and run it under
 # QEMU. Works on macOS (including Apple Silicon) and Linux.
 #
 # Requirements: qemu, mtools.  On macOS install via Homebrew:
@@ -15,7 +15,7 @@
 #   --build-only   Produce boot/data images without starting QEMU
 #   --tests        Include the registered native regression suite (development default)
 #   debug|release  Optimization/debug-info profile, independent of --minimal/--tests
-#   CATTEN_SERVICE_HEARTBEATS=0|1  Periodic service console logs (minimal: off; tests: on)
+#   KNYTOS_SERVICE_HEARTBEATS=0|1  Periodic service console logs (minimal: off; tests: on)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --sbsa-ref     Boot the QEMU sbsa-ref machine with the TF-A + edk2 firmware
@@ -80,7 +80,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/boot-common.sh"
 source "${SCRIPT_DIR}/lib/service-bundle.sh"
 source "${SCRIPT_DIR}/lib/signing-policy.sh"
-catten_require_development_trust
+knytos_require_development_trust
 
 ARCH="aarch64"
 PROFILE="debug"
@@ -107,20 +107,20 @@ SHUTDOWN_INGRESS_TEST="0"
 KAFKA_TEST="0"
 KAFKA_COORDINATOR_TEST="0"
 KAFKA_FENCING_TEST="0"
-HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
-DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
-DEPLOY_NAME="${CATTEN_DEPLOY_NAME:-greet}"
-DEPLOY_ELF="${CATTEN_DEPLOY_ELF:-}"
-DEPLOY_VARIANT_ELF="${CATTEN_DEPLOY_VARIANT_ELF:-}"
-DEPLOY_VARIANT_KEY="${CATTEN_DEPLOY_VARIANT_OBJECT_KEY:-deployments/greet-variant-e2e.elf}"
-DEPLOY_OBJECT_KEY="${CATTEN_DEPLOY_OBJECT_KEY:-deployments/greet-e2e.elf}"
-DEPLOY_STACK_PAGES="${CATTEN_DEPLOY_STACK_PAGES:-4}"
-DEPLOY_MAX_THREADS="${CATTEN_DEPLOY_MAX_THREADS:-1}"
-DEPLOY_GRACE_MS="${CATTEN_DEPLOY_GRACE_MS:-5000}"
-DEPLOY_GRANTS="${CATTEN_DEPLOY_GRANTS:-greet=publish}"
-APP_HOST_PORT="${CATTEN_APP_HOST_PORT:-}"
-APP_GUEST_PORT="${CATTEN_APP_GUEST_PORT:-}"
-APP_HOLD_SECONDS="${CATTEN_APP_HOLD_SECONDS:-0}"
+HTTP_HOST_PORT="${KNYTOS_HTTP_HOST_PORT:-8080}"
+DEPLOY_HOST_PORT="${KNYTOS_DEPLOY_HOST_PORT:-8081}"
+DEPLOY_NAME="${KNYTOS_DEPLOY_NAME:-greet}"
+DEPLOY_ELF="${KNYTOS_DEPLOY_ELF:-}"
+DEPLOY_VARIANT_ELF="${KNYTOS_DEPLOY_VARIANT_ELF:-}"
+DEPLOY_VARIANT_KEY="${KNYTOS_DEPLOY_VARIANT_OBJECT_KEY:-deployments/greet-variant-e2e.elf}"
+DEPLOY_OBJECT_KEY="${KNYTOS_DEPLOY_OBJECT_KEY:-deployments/greet-e2e.elf}"
+DEPLOY_STACK_PAGES="${KNYTOS_DEPLOY_STACK_PAGES:-4}"
+DEPLOY_MAX_THREADS="${KNYTOS_DEPLOY_MAX_THREADS:-1}"
+DEPLOY_GRACE_MS="${KNYTOS_DEPLOY_GRACE_MS:-5000}"
+DEPLOY_GRANTS="${KNYTOS_DEPLOY_GRANTS:-greet=publish}"
+APP_HOST_PORT="${KNYTOS_APP_HOST_PORT:-}"
+APP_GUEST_PORT="${KNYTOS_APP_GUEST_PORT:-}"
+APP_HOLD_SECONDS="${KNYTOS_APP_HOLD_SECONDS:-0}"
 LIVE_UPGRADE_TEST="0"
 SHUTDOWN_TEST="0"
 SECURITY_TEST="0"
@@ -228,30 +228,30 @@ if [ "$BOOT_MODE" = "minimal" ]; then
 elif [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
     NET_TEST="1"
 fi
-catten_service_bundle "$ARCH" "$BOOT_MODE" "$ROOT_DIR"
+knytos_service_bundle "$ARCH" "$BOOT_MODE" "$ROOT_DIR"
 
 if [ "$DEBUG_SNAPSHOT" = "1" ]; then
     if [ -z "$TIMEOUT" ]; then
         echo "error: --debug-snapshot requires --timeout" >&2
         exit 1
     fi
-    if [ -n "$GDB" ] || [ "${CATTEN_QEMU_DEBUG_STUB:-0}" = "1" ] \
+    if [ -n "$GDB" ] || [ "${KNYTOS_QEMU_DEBUG_STUB:-0}" = "1" ] \
         || [ "$SCHEDULER_TRACE" = "1" ] || [ "$FAILURE_CAPTURE" = "0" ]; then
         echo "error: --debug-snapshot requires exclusive automatic debugger ownership" >&2
         exit 1
     fi
 fi
 
-catten_boot_validate_port "--gdb-port" "$GDB_PORT"
-catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
-catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
+knytos_boot_validate_port "--gdb-port" "$GDB_PORT"
+knytos_boot_validate_port "KNYTOS_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
+knytos_boot_validate_port "KNYTOS_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
 if [ -n "$APP_HOST_PORT" ] || [ -n "$APP_GUEST_PORT" ]; then
     if [ -z "$APP_HOST_PORT" ] || [ -z "$APP_GUEST_PORT" ]; then
-        echo "error: CATTEN_APP_HOST_PORT and CATTEN_APP_GUEST_PORT must be set together" >&2
+        echo "error: KNYTOS_APP_HOST_PORT and KNYTOS_APP_GUEST_PORT must be set together" >&2
         exit 1
     fi
-    catten_boot_validate_port "CATTEN_APP_HOST_PORT" "$APP_HOST_PORT"
-    catten_boot_validate_port "CATTEN_APP_GUEST_PORT" "$APP_GUEST_PORT"
+    knytos_boot_validate_port "KNYTOS_APP_HOST_PORT" "$APP_HOST_PORT"
+    knytos_boot_validate_port "KNYTOS_APP_GUEST_PORT" "$APP_GUEST_PORT"
 fi
 if [ "${#CLUSTER_SERVICE_SPECS[@]}" -gt 16 ]; then
     echo "error: at most 16 --cluster-service assignments fit the launch policy" >&2
@@ -281,7 +281,7 @@ for service_index in "${!CLUSTER_SERVICE_SPECS[@]}"; do
         echo "error: --cluster-service must be [NAME=]IPv4:PORT (for example orders=10.0.2.42:80)" >&2
         exit 1
     fi
-    catten_boot_validate_port "--cluster-service port" "$service_port"
+    knytos_boot_validate_port "--cluster-service port" "$service_port"
     IFS=. read -r vip_a vip_b vip_c vip_d vip_extra <<EOF
 $service_vip
 EOF
@@ -320,10 +320,10 @@ EOF
     fi
     CLUSTER_SERVICES_ENV="${CLUSTER_SERVICES_ENV}${normalized_service}"
 done
-catten_boot_validate_instance "$INSTANCE"
-catten_boot_validate_positive_integer "--smp" "$SMP"
+knytos_boot_validate_instance "$INSTANCE"
+knytos_boot_validate_positive_integer "--smp" "$SMP"
 if [ -n "$TIMEOUT" ]; then
-    catten_boot_validate_positive_integer "--timeout" "$TIMEOUT"
+    knytos_boot_validate_positive_integer "--timeout" "$TIMEOUT"
 fi
 if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
     echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
@@ -343,15 +343,15 @@ if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] 
     exit 1
 fi
 if [ "$NET_BACKEND" != "user" ] && [ "${CODEX_SANDBOX_NETWORK_DISABLED:-0}" = "1" ] \
-    && [ "${CATTEN_ALLOW_SANDBOX_NETWORK:-0}" != "1" ]; then
+    && [ "${KNYTOS_ALLOW_SANDBOX_NETWORK:-0}" != "1" ]; then
     echo "error: two-QEMU socket networking is unavailable in this sandbox" >&2
     echo "       CODEX_SANDBOX_NETWORK_DISABLED=1 prevents the listener/connect path." >&2
     echo "       Re-run outside the sandbox (or with network permission)." >&2
-    echo "       Set CATTEN_ALLOW_SANDBOX_NETWORK=1 only if the sandbox is known to allow it." >&2
+    echo "       Set KNYTOS_ALLOW_SANDBOX_NETWORK=1 only if the sandbox is known to allow it." >&2
     exit 1
 fi
 if [ "$NET_BACKEND" != "user" ] && [ -n "${CODEX_SANDBOX:-}" ] \
-    && [ "${CATTEN_ALLOW_SANDBOX_NETWORK:-0}" != "1" ]; then
+    && [ "${KNYTOS_ALLOW_SANDBOX_NETWORK:-0}" != "1" ]; then
     echo "warning: running a two-QEMU network test inside sandbox '${CODEX_SANDBOX}'" >&2
     echo "         If discovery receives no frames, retry outside the sandbox." >&2
 fi
@@ -410,27 +410,27 @@ if [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
     exit 1
 fi
 
-catten_boot_validate_management_startup
+knytos_boot_validate_management_startup
 
 cd "$ROOT_DIR"
-catten_boot_init "$ROOT_DIR"
-catten_boot_require_commands mformat mmd mcopy
-LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
+knytos_boot_init "$ROOT_DIR"
+knytos_boot_require_commands mformat mmd mcopy
+LIMINE_CONFIG="$KNYTOS_BOOT_LIMINE_CONFIG"
 
 # A root Cargo clean can remove any generated file below `target/`, including
 # test certificates. Run it before creating certificates whose paths are
 # consumed later by kernel `include_bytes!` expressions. This ordering matters
 # for both --s3-test and --kafka-test.
-if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ] && [ "$CLEAN_BUILD" = "1" ]; then
+if [ "${KNYTOS_SKIP_EMBED_BUILD:-0}" != "1" ] && [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
-    cargo clean --target "target_specs/${ARCH}-unknown-none-catten.json"
+    cargo clean --target "target_specs/${ARCH}-unknown-none-knytos.json"
 fi
 
 if [ "$HTTP_TEST" = "1" ] || [ "${DEPLOYMENT_INGRESS_TEST:-0}" = "1" ] \
     || [ "${SHUTDOWN_INGRESS_TEST:-0}" = "1" ] || [ "${CLUSTER_INGRESS_TEST:-0}" = "1" ]; then
-    catten_boot_prepare_management_fixture
+    knytos_boot_prepare_management_fixture
 fi
-catten_boot_prepare_management
+knytos_boot_prepare_management
 
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
@@ -439,12 +439,12 @@ QPID=""
 KAFKA_COMPOSE="${ROOT_DIR}/docker/kafka-test/compose.yaml"
 KAFKA_RUNNING="0"
 cleanup_fixtures() {
-    catten_boot_diagnostics_finish runner-exit
+    knytos_boot_diagnostics_finish runner-exit
     if [ -n "$QPID" ]; then
         kill "$QPID" >/dev/null 2>&1 || true
         wait "$QPID" >/dev/null 2>&1 || true
     fi
-    catten_boot_diagnostics_archive
+    knytos_boot_diagnostics_archive
     if [ -n "$DEPLOYMENT_WORKER_PID" ]; then
         kill "$DEPLOYMENT_WORKER_PID" >/dev/null 2>&1 || true
     fi
@@ -458,39 +458,39 @@ cleanup_fixtures() {
 trap cleanup_fixtures EXIT
 
 if [ "$S3_TEST" = "1" ]; then
-    catten_boot_require_commands docker openssl
+    knytos_boot_require_commands docker openssl
     RUSTFS_TEST_DIR="${ROOT_DIR}/target/rustfs-s3-test"
-    export CATTEN_RUSTFS_CERT_DIR="${RUSTFS_TEST_DIR}/certs"
-    export CATTEN_RUSTFS_PORT="19000"
-    mkdir -p "$CATTEN_RUSTFS_CERT_DIR"
+    export KNYTOS_RUSTFS_CERT_DIR="${RUSTFS_TEST_DIR}/certs"
+    export KNYTOS_RUSTFS_PORT="19000"
+    mkdir -p "$KNYTOS_RUSTFS_CERT_DIR"
     openssl ecparam -name prime256v1 -genkey -noout \
-        -out "$CATTEN_RUSTFS_CERT_DIR/ca.key"
+        -out "$KNYTOS_RUSTFS_CERT_DIR/ca.key"
     openssl req -x509 -new -sha256 -days 2 \
-        -key "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
+        -key "$KNYTOS_RUSTFS_CERT_DIR/ca.key" \
         -subj "/CN=Knytos RustFS test CA" \
         -addext "basicConstraints=critical,CA:TRUE" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
-        -out "$CATTEN_RUSTFS_CERT_DIR/ca.crt"
+        -out "$KNYTOS_RUSTFS_CERT_DIR/ca.crt"
     openssl ecparam -name prime256v1 -genkey -noout \
-        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem"
+        -out "$KNYTOS_RUSTFS_CERT_DIR/rustfs_key.pem"
     openssl req -new -sha256 \
-        -key "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem" \
+        -key "$KNYTOS_RUSTFS_CERT_DIR/rustfs_key.pem" \
         -subj "/CN=rustfs.test" \
-        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs.csr"
+        -out "$KNYTOS_RUSTFS_CERT_DIR/rustfs.csr"
     openssl x509 -req -sha256 -days 2 \
-        -in "$CATTEN_RUSTFS_CERT_DIR/rustfs.csr" \
-        -CA "$CATTEN_RUSTFS_CERT_DIR/ca.crt" \
-        -CAkey "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
+        -in "$KNYTOS_RUSTFS_CERT_DIR/rustfs.csr" \
+        -CA "$KNYTOS_RUSTFS_CERT_DIR/ca.crt" \
+        -CAkey "$KNYTOS_RUSTFS_CERT_DIR/ca.key" \
         -CAcreateserial \
         -extfile "${ROOT_DIR}/docker/rustfs-s3-test/server-ext.cnf" \
-        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs_cert.pem"
-    openssl x509 -in "$CATTEN_RUSTFS_CERT_DIR/ca.crt" -outform DER \
-        -out "$CATTEN_RUSTFS_CERT_DIR/ca.der"
-    chmod 0644 "$CATTEN_RUSTFS_CERT_DIR/ca.crt" \
-        "$CATTEN_RUSTFS_CERT_DIR/ca.der" \
-        "$CATTEN_RUSTFS_CERT_DIR/rustfs_cert.pem" \
-        "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem"
-    export CATTEN_S3_TEST_CA_DER="$CATTEN_RUSTFS_CERT_DIR/ca.der"
+        -out "$KNYTOS_RUSTFS_CERT_DIR/rustfs_cert.pem"
+    openssl x509 -in "$KNYTOS_RUSTFS_CERT_DIR/ca.crt" -outform DER \
+        -out "$KNYTOS_RUSTFS_CERT_DIR/ca.der"
+    chmod 0644 "$KNYTOS_RUSTFS_CERT_DIR/ca.crt" \
+        "$KNYTOS_RUSTFS_CERT_DIR/ca.der" \
+        "$KNYTOS_RUSTFS_CERT_DIR/rustfs_cert.pem" \
+        "$KNYTOS_RUSTFS_CERT_DIR/rustfs_key.pem"
+    export KNYTOS_S3_TEST_CA_DER="$KNYTOS_RUSTFS_CERT_DIR/ca.der"
     echo ">>> Starting ephemeral TLS RustFS fixture on host port 19000..."
     docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     RUSTFS_RUNNING="1"
@@ -499,88 +499,88 @@ if [ "$S3_TEST" = "1" ]; then
 fi
 
 if [ "$KAFKA_TEST" = "1" ]; then
-    catten_boot_require_commands docker keytool openssl
+    knytos_boot_require_commands docker keytool openssl
     KAFKA_TEST_DIR="${ROOT_DIR}/target/kafka-test"
-    export CATTEN_KAFKA_CERT_DIR="${KAFKA_TEST_DIR}/certs"
-    export CATTEN_KAFKA_PORT="19092"
-    export CATTEN_KAFKA_PORT_2="19094"
-    export CATTEN_KAFKA_PORT_3="19096"
-    mkdir -p "$CATTEN_KAFKA_CERT_DIR"
+    export KNYTOS_KAFKA_CERT_DIR="${KAFKA_TEST_DIR}/certs"
+    export KNYTOS_KAFKA_PORT="19092"
+    export KNYTOS_KAFKA_PORT_2="19094"
+    export KNYTOS_KAFKA_PORT_3="19096"
+    mkdir -p "$KNYTOS_KAFKA_CERT_DIR"
     openssl ecparam -name prime256v1 -genkey -noout \
-        -out "$CATTEN_KAFKA_CERT_DIR/ca.key"
+        -out "$KNYTOS_KAFKA_CERT_DIR/ca.key"
     openssl req -x509 -new -sha256 -days 2 \
-        -key "$CATTEN_KAFKA_CERT_DIR/ca.key" \
+        -key "$KNYTOS_KAFKA_CERT_DIR/ca.key" \
         -subj "/CN=Knytos Kafka test CA" \
         -addext "basicConstraints=critical,CA:TRUE" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
-        -out "$CATTEN_KAFKA_CERT_DIR/ca.crt"
+        -out "$KNYTOS_KAFKA_CERT_DIR/ca.crt"
     openssl ecparam -name prime256v1 -genkey -noout \
-        -out "$CATTEN_KAFKA_CERT_DIR/kafka.key"
+        -out "$KNYTOS_KAFKA_CERT_DIR/kafka.key"
     openssl req -new -sha256 \
-        -key "$CATTEN_KAFKA_CERT_DIR/kafka.key" \
+        -key "$KNYTOS_KAFKA_CERT_DIR/kafka.key" \
         -subj "/CN=kafka-1.test" \
-        -out "$CATTEN_KAFKA_CERT_DIR/kafka.csr"
+        -out "$KNYTOS_KAFKA_CERT_DIR/kafka.csr"
     openssl x509 -req -sha256 -days 2 \
-        -in "$CATTEN_KAFKA_CERT_DIR/kafka.csr" \
-        -CA "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
-        -CAkey "$CATTEN_KAFKA_CERT_DIR/ca.key" \
+        -in "$KNYTOS_KAFKA_CERT_DIR/kafka.csr" \
+        -CA "$KNYTOS_KAFKA_CERT_DIR/ca.crt" \
+        -CAkey "$KNYTOS_KAFKA_CERT_DIR/ca.key" \
         -CAcreateserial \
         -extfile "${ROOT_DIR}/docker/kafka-test/server-ext.cnf" \
-        -out "$CATTEN_KAFKA_CERT_DIR/kafka.crt"
+        -out "$KNYTOS_KAFKA_CERT_DIR/kafka.crt"
     openssl pkcs12 -export \
         -name kafka \
-        -inkey "$CATTEN_KAFKA_CERT_DIR/kafka.key" \
-        -in "$CATTEN_KAFKA_CERT_DIR/kafka.crt" \
-        -certfile "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
-        -out "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
+        -inkey "$KNYTOS_KAFKA_CERT_DIR/kafka.key" \
+        -in "$KNYTOS_KAFKA_CERT_DIR/kafka.crt" \
+        -certfile "$KNYTOS_KAFKA_CERT_DIR/ca.crt" \
+        -out "$KNYTOS_KAFKA_CERT_DIR/kafka.p12" \
         -passout pass:knytos-kafka-test
-    openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/ca.crt" -outform DER \
-        -out "$CATTEN_KAFKA_CERT_DIR/ca.der"
+    openssl x509 -in "$KNYTOS_KAFKA_CERT_DIR/ca.crt" -outform DER \
+        -out "$KNYTOS_KAFKA_CERT_DIR/ca.der"
     openssl ecparam -name prime256v1 -genkey -noout \
-        -out "$CATTEN_KAFKA_CERT_DIR/client.key"
+        -out "$KNYTOS_KAFKA_CERT_DIR/client.key"
     openssl req -new -sha256 \
-        -key "$CATTEN_KAFKA_CERT_DIR/client.key" \
-        -subj "/CN=charlotte" \
-        -out "$CATTEN_KAFKA_CERT_DIR/client.csr"
+        -key "$KNYTOS_KAFKA_CERT_DIR/client.key" \
+        -subj "/CN=knytos" \
+        -out "$KNYTOS_KAFKA_CERT_DIR/client.csr"
     openssl x509 -req -sha256 -days 2 \
-        -in "$CATTEN_KAFKA_CERT_DIR/client.csr" \
-        -CA "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
-        -CAkey "$CATTEN_KAFKA_CERT_DIR/ca.key" \
-        -CAserial "$CATTEN_KAFKA_CERT_DIR/ca.srl" \
+        -in "$KNYTOS_KAFKA_CERT_DIR/client.csr" \
+        -CA "$KNYTOS_KAFKA_CERT_DIR/ca.crt" \
+        -CAkey "$KNYTOS_KAFKA_CERT_DIR/ca.key" \
+        -CAserial "$KNYTOS_KAFKA_CERT_DIR/ca.srl" \
         -extfile "${ROOT_DIR}/docker/kafka-test/client-ext.cnf" \
-        -out "$CATTEN_KAFKA_CERT_DIR/client.crt"
-    openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/client.crt" -outform DER \
-        -out "$CATTEN_KAFKA_CERT_DIR/client.der"
-    openssl ec -in "$CATTEN_KAFKA_CERT_DIR/client.key" -outform DER \
-        -out "$CATTEN_KAFKA_CERT_DIR/client-key.der"
-    rm -f "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12"
+        -out "$KNYTOS_KAFKA_CERT_DIR/client.crt"
+    openssl x509 -in "$KNYTOS_KAFKA_CERT_DIR/client.crt" -outform DER \
+        -out "$KNYTOS_KAFKA_CERT_DIR/client.der"
+    openssl ec -in "$KNYTOS_KAFKA_CERT_DIR/client.key" -outform DER \
+        -out "$KNYTOS_KAFKA_CERT_DIR/client-key.der"
+    rm -f "$KNYTOS_KAFKA_CERT_DIR/kafka-truststore.p12"
     keytool -importcert -noprompt \
-        -alias charlotte-test-ca \
-        -file "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
-        -keystore "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12" \
+        -alias knytos-test-ca \
+        -file "$KNYTOS_KAFKA_CERT_DIR/ca.crt" \
+        -keystore "$KNYTOS_KAFKA_CERT_DIR/kafka-truststore.p12" \
         -storetype PKCS12 \
         -storepass knytos-kafka-test
-    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
-    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
-    printf '%s\n' 'knytos-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/truststore-password"
+    printf '%s\n' 'knytos-kafka-test' >"$KNYTOS_KAFKA_CERT_DIR/key-password"
+    printf '%s\n' 'knytos-kafka-test' >"$KNYTOS_KAFKA_CERT_DIR/keystore-password"
+    printf '%s\n' 'knytos-kafka-test' >"$KNYTOS_KAFKA_CERT_DIR/truststore-password"
     printf '%s\n' \
         'KafkaServer {' \
         '  org.apache.kafka.common.security.scram.ScramLoginModule required' \
         '  username="knytos"' \
         '  password="knytos-kafka-test";' \
-        '};' >"$CATTEN_KAFKA_CERT_DIR/kafka_server_jaas.conf"
-    chmod 0600 "$CATTEN_KAFKA_CERT_DIR/client-key.der"
-    chmod 0644 "$CATTEN_KAFKA_CERT_DIR/ca.der" \
-        "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
-        "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12" \
-        "$CATTEN_KAFKA_CERT_DIR/client.der" \
-        "$CATTEN_KAFKA_CERT_DIR/key-password" \
-        "$CATTEN_KAFKA_CERT_DIR/keystore-password" \
-        "$CATTEN_KAFKA_CERT_DIR/truststore-password" \
-        "$CATTEN_KAFKA_CERT_DIR/kafka_server_jaas.conf"
-    export CATTEN_KAFKA_TEST_CA_DER="$CATTEN_KAFKA_CERT_DIR/ca.der"
-    export CATTEN_KAFKA_TEST_CLIENT_CERT_DER="$CATTEN_KAFKA_CERT_DIR/client.der"
-    export CATTEN_KAFKA_TEST_CLIENT_KEY_DER="$CATTEN_KAFKA_CERT_DIR/client-key.der"
+        '};' >"$KNYTOS_KAFKA_CERT_DIR/kafka_server_jaas.conf"
+    chmod 0600 "$KNYTOS_KAFKA_CERT_DIR/client-key.der"
+    chmod 0644 "$KNYTOS_KAFKA_CERT_DIR/ca.der" \
+        "$KNYTOS_KAFKA_CERT_DIR/kafka.p12" \
+        "$KNYTOS_KAFKA_CERT_DIR/kafka-truststore.p12" \
+        "$KNYTOS_KAFKA_CERT_DIR/client.der" \
+        "$KNYTOS_KAFKA_CERT_DIR/key-password" \
+        "$KNYTOS_KAFKA_CERT_DIR/keystore-password" \
+        "$KNYTOS_KAFKA_CERT_DIR/truststore-password" \
+        "$KNYTOS_KAFKA_CERT_DIR/kafka_server_jaas.conf"
+    export KNYTOS_KAFKA_TEST_CA_DER="$KNYTOS_KAFKA_CERT_DIR/ca.der"
+    export KNYTOS_KAFKA_TEST_CLIENT_CERT_DER="$KNYTOS_KAFKA_CERT_DIR/client.der"
+    export KNYTOS_KAFKA_TEST_CLIENT_KEY_DER="$KNYTOS_KAFKA_CERT_DIR/client-key.der"
     echo ">>> Starting ephemeral three-broker TLS/mTLS/SCRAM Apache Kafka fixture..."
     docker compose -f "$KAFKA_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     KAFKA_RUNNING="1"
@@ -591,35 +591,35 @@ if [ "$KAFKA_TEST" = "1" ]; then
         --alter \
         --add-config 'SCRAM-SHA-256=[iterations=4096,password=knytos-kafka-test]' \
         --entity-type users \
-        --entity-name charlotte
+        --entity-name knytos
     KAFKA_EVENTS_REPLICAS="1:2:3"
     KAFKA_RESULTS_REPLICAS="2:3:1"
     docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-events --replica-assignment "$KAFKA_EVENTS_REPLICAS"
+        --topic knytos-events --replica-assignment "$KAFKA_EVENTS_REPLICAS"
     docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-results --replica-assignment "$KAFKA_RESULTS_REPLICAS"
+        --topic knytos-results --replica-assignment "$KAFKA_RESULTS_REPLICAS"
 fi
 
-TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
-TARGET_DIR="${ARCH}-unknown-none-catten"
+TARGET_SPEC="target_specs/${ARCH}-unknown-none-knytos.json"
+TARGET_DIR="${ARCH}-unknown-none-knytos"
 IMAGE_DIR="./os-images"
 INSTANCE_SUFFIX=""
 if [ -n "$INSTANCE" ]; then
     INSTANCE_SUFFIX="-${INSTANCE}"
 fi
-IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
+IMAGE="${IMAGE_DIR}/knytos-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
 KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
 EFI_BOOT_FILE="BOOTAA64.EFI"
 
 # Locate the AArch64 UEFI firmware. Distribution packaging puts it in
 # different places, so probe the common ones and allow an explicit override.
-FIRMWARE="${CATTEN_AARCH64_FIRMWARE:-}"
+FIRMWARE="${KNYTOS_AARCH64_FIRMWARE:-}"
 if [ -z "$FIRMWARE" ]; then
     for candidate in \
         /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
@@ -638,7 +638,7 @@ if [ -z "$FIRMWARE" ]; then
 fi
 if [ -z "$FIRMWARE" ] || [ ! -f "$FIRMWARE" ]; then
     echo "error: AArch64 UEFI firmware not found" >&2
-    echo "       set CATTEN_AARCH64_FIRMWARE=/path/to/QEMU_EFI.fd, or install:" >&2
+    echo "       set KNYTOS_AARCH64_FIRMWARE=/path/to/QEMU_EFI.fd, or install:" >&2
     echo "       Debian/Ubuntu: apt install qemu-efi-aarch64" >&2
     echo "       Fedora/RHEL:   dnf install edk2-aarch64" >&2
     exit 1
@@ -649,7 +649,7 @@ if [ "$PROFILE" = "release" ]; then
     RELEASE_FLAG="--release"
 fi
 
-if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
+if [ "${KNYTOS_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged AArch64 EL0 bundle."
 elif [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
@@ -658,26 +658,26 @@ else
     echo ">>> Rebuilding embedded EL0 service bundle..."
     "${ROOT_DIR}/scripts/build-knytos-services.sh" --embed --mode "$BOOT_MODE"
 fi
-if [ "$BOOT_MODE" = "test" ] && [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
+if [ "$BOOT_MODE" = "test" ] && [ "${KNYTOS_SKIP_EMBED_BUILD:-0}" != "1" ]; then
     "${ROOT_DIR}/scripts/build-knytos-user.sh" --embed
 fi
-catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
+knytos_validate_service_bundle "$BOOT_MODE" "$ARCH"
 if [ "$BOOT_MODE" = "test" ] && [ ! -f "$BUNDLE/sitas-user.elf" ]; then
     echo "error: test bundle requires sitas-user.elf; run scripts/build-knytos-user.sh --embed" >&2
     exit 1
 fi
-export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
+export KNYTOS_AARCH64_SERVICE_BUNDLE="$BUNDLE"
 if [ "$SECURITY_TEST" = "1" ]; then
     mkdir -p "$ROOT_DIR/target/security-test"
-    CATTEN_SECURITY_TEST_DIR="$(mktemp -d "$ROOT_DIR/target/security-test/fixture.XXXXXX")"
-    export CATTEN_SECURITY_TEST_DIR
+    KNYTOS_SECURITY_TEST_DIR="$(mktemp -d "$ROOT_DIR/target/security-test/fixture.XXXXXX")"
+    export KNYTOS_SECURITY_TEST_DIR
     bash "$ROOT_DIR/scripts/generate-security-test-fixtures.sh" \
-        "$CATTEN_AARCH64_SERVICE_BUNDLE/security_probe.elf" "$CATTEN_SECURITY_TEST_DIR"
+        "$KNYTOS_AARCH64_SERVICE_BUNDLE/security_probe.elf" "$KNYTOS_SECURITY_TEST_DIR"
 fi
 
 if [ "$DEPLOY_TEST" = "1" ]; then
-    export CATTEN_LOCAL_DEPLOYMENT_FIXTURE="${ROOT_DIR}/target/local-deploy-fixture/${INSTANCE}-greet.bundle"
-    bash "$ROOT_DIR/scripts/prepare-local-deployment-fixture.sh" "$CATTEN_AARCH64_SERVICE_BUNDLE" "$CATTEN_LOCAL_DEPLOYMENT_FIXTURE"
+    export KNYTOS_LOCAL_DEPLOYMENT_FIXTURE="${ROOT_DIR}/target/local-deploy-fixture/${INSTANCE}-greet.bundle"
+    bash "$ROOT_DIR/scripts/prepare-local-deployment-fixture.sh" "$KNYTOS_AARCH64_SERVICE_BUNDLE" "$KNYTOS_LOCAL_DEPLOYMENT_FIXTURE"
 fi
 
 DEPLOYMENT_DESCRIPTOR=""
@@ -692,7 +692,7 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     mkdir -p "${ROOT_DIR}/target/deployment-ingress-test"
     DEPLOYMENT_TEST_DIR="$(mktemp -d "${ROOT_DIR}/target/deployment-ingress-test/run.XXXXXX")"
     if [ -z "$DEPLOY_ELF" ]; then
-        DEPLOY_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
+        DEPLOY_ELF="${KNYTOS_AARCH64_SERVICE_BUNDLE}/greet.elf"
     fi
     if [ ! -f "$DEPLOY_ELF" ]; then
         echo "error: deployment ELF not found: $DEPLOY_ELF" >&2
@@ -703,13 +703,13 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.cdep"
     DEPLOYMENT_RELEASE="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.crelease"
     DEPLOYMENT_DIGEST="$($CLUSTER_SIGN_BIN sha256 "$DEPLOYMENT_ELF")"
-    DEPLOYMENT_KEY_FILE="$(catten_signing_key_file "$ROOT_DIR")"
+    DEPLOYMENT_KEY_FILE="$(knytos_signing_key_file "$ROOT_DIR")"
     DEPLOYMENT_SEQUENCE="$(date +%s)"
     docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
         -v "${DEPLOYMENT_ELF}:/tmp/${DEPLOY_NAME}.elf:ro" \
         --entrypoint /bin/sh init -ec \
-        "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/${DEPLOY_NAME}.elf local/charlotte-test/${DEPLOYMENT_OBJECT_KEY}"
-    # CATTEN_DEPLOY_GRANTS is a space-separated list of NAME=RIGHT entries.
+        "rc alias set local https://rustfs.test:9000 knytos-test-access knytos-test-secret-2026 && rc cp /tmp/${DEPLOY_NAME}.elf local/knytos-test/${DEPLOYMENT_OBJECT_KEY}"
+    # KNYTOS_DEPLOY_GRANTS is a space-separated list of NAME=RIGHT entries.
     DEPLOY_VARIANT_ARGS=()
     if [ -n "$DEPLOY_VARIANT_ELF" ]; then
         if [ ! -f "$DEPLOY_VARIANT_ELF" ]; then
@@ -719,7 +719,7 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
         docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
             -v "${DEPLOY_VARIANT_ELF}:/tmp/variant.elf:ro" \
             --entrypoint /bin/sh init -ec \
-            "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/variant.elf local/charlotte-test/${DEPLOY_VARIANT_KEY}"
+            "rc alias set local https://rustfs.test:9000 knytos-test-access knytos-test-secret-2026 && rc cp /tmp/variant.elf local/knytos-test/${DEPLOY_VARIANT_KEY}"
         DEPLOY_VARIANT_ARGS=("--variant=${DEPLOY_VARIANT_KEY},${DEPLOY_VARIANT_ELF},0,0,4")
     fi
     "$CLUSTER_SIGN_BIN" deployment-sign \
@@ -743,11 +743,11 @@ if [ "$DISPLAY_MODE" = "1" ]; then
         echo "       run: rustup component add llvm-tools" >&2
         exit 1
     fi
-    export AR_aarch64_unknown_none_catten="$LLVM_AR"
+    export AR_aarch64_unknown_none_knytos="$LLVM_AR"
     FEATURES="acpi,display,virtio_gpu"
-    echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, display)..."
+    echo ">>> Building Knytos kernel (${ARCH}, ${PROFILE}, display)..."
 else
-    echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, headless)..."
+    echo ">>> Building Knytos kernel (${ARCH}, ${PROFILE}, headless)..."
 fi
 
 if [ "$BOOT_MODE" = "test" ]; then
@@ -825,47 +825,47 @@ if [ "$SCHEDULER_TRACE" = "1" ]; then
     FEATURES="${FEATURES},scheduler_trace"
 fi
 
-if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
+if [ "${KNYTOS_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
     if [ ! -f "$KERNEL" ]; then
-        echo "error: CATTEN_SKIP_KERNEL_BUILD=1 but ${KERNEL} does not exist" >&2
+        echo "error: KNYTOS_SKIP_KERNEL_BUILD=1 but ${KERNEL} does not exist" >&2
         exit 1
     fi
-    echo ">>> Reusing previously built Catten kernel."
+    echo ">>> Reusing previously built Knytos kernel."
 else
     if [ -n "$CLUSTER_SERVICE" ]; then
-        export CATTEN_CLUSTER_SERVICES="$CLUSTER_SERVICES_ENV"
+        export KNYTOS_CLUSTER_SERVICES="$CLUSTER_SERVICES_ENV"
     else
-        unset CATTEN_CLUSTER_SERVICES
+        unset KNYTOS_CLUSTER_SERVICES
     fi
     # Raw Ethernet peers have no DHCP server. This applies to the steady-state
     # appliance even when the fixture does not configure a cluster VIP.
     if [ "$NET_BACKEND" != "user" ]; then
-        export CATTEN_CLUSTER_STATIC_NETWORK=1
+        export KNYTOS_CLUSTER_STATIC_NETWORK=1
     else
-        unset CATTEN_CLUSTER_STATIC_NETWORK
+        unset KNYTOS_CLUSTER_STATIC_NETWORK
     fi
     cargo build --locked --package catten --target "$TARGET_SPEC" \
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 
 python3 "$ROOT_DIR/scripts/check-boot-profile.py" --kernel "$KERNEL" --mode "$BOOT_MODE"
-catten_boot_report_kernel "$KERNEL"
+knytos_boot_report_kernel "$KERNEL"
 
 # --- Build a FAT32 EFI System Partition image with mtools. ---
-catten_boot_create_uefi_image \
+knytos_boot_create_uefi_image \
     "$IMAGE" \
-    "$CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB" \
+    "$KNYTOS_BOOT_DEFAULT_IMAGE_SIZE_MIB" \
     "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
     "$KERNEL" \
     "$LIMINE_CONFIG"
-catten_boot_export_management_clients "$IMAGE"
+knytos_boot_export_management_clients "$IMAGE"
 
 # --- Persistent NVMe data image, separate from the FAT boot volume. ---
 # SBSA used to expose the boot FAT as its only NVMe disk. The object store
 # correctly rejects that nonblank foreign format; give it its own signed store.
 NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
 NVME_BUNDLE_HASH="${NVME_IMAGE}.bundle-sha256"
-CURRENT_BUNDLE_HASH="$(catten_boot_bundle_sha256 "$CATTEN_AARCH64_SERVICE_BUNDLE")"
+CURRENT_BUNDLE_HASH="$(knytos_boot_bundle_sha256 "$KNYTOS_AARCH64_SERVICE_BUNDLE")"
 STORED_BUNDLE_HASH="$(test -f "$NVME_BUNDLE_HASH" && tr -d '[:space:]' < "$NVME_BUNDLE_HASH" || true)"
 if [ "$REUSE_STORAGE" = "1" ] && [ -f "$NVME_IMAGE" ]; then
     echo ">>> Reusing NVMe disk image ${NVME_IMAGE} by explicit request."
@@ -879,7 +879,7 @@ elif [ ! -f "$NVME_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
     # store at boot (the embedded bundle covers only the bootstrap set).
     echo ">>> Producing initial NVMe disk image ${NVME_IMAGE} from the signed bundle..."
     python3 "${ROOT_DIR}/scripts/make-nvme-image.py" \
-        "$NVME_IMAGE" "$CATTEN_AARCH64_SERVICE_BUNDLE"
+        "$NVME_IMAGE" "$KNYTOS_AARCH64_SERVICE_BUNDLE"
     printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$NVME_BUNDLE_HASH"
 else
     echo ">>> Reusing NVMe disk image ${NVME_IMAGE} (blessed bundle unchanged)."
@@ -912,14 +912,14 @@ if [ "$SBSA_REF" = "1" ]; then
         done
         return 1
     }
-    SBSA_FLASH0="$(resolve_firmware SBSA_FLASH0.fd "${CATTEN_SBSA_FLASH0:-}")" \
+    SBSA_FLASH0="$(resolve_firmware SBSA_FLASH0.fd "${KNYTOS_SBSA_FLASH0:-}")" \
         || SBSA_FLASH0=""
-    SBSA_FLASH1="$(resolve_firmware SBSA_FLASH1.fd "${CATTEN_SBSA_FLASH1:-}")" \
+    SBSA_FLASH1="$(resolve_firmware SBSA_FLASH1.fd "${KNYTOS_SBSA_FLASH1:-}")" \
         || SBSA_FLASH1=""
     if [ -z "$SBSA_FLASH0" ] || [ -z "$SBSA_FLASH1" ]; then
         echo "error: sbsa-ref firmware is missing (looked for SBSA_FLASH0/1.fd" >&2
         echo "       under target/firmware/ and target/firmware-src/out/, or" >&2
-        echo "       CATTEN_SBSA_FLASH0 / CATTEN_SBSA_FLASH1 if set)." >&2
+        echo "       KNYTOS_SBSA_FLASH0 / KNYTOS_SBSA_FLASH1 if set)." >&2
         echo >&2
         echo "       Build it first:" >&2
         echo "         scripts/build-sbsa-firmware.sh" >&2
@@ -969,29 +969,29 @@ elif [ "$SBSA_REF" != "1" ]; then
     # The named Cortex model has no RNDR instruction. Expose the host CSPRNG
     # through protected DMA to the ordinary VirtIO RNG service.
     QEMU_OPTS+=(
-        -object "rng-random,filename=/dev/urandom,id=charlotte-rng"
-        -device "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4"
+        -object "rng-random,filename=/dev/urandom,id=knytos-rng"
+        -device "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4"
     )
 fi
 
 QEMU_OPTS+=(-smp "$SMP")
 
-if [ -n "$GDB" ] || [ "${CATTEN_QEMU_DEBUG_STUB:-0}" = "1" ]; then
+if [ -n "$GDB" ] || [ "${KNYTOS_QEMU_DEBUG_STUB:-0}" = "1" ]; then
     QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
 fi
 
-if [ "${CATTEN_QEMU_VIRTIO_TRACE:-0}" = "1" ]; then
+if [ "${KNYTOS_QEMU_VIRTIO_TRACE:-0}" = "1" ]; then
     QEMU_OPTS+=(
         -trace enable=virtio_pci_notify_write
     )
 fi
-if [ -n "${CATTEN_QEMU_TRACE_EVENTS:-}" ]; then
+if [ -n "${KNYTOS_QEMU_TRACE_EVENTS:-}" ]; then
     QEMU_OPTS+=(
-        -trace "events=${CATTEN_QEMU_TRACE_EVENTS},file=/tmp/charlotte${INSTANCE_SUFFIX}-qemu-trace.txt"
+        -trace "events=${KNYTOS_QEMU_TRACE_EVENTS},file=/tmp/knytos${INSTANCE_SUFFIX}-qemu-trace.txt"
     )
 fi
-if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ]; then
-    QEMU_OPTS+=(-monitor "unix:/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock,server=on,wait=off")
+if [ "${KNYTOS_QEMU_MONITOR:-0}" = "1" ]; then
+    QEMU_OPTS+=(-monitor "unix:/tmp/knytos${INSTANCE_SUFFIX}-monitor.sock,server=on,wait=off")
 fi
 
 QEMU_OPTS+=(
@@ -1008,35 +1008,35 @@ if [ "$NETWORK" = "1" ]; then
                 APP_FWD=",hostfwd=tcp::${APP_HOST_PORT}-:${APP_GUEST_PORT}"
             fi
             if [ -n "$CLUSTER_SERVICE" ]; then
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
+                QEMU_OPTS+=(-netdev "user,id=knytos-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             else
                 # Host-side keyhole: forward the configurable host port to
                 # guest TLS port 443 so parallel/local runs need not contend for a
                 # hard-coded listener.
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
+                QEMU_OPTS+=(-netdev "user,id=knytos-net,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             fi
             ;;
         listen:*)
             NET_PORT="${NET_BACKEND#listen:}"
-            QEMU_OPTS+=(-netdev "stream,id=charlotte-net,server=on,addr.type=inet,addr.host=0.0.0.0,addr.port=${NET_PORT}")
+            QEMU_OPTS+=(-netdev "stream,id=knytos-net,server=on,addr.type=inet,addr.host=0.0.0.0,addr.port=${NET_PORT}")
             ;;
         connect:*)
             NET_PEER="${NET_BACKEND#connect:}"
             NET_HOST="${NET_PEER%%:*}"
             NET_PORT="${NET_PEER#*:}"
-            QEMU_OPTS+=(-netdev "stream,id=charlotte-net,server=off,addr.type=inet,addr.host=${NET_HOST},addr.port=${NET_PORT}")
+            QEMU_OPTS+=(-netdev "stream,id=knytos-net,server=off,addr.type=inet,addr.host=${NET_HOST},addr.port=${NET_PORT}")
             ;;
         mcast:*)
             NET_GROUP="${NET_BACKEND#mcast:}"
-            QEMU_OPTS+=(-netdev "socket,id=charlotte-net,mcast=${NET_GROUP}")
+            QEMU_OPTS+=(-netdev "socket,id=knytos-net,mcast=${NET_GROUP}")
             ;;
     esac
     QEMU_OPTS+=(
-        -device "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=${NET_MAC},addr=1"
+        -device "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=${NET_MAC},addr=1"
     )
-    if [ "${CATTEN_QEMU_NET_DUMP:-0}" = "1" ]; then
+    if [ "${KNYTOS_QEMU_NET_DUMP:-0}" = "1" ]; then
         QEMU_OPTS+=(
-            -object "filter-dump,id=charlotte-net-dump,netdev=charlotte-net,file=/tmp/charlotte${INSTANCE_SUFFIX}-net.pcap"
+            -object "filter-dump,id=knytos-net-dump,netdev=knytos-net,file=/tmp/knytos${INSTANCE_SUFFIX}-net.pcap"
         )
     fi
 fi
@@ -1048,12 +1048,12 @@ else
 fi
 
 if [ -n "$TIMEOUT" ]; then
-    LOG="/tmp/charlotte${INSTANCE_SUFFIX}-serial.log"
+    LOG="/tmp/knytos${INSTANCE_SUFFIX}-serial.log"
     : >"$LOG"
-    catten_boot_record_log_kernel "$LOG" "$KERNEL"
+    knytos_boot_record_log_kernel "$LOG" "$KERNEL"
     if [ "$FAILURE_CAPTURE" = "1" ] && [ -z "$GDB" ] \
-        && [ "${CATTEN_QEMU_DEBUG_STUB:-0}" != "1" ] && [ "$SCHEDULER_TRACE" = "0" ]; then
-        catten_boot_diagnostics_prepare "$ARCH" "$KERNEL" "$LOG" "$CATTEN_AARCH64_SERVICE_BUNDLE" \
+        && [ "${KNYTOS_QEMU_DEBUG_STUB:-0}" != "1" ] && [ "$SCHEDULER_TRACE" = "0" ]; then
+        knytos_boot_diagnostics_prepare "$ARCH" "$KERNEL" "$LOG" "$KNYTOS_AARCH64_SERVICE_BUNDLE" \
             "${NVME_IMAGE:-$IMAGE}" "$SMP" "$TIMEOUT" "$INSTANCE" "$IMAGE"
     elif [ "$FAILURE_CAPTURE" = "1" ]; then
         echo ">>> Automatic failure capture disabled: manual/trace debugger owns this guest."
@@ -1065,9 +1065,9 @@ if [ -n "$TIMEOUT" ]; then
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
-    catten_boot_diagnostics_start "$QPID"
-    if [ -n "${CATTEN_QEMU_PID_FILE:-}" ]; then
-        printf '%s\n' "$QPID" >"$CATTEN_QEMU_PID_FILE"
+    knytos_boot_diagnostics_start "$QPID"
+    if [ -n "${KNYTOS_QEMU_PID_FILE:-}" ]; then
+        printf '%s\n' "$QPID" >"$KNYTOS_QEMU_PID_FILE"
     fi
     DEPLOYMENT_RESULT_FILE=""
     DEPLOYMENT_WORKER_LOG=""
@@ -1112,11 +1112,11 @@ if [ -n "$TIMEOUT" ]; then
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
-        if catten_boot_diagnostics_failed; then break; fi
+        if knytos_boot_diagnostics_failed; then break; fi
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
             if { [ "$SHUTDOWN_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; } \
-                && catten_boot_has_selftest_result "$LOG" \
+                && knytos_boot_has_selftest_result "$LOG" \
                 && grep -Fq "[shutdown] POWER-OFF REQUESTED via PSCI" "$LOG"; then
                 SELFTEST_COMPLETE=1
                 POWER_OFF_OBSERVED=1
@@ -1133,15 +1133,15 @@ if [ -n "$TIMEOUT" ]; then
         # Probe the guest HTTP keyhole once the httpd reports listening,
         # retrying a few times for the SLIRP/smoltcp path to settle.
         if [ -n "$MANAGEMENT_STARTUP_TEST" ] && [ "$MANAGEMENT_STARTUP_CHECKED" = "0" ] \
-            && catten_boot_management_startup_ready; then
+            && knytos_boot_management_startup_ready; then
             MANAGEMENT_STARTUP_CHECKED=1
-            if catten_boot_probe_management_startup; then MANAGEMENT_STARTUP_OK=1; fi
-            if [ "$MANAGEMENT_STARTUP_OK" != "1" ] || catten_boot_management_expects_rejection; then
+            if knytos_boot_probe_management_startup; then MANAGEMENT_STARTUP_OK=1; fi
+            if [ "$MANAGEMENT_STARTUP_OK" != "1" ] || knytos_boot_management_expects_rejection; then
                 break
             fi
         fi
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
-            && catten_boot_http_probe_ready; then
+            && knytos_boot_http_probe_ready; then
             HTTP_PROBED=1
             echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
             HTTP_LIVENESS_OK=0
@@ -1154,12 +1154,12 @@ if [ -n "$TIMEOUT" ]; then
                 --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
                 HTTP_LIVENESS_OK=0
             fi
-            if [ -n "${CATTEN_MANAGEMENT_READER_CERT_FILE:-}" ] \
-                && [ -n "${CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE:-}" ]; then
+            if [ -n "${KNYTOS_MANAGEMENT_READER_CERT_FILE:-}" ] \
+                && [ -n "${KNYTOS_MANAGEMENT_UNKNOWN_CERT_FILE:-}" ]; then
                 MANAGEMENT_PROBE_ARGS=()
-                if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ] && [ -n "$CLUSTER_VIP" ]; then
+                if [ "${KNYTOS_QEMU_MONITOR:-0}" = "1" ] && [ -n "$CLUSTER_VIP" ]; then
                     MANAGEMENT_PROBE_ARGS=(--vip "$CLUSTER_VIP" \
-                        --monitor "/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock")
+                        --monitor "/tmp/knytos${INSTANCE_SUFFIX}-monitor.sock")
                 fi
                 if ! python3 "${ROOT_DIR}/scripts/tests/test-management-tls.py" \
                     --status-port "$HTTP_HOST_PORT" --deployment-port "$DEPLOY_HOST_PORT" \
@@ -1168,8 +1168,8 @@ if [ -n "$TIMEOUT" ]; then
                 fi
             fi
             for _ in 1 2 3 4 5 6 7 8; do
-                HTTP_BODY="$(curl -fsS --max-time 5 --cacert "$CATTEN_MANAGEMENT_CA_FILE" --cert "$CATTEN_MANAGEMENT_CERT_FILE" --key "$CATTEN_MANAGEMENT_KEY_FILE" "https://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
-                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 --cacert "$CATTEN_MANAGEMENT_CA_FILE" --cert "$CATTEN_MANAGEMENT_CERT_FILE" --key "$CATTEN_MANAGEMENT_KEY_FILE" "https://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"
+                HTTP_BODY="$(curl -fsS --max-time 5 --cacert "$KNYTOS_MANAGEMENT_CA_FILE" --cert "$KNYTOS_MANAGEMENT_CERT_FILE" --key "$KNYTOS_MANAGEMENT_KEY_FILE" "https://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
+                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 --cacert "$KNYTOS_MANAGEMENT_CA_FILE" --cert "$KNYTOS_MANAGEMENT_CERT_FILE" --key "$KNYTOS_MANAGEMENT_KEY_FILE" "https://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"
                 if [ "$HTTP_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
@@ -1255,7 +1255,7 @@ if [ -n "$TIMEOUT" ]; then
                 echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
             fi
         fi
-        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selected_result "$LOG"; then
+        if [ "$SELFTEST_COMPLETE" = "1" ] || knytos_boot_has_selected_result "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
                 SELFTEST_COMPLETE_TICK=$tick
@@ -1273,7 +1273,7 @@ if [ -n "$TIMEOUT" ]; then
                 mkdir -p "${ROOT_DIR}/target/shutdown-ingress-test"
                 SHUTDOWN_TEST_DIR="$(mktemp -d "${ROOT_DIR}/target/shutdown-ingress-test/run.XXXXXX")"
                 SHUTDOWN_INTENT="${SHUTDOWN_TEST_DIR}/node.cshutdown"
-                SHUTDOWN_KEY_FILE="$(catten_signing_key_file "$ROOT_DIR")"
+                SHUTDOWN_KEY_FILE="$(knytos_signing_key_file "$ROOT_DIR")"
                 SHUTDOWN_NOW="$(date +%s)"
                 SHUTDOWN_TARGET="$($CLUSTER_SIGN_BIN node-key "$NET_MAC")"
                 "$CLUSTER_SIGN_BIN" shutdown-sign "$SHUTDOWN_INTENT" \
@@ -1305,13 +1305,13 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$SELFTEST_COMPLETE" = "1" ]; then DIAGNOSTICS_REASON=complete; fi
     if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBE_OK" != "1" ]; then DIAGNOSTICS_REASON=host-probe-failed; fi
     if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ ! -f "$DEPLOYMENT_RESULT_FILE" ]; then DIAGNOSTICS_REASON=deployment-incomplete; fi
-    catten_boot_diagnostics_finish "$DIAGNOSTICS_REASON" "$DEBUG_SNAPSHOT"
+    knytos_boot_diagnostics_finish "$DIAGNOSTICS_REASON" "$DEBUG_SNAPSHOT"
     if [ "$SCHEDULER_TRACE" = "1" ]; then
-        TRACE_RAW="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.bin"
-        TRACE_TEXT="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.log"
-        LIFECYCLE_TRACE_RAW="/tmp/charlotte${INSTANCE_SUFFIX}-thread-lifecycle-trace.bin"
-        LIFECYCLE_TRACE_TEXT="/tmp/charlotte${INSTANCE_SUFFIX}-thread-lifecycle-trace.log"
-        TRACE_LLDB="/tmp/charlotte${INSTANCE_SUFFIX}-trace-lldb.log"
+        TRACE_RAW="/tmp/knytos${INSTANCE_SUFFIX}-scheduler-trace.bin"
+        TRACE_TEXT="/tmp/knytos${INSTANCE_SUFFIX}-scheduler-trace.log"
+        LIFECYCLE_TRACE_RAW="/tmp/knytos${INSTANCE_SUFFIX}-thread-lifecycle-trace.bin"
+        LIFECYCLE_TRACE_TEXT="/tmp/knytos${INSTANCE_SUFFIX}-thread-lifecycle-trace.log"
+        TRACE_LLDB="/tmp/knytos${INSTANCE_SUFFIX}-trace-lldb.log"
         read -r TRACE_ADDR TRACE_SIZE < <(nm -S "$KERNEL" | awk '$4 == "DEBUG_TRACE" { print "0x" $1, "0x" $2; exit }')
         read -r LIFECYCLE_TRACE_ADDR LIFECYCLE_TRACE_SIZE < <(nm -S "$KERNEL" | awk '$4 == "THREAD_LIFECYCLE_TRACE" { print "0x" $1, "0x" $2; exit }')
         if [ -n "${TRACE_ADDR:-}" ] && [ -n "${LIFECYCLE_TRACE_ADDR:-}" ] \
@@ -1359,10 +1359,10 @@ if [ -n "$TIMEOUT" ]; then
         wait "$QPID" 2>/dev/null || true
     fi
     echo ">>> Serial log (${LOG}):"
-    catten_boot_diagnostics_archive
+    knytos_boot_diagnostics_archive
     cat "$LOG"
-    if [ "$CATTEN_DIAGNOSTICS_FAILED" = "1" ]; then
-        echo "error: guest failure/deadline captured; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+    if [ "$KNYTOS_DIAGNOSTICS_FAILED" = "1" ]; then
+        echo "error: guest failure/deadline captured; see ${KNYTOS_DIAGNOSTICS_DIR}" >&2
         exit 1
     fi
     if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "1" ] && [ "$HTTP_PROBE_OK" = "0" ]; then
@@ -1385,7 +1385,7 @@ if [ -n "$TIMEOUT" ]; then
             echo "error: specific management startup boundary was not verified" >&2
             exit 1
         fi
-        if catten_boot_management_expects_rejection; then
+        if knytos_boot_management_expects_rejection; then
             echo ">>> Expected management resource rejection verified; no self-test success claimed."
             exit 0
         fi
@@ -1407,7 +1407,7 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; then
         python3 "${ROOT_DIR}/scripts/tests/test-management-drain.py" verify "$LOG"
     fi
-    catten_boot_validate_selected_log "$LOG" "$KERNEL"
+    knytos_boot_validate_selected_log "$LOG" "$KERNEL"
 else
     QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then

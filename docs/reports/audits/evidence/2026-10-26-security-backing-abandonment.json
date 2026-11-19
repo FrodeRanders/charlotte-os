@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-security-evidence-v1",
+  "schema": "knytos-security-evidence-v1",
   "report_date": "2026-10-26",
   "reviewed_revision": "98a2ffde2f7685e115f0f3e159b723f3a4eeb49d",
   "scope": {
@@ -33,7 +33,7 @@
     "strict_base_kernel_clippy": {
       "aarch64": "pass",
       "x86_64": "pass",
-      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+      "command": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings"
     },
     "frozen_final_source_restored_after_negative": "byte-identical, all four Rust files",
     "formatting": "pass",
@@ -126,7 +126,7 @@
         "  left: Amount { pages: 0, objects: 0 }",
         " right: Amount { pages: 1, objects: 1 }"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --no-network --instance backing-drop-negative --fresh-storage --timeout 120",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --no-network --instance backing-drop-negative --fresh-storage --timeout 120",
       "expected_failure": true,
       "held_guard_test_not_entered": true
     }
@@ -185,7 +185,7 @@
       },
       "tracked_diff_sha256": "0e6eba86598745c4030009caa9456b4901b742e6b092afd0f09d40b662314f0a",
       "backend": "smmuv3",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20009 CATTEN_DEPLOY_HOST_PORT=20173 scripts/run-aarch64.sh --security-test --http-test --instance backing-abandonment-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20009 KNYTOS_DEPLOY_HOST_PORT=20173 scripts/run-aarch64.sh --security-test --http-test --instance backing-abandonment-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -293,7 +293,7 @@
       },
       "tracked_diff_sha256": "0fb3ad0cf896265ef22207c09ab0ca161fe732e40003aa15ea110c5c67194ed0",
       "backend": "intel",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20010 CATTEN_DEPLOY_HOST_PORT=20174 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance backing-abandonment-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20010 KNYTOS_DEPLOY_HOST_PORT=20174 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance backing-abandonment-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -405,7 +405,7 @@
       },
       "tracked_diff_sha256": "0fb3ad0cf896265ef22207c09ab0ca161fe732e40003aa15ea110c5c67194ed0",
       "backend": "amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20011 CATTEN_DEPLOY_HOST_PORT=20175 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance backing-abandonment-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20011 KNYTOS_DEPLOY_HOST_PORT=20175 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance backing-abandonment-amd --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -636,7 +636,7 @@
     "scope": "Existing root physical-once/original-charge projections. Concrete constructors, field Drop, local guard exit and wider IRQ/guard contexts remain native/source qualification; no executable refinement."
   },
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "a5c9c3bf9351d64439803fac5a0ea4b224697808f2a9b5c0e716e7ed9be51552",
     "source_sha256": "d4b8ef53db424f00f9ec9e1b60450572aaab6ff3de3fa1d0331925ffe3a5b6df",
     "two_pass_build": "pass",

@@ -3,6 +3,7 @@
 
 import hashlib
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,18 +36,18 @@ class BootImages(unittest.TestCase):
             stream.write(b"end!")
         self.image = self.directory / "boot.img"
 
-    def create(self, size):
+    def create(self, size, config=None):
         return subprocess.run([
             "bash", "-c",
-            'source "$1"; catten_boot_create_uefi_image "$2" '
+            'source "$1"; knytos_boot_create_uefi_image "$2" '
             + size + ' "$3" "$4" "$5"',
             "boot-image-test", str(COMMON), str(self.image),
             str(ROOT / "limine-binary/BOOTX64.EFI"), str(self.kernel),
-            str(ROOT / "limine.conf"),
+            str(config or ROOT / "limine.conf"),
         ], capture_output=True, text=True, timeout=30)
 
     def test_default_packages_large_payload_without_truncation(self):
-        result = self.create('"$CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB"')
+        result = self.create('"$KNYTOS_BOOT_DEFAULT_IMAGE_SIZE_MIB"')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         for source, member in [(self.kernel, "::/catten"),
                                (ROOT / "limine-binary/BOOTX64.EFI", "::/EFI/BOOT/BOOTX64.EFI"),
@@ -56,6 +57,21 @@ class BootImages(unittest.TestCase):
                            check=True, capture_output=True, timeout=30)
             self.assertEqual(digest(extracted), digest(source))
         self.assertFalse(list(self.directory.glob("boot.img.tmp.*")))
+
+    def test_shipped_configs_resolve_the_packaged_kernel(self):
+        self.kernel.write_bytes(b"kernel path integration probe")
+        for name in ("limine.conf", "limine-measured.conf"):
+            with self.subTest(config=name):
+                config = ROOT / name
+                result = self.create('"$KNYTOS_BOOT_DEFAULT_IMAGE_SIZE_MIB"', config)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                path = re.search(r"^\s*KERNEL_PATH:\s*boot\(\):(/\S+)",
+                                 config.read_text(), re.MULTILINE)
+                self.assertIsNotNone(path, "shipped config must name its boot-volume kernel")
+                extracted = self.directory / (name + ".kernel")
+                subprocess.run(["mcopy", "-i", str(self.image), "::" + path[1],
+                                str(extracted)], check=True, capture_output=True, timeout=30)
+                self.assertEqual(digest(extracted), digest(self.kernel))
 
     def test_explicit_small_image_rejects_without_replacing_prior_output(self):
         self.image.write_bytes(b"previous image")

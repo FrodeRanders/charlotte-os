@@ -722,13 +722,13 @@
     },
     "kernel_clippy": {
       "aarch64": {
-        "target": "target_specs/aarch64-unknown-none-catten.json",
+        "target": "target_specs/aarch64-unknown-none-knytos.json",
         "features": "acpi,virtio_net_test,http_net_test",
         "warnings": "denied",
         "exit_status": 0
       },
       "x86_64": {
-        "target": "target_specs/x86_64-unknown-none-catten.json",
+        "target": "target_specs/x86_64-unknown-none-knytos.json",
         "features": "acpi,virtio_net_test,http_net_test",
         "warnings": "denied",
         "exit_status": 0
@@ -771,7 +771,7 @@
     "policy_sha256": "6dedf4733a1def7aab3bb002f58c005b1d0d05d7a54dea7308847b90e60d3fdd"
   },
   "manual": {
-    "pdf": "docs/manual-v2/charlotte.pdf",
+    "pdf": "docs/manual-v2/knytos.pdf",
     "sha256": "8cd707296bee6e4443f00e62f1066a4a5ff6133385a16fd80177ca0ec625aae2",
     "pages": 253,
     "final_passes": 2,

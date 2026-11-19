@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.deployment-input.v1",
+  "schema": "knytos.security.deployment-input.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "3e93d259d5dc74ff1f9e11c35d294eef7658e9a8",
   "classification": {
@@ -214,7 +214,7 @@
       "selftests": [],
       "host_passes": [],
       "terminal_diagnostics": [
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-s4yk2wyy"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-s4yk2wyy"
       ],
       "failure_capture": {
         "reason": "kernel-panic",
@@ -256,7 +256,7 @@
       "terminal_diagnostics": [
         "ConnectionResetError: [Errno 54] Connection reset by peer",
         "error: guest HTTP keyholes did not return both expected JSON views",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-7dwyzq8e"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-7dwyzq8e"
       ],
       "failure_capture": {
         "reason": "host-probe-failed",
@@ -293,7 +293,7 @@
       ],
       "terminal_diagnostics": [
         "ConnectionResetError: [Errno 54] Connection reset by peer",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-v_7ua2w4"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-v_7ua2w4"
       ],
       "failure_capture": {
         "reason": "deadline",
@@ -748,7 +748,7 @@
     }
   },
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-services --lib (cwd /private/tmp)",
     "result": "160 passed; 0 failed",
     "log_sha256": "38161ceb61ee4a6e8b86aadd37055e1ee6aad5b330ddd9e2682607ec24a11199",
     "qualification": "New pool tests use modeled transport/ownership adapters. Native EOF and receive success covered separately; actual mapping/bind rejection are source reviewed."
@@ -757,14 +757,14 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "python": "python3 -m py_compile scripts/tests/test-deployment-http-liveness.py",
-    "clippy_host": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
+    "clippy_host": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
     "clippy_native": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip -- -D warnings",
     "native_lint_initial": "collapsible_if rejected the accept completion branch; corrected to equivalent let-chain; final strict check passes",
     "arm_reproduction": "scripts/build-knytos-services.sh --check: all signed ELFs match final source after lint correction",
     "x86_reproduction": "scripts/build-knytos-services-x86_64.sh; all 37 signed ELF hashes identical to loaded final pool bundle after lint correction"
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe_configurations": 37,
     "expected_counterexamples": 111,
@@ -981,7 +981,7 @@
     "server_reference": "rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21",
     "client_reference": "rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6",
     "server_running_image_id": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
-    "server_inspection": "docker inspect --format {{.Image}} {{.Config.Image}} charlotte-sec06-input-final-rustfs-1 while final signed-flow fixture was running",
+    "server_inspection": "docker inspect --format {{.Image}} {{.Config.Image}} knytos-sec06-input-final-rustfs-1 while final signed-flow fixture was running",
     "client_runtime_image_id": "not separately inspected while the transient init container was alive"
   },
   "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"

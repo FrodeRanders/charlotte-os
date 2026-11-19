@@ -77,7 +77,7 @@ fn panic(info: &PanicInfo) -> ! {
 /// outside the translation granule containing the panic handler's current
 /// stack pointer. That normally captures the allocator and its caller; deeper
 /// frames can be lost when the chain crosses a granule boundary. Addresses can
-/// be symbolized against the unstripped `catten` ELF with `lldb` or
+/// be symbolized against the unstripped `knytos` ELF with `lldb` or
 /// `addr2line`.
 #[inline(never)]
 fn dump_backtrace() {

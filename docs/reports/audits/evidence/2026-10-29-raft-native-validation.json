@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.raft-native-validation.v1",
+  "schema": "knytos.raft-native-validation.v1",
   "date": "2026-10-29",
   "source_revision": "9f3d5203e4604c3113afb07e25b28ef6cd0db48c",
   "source_dirty": true,

@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-refactoring-evidence-v1",
+  "schema": "knytos-refactoring-evidence-v1",
   "report_date": "2026-10-25",
   "reviewed_revision": "36e44506d81c8181679f8eb07181a8937422ca5b",
   "scope": {
@@ -131,7 +131,7 @@
       "registry_wait_deadline_source_notification_unchanged": true
     },
     "strict_base_kernel_clippy": {
-      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "command": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
       "aarch64": "pass",
       "x86_64": "pass"
     },
@@ -203,7 +203,7 @@
         "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
       },
       "tracked_diff_sha256": "ddd52c531a42c99a95e9f71e3f09e28fdf380207a35f3df757e3fecba92a2346",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19979 CATTEN_DEPLOY_HOST_PORT=20143 scripts/run-aarch64.sh --security-test --http-test --instance completion-record-refactor-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19979 KNYTOS_DEPLOY_HOST_PORT=20143 scripts/run-aarch64.sh --security-test --http-test --instance completion-record-refactor-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -313,7 +313,7 @@
         "virtio_blk.elf": "e1398a2fcbb24b244ca9b4e7f65f4f52cd2d4c01d73df5b2860137e2b15f5b74"
       },
       "tracked_diff_sha256": "e99a6b72ed97b6feb6a8be58b19770319497b09c348ff7fecc114df021909338",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19980 CATTEN_DEPLOY_HOST_PORT=20144 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance completion-record-refactor-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19980 KNYTOS_DEPLOY_HOST_PORT=20144 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance completion-record-refactor-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"

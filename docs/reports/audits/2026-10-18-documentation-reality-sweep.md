@@ -98,7 +98,7 @@ Results from this documentation pass:
   qualification is claimed. The client build/test results belong to the preceding
   example change, not a fresh execution of this documentation sweep.
 
-Tracked artifact: [manual PDF](../../manual-v2/charlotte.pdf), **1,066,921 bytes**.
+Tracked artifact: [manual PDF](../../manual-v2/knytos.pdf), **1,066,921 bytes**.
 SHA-256:
 
 ```text

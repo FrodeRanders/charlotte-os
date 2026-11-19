@@ -18,8 +18,8 @@ def gate(source):
 
 class RunnerGates(unittest.TestCase):
     def test_positive_startup_requires_all_host_fixture_inputs_before_build(self):
-        names = ("CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_MANAGEMENT_CA_FILE",
-                 "CATTEN_MANAGEMENT_READER_CERT_FILE", "CATTEN_MANAGEMENT_READER_KEY_FILE")
+        names = ("KNYTOS_MANAGEMENT_TLS_RESOURCE", "KNYTOS_MANAGEMENT_CA_FILE",
+                 "KNYTOS_MANAGEMENT_READER_CERT_FILE", "KNYTOS_MANAGEMENT_READER_KEY_FILE")
         with tempfile.TemporaryDirectory() as directory:
             fixture = Path(directory) / "input"
             fixture.touch()
@@ -33,7 +33,7 @@ class RunnerGates(unittest.TestCase):
                 if missing:
                     del selected[missing]
                 result = subprocess.run(
-                    ["bash", "-c", 'source "$1"; catten_boot_validate_management_startup',
+                    ["bash", "-c", 'source "$1"; knytos_boot_validate_management_startup',
                      "management-validation", str(ROOT / "scripts/lib/boot-common.sh")],
                     env=selected, capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode == 0, missing is None, result.stderr)
@@ -50,7 +50,7 @@ class RunnerGates(unittest.TestCase):
                                  ({"TIMEOUT": ""}, False), ({"HTTP_TEST": "1"}, False),
                                  ({"NET_BACKEND": "socket"}, False), ({"NETWORK": "0"}, False),
                                  ({"MANAGEMENT_STARTUP_TEST": "WrongPolicy", "FAILURE_CAPTURE": "1"}, False)):
-            result = subprocess.run(["bash", "-c", 'source "$1"; catten_boot_validate_management_startup',
+            result = subprocess.run(["bash", "-c", 'source "$1"; knytos_boot_validate_management_startup',
                                      "management-validation", str(ROOT / "scripts/lib/boot-common.sh")],
                                     env=dict(base, **change), capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode == 0, accepted, result.stderr)
@@ -61,8 +61,8 @@ class RunnerGates(unittest.TestCase):
         if baseline:
             source = (ROOT / "scripts/tests/fixtures/management-x86-http-gate-before.sh").read_text()
         if listener_only:
-            self.assertEqual(source.count('&& catten_boot_http_probe_ready; then'), 1)
-            source = source.replace('&& catten_boot_http_probe_ready; then',
+            self.assertEqual(source.count('&& knytos_boot_http_probe_ready; then'), 1)
+            source = source.replace('&& knytos_boot_http_probe_ready; then',
                                     '&& grep -Fq "httpd is listening" "$LOG"; then')
         with tempfile.TemporaryDirectory(prefix="knytos-management-gate-") as directory:
             log = Path(directory) / "serial"
@@ -71,12 +71,12 @@ class RunnerGates(unittest.TestCase):
             environment = dict(os.environ, LOG=str(log), HTTP_TEST="1", HTTP_PROBED="0",
                                HTTP_PROBE_OK="0", ROOT_DIR=str(ROOT), HTTP_HOST_PORT="1",
                                DEPLOY_HOST_PORT="2", IDENTITY_STATUS=str(identity),
-                               LIVENESS_STATUS=str(liveness), CATTEN_QEMU_MONITOR="0",
-                               CATTEN_MANAGEMENT_CA_FILE="fixture-ca",
-                               CATTEN_MANAGEMENT_CERT_FILE="fixture-client",
-                               CATTEN_MANAGEMENT_KEY_FILE="fixture-key",
-                               CATTEN_MANAGEMENT_READER_CERT_FILE="fixture-reader",
-                               CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE="fixture-unregistered")
+                               LIVENESS_STATUS=str(liveness), KNYTOS_QEMU_MONITOR="0",
+                               KNYTOS_MANAGEMENT_CA_FILE="fixture-ca",
+                               KNYTOS_MANAGEMENT_CERT_FILE="fixture-client",
+                               KNYTOS_MANAGEMENT_KEY_FILE="fixture-key",
+                               KNYTOS_MANAGEMENT_READER_CERT_FILE="fixture-reader",
+                               KNYTOS_MANAGEMENT_UNKNOWN_CERT_FILE="fixture-unregistered")
             harness = r'''
 set -eu
 source "$ROOT_DIR/scripts/lib/boot-common.sh"

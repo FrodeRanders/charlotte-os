@@ -89,13 +89,13 @@ if [ "$CLEAN" = "1" ]; then BUILD_ARGS+=(--clean); fi
 mkdir -p "$APPLIANCE_PARENT"
 STAGING="$(mktemp -d "${APPLIANCE_PARENT}/.aarch64-appliance.XXXXXX")"
 trap 'rm -rf -- "$STAGING"' EXIT
-RAW_BOOT="${ROOT_DIR}/os-images/charlotte-aarch64-${PROFILE}-${INSTANCE}.img"
+RAW_BOOT="${ROOT_DIR}/os-images/knytos-aarch64-${PROFILE}-${INSTANCE}.img"
 VMDK_OPTIONS="subformat=monolithicSparse,compat6,adapter_type=lsilogic"
 qemu-img convert -f raw -O vmdk -o "$VMDK_OPTIONS" \
-    "$RAW_BOOT" "${STAGING}/charlotte-boot.vmdk"
+    "$RAW_BOOT" "${STAGING}/knytos-boot.vmdk"
 qemu-img create -f vmdk -o "$VMDK_OPTIONS" \
-    "${STAGING}/charlotte-data.vmdk" "${DATA_SIZE_MIB}M"
-cp "${ROOT_DIR}/vmware/charlotte-os-aarch64.vmx" "${STAGING}/Knytos.vmx"
+    "${STAGING}/knytos-data.vmdk" "${DATA_SIZE_MIB}M"
+cp "${ROOT_DIR}/vmware/knytos-aarch64.vmx" "${STAGING}/Knytos.vmx"
 if [ -d "${RAW_BOOT}.management" ]; then
     cp -R "${RAW_BOOT}.management" "${STAGING}/management"
 fi

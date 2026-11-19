@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc-descriptor-capacity.v1",
+  "schema": "knytos.ipc-descriptor-capacity.v1",
   "date": "2026-11-04",
   "base_revision": "24c71fd2be03a0c76a712756272221f1032b002d",
   "scope": "Allocation-lifetime byte admission for the temporary IPC vector descriptor snapshot, using the existing captured-class ByteAllocator<IpcNodes> and a shared allocator-parameterized memory-object snapshot boundary. Reply/cancellation revocation-work vectors remain separate work.",

@@ -110,9 +110,9 @@ Final fresh-storage runs execute sequentially with reused, previously validated
 service bundles because this change affects the kernel only:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance capability-record-intel-final-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance capability-record-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18739 CATTEN_DEPLOY_HOST_PORT=18039 scripts/run-aarch64.sh --security-test --instance capability-record-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance capability-record-intel-final-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance capability-record-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18739 KNYTOS_DEPLOY_HOST_PORT=18039 scripts/run-aarch64.sh --security-test --instance capability-record-arm-20261009 --fresh-storage --timeout 180
 ```
 
 Final x86 passed bitmap is `0x1bbff`; Arm is `0x2003ffff`, with scoped

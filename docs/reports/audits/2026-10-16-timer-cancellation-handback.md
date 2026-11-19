@@ -147,7 +147,7 @@ preserved in its [unpublished ownership report](2026-10-16-timer-unpublished-own
 Older failed samples remain preserved in the [backlog refund report](2026-10-16-completion-backlog-refunds.md);
 these passes do not establish their causes.
 
-Commands share `CATTEN_SKIP_EMBED_BUILD=1` and
+Commands share `KNYTOS_SKIP_EMBED_BUILD=1` and
 `CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
@@ -158,9 +158,9 @@ Commands share `CATTEN_SKIP_EMBED_BUILD=1` and
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance timer-cancellation-intel-security
 ```
 
-AMD adds `CATTEN_SKIP_KERNEL_BUILD=1` after Intel completes; their no-network
+AMD adds `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel completes; their no-network
 kernel ELF hashes match. Security profiles add
-`CATTEN_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment port inputs 19080/19081 on
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment port inputs 19080/19081 on
 ARM and 19180/19181 on Intel; evidence records actual network forwards.
 All staged service files and run inventories match the preceding baseline byte
 for byte; service/runtime libraries were not edited or rebuilt.

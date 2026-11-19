@@ -110,7 +110,7 @@ else:
                 self.assertNotIn("continue-on-error", job)
 
 
-@unittest.skipUnless(os.environ.get("CATTEN_ADVISORY_TEST_DB"), "real scanner/database controls are opt-in")
+@unittest.skipUnless(os.environ.get("KNYTOS_ADVISORY_TEST_DB"), "real scanner/database controls are opt-in")
 class RealScanner(unittest.TestCase):
     results = []
 
@@ -118,14 +118,14 @@ class RealScanner(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="knytos-rustsec-controls-")
         cls.directory = Path(cls.temporary.name)
-        cls.database = Path(os.environ["CATTEN_ADVISORY_TEST_DB"]).resolve()
+        cls.database = Path(os.environ["KNYTOS_ADVISORY_TEST_DB"]).resolve()
         result = subprocess.run(["cargo", "audit", "--version"], cwd=ROOT, capture_output=True, text=True)
         if result.returncode or result.stdout.split()[-1] != VERSION:
             raise ValueError("Install the repository-pinned cargo-audit for real controls")
 
     @classmethod
     def tearDownClass(cls):
-        if output := os.environ.get("CATTEN_ADVISORY_TEST_EVIDENCE"):
+        if output := os.environ.get("KNYTOS_ADVISORY_TEST_EVIDENCE"):
             Path(output).write_text(json.dumps(cls.results, indent=2) + "\n")
         cls.temporary.cleanup()
 

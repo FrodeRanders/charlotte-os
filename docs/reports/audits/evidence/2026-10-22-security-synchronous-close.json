@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.synchronous-close.v1",
+  "schema": "knytos.security.synchronous-close.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "589df875f19e764d341a351240603116b53b1bc8",
   "classification": {
@@ -69,7 +69,7 @@
       "id": "arm_security",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-sync-close-security --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-sync-close-security --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-sync-close-security",
       "kernel_sha256": "aa8cfc4cb7456da5932c65d1ab54dbae8fbd8031f1da38d9836bb028b47b6579",
@@ -101,7 +101,7 @@
       "id": "x86_security",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-sync-close-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-sync-close-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-sync-close-security-x86",
       "kernel_sha256": "de4c99bf441f69adda4381452c37e8c131b58203a3cbb72f76c6ab832af947ba",
@@ -133,7 +133,7 @@
       "id": "arm_http",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-sync-close-http --fresh-storage --timeout 240",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-sync-close-http --fresh-storage --timeout 240",
       "architecture": "aarch64",
       "instance": "sec06-sync-close-http",
       "kernel_sha256": "5fce06c34c1ab84f7ca463e0d5f789b85f14a66ece002978a6930476d5c85308",
@@ -173,7 +173,7 @@
       "id": "x86_http",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=18880 CATTEN_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-sync-close-http-x86 --fresh-storage --timeout 240",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=18880 KNYTOS_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-sync-close-http-x86 --fresh-storage --timeout 240",
       "architecture": "x86_64",
       "instance": "sec06-sync-close-http-x86",
       "kernel_sha256": "8e15513f75d9ac786b6ce66892cd7650f896dd1848705682763a7ae1adb8276f",
@@ -213,7 +213,7 @@
       "id": "arm_signed_release",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 COMPOSE_PROJECT_NAME=charlotte-sec06-sync-close CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-sync-close-deploy --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 COMPOSE_PROJECT_NAME=knytos-sec06-sync-close KNYTOS_HTTP_HOST_PORT=19281 KNYTOS_DEPLOY_HOST_PORT=19445 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-sync-close-deploy --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-sync-close-deploy",
       "kernel_sha256": "6e4087377145d1d154e88d0d3190b64185283a25108afa38189450fa85a975a5",
@@ -333,7 +333,7 @@
   "failed_runs": [],
   "failed_run_qualification": "No runtime failure observed in this batch. Historical zero-only receipt regressions and intermittent UEFI timeout remain separately recorded in baseline evidence; this passing matrix does not resolve that historical intermittence.",
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib --offline --locked",
     "cwd": "/private/tmp",
     "result": "203 passed; 0 failed",
     "exit_code": 0,
@@ -356,7 +356,7 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
     "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe --bin httpd -- -D warnings",
     "host_clippy_sha256": "6b0b1d44699902d2e938f6971bf35a32312514412de9625693e35bd5af641baa",
     "native_clippy_sha256": "e3dc71b5af0ec59f0d5f8ac65d418a73bd61cfe7ac7f93f32a58621c3e1cf43a",
@@ -372,7 +372,7 @@
     "arm_reproduction_capture_sha256": "f80b4ac0c82bd5ce2dc16101790b3215548ab9ddcc3b1a65bc43f62aae95c48e"
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe_configurations": 41,
     "expected_counterexamples": 118,
@@ -614,7 +614,7 @@
     "configured_server_reference": "rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21",
     "configured_client_reference": "rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6",
     "compose_sha256": "b1e6cad61cf875ca1718c90c66d84769cdf3ac4a28b2c94db5dfe5164b105d42",
-    "runtime_inspection": "Live final-source fixture container 4ce35be88733, project charlotte-sec06-sync-close, configured server digest reference above, immutable image ID sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e, status running. Ephemeral CLI runtime image ID not observed; configured reference only.",
+    "runtime_inspection": "Live final-source fixture container 4ce35be88733, project knytos-sec06-sync-close, configured server digest reference above, immutable image ID sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e, status running. Ephemeral CLI runtime image ID not observed; configured reference only.",
     "runtime_capture_sha256": "f3cd9028a7366ffdbeab290a13fea24a5bdb63f033cac80f5f5fab48c6228d2b"
   },
   "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"

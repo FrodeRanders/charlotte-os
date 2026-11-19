@@ -300,7 +300,7 @@ To replace bootstrap policy without restarting nodes, derive the cluster ID,
 sign a bounded policy off-cluster, verify it, and notify any member:
 
 ```sh
-cluster-sign cluster-id charlotte
+cluster-sign cluster-id knytos
 cluster-sign ingress-policy-sign ingress.cing 7 NOT_BEFORE_UNIX EXPIRES_UNIX \
   CLUSTER_ID operations-private.hex \
   orders=10.0.2.42:443 payments=10.0.2.43:443

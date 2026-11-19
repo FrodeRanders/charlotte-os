@@ -193,9 +193,9 @@ This is separate from both the earlier heap-contention probe and historical
 retirement timeouts. Final validation uses this fixture policy too.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance abort-executor-complete-intel-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance abort-executor-complete-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18639 CATTEN_DEPLOY_HOST_PORT=17939 scripts/run-aarch64.sh --security-test --instance abort-executor-complete-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance abort-executor-complete-intel-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance abort-executor-complete-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18639 KNYTOS_DEPLOY_HOST_PORT=17939 scripts/run-aarch64.sh --security-test --instance abort-executor-complete-arm-20261009 --fresh-storage --timeout 180
 ```
 
 ## Remaining scope

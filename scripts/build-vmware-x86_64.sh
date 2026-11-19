@@ -69,10 +69,10 @@ fi
 if [ "$BOOT_MODE" = "minimal" ]; then BUILD_ARGS+=(--minimal); fi
 "${ROOT_DIR}/scripts/run-x86_64.sh" "${BUILD_ARGS[@]}"
 
-RAW_BOOT="${ROOT_DIR}/os-images/charlotte-x86_64-${PROFILE}-${INSTANCE}.img"
+RAW_BOOT="${ROOT_DIR}/os-images/knytos-x86_64-${PROFILE}-${INSTANCE}.img"
 RAW_DATA="${ROOT_DIR}/os-images/x86-data-${INSTANCE}.img"
-BOOT_VMDK="${APPLIANCE_DIR}/charlotte-boot.vmdk"
-DATA_VMDK="${APPLIANCE_DIR}/charlotte-data.vmdk"
+BOOT_VMDK="${APPLIANCE_DIR}/knytos-boot.vmdk"
+DATA_VMDK="${APPLIANCE_DIR}/knytos-data.vmdk"
 
 if [ -e "$APPLIANCE_DIR" ]; then
     # The target is fixed above and --replace is explicit. Removing the whole
@@ -87,7 +87,7 @@ qemu-img convert -f raw -O vmdk \
 qemu-img convert -f raw -O vmdk \
     -o subformat=monolithicSparse,compat6,adapter_type=lsilogic \
     "$RAW_DATA" "$DATA_VMDK"
-cp "${ROOT_DIR}/vmware/charlotte-os.vmx" "${APPLIANCE_DIR}/Knytos.vmx"
+cp "${ROOT_DIR}/vmware/knytos.vmx" "${APPLIANCE_DIR}/Knytos.vmx"
 if [ -d "${RAW_BOOT}.management" ]; then
     cp -R "${RAW_BOOT}.management" "${APPLIANCE_DIR}/management"
 fi

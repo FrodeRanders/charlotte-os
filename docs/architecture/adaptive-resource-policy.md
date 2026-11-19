@@ -25,7 +25,7 @@ and structures sized by constants.
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | Memory-object backing | Generation-scoped page/object sponsorship, node pool derived from usable RAM, and platform/physical progress reserves | `crates/catten/src/memory/budget.rs`, `../../crates/knytos-lifecycle` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
-| Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `../../crates/knytos-services`, `charlotte-protocol-*` |
+| Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `../../crates/knytos-services`, `knytos-protocol-*` |
 
 Frame availability alone does not size every metadata structure. The kernel
 heap has a RAM-derived growth reserve and domain heaps adapt between
@@ -131,7 +131,7 @@ Phase 1 changes no allocation behavior. It adds:
   CPU-busy counter, and aggregate live/peak heap bytes. httpd renders the most
   recent samples as the `history` section.
 - **Optional durable archive**: disabled by default. Selecting a positive
-  `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time makes the same
+  `KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time makes the same
   sampler write to a bounded ring of
   object-store chunks (`CCARCH01`, version 2): sixteen 8 KiB chunks under reserved IDs
   `0xfffc_0000_0000_0001..16`, with the active chunk rewritten at the selected

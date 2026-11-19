@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-ipc-publication-model-evidence-v1",
+  "schema": "knytos-ipc-publication-model-evidence-v1",
   "reviewed_revision": "1c6963a2887d7d69472af9179374f81ecd0750d4",
   "tooling": {
     "release": "TLA+ Tools v1.7.4",

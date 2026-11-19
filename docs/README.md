@@ -3,7 +3,7 @@
 These notes describe what we are building, what we have tested, and what we
 still need to understand. They are organized by purpose and how current they
 are. Start with the LaTeX
-[manual](manual-v2/charlotte.pdf) for the integrated system description, then
+[manual](manual-v2/knytos.pdf) for the integrated system description, then
 use the sections below for deeper design, implementation, or historical
 context.
 
@@ -44,8 +44,8 @@ configuration. We need current checks before relying on it for a later build.
 | [`research/`](research/README.md) | Prior systems, their afterlives, and Knytos' inheritance |
 | [`tla/`](tla/README.md) | Executable TLA+ models, model-checking instructions, and Rust conformance map |
 | [`figures.md`](figures.md) | Editable Mermaid sources and explanatory captions for the architecture figure set |
-| [`presentations/charlotte-for-operations.md`](presentations/charlotte-for-operations.md) | Ops-facing slide outline covering the cluster model, development/operations separation, connectors, and production gaps |
-| [`presentations/openshift-and-charlotte.md`](presentations/openshift-and-charlotte.md) | Slide outline comparing OpenShift's Linux-container platform with Knytos' cluster-native operating-system direction |
+| [`presentations/knytos-for-operations.md`](presentations/knytos-for-operations.md) | Ops-facing slide outline covering the cluster model, development/operations separation, connectors, and production gaps |
+| [`presentations/openshift-and-knytos.md`](presentations/openshift-and-knytos.md) | Slide outline comparing OpenShift's Linux-container platform with Knytos' cluster-native operating-system direction |
 
 ## Maintenance rules
 

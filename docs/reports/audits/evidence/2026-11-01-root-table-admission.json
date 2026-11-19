@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.root-table-admission.v1",
+  "schema": "knytos.root-table-admission.v1",
   "date": "2026-11-01",
   "base_revision": "1c953cfc",
   "scope": "ASID-table retained/candidate three-vector backing, original signed-principal/trusted-class admission and complete root registration ownership across unstarted conflicts.",

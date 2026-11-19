@@ -20,7 +20,7 @@ class BootResults(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.log = Path(self.directory.name) / "serial.log"
 
-    def check(self, data, function="catten_boot_has_selftest_result", success=False):
+    def check(self, data, function="knytos_boot_has_selftest_result", success=False):
         self.log.write_bytes(data)
         return subprocess.run(
             ["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; "$2" "$3" "$4"',
@@ -49,11 +49,11 @@ class BootResults(unittest.TestCase):
     def test_malformed_and_truncated_results_fail_validation(self):
         for data in (SUCCESS[:-1], SUCCESS.replace(b"pending_bitmap=", b"other_bitmap="),
                      SUCCESS.replace(b"pending_bitmap=0x0", b"pending_bitmap=0x1")):
-            self.assertNotEqual(self.check(data, "catten_boot_validate_selftest_log"), 0)
+            self.assertNotEqual(self.check(data, "knytos_boot_validate_selftest_log"), 0)
 
     def test_panic_rejects_an_otherwise_complete_result(self):
-        self.assertNotEqual(self.check(SUCCESS + b"Kernel panic:\n", "catten_boot_validate_selftest_log"), 0)
-        self.assertEqual(self.check(SUCCESS, "catten_boot_validate_selftest_log"), 0)
+        self.assertNotEqual(self.check(SUCCESS + b"Kernel panic:\n", "knytos_boot_validate_selftest_log"), 0)
+        self.assertEqual(self.check(SUCCESS, "knytos_boot_validate_selftest_log"), 0)
 
 
 if __name__ == "__main__":

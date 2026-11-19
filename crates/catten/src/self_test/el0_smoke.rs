@@ -18,7 +18,7 @@ use crate::{
     service::loader::load_domain,
 };
 
-const SMOKE_ELF: &[u8] = include_bytes!(env!("CATTEN_X86_64_SMOKE_ELF"));
+const SMOKE_ELF: &[u8] = include_bytes!(env!("KNYTOS_X86_64_SMOKE_ELF"));
 
 const SMOKE_SENTINEL: u32 = 0xdead_beef;
 

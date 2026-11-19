@@ -53,7 +53,7 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "ca74583279c5d0a52137732834f03e6fd1aa1f3aa02926f3f6b64c1a7fd64117",
       "heap_held_cq_node_removals": 32,
@@ -82,7 +82,7 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "fdb561aa902b0ec9142e3d734eacc9b185230c4d050f719c0fa173ab4264f890",
       "heap_held_cq_node_removals": 32,
@@ -111,8 +111,8 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_SKIP_KERNEL_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_KERNEL_BUILD": "1"
       },
       "final_uart_sha256": "1408a98f548838e68211849013f33d6cc44ed936792d8ab5f7789bf9d2a67a9e",
       "heap_held_cq_node_removals": 32,
@@ -141,10 +141,10 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_DEPLOY_HOST_PORT": "19081",
-        "CATTEN_HTTP_HOST_PORT": "19080",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_DEPLOY_HOST_PORT": "19081",
+        "KNYTOS_HTTP_HOST_PORT": "19080",
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "f4f39bc9ee13ab4dcdfea1be26e5f0e8a239e54354db65159916f1eca5fa72a2",
       "heap_held_cq_node_removals": 32,
@@ -165,7 +165,7 @@
         "[+    55.583262] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
       "qemu_network_arguments": [
-        "user,id=charlotte-net,hostfwd=tcp::19081-:7444"
+        "user,id=knytos-net,hostfwd=tcp::19081-:7444"
       ],
       "runner_exit": 0,
       "scheduled_ipc_close_exit_episodes": 64,
@@ -179,10 +179,10 @@
       "diagnostic_result": "complete",
       "environment": {
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_DEPLOY_HOST_PORT": "19181",
-        "CATTEN_HTTP_HOST_PORT": "19180",
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_DEPLOY_HOST_PORT": "19181",
+        "KNYTOS_HTTP_HOST_PORT": "19180",
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "final_uart_sha256": "ff103a834ecda4293498b1867ce7de97c438ec6e5c6502f3ac1d9ad19f675547",
       "heap_held_cq_node_removals": 32,

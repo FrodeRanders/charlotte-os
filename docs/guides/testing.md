@@ -128,7 +128,7 @@ earlier target configuration.
 
 ## Target-only tests
 
-The `catten` kernel, `knytos-user`, and the binaries in `knytos-services` are
+The `knytos` kernel, `knytos-user`, and the binaries in `knytos-services` are
 `no_std`/`no_main` target programs. Cargo's host test harness is not their
 execution environment. Their target declarations therefore retain
 `test = false`; kernel and service integration behavior is exercised by
@@ -158,7 +158,7 @@ keeps these assertions distinct; a DHCP pass is not management readiness.
 ### Scoped-launch security verifier
 
 ```sh
-CATTEN_HTTP_HOST_PORT=18081 CATTEN_DEPLOY_HOST_PORT=17445 \
+KNYTOS_HTTP_HOST_PORT=18081 KNYTOS_DEPLOY_HOST_PORT=17445 \
   scripts/run-aarch64.sh --security-test --instance security-grants --fresh-storage --timeout 100
 ```
 
@@ -546,7 +546,7 @@ node/cluster JSON checks, and deployment-ingress rejection/recovery probes.
 Use an isolated instance and unused forwarded ports:
 
 ```sh
-CATTEN_HTTP_HOST_PORT=18080 CATTEN_DEPLOY_HOST_PORT=17444 \
+KNYTOS_HTTP_HOST_PORT=18080 KNYTOS_DEPLOY_HOST_PORT=17444 \
   scripts/run-aarch64.sh --http-test --instance security-http --fresh-storage --timeout 180
 ```
 
@@ -805,7 +805,7 @@ Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifi
 The verifier covers the TLS handshake, idempotent production, bounded
 read-committed consumption, aborted-record filtering, and an atomic
 consume-transform-produce transaction with the consumer offset included. The
-runner creates a fresh single-partition `charlotte-events` topic and removes
+runner creates a fresh single-partition `knytos-events` topic and removes
 the fixture and its volumes on exit. See
 [Kafka client service](../reference/kafka-client.md#docker-integration-test).
 The launcher and connector use the sole `CHKAFP7` profile. Host controls reject
@@ -854,7 +854,7 @@ quiescence proof.
 `--debug-snapshot` on either runner also captures after successful execution;
 it no longer holds an already successful ARM guest until the whole timeout.
 `--no-failure-capture` disables automatic capture. Manual `--gdb`,
-`CATTEN_QEMU_DEBUG_STUB=1` and ARM `--scheduler-trace` retain exclusive debugger
+`KNYTOS_QEMU_DEBUG_STUB=1` and ARM `--scheduler-trace` retain exclusive debugger
 ownership and disable the automatic watcher. Explicit snapshots reject those
 combinations, or a missing `--timeout`, before building.
 
@@ -867,10 +867,10 @@ using them in an audit report. Private socket storage is removed on finalization
 
 Long-running external harnesses can retain a live guest for post-failure
 inspection without depending on architecture-specific command-line switches.
-Set `CATTEN_QEMU_DEBUG_STUB=1` and pass `--gdb-port PORT` to expose the QEMU GDB
-stub, `CATTEN_QEMU_PID_FILE=PATH` to record the QEMU process ID,
-`CATTEN_QEMU_MONITOR=1` to create the instance's monitor socket, and
-`CATTEN_QEMU_NET_DUMP=1` to capture packets when networking is enabled. The
+Set `KNYTOS_QEMU_DEBUG_STUB=1` and pass `--gdb-port PORT` to expose the QEMU GDB
+stub, `KNYTOS_QEMU_PID_FILE=PATH` to record the QEMU process ID,
+`KNYTOS_QEMU_MONITOR=1` to create the instance's monitor socket, and
+`KNYTOS_QEMU_NET_DUMP=1` to capture packets when networking is enabled. The
 Kafka broker soak harness enables these controls and, on client or readiness
 failure, detaches from its still-running runner instead of killing the guest.
 Its `--cleanup-on-failure` option restores teardown behavior for unattended
@@ -1869,9 +1869,9 @@ fresh explicit receipts. This is controlled abandonment, not panic unwinding
 or an EL0-triggered fault. See
 [kernel preparation audit](../reports/audits/2026-10-07-security-kernel-preparation.md).
 
-Architecture-aware fixture coverage uses `CATTEN_DEPLOY_ELF` for the first
-signed binary and optional `CATTEN_DEPLOY_VARIANT_ELF` plus
-`CATTEN_DEPLOY_VARIANT_OBJECT_KEY` for a second uploaded baseline variant.
+Architecture-aware fixture coverage uses `KNYTOS_DEPLOY_ELF` for the first
+signed binary and optional `KNYTOS_DEPLOY_VARIANT_ELF` plus
+`KNYTOS_DEPLOY_VARIANT_OBJECT_KEY` for a second uploaded baseline variant.
 Run ARM and x86 signed-ingress tests serially because their Docker certificate
 and central-store fixtures are shared. With ARM first and x86 second, the x86
 agent must log selected variant 1. The local two-guest `--deploy-test` prepares
@@ -1903,14 +1903,14 @@ Current deployment persistence uses `CATALOGJ` v19 inside the
 only explicitly fresh fixture storage may initialize. Deployment queries use
 `CDEPQR01` and preserve aligned node/variant pins, without object ID, primary
 node or variant-zero digest. The linked fixture exercises descriptor-only
-follower relay idempotence. HTTP keyhole checks require `charlotte.cluster.v2`
+follower relay idempotence. HTTP keyhole checks require `knytos.cluster.v2`
 and absence of the removed object ID. See
 [lean record evidence](../reports/audits/2026-10-13-protocol-simplification-records.md)
 for passing runs and the separately retained initial DMA startup failure.
 
 ### Complete DNS catalog observation controls
 
-`--http-test` on ARM and x86 now requires the current `charlotte.dns-catalog.v1`
+`--http-test` on ARM and x86 now requires the current `knytos.dns-catalog.v1`
 array with exact count, nonempty identities, positive generations and the
 fixture's `alpha` registration during initial, EOF, abortive and idle recovery
 requests. A missing catalog is not substituted with an empty table. Host tests

@@ -1,7 +1,7 @@
-diff --git a/crates/sitas-charlotte/src/lib.rs b/crates/sitas-charlotte/src/lib.rs
+diff --git a/crates/sitas-knytos/src/lib.rs b/crates/sitas-knytos/src/lib.rs
 index 8448c48..6488dbc 100644
---- a/crates/sitas-charlotte/src/lib.rs
-+++ b/crates/sitas-charlotte/src/lib.rs
+--- a/crates/sitas-knytos/src/lib.rs
++++ b/crates/sitas-knytos/src/lib.rs
 @@ -9,16 +9,13 @@
  //! The executor's idle wait (`wait(read, write, timeout)`) drains the kernel's
  //! CQ ring — a shared-memory page mapped at a known virtual address in the

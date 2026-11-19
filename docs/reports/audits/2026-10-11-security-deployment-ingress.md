@@ -108,11 +108,11 @@ Build complete signed service bundles before guest launch. For ARM use:
 
 ```sh
 scripts/build-knytos-services.sh --embed
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19090 CATTEN_DEPLOY_HOST_PORT=18390 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=19090 KNYTOS_DEPLOY_HOST_PORT=18390 \
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test \
   --instance audit-deployment-ingress --fresh-storage --timeout 180
 ```
 
-For x86 build `scripts/build-knytos-services-x86_64.sh`, then use `scripts/run-x86_64.sh --http-test --dhcp-test --iommu intel` or `--iommu amd`, with separate host ports/instances, fresh storage and the chosen 180-second runner window. Reuse a kernel only for the identical feature profile and its fully prepared service bundle. The signed positive fixture uses `CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --deployment-ingress-test --instance audit-signed-release --fresh-storage --timeout 240` after the bundle build; it starts the disposable TLS RustFS fixture. The new probe can also run independently with `python3 scripts/tests/test-deployment-http-liveness.py --port PORT --ready-log SERIAL_LOG` while a guest remains alive.
+For x86 build `scripts/build-knytos-services-x86_64.sh`, then use `scripts/run-x86_64.sh --http-test --dhcp-test --iommu intel` or `--iommu amd`, with separate host ports/instances, fresh storage and the chosen 180-second runner window. Reuse a kernel only for the identical feature profile and its fully prepared service bundle. The signed positive fixture uses `KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --deployment-ingress-test --instance audit-signed-release --fresh-storage --timeout 240` after the bundle build; it starts the disposable TLS RustFS fixture. The new probe can also run independently with `python3 scripts/tests/test-deployment-http-liveness.py --port PORT --ready-log SERIAL_LOG` while a guest remains alive.
 
 SEC-06 remains partial. The serial body budget can delay a healthy client for up to thirty guest seconds. Concurrent hostile peers, SYN/connection floods, bounded controller RPC completion, NIC recovery and shutdown under sustained pressure require separate evidence. The intermittent AMD frame-router startup, independent scoped publication crash/shutdown races, maximum-size authenticated verification/stack measurements, SEC-07 R7-1 through R7-5 and wider cleanup/context gates remain open.

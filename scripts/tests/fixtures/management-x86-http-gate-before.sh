@@ -11,16 +11,16 @@
                     --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
                 DEPLOY_LIVENESS_OK=1
             fi
-            if [ -n "${CATTEN_MANAGEMENT_READER_CERT_FILE:-}" ] \
-                && [ -n "${CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE:-}" ]; then
+            if [ -n "${KNYTOS_MANAGEMENT_READER_CERT_FILE:-}" ] \
+                && [ -n "${KNYTOS_MANAGEMENT_UNKNOWN_CERT_FILE:-}" ]; then
                 if ! python3 "${ROOT_DIR}/scripts/tests/test-management-tls.py" \
                     --status-port "$HTTP_HOST_PORT" --deployment-port "$DEPLOY_HOST_PORT"; then
                     HTTP_LIVENESS_OK=0
                 fi
             fi
             for _ in 1 2 3 4 5 6 7 8; do
-                HTTP_BODY="$(curl -fsS --max-time 5 --cacert "$CATTEN_MANAGEMENT_CA_FILE" --cert "$CATTEN_MANAGEMENT_CERT_FILE" --key "$CATTEN_MANAGEMENT_KEY_FILE" https://127.0.0.1:${HTTP_HOST_PORT}/metrics 2>&1 || true)"
-                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 --cacert "$CATTEN_MANAGEMENT_CA_FILE" --cert "$CATTEN_MANAGEMENT_CERT_FILE" --key "$CATTEN_MANAGEMENT_KEY_FILE" https://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics 2>&1 || true)"
+                HTTP_BODY="$(curl -fsS --max-time 5 --cacert "$KNYTOS_MANAGEMENT_CA_FILE" --cert "$KNYTOS_MANAGEMENT_CERT_FILE" --key "$KNYTOS_MANAGEMENT_KEY_FILE" https://127.0.0.1:${HTTP_HOST_PORT}/metrics 2>&1 || true)"
+                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 --cacert "$KNYTOS_MANAGEMENT_CA_FILE" --cert "$KNYTOS_MANAGEMENT_CERT_FILE" --key "$KNYTOS_MANAGEMENT_KEY_FILE" https://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics 2>&1 || true)"
                 if [ "$DEPLOY_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \

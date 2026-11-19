@@ -168,7 +168,7 @@
         "reason": "complete",
         "snapshot": "not-requested"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19956 CATTEN_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance scratch-admission-arm2 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19956 KNYTOS_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance scratch-admission-arm2 --fresh-storage --timeout 300",
       "artifact_hashes": {
         "kernel.elf": "2482f8f182b62a7789e7d6a5d4c1844c3b70f9b04cd1c37aa023111edb7825da",
         "kernel.symbols": "767a0059911347455faac13f96ec3b75625e622faaa6c11999ad9113c580a950",
@@ -282,7 +282,7 @@
         "reason": "complete",
         "snapshot": "not-requested"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19957 CATTEN_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --instance scratch-admission-x862 --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19957 KNYTOS_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --instance scratch-admission-x862 --fresh-storage --timeout 480",
       "artifact_hashes": {
         "kernel.elf": "facf65642f109b11a89c62f66a88b6a99c72a67e51573b1a0e7a804b76b8dec5",
         "kernel.symbols": "419aa183fdaac4a06e6db7af94b0388d937b65985f1c195917dfabe5c3177311",
@@ -410,7 +410,7 @@
         "snapshot": "captured",
         "elapsed_seconds": 10.99707083310932
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19956 CATTEN_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance scratch-admission-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19956 KNYTOS_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance scratch-admission-arm --fresh-storage --timeout 300",
       "artifact_hashes": {
         "cpus.json": "651a55ac731df5b69505e08763ed583bcfd1b9fd6dc34c1a0e7f77c1a4e6c23d",
         "failure.json": "3dd9772d2e4a26ac9ba82b02d5600a0af8ed92317bd64e4de7a66d103c33e6ac",
@@ -530,7 +530,7 @@
         "snapshot": "captured",
         "elapsed_seconds": 3.936604249989614
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19957 CATTEN_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --instance scratch-admission-x86 --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19957 KNYTOS_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --instance scratch-admission-x86 --fresh-storage --timeout 480",
       "artifact_hashes": {
         "cpus.json": "c7c7a07c39c466be49212a5207c779de69735d96bd3a4245cc0d268471c524a3",
         "failure.json": "62c25f68b72ee7c5e2a736b411533486dd197343d826d678a161817d46408e31",
@@ -588,8 +588,8 @@
     "strict_base_kernel_clippy": {
       "aarch64": "pass",
       "x86_64": "pass",
-      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-      "bundles": "Existing target/embedded-services/<arch>-unknown-none via CATTEN_<ARCH>_SERVICE_BUNDLE"
+      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+      "bundles": "Existing target/embedded-services/<arch>-unknown-none via KNYTOS_<ARCH>_SERVICE_BUNDLE"
     },
     "formatting": "cargo fmt --all -- --check: pass",
     "whitespace": "git diff --check: pass",

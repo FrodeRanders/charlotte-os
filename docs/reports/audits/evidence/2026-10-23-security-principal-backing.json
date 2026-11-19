@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.principal-backing.v1",
+  "schema": "knytos.security.principal-backing.v1",
   "report_date": "2026-10-23",
   "reviewed_revision": "84224784bc4db156f7013c94ff72938841f7a1ff",
   "classification": {
@@ -147,7 +147,7 @@
       "id": "arm-initial",
       "phase": "initial-slot-order",
       "exit_status": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19682 KNYTOS_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm --fresh-storage --timeout 300",
       "arch": "aarch64",
       "instance": "sec07-principal-backing-arm",
       "result": {
@@ -193,7 +193,7 @@
         "healthy_seconds": [],
         "trickled_body_seconds": [],
         "selected_failures": [
-          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-mcg4kpre"
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-mcg4kpre"
         ]
       },
       "failure_diagnostics": [
@@ -209,7 +209,7 @@
       "id": "x86-initial",
       "phase": "initial-slot-order",
       "exit_status": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19683 KNYTOS_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86 --fresh-storage --timeout 300",
       "arch": "x86_64",
       "instance": "sec07-principal-backing-x86",
       "result": {
@@ -255,7 +255,7 @@
         "healthy_seconds": [],
         "trickled_body_seconds": [],
         "selected_failures": [
-          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-jn1o2md7"
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-jn1o2md7"
         ]
       },
       "failure_diagnostics": [
@@ -271,7 +271,7 @@
       "id": "arm-final",
       "phase": "-final",
       "exit_status": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19682 KNYTOS_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-final --fresh-storage --timeout 300",
       "arch": "aarch64",
       "instance": "sec07-principal-backing-arm-final",
       "result": {
@@ -333,7 +333,7 @@
           "Deployment transport TimeoutError; retry 2/2",
           "Traceback (most recent call last):",
           "TimeoutError: timed out",
-          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-kb4bvnl7"
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-kb4bvnl7"
         ]
       },
       "failure_diagnostics": [
@@ -349,7 +349,7 @@
       "id": "x86-final",
       "phase": "-final",
       "exit_status": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19683 KNYTOS_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-final --fresh-storage --timeout 300",
       "arch": "x86_64",
       "instance": "sec07-principal-backing-x86-final",
       "result": {
@@ -408,7 +408,7 @@
           "HTTP transport TimeoutError; retry 2/2",
           "Traceback (most recent call last):",
           "TimeoutError: timed out",
-          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-hie2valf"
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-hie2valf"
         ]
       },
       "failure_diagnostics": [
@@ -424,7 +424,7 @@
       "id": "arm-qualified",
       "phase": "-qualified",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-qualified --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19682 KNYTOS_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-qualified --fresh-storage --timeout 300",
       "arch": "aarch64",
       "instance": "sec07-principal-backing-arm-qualified",
       "result": {
@@ -483,7 +483,7 @@
       "id": "x86-qualified",
       "phase": "-qualified",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-qualified --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19683 KNYTOS_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-qualified --fresh-storage --timeout 300",
       "arch": "x86_64",
       "instance": "sec07-principal-backing-x86-qualified",
       "result": {
@@ -542,7 +542,7 @@
       "id": "arm-release",
       "phase": "-release",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-release --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19682 KNYTOS_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-release --fresh-storage --timeout 300",
       "arch": "aarch64",
       "instance": "sec07-principal-backing-arm-release",
       "result": {
@@ -602,7 +602,7 @@
       "id": "x86-release",
       "phase": "-release",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-release --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19683 KNYTOS_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-release --fresh-storage --timeout 300",
       "arch": "x86_64",
       "instance": "sec07-principal-backing-x86-release",
       "result": {
@@ -671,21 +671,21 @@
       {
         "target": "aarch64",
         "exit_status": 0,
-        "command": "CATTEN_TRUST_MODE=development CATTEN_AARCH64_SERVICE_BUNDLE=target/embedded-services/aarch64-unknown-none cargo clippy --offline --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "command": "KNYTOS_TRUST_MODE=development KNYTOS_AARCH64_SERVICE_BUNDLE=target/embedded-services/aarch64-unknown-none cargo clippy --offline --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "c60bdb8effe7da57b663c22820776959eb4780a02b6965b98a0f656895a5a458",
         "scope": "Base acpi target with -D warnings; combined security/HTTP feature configurations execute in native runs."
       },
       {
         "target": "x86_64",
         "exit_status": 0,
-        "command": "CATTEN_TRUST_MODE=development CATTEN_X86_64_SERVICE_BUNDLE=target/embedded-services/x86_64-unknown-none cargo clippy --offline --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "command": "KNYTOS_TRUST_MODE=development KNYTOS_X86_64_SERVICE_BUNDLE=target/embedded-services/x86_64-unknown-none cargo clippy --offline --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "73106f012e0c510f43af7187169c3ac35205c047865ae931954ab9b798640e6b",
         "scope": "Base acpi target with -D warnings; combined security/HTTP feature configurations execute in native runs."
       }
     ]
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_status": 0,
     "safe": 45,
     "expected_counterexamples": 131,

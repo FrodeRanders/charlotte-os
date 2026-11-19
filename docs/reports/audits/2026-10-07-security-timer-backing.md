@@ -78,17 +78,17 @@ and [scheduler timer admission](../../reference/scheduler-timer-budgets.md).
 | Arm SMMUv3 security QEMU | **19 passed, 0 failed, 0 pending**; scoped probes `0xffff`, publication generations 1/2, concurrent cancellation retired 4,796 requests. |
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance timer-backing-intel-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance timer-backing-amd-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance timer-backing-arm-20261007 --fresh-storage --timeout 180
 ```
 
 Run `cargo +nightly-2026-07-27 test --locked --manifest-path
-/path/to/charlotte-os/crates/knytos-lifecycle/Cargo.toml --test
+/path/to/knytos/crates/knytos-lifecycle/Cargo.toml --test
 charged_allocator` from outside the repository's kernel build-std configuration,
 or use the host-test runner. Guests rebuild kernels/check assembly sections and
 reuse validated embedded services for this kernel-only change. Arm uses the

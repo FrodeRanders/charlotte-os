@@ -205,7 +205,7 @@ pub extern "C" fn bsp_main() -> ! {
         crate::self_test::verify_x86_boot_fp();
     }
     early_logln!(
-        "Catten Kernel Version {}.{}.{}",
+        "Knytos Kernel Version {}.{}.{}",
         (KERNEL_VERSION.0),
         (KERNEL_VERSION.1),
         (KERNEL_VERSION.2)

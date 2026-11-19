@@ -29,9 +29,9 @@
       "profile": "ARM / SMMUv3",
       "command": "./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance stack-owner-arm",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_KERNEL_BUILD": "1"
+        "KNYTOS_SKIP_KERNEL_BUILD": "1"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",
@@ -68,7 +68,7 @@
       "profile": "Intel VT-d",
       "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --no-network --fresh-storage --timeout 180 --instance stack-owner-intel",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings"
       },
       "runner_exit": 0,
@@ -106,9 +106,9 @@
       "profile": "AMD-Vi",
       "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu amd --no-network --fresh-storage --timeout 180 --instance stack-owner-amd",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_SKIP_KERNEL_BUILD": "1"
+        "KNYTOS_SKIP_KERNEL_BUILD": "1"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",
@@ -145,11 +145,11 @@
       "profile": "ARM security",
       "command": "./scripts/run-aarch64.sh debug --smp 4 --security-test --fresh-storage --timeout 180 --instance stack-owner-arm-security",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-        "CATTEN_HTTP_HOST_PORT": "19080",
-        "CATTEN_DEPLOY_HOST_PORT": "19081"
+        "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+        "KNYTOS_HTTP_HOST_PORT": "19080",
+        "KNYTOS_DEPLOY_HOST_PORT": "19081"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",
@@ -176,8 +176,8 @@
       ],
       "qemu_network_arguments": [
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::19081-:7444",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1"
+        "user,id=knytos-net,hostfwd=tcp::19081-:7444",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1"
       ],
       "tooling_sha256": {
         "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
@@ -190,10 +190,10 @@
       "profile": "Intel security",
       "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance stack-owner-intel-security",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
         "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-        "CATTEN_HTTP_HOST_PORT": "19180",
-        "CATTEN_DEPLOY_HOST_PORT": "19181"
+        "KNYTOS_HTTP_HOST_PORT": "19180",
+        "KNYTOS_DEPLOY_HOST_PORT": "19181"
       },
       "runner_exit": 0,
       "diagnostic_result": "complete",
@@ -349,8 +349,8 @@
   "validation_commands": {
     "host": "bash scripts/run-host-tests.sh",
     "formatting": "cargo fmt --all -- --check",
-    "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings",
-    "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "aarch64_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json -- -D warnings",
+    "x86_64_clippy": "KNYTOS_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
     "x86_service_staging": "CARGO_BUILD_RUSTFLAGS=\"-D warnings\" bash scripts/build-knytos-services-x86_64.sh",
     "whitespace": "git diff --check"
   },

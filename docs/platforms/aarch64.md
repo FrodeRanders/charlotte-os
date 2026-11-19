@@ -305,4 +305,4 @@ Steady state: hundreds of thousands of timer IRQs serviced with **0 faults**.
 - Scheduler / threads: `crates/catten/src/cpu/scheduler/`
 - Firmware abstraction: `crates/catten/src/environment/`
 - Run script: `scripts/run-aarch64.sh`; target spec:
-  `target_specs/aarch64-unknown-none-catten.json`
+  `target_specs/aarch64-unknown-none-knytos.json`

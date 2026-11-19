@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.boot-allocation-edges.v1",
+  "schema": "knytos.boot-allocation-edges.v1",
   "date": "2026-11-04",
   "base_revision": "6e62a0e2b9f3c0fce94d3cc6d4470ed956cd3241",
   "scope": "Q3 boot-allocation sub-batch only. Q3 remains open; no aggregate acceptance gate or finding disposition changes.",
@@ -637,8 +637,8 @@
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
     "crates/catten/Cargo.toml": "6c5803556b781f2aa0bd572aa0a38f532ff9bc790c45bf000bdee9077fe65876",
-    "target_specs/aarch64-unknown-none-catten.json": "8295350cd7123630e381fea157c2ee783c003033b2fb38f61335fab4323e3c69",
-    "target_specs/x86_64-unknown-none-catten.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
+    "target_specs/aarch64-unknown-none-knytos.json": "8295350cd7123630e381fea157c2ee783c003033b2fb38f61335fab4323e3c69",
+    "target_specs/x86_64-unknown-none-knytos.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
     "crates/knytos-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
     "crates/knytos-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
     "crates/knytos-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
@@ -654,9 +654,9 @@
     "focused_host": "python3 scripts/tests/test-boot-allocation-edges.py",
     "full_host": "scripts/run-host-tests.sh",
     "format": "cargo fmt --all -- --check",
-    "strict": "CATTEN_<ARCH>_SERVICE_BUNDLE=<matching test/minimal signed bundle> [AR_<target>=<LLVM llvm-ar> for display] cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features <acpi|acpi,kernel_tests|acpi,display> -- -D warnings",
-    "failed_optional_profile": "CATTEN_AARCH64_SERVICE_BUNDLE=<ARM minimal signed bundle> cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features devicetree -- -D warnings",
-    "mir": "CATTEN_<ARCH>_SERVICE_BUNDLE=<matching minimal signed bundle> [AR_<target>=<LLVM llvm-ar> for display] cargo rustc --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features <acpi|acpi,display> -- -Zunpretty=mir -Zmir-include-spans=yes -Zdump-mir-exclude-alloc-bytes=yes",
+    "strict": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<matching test/minimal signed bundle> [AR_<target>=<LLVM llvm-ar> for display] cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features <acpi|acpi,kernel_tests|acpi,display> -- -D warnings",
+    "failed_optional_profile": "KNYTOS_AARCH64_SERVICE_BUNDLE=<ARM minimal signed bundle> cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features devicetree -- -D warnings",
+    "mir": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<matching minimal signed bundle> [AR_<target>=<LLVM llvm-ar> for display] cargo rustc --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features <acpi|acpi,display> -- -Zunpretty=mir -Zmir-include-spans=yes -Zdump-mir-exclude-alloc-bytes=yes",
     "inventory": "python3 scripts/audit-resource-inventory.py --mir arm-acpi-minimal=<ARM minimal MIR> --mir x86-acpi-minimal=<x86 minimal MIR> --mir arm-acpi-display=<ARM display MIR> --mir x86-acpi-display=<x86 display MIR> --date 2026-11-04 --output <inventory.json>"
   },
   "checks": {
@@ -867,7 +867,7 @@
       "passed": 19,
       "failed": 0,
       "pending": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18702 CATTEN_DEPLOY_HOST_PORT=17702 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-boot-edges-arm",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18702 KNYTOS_DEPLOY_HOST_PORT=17702 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-boot-edges-arm",
       "base_revision": "6e62a0e2b9f3c0fce94d3cc6d4470ed956cd3241",
       "kernel_sha256": "e42aad0b99aa703f06e0a04a37f1d35aeb7dd2567255cf1f37cd3c03c81d01c1",
       "bundle_sha256": {
@@ -940,7 +940,7 @@
       "passed": 17,
       "failed": 0,
       "pending": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18703 CATTEN_DEPLOY_HOST_PORT=17703 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q3-boot-edges-intel",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18703 KNYTOS_DEPLOY_HOST_PORT=17703 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q3-boot-edges-intel",
       "base_revision": "6e62a0e2b9f3c0fce94d3cc6d4470ed956cd3241",
       "kernel_sha256": "6447bcd0bfc286954c13403245c90fbc2435025c469fffff6f2f3d5154e4f1b2",
       "bundle_sha256": {
@@ -1008,7 +1008,7 @@
       "passed": 17,
       "failed": 0,
       "pending": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18703 CATTEN_DEPLOY_HOST_PORT=17703 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q3-boot-edges-amd",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18703 KNYTOS_DEPLOY_HOST_PORT=17703 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q3-boot-edges-amd",
       "base_revision": "6e62a0e2b9f3c0fce94d3cc6d4470ed956cd3241",
       "kernel_sha256": "e3664fb0af3658ed2186dca519f8ca5b2778417120c30014f1f55d870ac24681",
       "bundle_sha256": {

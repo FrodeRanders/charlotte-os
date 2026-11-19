@@ -42,8 +42,8 @@
   },
   "validation_commands": {
     "host": "bash scripts/run-host-tests.sh",
-    "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-    "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "aarch64_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+    "x86_64_clippy": "KNYTOS_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
     "format": "cargo fmt --all -- --check",
     "bundles": [
       "scripts/build-knytos-services.sh --embed",
@@ -164,9 +164,9 @@
       "phase": "initial",
       "command": "scripts/run-aarch64.sh debug --smp 4 --http-test --fresh-storage --instance telemetry-http-arm --timeout 180",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "18080",
-        "CATTEN_DEPLOY_HOST_PORT": "18081"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "18080",
+        "KNYTOS_DEPLOY_HOST_PORT": "18081"
       },
       "runner_exit": 0,
       "diagnostic_id": "aarch64-wdd0y0f5",
@@ -222,9 +222,9 @@
       "phase": "initial",
       "command": "scripts/run-x86_64.sh debug --smp 4 --http-test --fresh-storage --instance telemetry-http-intel --iommu intel --timeout 180",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1",
-        "CATTEN_HTTP_HOST_PORT": "18082",
-        "CATTEN_DEPLOY_HOST_PORT": "18083"
+        "KNYTOS_SKIP_EMBED_BUILD": "1",
+        "KNYTOS_HTTP_HOST_PORT": "18082",
+        "KNYTOS_DEPLOY_HOST_PORT": "18083"
       },
       "runner_exit": 0,
       "diagnostic_id": "x86_64-tl_zv5gu",
@@ -280,7 +280,7 @@
       "phase": "final fixture isolation",
       "command": "scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-final-arm --timeout 180",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "runner_exit": 0,
       "diagnostic_id": "aarch64-aq08m8ob",
@@ -318,7 +318,7 @@
       "phase": "final fixture isolation",
       "command": "scripts/run-x86_64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-final-intel --iommu intel --timeout 180",
       "environment": {
-        "CATTEN_SKIP_EMBED_BUILD": "1"
+        "KNYTOS_SKIP_EMBED_BUILD": "1"
       },
       "runner_exit": 0,
       "diagnostic_id": "x86_64-zl0v8rz1",

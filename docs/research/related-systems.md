@@ -6,7 +6,7 @@ This note identifies operating-systems and distributed-systems research related 
 
 - [Networking architecture](../architecture/networking.md)
 - [Sitas and Xous co-design](../architecture/sitas-xous.md)
-- [The Knytos manual](../manual-v2/charlotte.pdf), especially the service,
+- [The Knytos manual](../manual-v2/knytos.pdf), especially the service,
   networking, consensus, storage, cluster, and application-generation chapters
 - [Cluster-native research lineages](cluster-native-lineages.md), which maps
   the strengthened cluster implementation to prior and current work

@@ -106,7 +106,7 @@
         "[+     3.883408] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete-send abandonment passed",
         "[+    79.983048] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_HTTP_HOST_PORT=22681 CATTEN_DEPLOY_HOST_PORT=22445 ./scripts/run-aarch64.sh release --security-test --http-test --fresh-storage --timeout 300 --smp 4 --instance scalar-transfer-20261031-arm"
+      "command": "KNYTOS_HTTP_HOST_PORT=22681 KNYTOS_DEPLOY_HOST_PORT=22445 ./scripts/run-aarch64.sh release --security-test --http-test --fresh-storage --timeout 300 --smp 4 --instance scalar-transfer-20261031-arm"
     },
     {
       "target": "x86_64-intel-vtd",
@@ -127,7 +127,7 @@
         "[+     4.031922] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete-send abandonment passed",
         "[+    89.155595] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_HTTP_HOST_PORT=23681 CATTEN_DEPLOY_HOST_PORT=23445 ./scripts/run-x86_64.sh release --security-test --http-test --fresh-storage --timeout 300 --smp 4 --iommu intel --instance scalar-transfer-20261031-intel"
+      "command": "KNYTOS_HTTP_HOST_PORT=23681 KNYTOS_DEPLOY_HOST_PORT=23445 ./scripts/run-x86_64.sh release --security-test --http-test --fresh-storage --timeout 300 --smp 4 --iommu intel --instance scalar-transfer-20261031-intel"
     }
   ],
   "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",

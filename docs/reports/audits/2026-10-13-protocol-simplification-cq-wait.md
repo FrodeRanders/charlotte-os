@@ -199,7 +199,7 @@ not retrospective evidence for the failed guest.
   bitmap 0x323bbff at 19.664414 s; the runner reports all deferred tests passed.
   Signed release selects x86 variant 1/ABI 3 at 22.109567 s, verifies 33,072
   bytes at 24.080170 s and launches at 24.108118 s. CLI readiness confirms one
-  desired/ready replica. Cluster schema `charlotte.cluster.v2` reports greet
+  desired/ready replica. Cluster schema `knytos.cluster.v2` reports greet
   ready, generation/service generation 1, identical desired/ready node pins.
   HTTP status, malformed/oversized framing, complete invalid bodies, EOF,
   abortive replies, idle-peer deadlines and trickled-body rejection pass with

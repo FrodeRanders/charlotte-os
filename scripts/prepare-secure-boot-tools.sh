@@ -30,8 +30,8 @@ with tarfile.open(archive) as source:
     source.extractall(sys.argv[2], filter='data')
 PY
 OPENSSL_ARGS=()
-if [ -n "${CATTEN_TEST_OPENSSL_ROOT:-}" ]; then
-    OPENSSL_ARGS+=("-DOPENSSL_ROOT_DIR=$CATTEN_TEST_OPENSSL_ROOT")
+if [ -n "${KNYTOS_TEST_OPENSSL_ROOT:-}" ]; then
+    OPENSSL_ARGS+=("-DOPENSSL_ROOT_DIR=$KNYTOS_TEST_OPENSSL_ROOT")
 elif command -v brew >/dev/null 2>&1; then
     OPENSSL_ARGS+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)")
 fi

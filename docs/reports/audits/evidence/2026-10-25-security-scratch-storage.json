@@ -200,7 +200,7 @@
         "serial.log": "6ccbb6646ac74120ee349930d290623fdcbfcebf572e3997c3e7d75a42254217",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19956 CATTEN_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance scratch-storage-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19956 KNYTOS_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance scratch-storage-arm --fresh-storage --timeout 300",
       "source_qualification": "Final runtime source hashes include untracked additions, which tracked_diff_sha256 alone excludes. No runtime source changes after these builds. First guest execution, no deadline/limit widening or repeat."
     },
     {
@@ -311,7 +311,7 @@
         "serial.log": "21999316b9856c087a69cd278124c6859eebb7b35e2808ce79f389e95f3e0e02",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19957 CATTEN_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --instance scratch-storage-x86 --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19957 KNYTOS_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --instance scratch-storage-x86 --fresh-storage --timeout 480",
       "source_qualification": "Final runtime source hashes include untracked additions, which tracked_diff_sha256 alone excludes. No runtime source changes after these builds. First guest execution, no deadline/limit widening or repeat."
     }
   ],
@@ -329,8 +329,8 @@
     "strict_base_kernel_clippy": {
       "aarch64": "pass",
       "x86_64": "pass",
-      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-      "bundles": "Existing target/embedded-services/<arch>-unknown-none via CATTEN_<ARCH>_SERVICE_BUNDLE"
+      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+      "bundles": "Existing target/embedded-services/<arch>-unknown-none via KNYTOS_<ARCH>_SERVICE_BUNDLE"
     },
     "formatting": "cargo fmt --all -- --check: pass",
     "whitespace": "git diff --check: pass",

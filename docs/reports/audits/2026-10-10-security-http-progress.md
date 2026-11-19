@@ -83,8 +83,8 @@ Host suite: 354 passed, zero failed, three ignored, including the owned scalar-a
 Build the ARM bundle with `scripts/build-knytos-services.sh --embed` and use dedicated host ports:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_QEMU_NET_DUMP=1 \
-CATTEN_HTTP_HOST_PORT=19085 CATTEN_DEPLOY_HOST_PORT=18385 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_QEMU_NET_DUMP=1 \
+KNYTOS_HTTP_HOST_PORT=19085 KNYTOS_DEPLOY_HOST_PORT=18385 \
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test \
   --instance audit-http-progress --fresh-storage --timeout 180
 ```

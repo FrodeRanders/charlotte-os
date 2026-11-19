@@ -1,6 +1,6 @@
 //! Identity-bearing signatures for Knytos ELF artifacts.
 //!
-//! A `SHT_NOTE` record named `charlotte` carries a fixed-width `CLS2`
+//! A `SHT_NOTE` record named `knytos` carries a fixed-width `CLS2`
 //! descriptor.  Unlike the original `CLS1` record, the signed descriptor
 //! binds the bytes to a logical artifact name, artifact class, release
 //! version, rollback counter, and signing-key identifier.  A valid ELF

@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-raft-clock-lease-gap-evidence-v1",
+  "schema": "knytos-raft-clock-lease-gap-evidence-v1",
   "reviewed_revision": "4468939b2d6d81e29fbf8e4c95361f44865a8a8d",
   "tooling": {
     "release": "TLA+ Tools v1.7.4",
@@ -804,7 +804,7 @@
   ],
   "failed_runs": [
     {
-      "case": "charlotte-raft-clock-before.log",
+      "case": "knytos-raft-clock-before.log",
       "meaning": "Old call-site tick arithmetic keeps committed leader contact fresh across a simulated five-second pause; expected expiration fails.",
       "exit_status": 101,
       "log_sha256": "2cea4f542571f257c84888a8e2149d6493b034ab39dce94069d6b4b500710d29",
@@ -830,23 +830,23 @@
       ]
     },
     {
-      "case": "charlotte-raft-clock-manual-pass1.log",
-      "meaning": "Initial manual build used repository-root working directory and could not find charlotte.tex; corrected builds run in docs/manual-v2.",
+      "case": "knytos-raft-clock-manual-pass1.log",
+      "meaning": "Initial manual build used repository-root working directory and could not find knytos.tex; corrected builds run in docs/manual-v2.",
       "exit_status": 1,
       "log_sha256": "7d5209815676e9f34d106ada4931d9fabbbe34562f300c3a9bb9b8483eebdeea",
       "diagnostics": [
         "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/MacPorts 2026.78235_5) (preloaded format=pdflatex)",
         "entering extended mode",
-        "! I can't find file `charlotte.tex'.",
-        "<*> charlotte.tex",
+        "! I can't find file `knytos.tex'.",
+        "<*> knytos.tex",
         "                 ",
         "(Press Enter to retry, or Control-D to exit)",
         "Please type another input file name",
         "! Emergency stop.",
-        "<*> charlotte.tex",
+        "<*> knytos.tex",
         "                 ",
         "!  ==> Fatal error occurred, no output PDF file produced!",
-        "Transcript written on /private/tmp/charlotte-raft-clock-manual/texput.log."
+        "Transcript written on /private/tmp/knytos-raft-clock-manual/texput.log."
       ]
     }
   ],
@@ -950,7 +950,7 @@
         "--net-listen",
         "12445"
       ],
-      "environment": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBED_BUILD=1; second runner also CATTEN_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
+      "environment": "KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_SKIP_EMBED_BUILD=1; second runner also KNYTOS_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
       "exit_status": 0,
       "kernel_sha256": "6280eef8ee156895b284254013898145088b6d5de411517db59ca6ff67212a2c",
       "runner_log_sha256": "bf3904e33f4ee41636243fde59074342bb13cf32fdf9f0fcb1250fb8a523f7dc",
@@ -977,7 +977,7 @@
         "--net-connect",
         "127.0.0.1:12445"
       ],
-      "environment": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBED_BUILD=1; second runner also CATTEN_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
+      "environment": "KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_SKIP_EMBED_BUILD=1; second runner also KNYTOS_SKIP_KERNEL_BUILD=1; explicitly escalated local QEMU/network invocation",
       "exit_status": 0,
       "kernel_sha256": "6280eef8ee156895b284254013898145088b6d5de411517db59ca6ff67212a2c",
       "runner_log_sha256": "a05d29246be091414194f3a69fc78314719730aba79eb3788893b137da03239c",

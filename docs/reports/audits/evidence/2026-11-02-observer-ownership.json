@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.observer-ownership.v1",
+  "schema": "knytos.observer-ownership.v1",
   "date": "2026-11-02",
   "base_revision": "4efc3be4d88b9a2d2c01af3ddfc168cb2e73f602",
   "scope": "Separate observer/waker representation refactor: opaque admitted strong/weak handles, allocation-independent borrowed notification and original captured sponsorship through final weak/private-holder release.",

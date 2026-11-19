@@ -4,17 +4,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNNER="${ROOT_DIR}/scripts/run-aarch64.sh"
-HUB="${CATTEN_INGRESS_HUB:-127.0.0.1:12042}"
-SERVICE="${CATTEN_INGRESS_SERVICE:-10.0.0.42:80}"
-TIMEOUT="${CATTEN_INGRESS_TIMEOUT:-180}"
-PHASE_TIMEOUT="${CATTEN_INGRESS_PHASE_TIMEOUT:-90}"
-SMP="${CATTEN_INGRESS_SMP:-4}"
-WORK="/tmp/charlotte-ingress-fixture"
+HUB="${KNYTOS_INGRESS_HUB:-127.0.0.1:12042}"
+SERVICE="${KNYTOS_INGRESS_SERVICE:-10.0.0.42:80}"
+TIMEOUT="${KNYTOS_INGRESS_TIMEOUT:-180}"
+PHASE_TIMEOUT="${KNYTOS_INGRESS_PHASE_TIMEOUT:-90}"
+SMP="${KNYTOS_INGRESS_SMP:-4}"
+WORK="/tmp/knytos-ingress-fixture"
 mkdir -p "$WORK"
 for fixture_node in ingress-a ingress-b ingress-c; do
     : >"$WORK/${fixture_node}.qemu.pid"
     : >"$WORK/${fixture_node}.capacity-start"
-    : >"/tmp/charlotte-${fixture_node}-serial.log"
+    : >"/tmp/knytos-${fixture_node}-serial.log"
 done
 
 pids=()
@@ -39,13 +39,13 @@ start_node() {
     runner_log="$WORK/${node}.runner.log"
     : >"$runner_log"
     if [ "$skip_build" = "1" ]; then
-        CATTEN_SKIP_EMBED_BUILD=1 CATTEN_SKIP_KERNEL_BUILD=1 \
-            CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_QEMU_PID_FILE="$WORK/${node}.qemu.pid" \
+        KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_SKIP_KERNEL_BUILD=1 \
+            KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_QEMU_PID_FILE="$WORK/${node}.qemu.pid" \
             "$RUNNER" release --cluster-service "$SERVICE" --cluster-ingress-test \
             --net-connect "$HUB" --instance "$node" --mac "$mac" \
             --fresh-storage --smp "$SMP" --timeout "$TIMEOUT" >"$runner_log" 2>&1 &
     else
-        CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_QEMU_PID_FILE="$WORK/${node}.qemu.pid" \
+        KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_QEMU_PID_FILE="$WORK/${node}.qemu.pid" \
             "$RUNNER" release --cluster-service "$SERVICE" --cluster-ingress-test \
             --net-connect "$HUB" --instance "$node" --mac "$mac" \
             --fresh-storage --smp "$SMP" --timeout "$TIMEOUT" >"$runner_log" 2>&1 &
@@ -73,7 +73,7 @@ wait_for_capacity_control() {
     deadline=$((SECONDS + PHASE_TIMEOUT))
     while [ "$SECONDS" -lt "$deadline" ]; do
         for node in "$@"; do
-            serial="/tmp/charlotte-${node}-serial.log"
+            serial="/tmp/knytos-${node}-serial.log"
             [ -f "$serial" ] || continue
             start_file="$WORK/${node}.capacity-start"
             if [ -s "$start_file" ]; then
@@ -128,11 +128,11 @@ if ! kill -0 "$first_runner" 2>/dev/null; then
 fi
 
 start_node ingress-b 52:54:00:12:34:02 1
-wait_for_text "/tmp/charlotte-ingress-a-serial.log" "VIP SNAPSHOT OWNER .*backends=2"
+wait_for_text "/tmp/knytos-ingress-a-serial.log" "VIP SNAPSHOT OWNER .*backends=2"
 start_node ingress-c 52:54:00:12:34:01 1
 
 for node in ingress-a ingress-b ingress-c; do
-    wait_for_text "/tmp/charlotte-${node}-serial.log" \
+    wait_for_text "/tmp/knytos-${node}-serial.log" \
         "MEMBERSHIP epoch=.*joint=false members=3"
 done
 wait_for_capacity_control 3 ingress-a ingress-b ingress-c
@@ -141,7 +141,7 @@ wait_for_text "$WORK/probe.log" "external FAILOVER WINDOW OPEN"
 
 owner=""
 for node in ingress-a ingress-b ingress-c; do
-    if grep -Eq "VIP SNAPSHOT OWNER .*backends=3" "/tmp/charlotte-${node}-serial.log"; then
+    if grep -Eq "VIP SNAPSHOT OWNER .*backends=3" "/tmp/knytos-${node}-serial.log"; then
         owner="$node"
         break
     fi
@@ -153,7 +153,7 @@ fi
 
 echo ">>> Stopping VIP advertiser ${owner}; backend flows remain on surviving members."
 for node in ingress-a ingress-b ingress-c; do
-    lines="$(wc -l <"/tmp/charlotte-${node}-serial.log" | tr -d '[:space:]')"
+    lines="$(wc -l <"/tmp/knytos-${node}-serial.log" | tr -d '[:space:]')"
     echo "$((lines + 1))" >"$WORK/${node}.capacity-start"
 done
 owner_qemu="$(tr -d '[:space:]' <"$WORK/${owner}.qemu.pid")"
@@ -166,7 +166,7 @@ for node in ingress-a ingress-b ingress-c; do
     fi
 done
 for node in "${survivors[@]}"; do
-    wait_for_text "/tmp/charlotte-${node}-serial.log" "SELFTEST COMPLETE: .*failed=0 pending=0"
+    wait_for_text "/tmp/knytos-${node}-serial.log" "SELFTEST COMPLETE: .*failed=0 pending=0"
 done
 wait_for_capacity_control 2 "${survivors[@]}"
 wait "$probe_pid"
@@ -174,12 +174,12 @@ wait_for_text "$WORK/probe.log" \
     "external [1-9][0-9]* flow\(s\) survived the failover window"
 wait_for_text "$WORK/probe.log" "external reconnect succeeded on source port"
 
-if ! grep -Eq "FIRST REMOTE VIP FRAME" /tmp/charlotte-ingress-*-serial.log; then
+if ! grep -Eq "FIRST REMOTE VIP FRAME" /tmp/knytos-ingress-*-serial.log; then
     echo "error: fixture did not exercise remote L2 forwarding" >&2
     exit 1
 fi
-if ! grep -Eq "VIP ADVERTISER ACQUIRED" "/tmp/charlotte-${survivors[0]}-serial.log" \
-    && ! grep -Eq "VIP ADVERTISER ACQUIRED" "/tmp/charlotte-${survivors[1]}-serial.log"; then
+if ! grep -Eq "VIP ADVERTISER ACQUIRED" "/tmp/knytos-${survivors[0]}-serial.log" \
+    && ! grep -Eq "VIP ADVERTISER ACQUIRED" "/tmp/knytos-${survivors[1]}-serial.log"; then
     echo "error: no surviving member acquired VIP advertisement" >&2
     exit 1
 fi

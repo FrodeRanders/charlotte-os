@@ -3,7 +3,7 @@
 These are working design notes. They describe how we intend the pieces to fit
 together and where their security boundaries should be. Some also record what
 we have implemented. For current behavior, check the
-[manual status appendix](../manual-v2/charlotte.pdf) and
+[manual status appendix](../manual-v2/knytos.pdf) and
 [`reference/`](../reference/README.md).
 
 ![Knytos system layering](../manual-v2/figures/system-layering.svg)

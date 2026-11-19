@@ -10,7 +10,7 @@ secret-valued variable still rejects without expanding its contents.
 See [signing and trust](../guides/signing-and-trust.md).
 
 The x86 development `boot_trust_test` kernel alone accepts the public test
-snapshot input `CATTEN_BOOT_TEST_INSTALLED_POLICY`. It requires an absolute
+snapshot input `KNYTOS_BOOT_TEST_INSTALLED_POLICY`. It requires an absolute
 regular-file path and the complete current signed-policy record, with bounded
 reading and a separate staged build copy. The default remains revision 7.
 Boot authenticates that compiled snapshot against its pinned test anchor before
@@ -41,12 +41,12 @@ readiness. An entry without a name selects the platform-service policy over
 admitted, non-draining members. These are distinct current policies, not old
 and new formats. An explicitly empty name rejects.
 
-Builds consume one semicolon-separated `CATTEN_CLUSTER_SERVICES` table, for
+Builds consume one semicolon-separated `KNYTOS_CLUSTER_SERVICES` table, for
 example `orders=10.0.2.42:8080;10.0.2.43:80`. An absent/empty table configures
 no bootstrap service assignments. The first committed signed ingress policy
 replaces this bootstrap authority. `--cluster-service-name` is removed, and
-`CATTEN_CLUSTER_VIP`, `CATTEN_CLUSTER_TCP_PORT` and
-`CATTEN_CLUSTER_SERVICE_NAME` reject at kernel build time even when empty;
+`KNYTOS_CLUSTER_VIP`, `KNYTOS_CLUSTER_TCP_PORT` and
+`KNYTOS_CLUSTER_SERVICE_NAME` reject at kernel build time even when empty;
 their values are not printed or used to synthesize a table. Runner-local
 VIP/port values still select the first assignment's SLIRP host-forwarding
 target and are not a second kernel policy source.
@@ -259,7 +259,7 @@ unknown, missing, nested or invalid fields reject before output. This validates
 record structure; it makes no local UTC admission or peer-authentication decision.
 See the [response-reader audit](../reports/audits/2026-10-21-security-ingress-response.md).
 
-`CATTEN_RESOURCE_POLICY` selects an existing absolute-path Rust resource-policy
+`KNYTOS_RESOURCE_POLICY` selects an existing absolute-path Rust resource-policy
 file for the kernel build. Unset selects the checked-in defaults; empty/relative/
 missing/directory paths reject. Cargo tracks selection and file changes; these
 capacity values are compiled into the kernel and fixed for that boot. The input
@@ -276,14 +276,14 @@ input/output. Private profile output is exclusive and mode `0600`.
 `management-resource-seal` accepts the public admission-policy file, operations
 private-key file and private profile; the result is signed HPKE ciphertext bound
 to that exact policy. `management-resource-verify` checks signature/context only.
-The kernel build embeds only the absolute `CATTEN_MANAGEMENT_TLS_RESOURCE` file;
+The kernel build embeds only the absolute `KNYTOS_MANAGEMENT_TLS_RESOURCE` file;
 boot verifies/opens it before trust publication. Replacement needs rebuild and
 restart with an advanced installed policy revision. Development policy export
 is explicitly a public fixture, not production enrollment.
 
 Every management read/write uses verified TLS. Supply PEM file paths through
-`CATTEN_MANAGEMENT_CA_FILE`, `CATTEN_MANAGEMENT_CERT_FILE` and
-`CATTEN_MANAGEMENT_KEY_FILE`; optional `CATTEN_MANAGEMENT_SERVER_NAME` overrides
+`KNYTOS_MANAGEMENT_CA_FILE`, `KNYTOS_MANAGEMENT_CERT_FILE` and
+`KNYTOS_MANAGEMENT_KEY_FILE`; optional `KNYTOS_MANAGEMENT_SERVER_NAME` overrides
 the endpoint IP's certificate identity without weakening verification. No HTTP
 byte precedes handshake completion. Missing credentials or verification failure
 are terminal, with no plaintext or insecure fallback. The reader bound is twice

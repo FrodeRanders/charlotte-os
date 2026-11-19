@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.x86-gcm-owner.v1",
+  "schema": "knytos.security.x86-gcm-owner.v1",
   "report_date": "2026-10-26",
   "work_started": "2026-10-25",
   "reviewed_revision": "4158ff6a4952469b965e2b85c9f2f0d497850e7b",
@@ -84,9 +84,9 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/knytos/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
-          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+          "/Users/froran/Projects/private/knytos/target/tls-gcm-backend-controls"
         ],
         "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false,features=[\"zeroize\"]}\nghash={version=\"=0.5.1\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
         "exit_status": 0,
@@ -104,9 +104,9 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/knytos/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
-          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+          "/Users/froran/Projects/private/knytos/target/tls-gcm-backend-controls"
         ],
         "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false,features=[\"zeroize\"]}\nghash={version=\"=0.5.1\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
         "exit_status": 101,
@@ -128,9 +128,9 @@
           "--manifest-path",
           "<isolated-control>/Cargo.toml",
           "--target",
-          "/Users/froran/Projects/private/charlotte-os/crates/knytos-services/x86_64-unknown-none.json",
+          "/Users/froran/Projects/private/knytos/crates/knytos-services/x86_64-unknown-none.json",
           "--target-dir",
-          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+          "/Users/froran/Projects/private/knytos/target/tls-gcm-backend-controls"
         ],
         "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false}\nghash={version=\"=0.5.1\",default-features=false}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
         "exit_status": 101,
@@ -231,7 +231,7 @@
       },
       "tracked_diff_sha256": "901ba5745a66a456a146d602eaec054daece9e3fc8341e7c284495df74a5c612",
       "backend": "intel",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20006 CATTEN_DEPLOY_HOST_PORT=20170 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance gcm-owner-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20006 KNYTOS_DEPLOY_HOST_PORT=20170 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance gcm-owner-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -339,7 +339,7 @@
       },
       "tracked_diff_sha256": "bc04f3a9e76986f0b102d93b2451c26d9e082fa4718d4f4177f2a0c8d57cbfe1",
       "backend": "amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20007 CATTEN_DEPLOY_HOST_PORT=20171 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance gcm-owner-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20007 KNYTOS_DEPLOY_HOST_PORT=20171 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance gcm-owner-amd --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -455,7 +455,7 @@
       },
       "tracked_diff_sha256": "b55cf7eb160f287a7efa35418be324069b765880d677a972e5c42445159a0d73",
       "backend": "smmuv3",
-      "command": "COMPOSE_PROJECT_NAME=charlotte-gcm-owner-arm CATTEN_RUSTFS_IMAGE=sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e CATTEN_RUSTFS_CLI_IMAGE=sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20008 CATTEN_DEPLOY_HOST_PORT=20172 scripts/run-aarch64.sh --security-test --http-test --s3-test --instance gcm-owner-arm --fresh-storage --timeout 300",
+      "command": "COMPOSE_PROJECT_NAME=knytos-gcm-owner-arm KNYTOS_RUSTFS_IMAGE=sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e KNYTOS_RUSTFS_CLI_IMAGE=sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8 KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20008 KNYTOS_DEPLOY_HOST_PORT=20172 scripts/run-aarch64.sh --security-test --http-test --s3-test --instance gcm-owner-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -524,7 +524,7 @@
   ],
   "native_failures": [],
   "tls_fixture": {
-    "project": "charlotte-gcm-owner-arm",
+    "project": "knytos-gcm-owner-arm",
     "cached_images_inspected_before_launch": [
       {
         "id": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
@@ -544,20 +544,20 @@
     "running_container": {
       "id": "c859c3b973860ef94addde5630c7ad4e9f6203036340344eb1109962b1bbb65a",
       "image": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
-      "project": "charlotte-gcm-owner-arm"
+      "project": "knytos-gcm-owner-arm"
     },
     "images_pinned_by_id_in_command": true,
     "public_ca_der_sha256": "5c115fbe72ab02fba956307fc0389f06ff1d4db671b9c1a441cd33ff98a48225",
     "post_cleanup": {
       "containers": [],
       "volumes": [],
-      "project": "charlotte-gcm-owner-arm",
+      "project": "knytos-gcm-owner-arm",
       "result": "empty after runner cleanup"
     },
     "credentials": "Public development fixture credentials and ephemeral generated CA/server keys; no production credential or private key bytes recorded."
   },
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "d49dbff37053f201345801fe3646348a7a2b7dd2e8e645657af44dc89ba071d2",
     "pages": 249,
     "source_sha256": "013cc2f307175162a9233ebb760191b3df3683b0c6bbc76f092f0e336976f709",

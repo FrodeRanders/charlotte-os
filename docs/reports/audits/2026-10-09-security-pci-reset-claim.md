@@ -126,9 +126,9 @@ entries and one Arm). Final guest runs were sequential after the last Rust
 change. The host harness was not rerun for kernel-only changes.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance reset-claim-intel-checked-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance reset-claim-amd-checked-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18689 CATTEN_DEPLOY_HOST_PORT=17989 scripts/run-aarch64.sh --security-test --instance reset-claim-arm-checked-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance reset-claim-intel-checked-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance reset-claim-amd-checked-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18689 KNYTOS_DEPLOY_HOST_PORT=17989 scripts/run-aarch64.sh --security-test --instance reset-claim-arm-checked-20261009 --fresh-storage --timeout 180
 ```
 
 ## Remaining scope

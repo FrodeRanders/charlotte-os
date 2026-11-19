@@ -55,7 +55,7 @@ response fencing. See
 - The general runtimes frame protobuf envelopes over TCP. Knytos passes
   the protobuf payload in a moved memory capability and carries its exact byte
   length in the scalar IPC argument/result.
-- A peer address is encoded as `charlotte:<service-name>` in `PeerSpec.host`.
+- A peer address is encoded as `knytos:<service-name>` in `PeerSpec.host`.
   The local transport obtains the corresponding connection capability through
   a waitable name-service lookup. Discovery follows committed membership, not
   only the boot manifest.

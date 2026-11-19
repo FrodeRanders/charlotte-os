@@ -14,7 +14,7 @@ frame cannot direct the walker into an unrelated or unmapped page.
 
 ## Build artifacts
 
-Both QEMU runners call `catten_boot_report_kernel` after a kernel build. In
+Both QEMU runners call `knytos_boot_report_kernel` after a kernel build. In
 addition to printing the kernel SHA-256, that helper uses the Rust toolchain's
 `llvm-nm` to write a demangled, address-sorted symbol map beside the ELF:
 
@@ -49,7 +49,7 @@ Pass the matching kernel ELF and serial log to the postprocessor:
 
 ```sh
 scripts/symbolize-kernel-panic.py \
-  --kernel target/x86_64-unknown-none-catten/debug/catten \
+  --kernel target/x86_64-unknown-none-knytos/debug/catten \
   tmp/kernel-panic.log
 ```
 
@@ -57,14 +57,14 @@ For logs produced by the bounded runners, the adjacent symbol-map sidecar is
 discovered automatically:
 
 ```sh
-scripts/symbolize-kernel-panic.py /tmp/charlotte-x86-serial.log
+scripts/symbolize-kernel-panic.py /tmp/knytos-x86-serial.log
 ```
 
 Add `--source` to ask LLDB for DWARF file and line information:
 
 ```sh
 scripts/symbolize-kernel-panic.py --source \
-  --kernel target/x86_64-unknown-none-catten/debug/catten \
+  --kernel target/x86_64-unknown-none-knytos/debug/catten \
   tmp/kernel-panic.log
 ```
 

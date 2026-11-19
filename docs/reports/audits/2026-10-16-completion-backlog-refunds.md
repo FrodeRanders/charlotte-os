@@ -158,7 +158,7 @@ never-dispatched migration. No further panic, timeout or persistence fail-stop
 was observed in this final matrix. That does not erase the two failed samples
 above or establish historical failure causes.
 
-Commands, with common environment `CATTEN_SKIP_EMBED_BUILD=1
+Commands, with common environment `KNYTOS_SKIP_EMBED_BUILD=1
 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
@@ -169,8 +169,8 @@ CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance backlog-refund-intel-security-qualified
 ```
 
-AMD additionally sets `CATTEN_SKIP_KERNEL_BUILD=1` after Intel completes.
-Security runs set `CATTEN_ALLOW_SANDBOX_NETWORK=1`; effective deployment host
+AMD additionally sets `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel completes.
+Security runs set `KNYTOS_ALLOW_SANDBOX_NETWORK=1`; effective deployment host
 forwards are 8081 for ARM and 19181 for Intel. Exact supplied environment and
 QEMU network arguments are recorded in the JSON. The service bundles match the
 preceding baseline byte for byte, verified against every staged file and each

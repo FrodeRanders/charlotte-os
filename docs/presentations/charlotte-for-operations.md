@@ -272,7 +272,7 @@ For operations, the question can move from “does the existing binary run
 unchanged?” toward “can the required behavior be transformed into a governed,
 verifiable service contract at acceptable cost?”
 
-*Suggested visual: [Durga to Knytos generation](../manual-v2/figures/durga-charlotte-generation.svg).*
+*Suggested visual: [Durga to Knytos generation](../manual-v2/figures/durga-knytos-generation.svg).*
 
 ## Slide 16: Current implementation and production gap
 

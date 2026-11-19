@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.mailbox-node-admission.v1",
+  "schema": "knytos.mailbox-node-admission.v1",
   "date": "2026-11-01",
   "base_revision": "824d6b38076f30961e6b90b94d6418a720d6d7a2",
   "scope": "Independent requested-byte/count admission for mailbox endpoint candidates, published/detached storage and complete final-root retention; mailbox resource refund also follows node deallocation.",
@@ -301,8 +301,8 @@
           "[+     9.229307] [mailbox account lifetime] retired identity rejected across real root close/ASID reuse; final-weak original backing refund preserved successor"
         ],
         "debugger_stacks": [
-          "(lldb) target create \"/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-t9407y12/kernel.elf\"",
-          "Current executable set to '/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-t9407y12/kernel.elf' (aarch64).",
+          "(lldb) target create \"/Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-t9407y12/kernel.elf\"",
+          "Current executable set to '/Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-t9407y12/kernel.elf' (aarch64).",
           "(lldb) settings set interpreter.stop-command-source-on-error false",
           "(lldb) process connect --plugin gdb-remote unix-connect:///tmp/ctdiag-__3yuxoi/gdb.sock",
           "warning: This version of LLDB has no plugin for the language \"rust\". Inspection of frame variables will be limited.",
@@ -419,7 +419,7 @@
         ],
         "debugger_stacks": [
           "(lldb) target create \"target/boot-diagnostics/x86_64-ji8_tonf/kernel.elf\"",
-          "Current executable set to '/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-ji8_tonf/kernel.elf' (x86_64).",
+          "Current executable set to '/Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-ji8_tonf/kernel.elf' (x86_64).",
           "(lldb) settings set interpreter.stop-command-source-on-error false",
           "(lldb) process connect --plugin gdb-remote unix-connect:///tmp/ctdiag-6e70zehd/gdb.sock",
           "warning: This version of LLDB has no plugin for the language \"rust\". Inspection of frame variables will be limited.",

@@ -92,7 +92,7 @@ OUTPUT_DIR="$(dirname "$OUTPUT")"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT="$(cd "$OUTPUT_DIR" && pwd)/$(basename "$OUTPUT")"
 if [ -z "$TARGET_DIR" ]; then
-    TARGET_DIR="$(dirname "$MANIFEST")/target/charlotte"
+    TARGET_DIR="$(dirname "$MANIFEST")/target/knytos"
 fi
 mkdir -p "$TARGET_DIR"
 TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
@@ -102,7 +102,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-GENERATED_JSON="$TARGET_DIR/charlotte-$ARCH.json"
+GENERATED_JSON="$TARGET_DIR/knytos-$ARCH.json"
 python3 - "$BASE_JSON" "$GENERATED_JSON" "$LINK_X" <<'PY'
 import json
 import sys
@@ -169,7 +169,7 @@ SMOLTCP_IFACE_MAX_ADDR_COUNT="${SMOLTCP_IFACE_MAX_ADDR_COUNT:-17}" \
     -Z build-std=core,alloc,compiler_builtins \
     -Z build-std-features=compiler-builtins-mem
 
-BUILT="$TARGET_DIR/charlotte-$ARCH/$PROFILE_DIR/$BIN"
+BUILT="$TARGET_DIR/knytos-$ARCH/$PROFILE_DIR/$BIN"
 if [ ! -f "$BUILT" ]; then
     echo "error: expected built binary at $BUILT" >&2
     exit 1

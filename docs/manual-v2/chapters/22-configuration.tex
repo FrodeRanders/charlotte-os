@@ -40,7 +40,7 @@ The following inputs have different authorities and lifetimes:
         ceilings, ordinary shares and platform reserves. It is compiled into
         the kernel and remains fixed throughout that boot.
     \item[Service console heartbeats.] Service build input
-        \path{CATTEN_SERVICE_HEARTBEATS} accepts 0 or 1, selecting the
+        \path{KNYTOS_SERVICE_HEARTBEATS} accepts 0 or 1, selecting the
         \texttt{knytos-services} Cargo feature \texttt{service-heartbeats}.
         Runners and service builders default it off for minimal bundles and on
         for test bundles. It controls periodic \texttt{hb} console diagnostics
@@ -49,7 +49,7 @@ The following inputs have different authorities and lifetimes:
         requires rebuilding the services, kernel and images, then restarting;
         there is no live toggle. Cached bundles must match the selected setting.
     \item[Diagnostic telemetry archive.] Kernel build input
-        \path{CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS} defaults to zero, disabling
+        \path{KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS} defaults to zero, disabling
         disk archiving. Values from 1000 through 86400000 enable the diagnostic
         archive with that partial-chunk flush interval in milliseconds, though full
         chunks may flush sooner. The kernel supplies a read-only launch
@@ -58,7 +58,7 @@ The following inputs have different authorities and lifetimes:
         rebuild/restart, and cached kernels must match it. Existing archive objects
         are preserved for offline inspection. This setting does not disable
         Raft/catalog durability or release committed resource promises.
-    \item[Native telemetry export.] Unset \path{CATTEN_OTLP_ENDPOINT} launches
+    \item[Native telemetry export.] Unset \path{KNYTOS_OTLP_ENDPOINT} launches
         no exporter. An explicit HTTP/IPv4 collector, interval and timeout form
         one complete read-only profile whose hash is checked on kernel reuse.
         The separate userspace service exports latest-sample OTLP protobuf
@@ -68,7 +68,7 @@ The following inputs have different authorities and lifetimes:
         HTTPS, authentication headers and gRPC, so unsupported schemes reject.
         See \repofile|docs/reference/otlp-export.md|.
     \item[Bootstrap assignments.] The kernel build consumes
-        \path{CATTEN_CLUSTER_SERVICES}. Boot runners accept repeatable
+        \path{KNYTOS_CLUSTER_SERVICES}. Boot runners accept repeatable
         \texttt{-{}-cluster-service [NAME=]IPv4:PORT} assignments. The first
         committed signed ingress policy replaces the bootstrap assignments.
     \item[Trust policy.] The kernel's one prepared boot-trust policy supplies
@@ -96,7 +96,7 @@ ordinary operator capacity settings.
 The default settings are in
 \repofile|crates/catten/src/resource_policy/defaults.rs|. They select reviewed
 capacity values. Operators may edit this central file or select an external
-profile with \texttt{CATTEN\_RESOURCE\_POLICY}, which must name an existing file
+profile with \texttt{KNYTOS\_RESOURCE\_POLICY}, which must name an existing file
 by absolute path. Unset selects the default, but empty, relative, missing and
 directory paths reject. The file is trusted Rust source and belongs in the
 reviewed build inputs, not in an application manifest or upload request.
@@ -108,7 +108,7 @@ scratch-node, snapshot-buffer and mapping-node byte/count capacities by one
 quarter while preserving their reserve proportions.
 
 \begin{lstlisting}[language=bash]
-CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
+KNYTOS_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
   scripts/run-aarch64.sh --security-test --http-test
 \end{lstlisting}
 
@@ -327,7 +327,7 @@ requires every named limit, server key/chain, client roots and explicit reader
 or administrator enrollments. Unknown, duplicate, missing and inconsistent
 settings reject. Seal the private profile with the selected policy's operations
 signing key and recipient public key, and set
-\path{CATTEN_MANAGEMENT_TLS_RESOURCE} to its absolute file path when
+\path{KNYTOS_MANAGEMENT_TLS_RESOURCE} to its absolute file path when
 building the kernel. Only ciphertext is embedded. The resource is verified and
 decrypted at boot using the same prepared kernel trust owner, so no service can
 select an independent authority. The current delivery mechanism requires a
@@ -375,7 +375,7 @@ request. Decision logs include the checked UTC second as diagnostic evidence.
 
 The x86 QEMU \texttt{boot\_trust\_test} fixture can compile a different exact
 installed signed-policy snapshot using the absolute file input
-\path{CATTEN_BOOT_TEST_INSTALLED_POLICY}. Its default is the public revision 7
+\path{KNYTOS_BOOT_TEST_INSTALLED_POLICY}. Its default is the public revision 7
 fixture. The host commits the selected public snapshot before building the
 authenticated kernel, and the separate boot module must match it exactly. This
 input rejects outside that development fixture. It supports restart and
@@ -411,7 +411,7 @@ Use the following process before selecting a profile for a new workload:
 
 \noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}[language=bash]
-CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
+KNYTOS_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
   python3 scripts/tests/test-resource-policy.py
 cargo fmt --all -- --check
 \end{lstlisting}

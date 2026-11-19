@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.thread-table-admission.v1",
+  "schema": "knytos.thread-table-admission.v1",
   "date": "2026-11-01",
   "base_revision": "06bdbda449853ee298f4ec5ad10d059a95064c21",
   "scope": "Requested master-thread-table three-vector bytes/slots, original signed sponsorship and trusted classification, post-local-guard buffer allocation/disposal; no general heap/fairness closure.",

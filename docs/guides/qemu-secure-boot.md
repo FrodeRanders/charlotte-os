@@ -4,7 +4,7 @@ This x86 QEMU fixture authenticates Limine, its configuration, the kernel and a
 signed public policy module against freshly enrolled **test** firmware authority.
 It exercises the kernel's consuming policy handoff. It supplies no production
 enrollment, rollback-resistant storage, recipient custody or physical-platform
-qualification. `CATTEN_TRUST_MODE=production` still rejects.
+qualification. `KNYTOS_TRUST_MODE=production` still rejects.
 
 ## Prepare and run
 
@@ -31,7 +31,7 @@ and all transitive packages use pinned versions and wheel SHA-256 allowlists.
 osslsigncode 2.14 source has a fixed SHA-256, checked before extraction/build.
 The host Limine utility is compiled from the verified vendored source. Tests
 perform no downloads and install nothing system-wide. On non-Homebrew hosts,
-`CATTEN_TEST_OPENSSL_ROOT` can select an OpenSSL development prefix.
+`KNYTOS_TEST_OPENSSL_ROOT` can select an OpenSSL development prefix.
 
 ## Chain and fixture boundaries
 
@@ -52,10 +52,10 @@ unenrolled loader would leave its configuration/kernel policy unprotected.
 This follows [Limine 12.9.6's Secure Boot contract](https://github.com/Limine-Bootloader/Limine/blob/v12.9.6/USAGE.md#secure-boot)
 and [hashed-path format](https://github.com/Limine-Bootloader/Limine/blob/v12.9.6/CONFIG.md#paths).
 
-The test builds `catten` with `acpi,boot_trust_test`, snapshots its exact bytes
+The test builds `knytos` with `acpi,boot_trust_test`, snapshots its exact bytes
 for the whole matrix, and checks its executable/read-only trampoline sections.
 This feature supports only the x86 fixture. It requires exactly one Limine
-module named `charlotte.boot-trust-test`, exactly 328 bytes long, and verifies
+module named `knytos.boot-trust-test`, exactly 328 bytes long, and verifies
 its `CBTRUST1` signature/cluster against compiled public test authority. Expected
 revision 7 and its exact digest are pinned in the default test kernel. Shared
 `verify_for_boot` produces the distinct receipt required by the kernel handoff;
@@ -63,7 +63,7 @@ a valid successor rejects with `UninstalledRevision`. Boot consumes installed
 state without committing a new policy revision. There is no enrollment or
 development fallback when a module/state check fails.
 
-For development rotation tests, `CATTEN_BOOT_TEST_INSTALLED_POLICY` selects an
+For development rotation tests, `KNYTOS_BOOT_TEST_INSTALLED_POLICY` selects an
 absolute regular file containing a complete current signed snapshot. The build
 stages at most the exact format length and rejects incomplete/extended input;
 boot authenticates the compiled snapshot against the pinned fixture authority

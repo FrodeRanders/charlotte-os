@@ -142,7 +142,7 @@ impl Broker {
 }
 
 fn main() {
-    let address = env::var("CATTEN_KAFKA_ADDRESS").unwrap_or_else(|_| "127.0.0.1:19092".into());
+    let address = env::var("KNYTOS_KAFKA_ADDRESS").unwrap_or_else(|_| "127.0.0.1:19092".into());
     let mut broker = Broker::connect(&address);
 
     let correlation = broker.correlation();

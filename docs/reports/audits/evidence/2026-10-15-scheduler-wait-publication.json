@@ -165,7 +165,7 @@
       "timeout_seconds": 180
     }
   ],
-  "schema": "charlotte.audit.scheduler-wait-publication.v1",
+  "schema": "knytos.audit.scheduler-wait-publication.v1",
   "source_limit": "Runtime logic/probes unchanged throughout matrix; Rust documentation comments reconciled during review. Reviewed source hashes are not per-run full-tree manifests.",
   "unchanged_service_bundles_sha256": {
     "aarch64": {

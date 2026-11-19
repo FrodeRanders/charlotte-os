@@ -162,7 +162,7 @@ def main():
         parser.error("firmware and positive fixture budgets required")
     if not 1024 <= args.port_base <= 65526:
         parser.error("port base must leave ten distinct unprivileged ports")
-    if os.environ.get("CATTEN_TRUST_MODE", "development") != "development":
+    if os.environ.get("KNYTOS_TRUST_MODE", "development") != "development":
         parser.error("production remains disabled")
     def interrupted(_number, _frame):
         raise KeyboardInterrupt("management failover campaign terminated")
@@ -188,18 +188,18 @@ def main():
         fixture.prepare(credentials, addresses=("10.0.2.42",))
         signer = ROOT / "target/debug/cluster-sign"
         environment = dict(os.environ)
-        for name in ("CATTEN_BOOT_TEST_INSTALLED_POLICY", "CATTEN_CLUSTER_STATIC_NETWORK", "CATTEN_RESOURCE_POLICY"):
+        for name in ("KNYTOS_BOOT_TEST_INSTALLED_POLICY", "KNYTOS_CLUSTER_STATIC_NETWORK", "KNYTOS_RESOURCE_POLICY"):
             environment.pop(name, None)
-        environment.update(CATTEN_TRUST_MODE="development", CATTEN_CLUSTER_SERVICES="10.0.2.42:443;10.0.2.42:7444",
-                           CATTEN_AARCH64_SERVICE_BUNDLE=str(ROOT / "target/embedded-services/aarch64-unknown-none"),
-                           CATTEN_MANAGEMENT_TLS_RESOURCE=str(credentials / "resource.bin"))
-        run(["cargo", "build", "--locked", "-p", "catten", "--target", "target_specs/aarch64-unknown-none-catten.json",
+        environment.update(KNYTOS_TRUST_MODE="development", KNYTOS_CLUSTER_SERVICES="10.0.2.42:443;10.0.2.42:7444",
+                           KNYTOS_AARCH64_SERVICE_BUNDLE=str(ROOT / "target/embedded-services/aarch64-unknown-none"),
+                           KNYTOS_MANAGEMENT_TLS_RESOURCE=str(credentials / "resource.bin"))
+        run(["cargo", "build", "--locked", "-p", "catten", "--target", "target_specs/aarch64-unknown-none-knytos.json",
              "--no-default-features", "--features", "acpi,virtio_net_test"], environment)
         kernel = private / "catten"
-        kernel.write_bytes((ROOT / "target/aarch64-unknown-none-catten/debug/catten").read_bytes())
+        kernel.write_bytes((ROOT / "target/aarch64-unknown-none-knytos/debug/catten").read_bytes())
         run(["python3", ROOT / "scripts/check-kernel-asm-sections.py", kernel])
         image = private / "boot.img"
-        run(["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; catten_boot_create_uefi_image "$2" 128 "$1/limine-binary/BOOTAA64.EFI" "$3" "$1/limine.conf" CATOS',
+        run(["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; knytos_boot_create_uefi_image "$2" 128 "$1/limine-binary/BOOTAA64.EFI" "$3" "$1/limine.conf" CATOS',
              "management-failover-image", ROOT, image, kernel])
         evidence.update(kernel_sha256=sha(kernel), resource_sha256=sha(credentials / "resource.bin"),
                         service_sha256={p.name: sha(p) for p in sorted((ROOT / "target/embedded-services/aarch64-unknown-none").glob("*.elf"))})

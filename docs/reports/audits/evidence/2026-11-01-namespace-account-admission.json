@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.namespace-account-admission.v1",
+  "schema": "knytos.namespace-account-admission.v1",
   "date": "2026-11-01",
   "base_revision": "657fb84b7c07de36465823bf7d78598707f93882",
   "scope": "Shared fixed-bundle backing admission for unified capability, IPC endpoint, IPC record and mailbox accounts. Root and lazy mailbox preparation capture trusted storage classification before allocation; resource grants remain separate.",

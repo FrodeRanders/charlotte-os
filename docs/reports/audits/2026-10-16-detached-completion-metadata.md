@@ -150,7 +150,7 @@ pre-annotation source variant; security profiles use the final source. Both
 variant hash sets are recorded. This qualification avoids representing earlier
 kernels as builds of later text.
 
-Commands, with common environment `CATTEN_SKIP_EMBED_BUILD=1
+Commands, with common environment `KNYTOS_SKIP_EMBED_BUILD=1
 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
@@ -161,8 +161,8 @@ CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance detached-map-intel-security
 ```
 
-AMD sets `CATTEN_SKIP_KERNEL_BUILD=1` after Intel finishes, using its identical
-no-network ELF. Security runs additionally set `CATTEN_ALLOW_SANDBOX_NETWORK=1`
+AMD sets `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel finishes, using its identical
+no-network ELF. Security runs additionally set `KNYTOS_ALLOW_SANDBOX_NETWORK=1`
 and the HTTP/deployment port inputs 19080/19081 for ARM and 19180/19181 for Intel;
 actual network forwards are included in evidence. All staged service files and
 run inventories match the preceding baseline byte for byte. No services,

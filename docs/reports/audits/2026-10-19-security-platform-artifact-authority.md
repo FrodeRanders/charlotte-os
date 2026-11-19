@@ -88,7 +88,7 @@ build-gate controls and diff-whitespace checks pass.
 
 Failed host attempts are kept separately:
 
-- An initial ARM check omitted `CATTEN_AARCH64_SERVICE_BUNDLE` and rejected at
+- An initial ARM check omitted `KNYTOS_AARCH64_SERVICE_BUNDLE` and rejected at
   compilation. Supplying the staged bundle path passed.
 - Sandboxed TLC could not open its local Java RMI socket (`Operation not
   permitted`). The scoped run with that socket allowed passed.

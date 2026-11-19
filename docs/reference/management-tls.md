@@ -105,7 +105,7 @@ erasing owner, then checks the complete profile. It is not an operations-bundle
 variant or an exception to that bundle's expiry checks.
 
 The kernel build accepts only an absolute regular-file
-`CATTEN_MANAGEMENT_TLS_RESOURCE` input and embeds ciphertext. Boot opens it using
+`KNYTOS_MANAGEMENT_TLS_RESOURCE` input and embeds ciphertext. Boot opens it using
 the same `PreparedBootTrust` before trust publication or management service
 publication. The prepared plaintext lives through launch of both services, each
 receiving its own read-only launch memory through the existing owning launch
@@ -141,9 +141,9 @@ protected installation, rollback-resistant storage or recipient custody.
 Production images remain disabled under SEC-04.
 
 Verified `cluster-sign` management commands require PEM files in
-`CATTEN_MANAGEMENT_CA_FILE`, `CATTEN_MANAGEMENT_CERT_FILE` and
-`CATTEN_MANAGEMENT_KEY_FILE`. Numeric endpoint addresses are certificate-checked
-as IP identities; optional `CATTEN_MANAGEMENT_SERVER_NAME` selects a DNS/IP
+`KNYTOS_MANAGEMENT_CA_FILE`, `KNYTOS_MANAGEMENT_CERT_FILE` and
+`KNYTOS_MANAGEMENT_KEY_FILE`. Numeric endpoint addresses are certificate-checked
+as IP identities; optional `KNYTOS_MANAGEMENT_SERVER_NAME` selects a DNS/IP
 certificate identity and SNI. It does not disable verification. No application
 bytes are submitted before TLS completes. Configuration/verification rejection
 is terminal; accepted HTTP uncertainty never authorizes replay. One original
@@ -165,7 +165,7 @@ leaf or assign its role. There is no password, bearer-key or JavaScript bypass.
 Ordinary networked development runner builds generate fresh two-day credentials
 when no resource is supplied, independently of `--http-test`. Both the HTML
 dashboards and JSON endpoints use the same authenticated listener. QEMU user
-networking forwards host port `8080` (or `CATTEN_HTTP_HOST_PORT`) to guest `443`.
+networking forwards host port `8080` (or `KNYTOS_HTTP_HOST_PORT`) to guest `443`.
 `--http-test` adds validation, not service activation. Explicit management startup
 controls preserve their selected missing/supplied resource; `--no-network` does
 not generate an identity. Direct Cargo builds still require an explicit resource.
@@ -338,7 +338,7 @@ Its complete resource includes all six enrollments. OpenSSL verifies each contro
 signature, chain and client purpose with time disabled, then requires the exact
 current-time expiry/future failure before any guest boots. The ordinary CA key is
 removed after issuing the controls. The host-only
-`CATTEN_MANAGEMENT_VALIDITY_DIR` selects that private probe fixture, not kernel
+`KNYTOS_MANAGEMENT_VALIDITY_DIR` selects that private probe fixture, not kernel
 trust or service configuration. The startup campaign supplies it automatically.
 
 The `chain-validity` case instead tests expired/future intermediates with valid,
@@ -382,7 +382,7 @@ Run `scripts/run-management-rotation-test.py` with explicit `--firmware-code`
 and `--vars-template` paths after building the x86 service bundle. It reuses the
 Secure Boot firmware-authority preparation, owns disposable credentials and
 guest processes, and keeps one firmware-variable image and one data image across
-the revision transition. The test-only `CATTEN_BOOT_TEST_INSTALLED_POLICY`
+the revision transition. The test-only `KNYTOS_BOOT_TEST_INSTALLED_POLICY`
 selects an absolute complete public signed snapshot compiled into an x86
 `boot_trust_test` kernel, independently of the candidate boot module. The default
 remains revision 7. Boot authenticates the compiled snapshot and requires an

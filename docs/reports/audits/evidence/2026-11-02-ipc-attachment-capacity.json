@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc-attachment-capacity.v1",
+  "schema": "knytos.ipc-attachment-capacity.v1",
   "date": "2026-11-02",
   "base_revision": "5426cba04ab5cee74f87ad9c5d4f871652e07935",
   "scope": "Requested-byte admission for the preallocated RetiredMemory catalog inside queued IPC MemoryAttachments. Original requester class, caps, full allocated capacity, remaining retirement owners and charge stay in one inert owner through queueing, delivery and FIFO child handoff. Capability-ID, transfer and loan vectors remain separate work.",

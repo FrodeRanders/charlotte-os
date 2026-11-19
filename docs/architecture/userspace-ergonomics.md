@@ -128,7 +128,7 @@ sources. `sdk.json` binds the exact distributed file hashes, source dirty state,
 OS/Sitas revisions, runtime ABI and toolchain. CLI commands validate the snapshot
 and the project fingerprint. `new` creates host business logic plus an EL0
 adapter; `package` requires explicit key/version/rollback inputs and does not
-deploy. `charlotte.json` is a development plan, not a new signed wire format.
+deploy. `knytos.json` is a development plan, not a new signed wire format.
 External dependencies and toolchain components still require normal resolution.
 
 ## Remaining extensions and qualification

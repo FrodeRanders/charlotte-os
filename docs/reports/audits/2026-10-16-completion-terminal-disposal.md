@@ -141,7 +141,7 @@ storage, `-D warnings`, a 180-second guest budget and automatic all-LP failure
 capture. No service source changes were made. The full staged service-bundle
 inventories match the preceding batch byte for byte.
 
-Run commands (common environment `CATTEN_SKIP_EMBED_BUILD=1
+Run commands (common environment `KNYTOS_SKIP_EMBED_BUILD=1
 CARGO_BUILD_RUSTFLAGS='-D warnings'`):
 
 ```sh
@@ -153,8 +153,8 @@ CARGO_BUILD_RUSTFLAGS='-D warnings'`):
 ```
 
 AMD reuses the completed Intel no-network kernel with
-`CATTEN_SKIP_KERNEL_BUILD=1`. Security runs use
-`CATTEN_ALLOW_SANDBOX_NETWORK=1`, HTTP/deployment ports 19080/19081 for ARM
+`KNYTOS_SKIP_KERNEL_BUILD=1`. Security runs use
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1`, HTTP/deployment ports 19080/19081 for ARM
 and 19180/19181 for x86. Kernel assembly-section checks remain enabled.
 
 [Version-controlled evidence](evidence/2026-10-16-completion-terminal-disposal.json)

@@ -99,7 +99,7 @@ It is retained separately and supplies no runtime ownership evidence.
 
 The native AArch64 connector runs against three Apache Kafka 4.1.1 brokers with
 verified TLS, required P-256 mTLS and SCRAM-SHA-256. Its isolated Compose project
-is `charlotte-sec15-sasl`. The host kills route leader `kafka2` in the required
+is `knytos-sec15-sasl`. The host kills route leader `kafka2` in the required
 fault window. The guest completes **20 passed / zero failed / zero pending**,
 bitmap `0x503ffff`:
 

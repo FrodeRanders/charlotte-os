@@ -118,8 +118,8 @@ installed as passing regression tests for corrected behavior.
 ```sh
 rustc --edition=2024 -A dead_code \
   docs/reports/audits/evidence/2026-10-10-object-store-review.rs \
-  -o /tmp/charlotte-object-store-review
-/tmp/charlotte-object-store-review
+  -o /tmp/knytos-object-store-review
+/tmp/knytos-object-store-review
 ```
 
 Observed output:
@@ -161,15 +161,15 @@ Reviewed-source SHA-256:
 Successful guest commands (after rebuilding/signing both architecture bundles):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18961 CATTEN_DEPLOY_HOST_PORT=18261 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18961 KNYTOS_DEPLOY_HOST_PORT=18261 \
   scripts/run-aarch64.sh --security-test \
   --instance audit-review-20261010-unsandboxed --fresh-storage --timeout 180
 scripts/run-x86_64.sh --no-network --iommu intel \
   --instance audit-review-intel-20261010 --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18962 CATTEN_DEPLOY_HOST_PORT=18262 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18962 KNYTOS_DEPLOY_HOST_PORT=18262 \
   scripts/run-aarch64.sh --live-upgrade-test \
   --instance audit-review-upgrade-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance audit-review-amd-repeat-20261010 --fresh-storage --timeout 150
 ```
 
@@ -197,7 +197,7 @@ failures, not kernel/test failures; the next attempt ran outside the sandbox.
 
 The first AMD-Vi run used the same x86 kernel hash as the passing Intel run,
 with `--no-network --iommu amd --instance audit-review-amd-20261010
---fresh-storage --timeout 150` and `CATTEN_SKIP_EMBED_BUILD=1`.
+--fresh-storage --timeout 150` and `KNYTOS_SKIP_EMBED_BUILD=1`.
 At guest time approximately 11.65 seconds it panicked before an authoritative
 final result:
 

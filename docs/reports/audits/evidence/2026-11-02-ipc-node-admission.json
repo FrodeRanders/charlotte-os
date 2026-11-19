@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc-node-admission.v1",
+  "schema": "knytos.ipc-node-admission.v1",
   "date": "2026-11-02",
   "base_revision": "452899f9088d02b53132a85b1e8f1050c68d7f35",
   "scope": "Independent requested-byte/count backing admission for pending-call and reply-token node layouts. The complete existing node owns this reservation alongside its later-bound logical record charge through preparation, publication, claims, detached cleanup and actual deallocation. Connection/capability and endpoint payload layouts and nested buffers remain separate.",

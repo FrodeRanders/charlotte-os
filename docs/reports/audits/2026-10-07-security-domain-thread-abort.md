@@ -98,12 +98,12 @@ operation-owner abandonment is covered by the existing lease foundation.
 | Arm SMMUv3 security QEMU | **19 passed, 0 failed, 0 pending**; scoped probes `0xffff`, publication generations 1/2, concurrent cancellation retired 4,776 requests. |
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance domain-abort-intel-final-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance domain-abort-amd-final-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance domain-abort-arm-final-20261007 --fresh-storage --timeout 180
 ```
 

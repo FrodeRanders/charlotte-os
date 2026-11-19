@@ -135,15 +135,15 @@ The native campaigns rebuild/sign their service bundles (ARM through
 test/minimal bundle selection. Commands use fresh, named instances:
 
 ```sh
-CATTEN_DEPLOY_HOST_PORT=18811 scripts/run-aarch64.sh debug --tests --smp 4 \
+KNYTOS_DEPLOY_HOST_PORT=18811 scripts/run-aarch64.sh debug --tests --smp 4 \
   --security-test --timeout 240 --instance rust-upgrade-arm-repeat
 scripts/run-x86_64.sh debug --tests --smp 4 --security-test --iommu intel \
   --timeout 240 --instance rust-upgrade-intel
-CATTEN_DEPLOY_HOST_PORT=18812 scripts/run-x86_64.sh debug --tests --smp 4 \
+KNYTOS_DEPLOY_HOST_PORT=18812 scripts/run-x86_64.sh debug --tests --smp 4 \
   --security-test --iommu amd --timeout 240 --instance rust-upgrade-amd
-CATTEN_DEPLOY_HOST_PORT=18813 scripts/run-aarch64.sh debug --minimal --smp 4 \
+KNYTOS_DEPLOY_HOST_PORT=18813 scripts/run-aarch64.sh debug --minimal --smp 4 \
   --timeout 120 --instance rust-upgrade-arm-minimal
-CATTEN_DEPLOY_HOST_PORT=18814 scripts/run-x86_64.sh debug --minimal --smp 4 \
+KNYTOS_DEPLOY_HOST_PORT=18814 scripts/run-x86_64.sh debug --minimal --smp 4 \
   --iommu intel --timeout 120 --instance rust-upgrade-x86-minimal
 ```
 

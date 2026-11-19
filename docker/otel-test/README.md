@@ -8,8 +8,8 @@ container logs are bounded.
 docker compose -f docker/otel-test/compose.yaml up -d
 
 # QEMU's user-network address for a service on the host is 10.0.2.2.
-CATTEN_OTLP_ENDPOINT=http://10.0.2.2:14318/v1/metrics \
-CATTEN_OTLP_INTERVAL_MS=10000 CATTEN_OTLP_TIMEOUT_MS=3000 \
+KNYTOS_OTLP_ENDPOINT=http://10.0.2.2:14318/v1/metrics \
+KNYTOS_OTLP_INTERVAL_MS=10000 KNYTOS_OTLP_TIMEOUT_MS=3000 \
   scripts/run-aarch64.sh release --minimal
 
 docker compose -f docker/otel-test/compose.yaml logs -f collector
@@ -26,9 +26,9 @@ selects `success`, `partial`, `retry`, `stall`, `oversized`, or `malformed`.
 It records only request time, length and SHA-256:
 
 ```sh
-printf '%s\n' partial > /tmp/charlotte-otlp-mode
+printf '%s\n' partial > /tmp/knytos-otlp-mode
 python3 scripts/tests/otlp-collector-fixture.py --port 14318 \
-  --mode-file /tmp/charlotte-otlp-mode --log /tmp/charlotte-otlp-requests.jsonl
+  --mode-file /tmp/knytos-otlp-mode --log /tmp/knytos-otlp-requests.jsonl
 ```
 
 Stop the official fixture before binding the same port. Throttling responds

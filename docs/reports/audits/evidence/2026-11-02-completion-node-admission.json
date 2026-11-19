@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.completion-node-admission.v1",
+  "schema": "knytos.completion-node-admission.v1",
   "date": "2026-11-02",
   "base_revision": "6921f13b0aa1ceb6b39ebf0053d8209dfa148f2f",
   "scope": "Independent requested-byte/count backing admission for capability-backed completion, detached-operation and CQ registry nodes, including unused candidates, CQ backlog and complete retired owners.",
@@ -196,7 +196,7 @@
     "shared_collection_log_sha256": "6227e2a1b454629c8b2e60c0517a4eafc7e8862615ee41a2ae6e076c91321b8c",
     "policy": "python3 scripts/tests/test-resource-policy.py; three groups passed; exit zero",
     "policy_log_sha256": "ab61785800ac1870500362b9950fa1902e82f3df50c9a6f6099e1a83f45b52ef",
-    "kernel_tests_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
+    "kernel_tests_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
     "kernel_tests_clippy_log_sha256": "0b081fd5896fffb394925dce56ea3ca158fbd4c379e0775cde427f425342d02e",
     "minimal_clippy": "Same target/strict offline locked command with minimal service bundle and acpi only; exit zero",
     "minimal_clippy_log_sha256": "c8d78826bba210b290791e59800fb90cfc458bf32eb3358cc4aff50be590a74a",

@@ -303,7 +303,7 @@ AI therefore changes the cost boundary rather than removing it. An IT
 department can assess the cost of verified adaptation alongside the cost of
 carrying the general-purpose compatibility stack.
 
-*Suggested visual: [Durga to Knytos generation](../manual-v2/figures/durga-charlotte-generation.svg).*
+*Suggested visual: [Durga to Knytos generation](../manual-v2/figures/durga-knytos-generation.svg).*
 
 ## Slide 16: Maturity and organisational risk
 

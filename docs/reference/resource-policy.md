@@ -2,7 +2,7 @@
 
 Kernel capacity is selected centrally by
 [resource_policy/defaults.rs](../../crates/catten/src/resource_policy/defaults.rs)
-and the optional absolute-file `CATTEN_RESOURCE_POLICY` build input. See the
+and the optional absolute-file `KNYTOS_RESOURCE_POLICY` build input. See the
 [Configuration guide](../guides/configuration.md) and manual chapter for the
 operator procedure, authority, planning and qualification process.
 

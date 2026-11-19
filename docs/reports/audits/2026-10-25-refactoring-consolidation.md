@@ -93,6 +93,6 @@ kernel `build-std` configuration produced duplicate `core::sized` language items
 adding `std,panic_unwind` also produced conflicting allocation handlers/panic
 strategies. The direct-rustc run above executes the actual dependency-free crate,
 not an alternate implementation. Initial AArch64 Clippy lacked the required
-`CATTEN_AARCH64_SERVICE_BUNDLE` input and rejected eight `env!` expansions;
+`KNYTOS_AARCH64_SERVICE_BUNDLE` input and rejected eight `env!` expansions;
 the configured invocation passes. These are validation setup failures, separate
 from native execution and its historical intermittent failures.

@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.immediate-send.v1",
+  "schema": "knytos.security.immediate-send.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "75dbe83b43ca56022daa059a6b947b4edc46b166",
   "classification": {
@@ -52,7 +52,7 @@
       "id": "arm_security",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-full-id-security --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-full-id-security --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-full-id-security",
       "kernel_sha256": "70247827c9bb67c319a68e24b28715d931ae47f040dbbbfc08574829403d02cf",
@@ -87,7 +87,7 @@
       "id": "x86_security_repeat",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-full-id-security-x86-repeat --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-full-id-security-x86-repeat --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-full-id-security-x86-repeat",
       "kernel_sha256": "2f859fc16a76d722c443727e9ef0d19f5c2ae99f6a6d8bfcea3cde121ca731b7",
@@ -122,7 +122,7 @@
       "id": "arm_http",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-full-id-http --fresh-storage --timeout 240",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-full-id-http --fresh-storage --timeout 240",
       "architecture": "aarch64",
       "instance": "sec06-full-id-http",
       "kernel_sha256": "624d2c009ed832968dbd1fc5c2ba2506b59cb2a12d4239d9fe79467ec2b7409b",
@@ -165,7 +165,7 @@
       "id": "x86_http",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=18880 CATTEN_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-full-id-http-x86 --fresh-storage --timeout 240",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=18880 KNYTOS_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-full-id-http-x86 --fresh-storage --timeout 240",
       "architecture": "x86_64",
       "instance": "sec06-full-id-http-x86",
       "kernel_sha256": "f29cf629bee2326d9e765ab40ba7b0c0c0b02cb2995dcc5eebcb56a6e0d637c7",
@@ -208,7 +208,7 @@
       "id": "arm_signed_release",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 COMPOSE_PROJECT_NAME=charlotte-sec06-full-id CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-full-id-deploy --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 COMPOSE_PROJECT_NAME=knytos-sec06-full-id KNYTOS_HTTP_HOST_PORT=19281 KNYTOS_DEPLOY_HOST_PORT=19445 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-full-id-deploy --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "sec06-full-id-deploy",
       "kernel_sha256": "f5af32992f20c2ef1db778e2b8a8a7a5ecb4d190412edfdb1bf631abc7a797d2",
@@ -333,7 +333,7 @@
       "id": "initial_x86_security",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-full-id-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-full-id-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "sec06-full-id-security-x86",
       "kernel_sha256": "6f981cc53f2f1dca3a4f71f8ce7386b281f8bba6c78210d93b449039539dff5b",
@@ -385,7 +385,7 @@
         "[+    79.655476] [security] probe passed; retired policy fenced, publication generation=2",
         "panicked at crates/catten/src/self_test/el0_security.rs:55:61:",
         "security probe reclamation: AddressSpace(OperationDrainTimedOut)",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-yt7g6yhp"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-yt7g6yhp"
       ],
       "decoded_stack": [
         "thread #2: tid = 0x0002, 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
@@ -411,7 +411,7 @@
   ],
   "failed_run_qualification": "Initial x86 security run panicked in final cancellation-stress domain reclamation after both application scopes passed. Kept separately from same-source/budget repeat; no causal resolution claimed. Historical close-policy regressions, UEFI timeout and other startup intermittence remain in baseline reports.",
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib --offline --locked",
     "cwd": "/private/tmp",
     "result": "204 passed; 0 failed",
     "exit_code": 0,
@@ -423,7 +423,7 @@
   "checks": {
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
     "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin tcpip --bin security_probe --bin tcpclient --bin time --bin deployd --bin httpd -- -D warnings",
     "host_clippy_sha256": "666a188d20dee9ad5833c8b39c8ba9f730848a5970d230ede072d436db8a0aaa",
     "native_clippy_sha256": "207f257d7d4ea7cee1458cc322abb0abb6546b3b907f7c43d81c4d2d98e1283e",

@@ -300,7 +300,7 @@ The fixed request targets select a node or cluster view:
   report as cards, which is handy on VMware where there is no framebuffer.
 - `GET /metrics` (alias `/metric`) returns the JSON report described above.
 - `GET /cluster` returns the cluster dashboard.
-- `GET /cluster/metrics` returns the bounded `charlotte.cluster.v2` view of
+- `GET /cluster/metrics` returns the bounded `knytos.cluster.v2` view of
   applied Raft posture, node capacity freshness, application placement and
   readiness, and DSR service projection. It returns 503 when the local
   replica cannot satisfy the bounded-read freshness requirement.
@@ -329,7 +329,7 @@ the dashboard in a browser (or curl the JSON endpoint directly):
 ```
 scripts/run-aarch64.sh release --minimal --instance http --smp 2
 # In another terminal; use the client directory printed by the runner:
-clients=os-images/charlotte-aarch64-release-http-minimal.img.management
+clients=os-images/knytos-aarch64-release-http-minimal.img.management
 curl --cacert "$clients/ca.pem" --cert "$clients/reader.pem" \
   --key "$clients/reader.key" https://localhost:8080/
 curl --cacert "$clients/ca.pem" --cert "$clients/reader.pem" \

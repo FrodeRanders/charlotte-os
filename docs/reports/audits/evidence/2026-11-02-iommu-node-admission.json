@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.iommu-node-admission.v1",
+  "schema": "knytos.iommu-node-admission.v1",
   "date": "2026-11-02",
   "base_revision": "1cef1177ce8d4b8a9551563bad4d9f7a0c989509",
   "scope": "Independent requested-byte/count backing admission for IOMMU domain cells, persistent requester/stream fences and VT-d context metadata, through existing complete grant, unit and detached owners.",
@@ -210,7 +210,7 @@
     "shared_collection_log_sha256": "8654132bbc2688b806121877eff9bf083220590ef97022fafe97cac0ad58473a",
     "policy": "python3 scripts/tests/test-resource-policy.py; three groups passed; exit zero",
     "policy_log_sha256": "30641f4a8206f86c7b3b3bfc53f775d952dee0eebf475c67ce816629733497e7",
-    "kernel_tests_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
+    "kernel_tests_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
     "kernel_tests_clippy_log_sha256": "72e809d9125c3fbd593c8a4073e554298a6d23e45239062a63dcd7959c1af384",
     "minimal_clippy": "Same target/strict offline locked command with minimal bundle and acpi only; exit zero",
     "minimal_clippy_log_sha256": "b47e687cfba23d390053ad916d6b724b4bab615c6e7beb350ef517644b280832",

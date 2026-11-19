@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.deployment-close.v1",
+  "schema": "knytos.security.deployment-close.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "4cadfb0d28ba87066eabcd9a740839368a39e625",
   "classification": {
@@ -113,7 +113,7 @@
       ],
       "terminal_diagnostics": [
         "error: guest HTTP keyholes did not return both expected JSON views",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-g4ap1tmy"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-g4ap1tmy"
       ],
       "failure": {
         "reason": "host-probe-failed",
@@ -125,7 +125,7 @@
         "ConnectionResetError: [Errno 54] Connection reset by peer",
         "error: guest HTTP keyholes did not return both expected JSON views",
         "[+    64.516959] [EL0 LOG] lp=0 asid=118 [deployd] logical close failed with owner retained: Observation(Service(-2))",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-g4ap1tmy"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-g4ap1tmy"
       ],
       "source_qualification": "Intermediate uncommitted zero-only close implementation. Exact binary/kernel/image hashes identify the failed build; its complete source snapshot was not committed. Relevant defect was rejection of Service(-2) after terminal/reset/expiry reaping. Current producer gives a distinct unavailable receipt; no generic BAD_SOCKET-to-success fallback."
     },
@@ -170,7 +170,7 @@
         "PASS: deployment EOF recovery"
       ],
       "terminal_diagnostics": [
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-3xzs4z7u"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-3xzs4z7u"
       ],
       "failure": {
         "reason": "deadline",
@@ -181,7 +181,7 @@
         "Deployment transport ConnectionResetError; retry 2/2",
         "ConnectionResetError: [Errno 54] Connection reset by peer",
         "[+    76.466310] [EL0 LOG] lp=0 asid=117 [deployd] logical close failed with owner retained: Observation(Service(-2))",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-3xzs4z7u"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-3xzs4z7u"
       ],
       "source_qualification": "Intermediate uncommitted zero-only close implementation. Exact binary/kernel/image hashes identify the failed build; its complete source snapshot was not committed. Relevant defect was rejection of Service(-2) after terminal/reset/expiry reaping. Current producer gives a distinct unavailable receipt; no generic BAD_SOCKET-to-success fallback."
     },
@@ -581,20 +581,20 @@
     }
   },
   "initial_failed_commands": [
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-close-http --fresh-storage --timeout 240",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=18880 CATTEN_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-close-http-x86 --fresh-storage --timeout 240"
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-close-http --fresh-storage --timeout 240",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=18880 KNYTOS_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-close-http-x86 --fresh-storage --timeout 240"
   ],
   "native_commands": [
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-close-security-final --fresh-storage --timeout 300",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-close-security-x86-final --fresh-storage --timeout 300",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-close-http-final --fresh-storage --timeout 240",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-close-http-repeat --fresh-storage --timeout 240",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=18880 CATTEN_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-close-http-x86-final --fresh-storage --timeout 240",
-    "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec06-close-final CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-close-deploy-final --fresh-storage --timeout 300"
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-close-security-final --fresh-storage --timeout 300",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-close-security-x86-final --fresh-storage --timeout 300",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-close-http-final --fresh-storage --timeout 240",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-close-http-repeat --fresh-storage --timeout 240",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=18880 KNYTOS_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-close-http-x86-final --fresh-storage --timeout 240",
+    "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec06-close-final KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19281 KNYTOS_DEPLOY_HOST_PORT=19445 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-close-deploy-final --fresh-storage --timeout 300"
   ],
   "host": {
     "additional_controls": "Nonreuse/exhaustion, exact live/foreign/unavailable/unreserved classification and Started/Unavailable decoder.",
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib --offline --locked (cwd /private/tmp)",
     "result": "193 passed; 0 failed",
     "capture_sha256": "ef29a1c93eba93a53a7f88edd1671698873e45316633aaf84e8b6f2c23106854",
     "qualification": "Eight close controls model held/rejected/healthy calls, fixed capacity, original budgets and retained owners at abort. Host unwind is not domain-retirement or wider destructor proof. Live malformed returned-capability/map/bind/observation faults not injected; close introduces no request memory mapping."
@@ -603,7 +603,7 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml -p knytos-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
     "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe -- -D warnings",
     "host_clippy_sha256": "15bb8aafd6401dac03c8b3b9c95b18b51e0ec8263af908a8f44859fd7030708a",
     "native_clippy_sha256": "838f0b639f7869c9bb7f9a107dbfda935880cbff20366ec10807ae184e440ec8",
@@ -614,7 +614,7 @@
     "arm_reproduction": "scripts/build-knytos-services.sh --check: signatures verified and current-source signed bytes match"
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe_configurations": 40,
     "expected_counterexamples": 117,

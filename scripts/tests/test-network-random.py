@@ -31,7 +31,7 @@ class NetworkRandom(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if output := os.environ.get("CATTEN_NETWORK_RANDOM_EVIDENCE"):
+        if output := os.environ.get("KNYTOS_NETWORK_RANDOM_EVIDENCE"):
             Path(output).write_text(json.dumps({
                 "source_sha256": hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
                 "controls": cls.results,

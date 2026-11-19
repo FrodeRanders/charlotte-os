@@ -144,7 +144,7 @@
       "elliptic-curve-0.13.8/src/secret_key.rs": "a08c354ea59da20e20628ce66da790822f3f90ee5820ab449ed64229d9270783",
       "ecdsa-0.16.9/src/signing.rs": "11842af046b43fe53add72a7fdc78a9555a1dbc37fe6bb0d1139e8b25491538f"
     },
-    "selected_feature_tree": "x25519-dalek v3.0.0\n\u251c\u2500\u2500 x25519-dalek feature \"static_secrets\"\n\u2502   \u251c\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch)\n\u2502   \u2502   \u2514\u2500\u2500 knytos-launch feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 hpke v0.14.0\n\u2502       \u251c\u2500\u2500 hpke feature \"chacha\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n\u2502       \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n\u2502       \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n\u2502       \u2502       \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n\u2502       \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n\u2514\u2500\u2500 x25519-dalek feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n",
+    "selected_feature_tree": "x25519-dalek v3.0.0\n\u251c\u2500\u2500 x25519-dalek feature \"static_secrets\"\n\u2502   \u251c\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-launch)\n\u2502   \u2502   \u2514\u2500\u2500 knytos-launch feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 hpke v0.14.0\n\u2502       \u251c\u2500\u2500 hpke feature \"chacha\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-launch) (*)\n\u2502       \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n\u2502       \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n\u2502       \u2502       \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-launch) (*)\n\u2502       \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n\u2514\u2500\u2500 x25519-dalek feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-launch) (*)\n",
     "selected_feature_tree_log_sha256": "eeaec34249adac2533d22325382bce46bbf80dd5e7d2cf2027229deca971f96b",
     "observations": [
       "hpke 0.14.0 disables x25519-dalek defaults and requests static_secrets only.",
@@ -155,7 +155,7 @@
   },
   "compile_controls": {
     "moved_key_owner": {
-      "manifest": "[package]\nname = \"hpke-key-owner-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\" }\nrand_core = { version = \"0.10.0\", default-features = false }\n",
+      "manifest": "[package]\nname = \"hpke-key-owner-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-launch = { path = \"/Users/froran/Projects/private/knytos/crates/knytos-launch\" }\nrand_core = { version = \"0.10.0\", default-features = false }\n",
       "source": "pub fn reuse_after_move(rng: &mut impl rand_core::CryptoRng) {\n    let (private, _) = knytos_launch::operations::generate_recipient_keypair(rng);\n    let transferred = private;\n    drop(transferred);\n    let _ = knytos_launch::operations::recipient_public_key(&private);\n}\n",
       "lockfile_sha256": "bbc71d8286fb1a4cd2ab22e6cabb0692fe94b222f044ffda3f3b4f112ccb1f07",
       "baseline": {
@@ -345,7 +345,7 @@
   },
   "failed_environment_checks": [
     {
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --instance sec15-hpke --fresh-storage --timeout 120",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --instance sec15-hpke --fresh-storage --timeout 120",
       "exit_status": 1,
       "log_sha256": "2f3ba321f0e3abc620bfa1f07eb838e6fe2224bab419e8f65294d816724941cb",
       "diagnostic": "Failed to bind socket to /tmp/ctdiag-9eo2dje1/qmp.sock: Operation not permitted",
@@ -555,7 +555,7 @@
     "scope": "No existing model projects X25519 field bytes, dependency features or this Rust return type. No transition change or fresh TLC result claimed."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
     "changed_by_this_batch": false
   },
@@ -570,7 +570,7 @@
     "revision": "44bb3b18",
     "original_manifest_sha256": "34a4d48a82a59d633b146a4b3633bcacf11c4f9efdb2ca592a1a5cc421a6ccfb",
     "original_lockfile_sha256": "6a09ea7454ebe0b229bdf6433231a8efc0bfd5bd7df1652e19acc9cfcb9165e4",
-    "feature_tree": "x25519-dalek v3.0.0\n\u2514\u2500\u2500 x25519-dalek feature \"static_secrets\"\n    \u2514\u2500\u2500 hpke v0.14.0\n        \u251c\u2500\u2500 hpke feature \"chacha\"\n        \u2502   \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch)\n        \u2502       \u2514\u2500\u2500 knytos-launch feature \"default\" (command-line)\n        \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n        \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n        \u2502       \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-launch) (*)\n        \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n",
+    "feature_tree": "x25519-dalek v3.0.0\n\u2514\u2500\u2500 x25519-dalek feature \"static_secrets\"\n    \u2514\u2500\u2500 hpke v0.14.0\n        \u251c\u2500\u2500 hpke feature \"chacha\"\n        \u2502   \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-launch)\n        \u2502       \u2514\u2500\u2500 knytos-launch feature \"default\" (command-line)\n        \u251c\u2500\u2500 hpke feature \"hkdfsha2\"\n        \u2502   \u2514\u2500\u2500 hpke feature \"x25519\"\n        \u2502       \u2514\u2500\u2500 knytos-launch v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-launch) (*)\n        \u2514\u2500\u2500 hpke feature \"x25519\" (*)\n",
     "feature_tree_log_sha256": "2ed05d168aaee7bf64b4099731bb5dfdadbad2388b0c027d0191bcc371b0e262",
     "test_source": "//! Public fixture bytes exercise the exact X25519 owners used by HPKE.\n\nuse core::{\n    mem::MaybeUninit,\n    ptr,\n};\n\nuse x25519_dalek::{\n    PublicKey,\n    StaticSecret,\n};\n\nfn assert_drop_erases(value: impl AsRef<[u8]>) {\n    let mut storage = MaybeUninit::new(value);\n    let owner = storage.as_mut_ptr();\n    // Keep storage allocated after destroying its one initialized owner.\n    // Read only the initialized 32-byte field exposed by AsRef: no padding,\n    // freed-memory inspection or second adoption of the dropped value.\n    unsafe {\n        let bytes = (*owner).as_ref();\n        assert_eq!(bytes.len(), 32);\n        assert!(bytes.iter().any(|byte| *byte != 0));\n        let data = bytes.as_ptr();\n        ptr::drop_in_place(owner);\n        for index in 0..32 {\n            assert_eq!(ptr::read_volatile(data.add(index)), 0, \"retained byte {index}\");\n        }\n    }\n}\n\n#[test]\nfn x25519_private_owner_erases_on_drop() {\n    assert_drop_erases(StaticSecret::from([0x5a; 32]));\n}\n\n#[test]\nfn x25519_shared_owner_erases_on_drop() {\n    let private = StaticSecret::from([0x5a; 32]);\n    let peer = PublicKey::from(&StaticSecret::from([0x6b; 32]));\n    assert_drop_erases(private.diffie_hellman(&peer));\n}\n",
     "test_source_sha256": "8c5ed33cffd3cbb1ecf6dd892cf01afbc4b8edf34d54dd5580910a323f2a0f41",
@@ -603,7 +603,7 @@
     }
   },
   "arm_native": {
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --instance sec15-hpke --fresh-storage --timeout 120 (permitted QEMU socket)",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --instance sec15-hpke --fresh-storage --timeout 120 (permitted QEMU socket)",
     "exit_status": 0,
     "log_sha256": "cc889f1b09947fc64c83e48d6de702b70937c424f1d84f073628b4898561730d",
     "kernel_sha256": "c762c3a79220cea675720e218ebcbfde2d3660d8ea7e201daaee440d3f069648",

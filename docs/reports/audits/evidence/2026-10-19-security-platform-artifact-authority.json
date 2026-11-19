@@ -647,7 +647,7 @@
       "stage": "initial ARM cargo check",
       "exit_status": 101,
       "diagnostics": [
-        "environment variable CATTEN_AARCH64_SERVICE_BUNDLE not defined at compile time",
+        "environment variable KNYTOS_AARCH64_SERVICE_BUNDLE not defined at compile time",
         "could not compile catten due to 8 previous errors"
       ],
       "verification_limit": "Complete original tool output was not saved as a separate log; the excerpt records the observed configuration rejection. The configured repeat passed."

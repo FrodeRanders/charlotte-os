@@ -11,7 +11,7 @@ and the ordered [simplification ledger](../../reference/api-simplification.md).
   `--cluster-service [NAME=]IPv4:PORT` assignments use one table. An explicit
   empty name now rejects rather than becoming an unnamed platform assignment.
 - Removes the singleton compile-time VIP/port/name fallback and its two
-  parsing helpers. The runner publishes only `CATTEN_CLUSTER_SERVICES`;
+  parsing helpers. The runner publishes only `KNYTOS_CLUSTER_SERVICES`;
   kernel builds reject each old variable, including an empty one, without
   printing its value. First-assignment runner-local values still select the
   SLIRP forwarding target and are not an independent kernel policy.
@@ -103,11 +103,11 @@ idle-peer and trickled-body controls pass; trickled input rejects in 30.13 s.
 
 x86 instance `s07-table-x86`, ports 19105/19106, four LPs, fresh storage,
 --http-test --timeout 180, the same canonical table supplied directly through
-`CATTEN_CLUSTER_SERVICES`: **17/0/0** at 18.220269 s, bitmap 0x23bbff,
+`KNYTOS_CLUSTER_SERVICES`: **17/0/0** at 18.220269 s, bitmap 0x23bbff,
 runner exits **0**. Metrics/cluster responses and deployment HTTP controls
 pass; trickled input rejects in 30.18 s.
 
-Both cluster responses report `charlotte.cluster.v2`, `fresh_committed=true`,
+Both cluster responses report `knytos.cluster.v2`, `fresh_committed=true`,
 with these exact independent projections:
 
 | Assignment | Backend name | Eligible nodes | Advertiser |

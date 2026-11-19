@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc-revocation-work.v1",
+  "schema": "knytos.ipc-revocation-work.v1",
   "date": "2026-11-04",
   "base_revision": "d4bec0f8e95e2b6ba99ab5e39e4f63a468e182ab",
   "scope": "Allocation-lifetime byte admission for PreparedReply and PreparedCancellation revocation-work vectors, plus inert complete-parent ownership of active returned-memory preparations, detached storage and pending notifications. Existing original-token sponsorship and consuming physical cleanup remain local to each typed parent.",

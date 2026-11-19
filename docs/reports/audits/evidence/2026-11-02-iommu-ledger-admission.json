@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.iommu-ledger-admission.v1",
+  "schema": "knytos.iommu-ledger-admission.v1",
   "date": "2026-11-02",
   "base_revision": "849a48e841cd192dc3fa09acb30891ad13c21514",
   "scope": "Admit IOMMU physical-extent ledger buffer capacity to the existing metadata byte pool. Capture original domain-grant/boot class; retain full old/candidate overlap, addresses and original charges through replacement and physical uncertainty; deallocate before refund. Numerical limits, node-count units, statistics grammar, register ABI and physical completion rules are unchanged.",

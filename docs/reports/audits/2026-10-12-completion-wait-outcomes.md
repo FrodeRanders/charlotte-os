@@ -204,7 +204,7 @@ retries where used. Shutdown requested PSCI power-off at 14.402212 s. These
 passing observations do not supersede either failed probe or resolve historical
 Intel failure causality. Synchronous assertions supplement deferred counts.
 
-Final guest commands used `CATTEN_SKIP_EMBED_BUILD=1` after signed bundle builds:
+Final guest commands used `KNYTOS_SKIP_EMBED_BUILD=1` after signed bundle builds:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance completion-wait-arm-qualified
@@ -218,7 +218,7 @@ Final HTTP/deployment ports were 19360/18660, 19361/18661, 19356/18656 and
 used 19358/18658 and 19359/18659 with the same profile arguments and instances
 `completion-wait-arm-final` / `completion-wait-intel-final`. The initial instance
 names were `completion-wait-arm` / `completion-wait-intel`. AMD alone used
-`CATTEN_SKIP_KERNEL_BUILD=1`, after its source and current ELF matched the final
+`KNYTOS_SKIP_KERNEL_BUILD=1`, after its source and current ELF matched the final
 Intel per-boot hash. Immutable boot hashes precede later profile rebuilds:
 
 | Artifact | SHA-256 |

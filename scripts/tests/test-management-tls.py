@@ -127,7 +127,7 @@ def main():
         print(f"PASS: port {port}: verified TLS 1.3 reader and administrator observations", flush=True)
         if port == args.status_port:
             status_peer_progress(port)
-        no_certificate = ssl.create_default_context(cafile=os.environ["CATTEN_MANAGEMENT_CA_FILE"])
+        no_certificate = ssl.create_default_context(cafile=os.environ["KNYTOS_MANAGEMENT_CA_FILE"])
         no_certificate.minimum_version = ssl.TLSVersion.TLSv1_3
         no_certificate.set_alpn_protocols(["http/1.1"])
         rejected(port, no_certificate, payload)
@@ -137,8 +137,8 @@ def main():
         rejected(port, context(), payload, "unrelated.invalid", verification=True)
         healthy(port, payload, code)
         wrong_root = ssl.create_default_context()
-        wrong_root.load_cert_chain(os.environ["CATTEN_MANAGEMENT_CERT_FILE"],
-                                   os.environ["CATTEN_MANAGEMENT_KEY_FILE"])
+        wrong_root.load_cert_chain(os.environ["KNYTOS_MANAGEMENT_CERT_FILE"],
+                                   os.environ["KNYTOS_MANAGEMENT_KEY_FILE"])
         rejected(port, wrong_root, payload, verification=True)
         healthy(port, payload, code)
         with socket.create_connection(("127.0.0.1", port), timeout=12) as raw:
@@ -155,15 +155,15 @@ def main():
     healthy(args.deployment_port, STATUS, 404)
     print("PASS: reader mutation rejected before incomplete signed body/controller dispatch", flush=True)
     environment = dict(os.environ)
-    environment["CATTEN_MANAGEMENT_CERT_FILE"] = environment["CATTEN_MANAGEMENT_READER_CERT_FILE"]
-    environment["CATTEN_MANAGEMENT_KEY_FILE"] = environment["CATTEN_MANAGEMENT_READER_KEY_FILE"]
+    environment["KNYTOS_MANAGEMENT_CERT_FILE"] = environment["KNYTOS_MANAGEMENT_READER_CERT_FILE"]
+    environment["KNYTOS_MANAGEMENT_KEY_FILE"] = environment["KNYTOS_MANAGEMENT_READER_KEY_FILE"]
     command = [str(args.client_tool), "ingress-policy-status", f"127.0.0.1:{args.deployment_port}"]
     result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0 or (
         "HTTP/1.1 404 Not Found" in result.stderr
         and '{"error":"ingress policy not found"}' in result.stderr
     ), (result.stdout, result.stderr)
-    environment["CATTEN_MANAGEMENT_SERVER_NAME"] = "unrelated.invalid"
+    environment["KNYTOS_MANAGEMENT_SERVER_NAME"] = "unrelated.invalid"
     result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=15)
     assert result.returncode != 0 and "verification rejected before HTTP submission" in result.stderr, result.stderr
     print("PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission", flush=True)
@@ -193,7 +193,7 @@ def main():
                 monitor.sendall(command.encode() + b"\n")
                 result = prompt()
                 assert b"error" not in result.lower() and b"could not" not in result.lower(), result
-        os.environ["CATTEN_MANAGEMENT_SERVER_NAME"] = args.vip
+        os.environ["KNYTOS_MANAGEMENT_SERVER_NAME"] = args.vip
         healthy(args.status_port, OBSERVE, 200)
         healthy(args.deployment_port, STATUS, 404)
         healthy(args.deployment_port, MUTATE, 403)

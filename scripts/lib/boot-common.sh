@@ -9,10 +9,10 @@ fi
 
 # Disposable FAT32 capacity includes the complete debug ELF and EFI loader.
 # Keep all architecture runners and the standalone creator on one default.
-CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB=128
+KNYTOS_BOOT_DEFAULT_IMAGE_SIZE_MIB=128
 
 # Host assertion mode only: this never selects credentials, keys or kernel policy.
-catten_boot_validate_management_startup() {
+knytos_boot_validate_management_startup() {
     [ -n "$MANAGEMENT_STARTUP_TEST" ] || return 0
     case "$MANAGEMENT_STARTUP_TEST" in
         ready|validity|chain-validity|disabled|WrongPolicy|Signature|Authentication) ;;
@@ -21,15 +21,15 @@ catten_boot_validate_management_startup() {
     case "$MANAGEMENT_STARTUP_TEST" in
         ready|validity|chain-validity)
             local input
-            for input in CATTEN_MANAGEMENT_TLS_RESOURCE CATTEN_MANAGEMENT_CA_FILE \
-                CATTEN_MANAGEMENT_READER_CERT_FILE CATTEN_MANAGEMENT_READER_KEY_FILE; do
+            for input in KNYTOS_MANAGEMENT_TLS_RESOURCE KNYTOS_MANAGEMENT_CA_FILE \
+                KNYTOS_MANAGEMENT_READER_CERT_FILE KNYTOS_MANAGEMENT_READER_KEY_FILE; do
                 if [ ! -r "${!input:-}" ]; then
                     echo "error: --management-startup-test $MANAGEMENT_STARTUP_TEST requires readable $input" >&2
                     return 1
                 fi
             done ;;
     esac
-    if catten_boot_management_expects_rejection && [ "$FAILURE_CAPTURE" = "1" ]; then
+    if knytos_boot_management_expects_rejection && [ "$FAILURE_CAPTURE" = "1" ]; then
         echo "error: expected boot rejection requires --no-failure-capture" >&2
         return 1
     fi
@@ -42,14 +42,14 @@ catten_boot_validate_management_startup() {
     fi
 }
 
-catten_boot_http_probe_ready() {
+knytos_boot_http_probe_ready() {
     # Test precondition hints, not authentication or trusted security time.
     # TLS still requires a fresh positive reply from the real time service.
     grep -Fq 'httpd is listening' "$LOG" \
         && grep -Eq '\[time\] synchronized unix_s=[1-9][0-9]*([[:space:]]|$)' "$LOG"
 }
 
-catten_boot_management_startup_ready() {
+knytos_boot_management_startup_ready() {
     # Cheap serial hints only. The Python assertion re-reads the complete
     # snapshot and checks publication ordering/absence before accepting a result.
     case "$MANAGEMENT_STARTUP_TEST" in
@@ -67,13 +67,13 @@ catten_boot_management_startup_ready() {
     esac
 }
 
-catten_boot_probe_management_startup() {
-    python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/tests/test-management-startup.py" \
+knytos_boot_probe_management_startup() {
+    python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/tests/test-management-startup.py" \
         --expect "$MANAGEMENT_STARTUP_TEST" --log "$LOG" --status-port "$HTTP_HOST_PORT" \
         --deployment-port "$DEPLOY_HOST_PORT"
 }
 
-catten_boot_management_expects_rejection() {
+knytos_boot_management_expects_rejection() {
     case "$MANAGEMENT_STARTUP_TEST" in
         WrongPolicy|Signature|Authentication) return 0 ;;
         *) return 1 ;;
@@ -82,59 +82,59 @@ catten_boot_management_expects_rejection() {
 
 # Development images provision HTTPS independently of verifier selection.
 # Explicit startup controls retain their supplied/missing resource unchanged.
-catten_boot_prepare_management() {
+knytos_boot_prepare_management() {
     case "${MANAGEMENT_STARTUP_TEST:-}" in
         disabled|WrongPolicy|Signature|Authentication|ready|validity|chain-validity) return 0 ;;
     esac
     [ "${NETWORK:-1}" = "1" ] || return 0
-    if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
-        catten_boot_prepare_management_fixture
+    if [ -z "${KNYTOS_MANAGEMENT_TLS_RESOURCE:-}" ]; then
+        knytos_boot_prepare_management_fixture
     fi
 }
 
 # A supplied resource keeps its own enrolled client files; it is never replaced.
-catten_boot_prepare_management_fixture() {
-    if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
-        if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
+knytos_boot_prepare_management_fixture() {
+    if [ -z "${KNYTOS_MANAGEMENT_TLS_RESOURCE:-}" ]; then
+        if [ "${KNYTOS_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
             echo "error: management probes cannot provision a previously built kernel" >&2
             return 1
         fi
-        mkdir -p "${CATTEN_BOOT_ROOT_DIR}/target/management-tls-test"
+        mkdir -p "${KNYTOS_BOOT_ROOT_DIR}/target/management-tls-test"
         local fixture_dir
-        fixture_dir="$(mktemp -d "${CATTEN_BOOT_ROOT_DIR}/target/management-tls-test/run.XXXXXX")"
+        fixture_dir="$(mktemp -d "${KNYTOS_BOOT_ROOT_DIR}/target/management-tls-test/run.XXXXXX")"
         local fixture_args=("$fixture_dir")
         if [ -n "${CLUSTER_VIP:-}" ]; then
             fixture_args+=(--address "$CLUSTER_VIP")
         fi
-        python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/prepare-management-tls-fixture.py" "${fixture_args[@]}"
-        CATTEN_BOOT_MANAGEMENT_CLIENT_DIR="$fixture_dir"
-        export CATTEN_MANAGEMENT_TLS_RESOURCE="${fixture_dir}/resource.bin"
-        export CATTEN_MANAGEMENT_CA_FILE="${fixture_dir}/ca.pem"
-        export CATTEN_MANAGEMENT_CERT_FILE="${fixture_dir}/administrator.pem"
-        export CATTEN_MANAGEMENT_KEY_FILE="${fixture_dir}/administrator.key"
-        export CATTEN_MANAGEMENT_READER_CERT_FILE="${fixture_dir}/reader.pem"
-        export CATTEN_MANAGEMENT_READER_KEY_FILE="${fixture_dir}/reader.key"
-        export CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE="${fixture_dir}/unknown.pem"
-        export CATTEN_MANAGEMENT_UNKNOWN_KEY_FILE="${fixture_dir}/unknown.key"
+        python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/prepare-management-tls-fixture.py" "${fixture_args[@]}"
+        KNYTOS_BOOT_MANAGEMENT_CLIENT_DIR="$fixture_dir"
+        export KNYTOS_MANAGEMENT_TLS_RESOURCE="${fixture_dir}/resource.bin"
+        export KNYTOS_MANAGEMENT_CA_FILE="${fixture_dir}/ca.pem"
+        export KNYTOS_MANAGEMENT_CERT_FILE="${fixture_dir}/administrator.pem"
+        export KNYTOS_MANAGEMENT_KEY_FILE="${fixture_dir}/administrator.key"
+        export KNYTOS_MANAGEMENT_READER_CERT_FILE="${fixture_dir}/reader.pem"
+        export KNYTOS_MANAGEMENT_READER_KEY_FILE="${fixture_dir}/reader.key"
+        export KNYTOS_MANAGEMENT_UNKNOWN_CERT_FILE="${fixture_dir}/unknown.pem"
+        export KNYTOS_MANAGEMENT_UNKNOWN_KEY_FILE="${fixture_dir}/unknown.key"
     fi
-    : "${CATTEN_MANAGEMENT_CA_FILE:?management probes require an explicit CA file}"
-    : "${CATTEN_MANAGEMENT_CERT_FILE:?management probes require an enrolled client certificate}"
-    : "${CATTEN_MANAGEMENT_KEY_FILE:?management probes require its client private-key file}"
+    : "${KNYTOS_MANAGEMENT_CA_FILE:?management probes require an explicit CA file}"
+    : "${KNYTOS_MANAGEMENT_CERT_FILE:?management probes require an enrolled client certificate}"
+    : "${KNYTOS_MANAGEMENT_KEY_FILE:?management probes require its client private-key file}"
 }
 
 # Retain generated development client identities beside the image, outside the
 # guest disks. Appliance builders copy this restricted directory into the bundle.
 # Supplied enrollment/key files remain in their caller-selected storage.
-catten_boot_export_management_clients() {
+knytos_boot_export_management_clients() {
     local destination="${1}.management" name
-    if [ -z "${CATTEN_BOOT_MANAGEMENT_CLIENT_DIR:-}" ]; then
+    if [ -z "${KNYTOS_BOOT_MANAGEMENT_CLIENT_DIR:-}" ]; then
         # Cached-kernel reuse may select this sidecar's exact sealed resource.
         # Keep its matching clients, but remove stale clients for another image.
-        if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ] \
-            || ! cmp -s "$CATTEN_MANAGEMENT_TLS_RESOURCE" "${destination}/resource.bin"; then
+        if [ -z "${KNYTOS_MANAGEMENT_TLS_RESOURCE:-}" ] \
+            || ! cmp -s "$KNYTOS_MANAGEMENT_TLS_RESOURCE" "${destination}/resource.bin"; then
             rm -rf -- "$destination"
         fi
-        if [ -n "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
+        if [ -n "${KNYTOS_MANAGEMENT_TLS_RESOURCE:-}" ]; then
             echo ">>> HTTPS uses the supplied management TLS resource and its enrolled clients."
         fi
         return 0
@@ -143,14 +143,14 @@ catten_boot_export_management_clients() {
     mkdir -p "$destination"
     chmod 0700 "$destination"
     for name in ca.pem reader.pem reader.key administrator.pem administrator.key resource.bin; do
-        install -m 0600 "${CATTEN_BOOT_MANAGEMENT_CLIENT_DIR}/${name}" "${destination}/${name}"
+        install -m 0600 "${KNYTOS_BOOT_MANAGEMENT_CLIENT_DIR}/${name}" "${destination}/${name}"
     done
     echo ">>> Development HTTPS clients (certificates expire after two days): ${destination}"
     echo ">>> Dashboard: https://localhost:${HTTP_HOST_PORT}/ (QEMU user network)"
     echo ">>> curl --cacert ${destination}/ca.pem --cert ${destination}/reader.pem --key ${destination}/reader.key https://localhost:${HTTP_HOST_PORT}/"
 }
 
-catten_boot_init() {
+knytos_boot_init() {
     local root_dir="$1"
 
     if [ ! -d "$root_dir/limine-binary" ] || [ ! -x "$root_dir/scripts/verify-limine.sh" ]; then
@@ -158,20 +158,20 @@ catten_boot_init() {
         return 1
     fi
 
-    CATTEN_BOOT_ROOT_DIR="$(cd "$root_dir" && pwd)"
-    CATTEN_BOOT_LIMINE_CONFIG="${CATTEN_LIMINE_CONFIG:-${CATTEN_BOOT_ROOT_DIR}/limine.conf}"
-    if [[ "$CATTEN_BOOT_LIMINE_CONFIG" != /* ]]; then
-        CATTEN_BOOT_LIMINE_CONFIG="${CATTEN_BOOT_ROOT_DIR}/${CATTEN_BOOT_LIMINE_CONFIG}"
+    KNYTOS_BOOT_ROOT_DIR="$(cd "$root_dir" && pwd)"
+    KNYTOS_BOOT_LIMINE_CONFIG="${KNYTOS_LIMINE_CONFIG:-${KNYTOS_BOOT_ROOT_DIR}/limine.conf}"
+    if [[ "$KNYTOS_BOOT_LIMINE_CONFIG" != /* ]]; then
+        KNYTOS_BOOT_LIMINE_CONFIG="${KNYTOS_BOOT_ROOT_DIR}/${KNYTOS_BOOT_LIMINE_CONFIG}"
     fi
-    if [ ! -f "$CATTEN_BOOT_LIMINE_CONFIG" ]; then
-        echo "error: Limine configuration not found: ${CATTEN_BOOT_LIMINE_CONFIG}" >&2
+    if [ ! -f "$KNYTOS_BOOT_LIMINE_CONFIG" ]; then
+        echo "error: Limine configuration not found: ${KNYTOS_BOOT_LIMINE_CONFIG}" >&2
         return 1
     fi
 
-    "${CATTEN_BOOT_ROOT_DIR}/scripts/verify-limine.sh"
+    "${KNYTOS_BOOT_ROOT_DIR}/scripts/verify-limine.sh"
 }
 
-catten_boot_require_commands() {
+knytos_boot_require_commands() {
     local command_name
     local missing=0
 
@@ -187,7 +187,7 @@ catten_boot_require_commands() {
     fi
 }
 
-catten_boot_validate_positive_integer() {
+knytos_boot_validate_positive_integer() {
     local option_name="$1"
     local value="$2"
 
@@ -197,7 +197,7 @@ catten_boot_validate_positive_integer() {
     fi
 }
 
-catten_boot_validate_port() {
+knytos_boot_validate_port() {
     local option_name="$1"
     local value="$2"
 
@@ -207,7 +207,7 @@ catten_boot_validate_port() {
     fi
 }
 
-catten_boot_validate_instance() {
+knytos_boot_validate_instance() {
     local value="$1"
 
     if [ -n "$value" ] && [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -216,7 +216,7 @@ catten_boot_validate_instance() {
     fi
 }
 
-catten_boot_sha256() {
+knytos_boot_sha256() {
     local path="$1"
 
     if command -v sha256sum >/dev/null 2>&1; then
@@ -229,7 +229,7 @@ catten_boot_sha256() {
     fi
 }
 
-catten_boot_sha256_stdin() {
+knytos_boot_sha256_stdin() {
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum | awk '{print $1}'
     elif command -v shasum >/dev/null 2>&1; then
@@ -240,7 +240,7 @@ catten_boot_sha256_stdin() {
     fi
 }
 
-catten_boot_find_llvm_nm() {
+knytos_boot_find_llvm_nm() {
     local rust_host
     local rust_llvm_nm
 
@@ -263,16 +263,16 @@ catten_boot_find_llvm_nm() {
     return 1
 }
 
-catten_boot_write_kernel_symbols() {
+knytos_boot_write_kernel_symbols() {
     local kernel="$1"
     local kernel_sha256="$2"
     local llvm_nm
     local symbol_map="${kernel}.symbols"
-    local archive_dir="${CATTEN_BOOT_ROOT_DIR}/target/kernel-symbols"
+    local archive_dir="${KNYTOS_BOOT_ROOT_DIR}/target/kernel-symbols"
     local archived_map="${archive_dir}/${kernel_sha256}.symbols"
     local temporary_map
 
-    if ! llvm_nm="$(catten_boot_find_llvm_nm)"; then
+    if ! llvm_nm="$(knytos_boot_find_llvm_nm)"; then
         rm -f -- "$symbol_map"
         echo "warning: llvm-nm is unavailable; kernel symbol map was not generated" >&2
         echo "         install rustup's llvm-tools-preview component or set LLVM_NM" >&2
@@ -299,7 +299,7 @@ catten_boot_write_kernel_symbols() {
     echo ">>> Archived symbols: ${archived_map}"
 }
 
-catten_boot_report_kernel() {
+knytos_boot_report_kernel() {
     local kernel="$1"
     local kernel_sha256
 
@@ -307,20 +307,20 @@ catten_boot_report_kernel() {
         echo "error: kernel payload does not exist: ${kernel}" >&2
         return 1
     fi
-    python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/check-kernel-asm-sections.py" "$kernel" || return 1
-    kernel_sha256="$(catten_boot_sha256 "$kernel")" || return 1
+    python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/check-kernel-asm-sections.py" "$kernel" || return 1
+    kernel_sha256="$(knytos_boot_sha256 "$kernel")" || return 1
     echo ">>> Kernel payload: ${kernel}"
     echo ">>> Kernel SHA-256: ${kernel_sha256}"
-    catten_boot_write_kernel_symbols "$kernel" "$kernel_sha256"
+    knytos_boot_write_kernel_symbols "$kernel" "$kernel_sha256"
 }
 
-catten_boot_record_log_kernel() {
+knytos_boot_record_log_kernel() {
     local log="$1"
     local kernel="$2"
     local symbol_map="${kernel}.symbols"
     local kernel_sha256
 
-    kernel_sha256="$(catten_boot_sha256 "$kernel")" || return 1
+    kernel_sha256="$(knytos_boot_sha256 "$kernel")" || return 1
     printf '%s\n' "$kernel_sha256" >"${log}.kernel.sha256"
     rm -f -- "${log}.symbols"
     if [ -f "$symbol_map" ]; then
@@ -328,7 +328,7 @@ catten_boot_record_log_kernel() {
     fi
 }
 
-catten_boot_bundle_sha256() (
+knytos_boot_bundle_sha256() (
     local bundle_dir="$1"
     local service_elf
     local service_digest
@@ -344,14 +344,14 @@ catten_boot_bundle_sha256() (
     fi
 
     for service_elf in "${service_files[@]}"; do
-        service_digest="$(catten_boot_sha256 "$service_elf")" || return 1
+        service_digest="$(knytos_boot_sha256 "$service_elf")" || return 1
         digest_lines="${digest_lines}$(basename "$service_elf"):${service_digest}
 "
     done
-    printf '%s' "$digest_lines" | catten_boot_sha256_stdin
+    printf '%s' "$digest_lines" | knytos_boot_sha256_stdin
 )
 
-catten_boot_create_uefi_image() {
+knytos_boot_create_uefi_image() {
     local image="$1"
     local size_mib="$2"
     local efi_boot_file="$3"
@@ -362,8 +362,8 @@ catten_boot_create_uefi_image() {
     local temporary_image
     local mformat_args=(-i)
 
-    catten_boot_validate_positive_integer "boot image size" "$size_mib"
-    catten_boot_require_commands dd mformat mmd mcopy
+    knytos_boot_validate_positive_integer "boot image size" "$size_mib"
+    knytos_boot_require_commands dd mformat mmd mcopy
 
     for required_file in "$efi_boot_file" "$kernel" "$limine_config"; do
         if [ ! -f "$required_file" ]; then
@@ -403,28 +403,28 @@ catten_boot_create_uefi_image() {
     fi
 }
 
-catten_boot_has_selected_result() {
+knytos_boot_has_selected_result() {
     if [ "${BOOT_MODE:-test}" = "minimal" ]; then
         grep -Fq 'BOOT COMPLETE:' "$1" || return 1
-        python3 "$CATTEN_BOOT_ROOT_DIR/scripts/validate-minimal-boot.py" "$1"
+        python3 "$KNYTOS_BOOT_ROOT_DIR/scripts/validate-minimal-boot.py" "$1"
     else
-        catten_boot_has_selftest_result "$1"
+        knytos_boot_has_selftest_result "$1"
     fi
 }
 
-catten_boot_validate_selected_log() {
+knytos_boot_validate_selected_log() {
     if [ "${BOOT_MODE:-test}" = "minimal" ]; then
-        if ! python3 "$CATTEN_BOOT_ROOT_DIR/scripts/validate-minimal-boot.py" "$1"; then
+        if ! python3 "$KNYTOS_BOOT_ROOT_DIR/scripts/validate-minimal-boot.py" "$1"; then
             echo "error: minimal boot validation failed or did not finish" >&2
             return 1
         fi
         echo ">>> Minimal boot validation passed; no regression suite requested."
     else
-        catten_boot_validate_selftest_log "$@"
+        knytos_boot_validate_selftest_log "$@"
     fi
 }
 
-catten_boot_has_selftest_result() {
+knytos_boot_has_selftest_result() {
     local log="$1"
     local require_success="${2:-0}"
     # Cheap polling until the marker appears. UART output is incremental:
@@ -455,7 +455,7 @@ sys.exit(1)
 PY
 }
 
-catten_boot_validate_selftest_log() {
+knytos_boot_validate_selftest_log() {
     local log="$1"
     local kernel="${2:-}"
 
@@ -466,12 +466,12 @@ catten_boot_validate_selftest_log() {
     if grep -Fq "Kernel panic:" "$log"; then
         echo "error: kernel panic observed during the test window" >&2
         if [ -n "$kernel" ] && command -v python3 >/dev/null 2>&1; then
-            "${CATTEN_BOOT_ROOT_DIR}/scripts/symbolize-kernel-panic.py" \
+            "${KNYTOS_BOOT_ROOT_DIR}/scripts/symbolize-kernel-panic.py" \
                 --kernel "$kernel" "$log" || true
         fi
         return 1
     fi
-    if ! catten_boot_has_selftest_result "$log" 1
+    if ! knytos_boot_has_selftest_result "$log" 1
     then
         echo "error: malformed or unsuccessful authoritative self-test result" >&2
         grep -E 'SELFTEST (FAILED|PENDING):' "$log" >&2 || true
@@ -482,57 +482,57 @@ catten_boot_validate_selftest_log() {
 
 # Timed runners own one private QMP/GDB transport and an independent watcher.
 # This host-only observation does not establish guest quiescence or recovery.
-CATTEN_DIAGNOSTICS_DIR=""
-CATTEN_DIAGNOSTICS_WATCHER=""
-CATTEN_DIAGNOSTICS_FAILED=0
+KNYTOS_DIAGNOSTICS_DIR=""
+KNYTOS_DIAGNOSTICS_WATCHER=""
+KNYTOS_DIAGNOSTICS_FAILED=0
 
-catten_boot_diagnostics_prepare() {
+knytos_boot_diagnostics_prepare() {
     local arch="$1" kernel="$2" log="$3" bundle="$4" disk="$5"
     local cpus="$6" timeout="$7" instance="$8" boot_image="$9" transport
-    CATTEN_DIAGNOSTICS_DIR="$(python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" prepare \
-        --root "$CATTEN_BOOT_ROOT_DIR" --kernel "$kernel" --log "$log" \
+    KNYTOS_DIAGNOSTICS_DIR="$(python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" prepare \
+        --root "$KNYTOS_BOOT_ROOT_DIR" --kernel "$kernel" --log "$log" \
         --arch "$arch" --bundle "$bundle" --disk "$disk" --cpus "$cpus" \
         --timeout "$timeout" --instance "$instance" --boot-image "$boot_image")" || return 1
     transport="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["transport"])' \
-        "$CATTEN_DIAGNOSTICS_DIR/manifest.json")" || return 1
+        "$KNYTOS_DIAGNOSTICS_DIR/manifest.json")" || return 1
     QEMU_OPTS+=(-qmp "unix:${transport}/qmp.sock,server=on,wait=off"
                 -gdb "unix:${transport}/gdb.sock,server=on,wait=off")
-    echo ">>> Per-run diagnostics: ${CATTEN_DIAGNOSTICS_DIR}"
+    echo ">>> Per-run diagnostics: ${KNYTOS_DIAGNOSTICS_DIR}"
 }
 
-catten_boot_diagnostics_start() {
-    if [ -z "$CATTEN_DIAGNOSTICS_DIR" ]; then return; fi
-    python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" watch \
-        --directory "$CATTEN_DIAGNOSTICS_DIR" --pid "$1" -- "${QEMU_OPTS[@]}" \
-        >"${CATTEN_DIAGNOSTICS_DIR}/watcher.log" 2>&1 &
-    CATTEN_DIAGNOSTICS_WATCHER=$!
+knytos_boot_diagnostics_start() {
+    if [ -z "$KNYTOS_DIAGNOSTICS_DIR" ]; then return; fi
+    python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" watch \
+        --directory "$KNYTOS_DIAGNOSTICS_DIR" --pid "$1" -- "${QEMU_OPTS[@]}" \
+        >"${KNYTOS_DIAGNOSTICS_DIR}/watcher.log" 2>&1 &
+    KNYTOS_DIAGNOSTICS_WATCHER=$!
 }
 
-catten_boot_diagnostics_failed() {
-    [ -n "$CATTEN_DIAGNOSTICS_DIR" ] && [ -f "${CATTEN_DIAGNOSTICS_DIR}/failure.json" ]
+knytos_boot_diagnostics_failed() {
+    [ -n "$KNYTOS_DIAGNOSTICS_DIR" ] && [ -f "${KNYTOS_DIAGNOSTICS_DIR}/failure.json" ]
 }
 
-catten_boot_diagnostics_archive() {
-    if [ -z "$CATTEN_DIAGNOSTICS_DIR" ]; then return; fi
-    if ! python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" archive \
-        --directory "$CATTEN_DIAGNOSTICS_DIR"; then
-        echo "warning: final serial archive failed; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+knytos_boot_diagnostics_archive() {
+    if [ -z "$KNYTOS_DIAGNOSTICS_DIR" ]; then return; fi
+    if ! python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" archive \
+        --directory "$KNYTOS_DIAGNOSTICS_DIR"; then
+        echo "warning: final serial archive failed; see ${KNYTOS_DIAGNOSTICS_DIR}" >&2
     fi
 }
 
-catten_boot_diagnostics_finish() {
+knytos_boot_diagnostics_finish() {
     local reason="$1" snapshot="${2:-0}"
-    if [ -z "$CATTEN_DIAGNOSTICS_WATCHER" ]; then return; fi
+    if [ -z "$KNYTOS_DIAGNOSTICS_WATCHER" ]; then return; fi
     # Bash 3.2 treats empty arrays as unset under nounset. Keep the required
     # arguments in the same nonempty array as the optional snapshot flag.
-    local finish_args=(finish --directory "$CATTEN_DIAGNOSTICS_DIR"
-                       --watcher "$CATTEN_DIAGNOSTICS_WATCHER" --reason "$reason")
+    local finish_args=(finish --directory "$KNYTOS_DIAGNOSTICS_DIR"
+                       --watcher "$KNYTOS_DIAGNOSTICS_WATCHER" --reason "$reason")
     if [ "$snapshot" = "1" ]; then finish_args+=(--snapshot); fi
-    if ! python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" "${finish_args[@]}"; then
-        echo "warning: diagnostic finalization failed; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+    if ! python3 "${KNYTOS_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" "${finish_args[@]}"; then
+        echo "warning: diagnostic finalization failed; see ${KNYTOS_DIAGNOSTICS_DIR}" >&2
     fi
-    wait "$CATTEN_DIAGNOSTICS_WATCHER" 2>/dev/null || true
-    CATTEN_DIAGNOSTICS_WATCHER=""
-    if catten_boot_diagnostics_failed; then CATTEN_DIAGNOSTICS_FAILED=1; fi
-    echo ">>> Diagnostic outcome: ${CATTEN_DIAGNOSTICS_DIR}/result.json"
+    wait "$KNYTOS_DIAGNOSTICS_WATCHER" 2>/dev/null || true
+    KNYTOS_DIAGNOSTICS_WATCHER=""
+    if knytos_boot_diagnostics_failed; then KNYTOS_DIAGNOSTICS_FAILED=1; fi
+    echo ">>> Diagnostic outcome: ${KNYTOS_DIAGNOSTICS_DIR}/result.json"
 }

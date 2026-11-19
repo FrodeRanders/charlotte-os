@@ -118,9 +118,9 @@ Fresh-storage guests run sequentially with previously validated embedded service
 bundles because this change affects only the kernel:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance backend-registry-intel-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance backend-registry-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18759 CATTEN_DEPLOY_HOST_PORT=18059 scripts/run-aarch64.sh --security-test --instance backend-registry-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance backend-registry-intel-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance backend-registry-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18759 KNYTOS_DEPLOY_HOST_PORT=18059 scripts/run-aarch64.sh --security-test --instance backend-registry-arm-20261009 --fresh-storage --timeout 180
 ```
 
 Kernel SHA-256:

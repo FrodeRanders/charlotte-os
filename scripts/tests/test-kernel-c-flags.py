@@ -22,7 +22,7 @@ def run():
         if not machine.startswith("x86_64"):
             raise RuntimeError("use an x86-64 GCC cross-compiler or Clang for kernel C controls")
     config = tomllib.loads((ROOT / ".cargo/config.toml").read_text())
-    flags = shlex.split(config["env"]["CFLAGS_x86_64-unknown-none-catten"])
+    flags = shlex.split(config["env"]["CFLAGS_x86_64-unknown-none-knytos"])
     with tempfile.TemporaryDirectory(prefix="knytos-kernel-c-") as temporary:
         directory = Path(temporary)
         probe = directory / "static.c"

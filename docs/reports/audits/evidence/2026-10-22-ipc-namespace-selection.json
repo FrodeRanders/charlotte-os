@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc.namespace-selection.v1",
+  "schema": "knytos.ipc.namespace-selection.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "be7a8912a5abde8b3f7eb1b8d17d646c4bfe7403",
   "classification": {
@@ -47,7 +47,7 @@
       "id": "instrumented_baseline",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-cause-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-cause-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "root-cause-security-x86",
       "kernel_sha256": "b85afc4092985c02c60d1ed5453efeb6c3b47bc183bc57b6be86b6abcace4ebd",
@@ -81,7 +81,7 @@
       "id": "old_path_regression",
       "outcome": "fail",
       "exit_code": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance ns-recheck-red-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance ns-recheck-red-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "ns-recheck-red-x86",
       "kernel_sha256": "5302635c0ad087b7dd0a3b88f03c713306ad7dd1af42fb01fdb49a21d8810b83",
@@ -112,7 +112,7 @@
       "selected_diagnostics": [
         "panicked at crates/catten/src/ipc/cancellation/tests.rs:1061:9:",
         "removed selected token returned stale Pending",
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-qum7grnj"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-qum7grnj"
       ],
       "source_qualification": "Intermediate uncommitted tree: new deterministic real-peer-close hook/control, with the old branch Err(Pending) => return Pending(selected) unchanged. Failed in first queued-move case at cancellation/tests.rs:1061. Later delivered/live-claim cases were not reached. Exact binary/image hashes and relevant branch/assertion identify this failed implementation; final source hashes do not identify its intermediate tree.",
       "historical_qualification": "Reproduces stale namespace Pending before runtime stress; does not reproduce or identify the earlier flood.stop reclamation timeout."
@@ -121,7 +121,7 @@
       "id": "corrected_x86",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance ns-recheck-security-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance ns-recheck-security-x86 --fresh-storage --timeout 300",
       "architecture": "x86_64",
       "instance": "ns-recheck-security-x86",
       "kernel_sha256": "7b33f74b2d73a99a7bf3030f130dc17259baf9b79ec072bdad120a0c1e5e3b23",
@@ -158,7 +158,7 @@
       "id": "corrected_arm",
       "outcome": "pass",
       "exit_code": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance ns-recheck-security-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance ns-recheck-security-arm --fresh-storage --timeout 300",
       "architecture": "aarch64",
       "instance": "ns-recheck-security-arm",
       "kernel_sha256": "d268960027e88f88127d9c4c8cf67946896de59bc741d9917ab99e4e08196e8e",
@@ -280,8 +280,8 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "x86_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=<current signed bundle> CATTEN_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,security_test -- -D warnings",
-    "arm_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=<current signed bundle> CATTEN_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,security_test -- -D warnings",
+    "x86_clippy": "KNYTOS_X86_64_SERVICE_BUNDLE=<current signed bundle> KNYTOS_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi,security_test -- -D warnings",
+    "arm_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE=<current signed bundle> KNYTOS_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,security_test -- -D warnings",
     "clippy_capture_sha256": {
       "x86": "4a6c037966209741ac30a2c2220bc46c02071a050102f28381b1329766882a5b",
       "arm": "dc527e0905c1004926b5cec048f1f903b67f68a7c57b1a6fbd32bd69731515f1"
@@ -291,7 +291,7 @@
     "host_tests": "Kernel-only implementation. Actual kernel owner/registry controls run on both native targets; no unrelated host suite rerun claimed."
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe_configurations": 42,
     "expected_counterexamples": 120,

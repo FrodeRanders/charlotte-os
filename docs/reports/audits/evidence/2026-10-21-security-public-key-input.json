@@ -35,7 +35,7 @@
           "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s",
           "error: test failed, to rerun pass `-p cluster-sign --bin cluster-sign`"
         ],
-        "complete_diagnostics": "   Compiling cluster-sign v0.1.0 (/Users/froran/Projects/private/charlotte-os/tools/cluster-sign)\n    Finished `release` profile [optimized] target(s) in 9.33s\n     Running unittests src/main.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/cluster-sign/5161133069e7820b/out/cluster_sign-5161133069e7820b)\n\nrunning 1 test\ntest tests::public_key_rejects_oversized_comment_file ... FAILED\n\nfailures:\n\n---- tests::public_key_rejects_oversized_comment_file stdout ----\n\nthread 'tests::public_key_rejects_oversized_comment_file' (21811633) panicked at tools/cluster-sign/src/main.rs:2639:9:\nassertion failed: read_hex_key(&path, 32, \"public key\").is_err()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    tests::public_key_rejects_oversized_comment_file\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p cluster-sign --bin cluster-sign`\n",
+        "complete_diagnostics": "   Compiling cluster-sign v0.1.0 (/Users/froran/Projects/private/knytos/tools/cluster-sign)\n    Finished `release` profile [optimized] target(s) in 9.33s\n     Running unittests src/main.rs (/Users/froran/Projects/private/knytos/target/release/build/cluster-sign/5161133069e7820b/out/cluster_sign-5161133069e7820b)\n\nrunning 1 test\ntest tests::public_key_rejects_oversized_comment_file ... FAILED\n\nfailures:\n\n---- tests::public_key_rejects_oversized_comment_file stdout ----\n\nthread 'tests::public_key_rejects_oversized_comment_file' (21811633) panicked at tools/cluster-sign/src/main.rs:2639:9:\nassertion failed: read_hex_key(&path, 32, \"public key\").is_err()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    tests::public_key_rejects_oversized_comment_file\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p cluster-sign --bin cluster-sign`\n",
         "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p cluster-sign --bin cluster-sign public_key_rejects_oversized_comment_file"
       },
       "symlink": {
@@ -46,7 +46,7 @@
           "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s",
           "error: test failed, to rerun pass `-p cluster-sign --bin cluster-sign`"
         ],
-        "complete_diagnostics": "    Finished `release` profile [optimized] target(s) in 0.03s\n     Running unittests src/main.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/cluster-sign/5161133069e7820b/out/cluster_sign-5161133069e7820b)\n\nrunning 1 test\ntest tests::public_key_rejects_symlink ... FAILED\n\nfailures:\n\n---- tests::public_key_rejects_symlink stdout ----\n\nthread 'tests::public_key_rejects_symlink' (21811835) panicked at tools/cluster-sign/src/main.rs:2650:9:\nassertion failed: read_hex_key(&alias, 32, \"public key\").is_err()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    tests::public_key_rejects_symlink\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p cluster-sign --bin cluster-sign`\n",
+        "complete_diagnostics": "    Finished `release` profile [optimized] target(s) in 0.03s\n     Running unittests src/main.rs (/Users/froran/Projects/private/knytos/target/release/build/cluster-sign/5161133069e7820b/out/cluster_sign-5161133069e7820b)\n\nrunning 1 test\ntest tests::public_key_rejects_symlink ... FAILED\n\nfailures:\n\n---- tests::public_key_rejects_symlink stdout ----\n\nthread 'tests::public_key_rejects_symlink' (21811835) panicked at tools/cluster-sign/src/main.rs:2650:9:\nassertion failed: read_hex_key(&alias, 32, \"public key\").is_err()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    tests::public_key_rejects_symlink\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p cluster-sign --bin cluster-sign`\n",
         "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p cluster-sign --bin cluster-sign public_key_rejects_symlink"
       },
       "grammar": {
@@ -56,7 +56,7 @@
           "test tests::public_key_accepts_exact_bound_and_rejects_malformed_text ... ok",
           "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s"
         ],
-        "complete_diagnostics": "    Finished `release` profile [optimized] target(s) in 0.03s\n     Running unittests src/main.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/cluster-sign/5161133069e7820b/out/cluster_sign-5161133069e7820b)\n\nrunning 1 test\ntest tests::public_key_accepts_exact_bound_and_rejects_malformed_text ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s\n\n",
+        "complete_diagnostics": "    Finished `release` profile [optimized] target(s) in 0.03s\n     Running unittests src/main.rs (/Users/froran/Projects/private/knytos/target/release/build/cluster-sign/5161133069e7820b/out/cluster_sign-5161133069e7820b)\n\nrunning 1 test\ntest tests::public_key_accepts_exact_bound_and_rejects_malformed_text ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s\n\n",
         "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p cluster-sign --bin cluster-sign public_key_accepts_exact_bound_and_rejects_malformed_text"
       }
     },
@@ -218,7 +218,7 @@
       "exit_status": 0,
       "log_sha256": "eb9e75852a2c7bfab82c7821f3ee36b9bf762c3a83ac30b981de71c9a2ca423a",
       "diagnostics": [
-        ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
+        ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/knytos/target/embedded-services/aarch64-unknown-none."
       ],
       "command": "scripts/build-knytos-services.sh --embed"
     },
@@ -520,7 +520,7 @@
     "scope": "Host file reader outside current projections."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "start_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "final_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "edited_by_this_batch": false

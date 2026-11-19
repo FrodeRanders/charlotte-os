@@ -27,7 +27,7 @@
     {
       "instance": "shutdown-worker-20261031-intel",
       "runner_exit": 137,
-      "diagnostic": "/Users/froran/Projects/private/charlotte-os/scripts/sign-service-elfs.sh: line 71: 46622 Killed: 9                  cargo +\"$SIGN_TOOLCHAIN\" run --locked --quiet --manifest-path \"$ROOT/tools/cluster-sign/Cargo.toml\" -- elf-sign \"$elf\" \"$name\" \"$KEY_FILE\" \"$class\" \"$version\" \"$rollback\" \"$flags\" \"$provenance\" > /dev/null",
+      "diagnostic": "/Users/froran/Projects/private/knytos/scripts/sign-service-elfs.sh: line 71: 46622 Killed: 9                  cargo +\"$SIGN_TOOLCHAIN\" run --locked --quiet --manifest-path \"$ROOT/tools/cluster-sign/Cargo.toml\" -- elf-sign \"$elf\" \"$name\" \"$KEY_FILE\" \"$class\" \"$version\" \"$rollback\" \"$flags\" \"$provenance\" > /dev/null",
       "output_sha256": "c2669d18d59fb8efb3aa5d305f6a905cfcb39310df4facbe62abbcddabf5328c",
       "classification": "Host signing subprocess received SIGKILL before kernel build or guest entry. Cause unconfirmed; no complete failed bundle snapshot retained. The passing Intel repeat is separate and does not explain this failure."
     }

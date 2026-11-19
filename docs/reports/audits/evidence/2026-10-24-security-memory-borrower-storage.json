@@ -172,7 +172,7 @@
         "serial.log": "ef89d9ffb0b335a340db8e71722484085f25af0082b8626d97a426403116fff8",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19926 CATTEN_DEPLOY_HOST_PORT=20090 scripts/run-aarch64.sh --security-test --http-test --instance borrower-storage-arm-final --fresh-storage --timeout 300"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19926 KNYTOS_DEPLOY_HOST_PORT=20090 scripts/run-aarch64.sh --security-test --http-test --instance borrower-storage-arm-final --fresh-storage --timeout 300"
     },
     {
       "arch": "x86_64",
@@ -280,7 +280,7 @@
         "serial.log": "25a47792c7044ddfd2d7bb2c6f8da76299fb8be839ee8cf75af951b17bc073b0",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19927 CATTEN_DEPLOY_HOST_PORT=20091 scripts/run-x86_64.sh --security-test --http-test --instance borrower-storage-x86-final --fresh-storage --timeout 480"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19927 KNYTOS_DEPLOY_HOST_PORT=20091 scripts/run-x86_64.sh --security-test --http-test --instance borrower-storage-x86-final --fresh-storage --timeout 480"
     }
   ],
   "infrastructure_rejections": [
@@ -336,8 +336,8 @@
     "strict_base_kernel_clippy": {
       "aarch64": "pass",
       "x86_64": "pass",
-      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-      "bundles": "Existing target/embedded-services/<arch>-unknown-none via CATTEN_<ARCH>_SERVICE_BUNDLE"
+      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+      "bundles": "Existing target/embedded-services/<arch>-unknown-none via KNYTOS_<ARCH>_SERVICE_BUNDLE"
     },
     "formatting": "cargo fmt --all -- --check: pass",
     "whitespace": "git diff --check: pass"

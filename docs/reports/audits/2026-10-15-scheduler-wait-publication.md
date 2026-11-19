@@ -178,7 +178,7 @@ SHA-256 identities of the actual kernel ELF and final UART bytes:
 
 ## Reproduction and artifact identity
 
-Use `CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'` with each
+Use `KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'` with each
 runner. Bundled services were unchanged from the preceding queue batch. Their
 complete per-architecture identities, reviewed Rust source hashes, boot-image
 and initial-disk hashes, and selected per-run observations are preserved in
@@ -194,8 +194,8 @@ The selected Raft/DNS identities also match
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance wait-publication-x86-security
 ```
 
-AMD reused the exact Intel no-network kernel with `CATTEN_SKIP_KERNEL_BUILD=1`.
-Security runs used `CATTEN_ALLOW_SANDBOX_NETWORK=1`, HTTP/deploy host ports
+AMD reused the exact Intel no-network kernel with `KNYTOS_SKIP_KERNEL_BUILD=1`.
+Security runs used `KNYTOS_ALLOW_SANDBOX_NETWORK=1`, HTTP/deploy host ports
 19080/19081 for ARM and 19180/19181 for x86. Runner assembly checks enforce
 executable, read-only native trampolines. No assembly or userspace bytes change
 in this batch; no linked-pair, reset or outstanding-I/O campaign is claimed.

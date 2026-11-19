@@ -110,11 +110,11 @@ separate validation work.
 Final guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance device-dma-security-20261006 --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18494 \
-CATTEN_DEPLOY_HOST_PORT=17794 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18494 \
+KNYTOS_DEPLOY_HOST_PORT=17794 scripts/run-aarch64.sh --security-test \
   --instance device-dma-security-20261006 --fresh-storage --timeout 180
 ```
 

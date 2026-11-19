@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-raft-snapshot-stream-evidence-v1",
+  "schema": "knytos-raft-snapshot-stream-evidence-v1",
   "report_date": "2026-10-19 Europe/Stockholm; native UTC captures begin 2026-10-18",
   "reviewed_revision": "c8fdfe1843b8a54471cd65178502f9887085f591",
   "reproduction": {
@@ -374,7 +374,7 @@
       "exit_status": 101,
       "log_sha256": "0d5d3c6a484e38508f2920a52262c06d52e5f88992b1a75c4be949596828ebdc",
       "diagnostics": [
-        "Checking knytos-graft v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-graft)",
+        "Checking knytos-graft v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-graft)",
         "error: redundant reference in `assert!` argument",
         "    --> crates/knytos-graft/src/node.rs:2879:13",
         "     |",
@@ -493,7 +493,7 @@
     },
     "result_sha256": "1939bd0a9eb66efba4564412b16aca16d299dc3756b4c6064267e550f1dd1255",
     "coordinator_sha256": "d192f7c03152065299030d560e6f858dd5c2de0cf8c80b2a9a2d7b12f171d33c",
-    "environment": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBED_BUILD=1; second guest also CATTEN_SKIP_KERNEL_BUILD=1",
+    "environment": "KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_SKIP_EMBED_BUILD=1; second guest also KNYTOS_SKIP_KERNEL_BUILD=1",
     "coordination": "Bounded host lsof check for the isolated QEMU TCP listener; no TCP probe. Both runners awaited with bounded host budget.",
     "guests": [
       {
@@ -529,7 +529,7 @@
     "command_sequence": [
       "scripts/build-knytos-services.sh --embed",
       "scripts/build-knytos-services.sh --check",
-      "paired native run with CATTEN_SKIP_EMBED_BUILD=1"
+      "paired native run with KNYTOS_SKIP_EMBED_BUILD=1"
     ],
     "staged_file_count": 41,
     "file_sha256": {

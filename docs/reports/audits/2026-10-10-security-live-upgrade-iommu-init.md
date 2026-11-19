@@ -75,11 +75,11 @@ initialization that `b25a570a` made mandatory.
 Guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18847 CATTEN_DEPLOY_HOST_PORT=18147 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18847 KNYTOS_DEPLOY_HOST_PORT=18147 \
   scripts/run-aarch64.sh --live-upgrade-test \
   --instance smmu-fix-upgrade --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18849 CATTEN_DEPLOY_HOST_PORT=18149 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18849 KNYTOS_DEPLOY_HOST_PORT=18149 \
   scripts/run-aarch64.sh --security-test \
   --instance smmu-fix-sec --fresh-storage --timeout 180
 ```

@@ -105,14 +105,14 @@ the artifact and deployment gates inherit the same safety.
 Guest commands:
 
 ```sh
-CATTEN_HTTP_HOST_PORT=18841 CATTEN_DEPLOY_HOST_PORT=18141 \
+KNYTOS_HTTP_HOST_PORT=18841 KNYTOS_DEPLOY_HOST_PORT=18141 \
   scripts/run-aarch64.sh --security-test \
   --instance sec3638-20261010 --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18843 CATTEN_DEPLOY_HOST_PORT=18143 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18843 KNYTOS_DEPLOY_HOST_PORT=18143 \
   scripts/run-aarch64.sh --relmsg-test --net-listen 12054 \
   --instance sec3638-relmsg-a --mac 52:54:00:12:34:01 --fresh-storage --timeout 120
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18844 CATTEN_DEPLOY_HOST_PORT=18144 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18844 KNYTOS_DEPLOY_HOST_PORT=18144 \
   scripts/run-aarch64.sh --relmsg-test --net-connect 127.0.0.1:12054 \
   --instance sec3638-relmsg-b --mac 52:54:00:12:34:02 --fresh-storage --timeout 120
 ```

@@ -77,10 +77,10 @@ fi
 command -v curl >/dev/null 2>&1 || { echo "error: curl is required" >&2; exit 1; }
 command -v tar >/dev/null 2>&1 || { echo "error: tar is required" >&2; exit 1; }
 
-VERIFY_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-limine.XXXXXX")"
+VERIFY_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/knytos-limine.XXXXXX")"
 cleanup() {
     case "$VERIFY_TMP_DIR" in
-        "${TMPDIR:-/tmp}"/charlotte-limine.*) rm -rf -- "$VERIFY_TMP_DIR" ;;
+        "${TMPDIR:-/tmp}"/knytos-limine.*) rm -rf -- "$VERIFY_TMP_DIR" ;;
     esac
 }
 trap cleanup EXIT

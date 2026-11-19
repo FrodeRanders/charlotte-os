@@ -75,14 +75,14 @@ Kernel SHA-256:
 Guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu intel \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu intel \
   --instance sec12-intel --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance sec12-amd --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18853 CATTEN_DEPLOY_HOST_PORT=18153 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18853 KNYTOS_DEPLOY_HOST_PORT=18153 \
   scripts/run-aarch64.sh --live-upgrade-test \
   --instance sec12-upgrade --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18854 CATTEN_DEPLOY_HOST_PORT=18154 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18854 KNYTOS_DEPLOY_HOST_PORT=18154 \
   scripts/run-aarch64.sh --security-test \
   --instance sec12-sec --fresh-storage --timeout 180
 ```

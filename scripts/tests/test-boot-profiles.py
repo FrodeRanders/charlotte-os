@@ -88,7 +88,7 @@ class BootProfiles(unittest.TestCase):
 
     def test_cached_kernel_cannot_silently_redirect_telemetry(self):
         disabled=hashlib.sha256(profile.otlp_profile({})).hexdigest()
-        enabled=hashlib.sha256(profile.otlp_profile({"CATTEN_OTLP_ENDPOINT":"http://10.0.2.2:4318/v1/metrics"})).hexdigest()
+        enabled=hashlib.sha256(profile.otlp_profile({"KNYTOS_OTLP_ENDPOINT":"http://10.0.2.2:4318/v1/metrics"})).hexdigest()
         data=elf("minimal")+f"CHARLOTTE_OTLP_PROFILE_SHA256={enabled};".encode()
         profile.validate(data,"minimal",otlp_sha256=enabled)
         with self.assertRaisesRegex(ValueError,"OTLP profile"):
@@ -98,13 +98,13 @@ class BootProfiles(unittest.TestCase):
 
     def bundle(self, arch, mode, root, validate=False, heartbeat=None):
         code = ('source "$1/scripts/lib/service-bundle.sh"; '
-                'catten_service_bundle "$2" "$3" "$4"; '
-                + ('catten_validate_service_bundle "$3" "$2"' if validate
+                'knytos_service_bundle "$2" "$3" "$4"; '
+                + ('knytos_validate_service_bundle "$3" "$2"' if validate
                    else 'printf "%s\\n" "$BUNDLE" "${SERVICES[@]}"'))
         env = os.environ.copy()
-        env.pop("CATTEN_SERVICE_HEARTBEATS", None)
+        env.pop("KNYTOS_SERVICE_HEARTBEATS", None)
         if heartbeat is not None:
-            env["CATTEN_SERVICE_HEARTBEATS"] = heartbeat
+            env["KNYTOS_SERVICE_HEARTBEATS"] = heartbeat
         return subprocess.run(["bash", "-c", code, "profile-test", str(ROOT), arch, mode, str(root)],
                               capture_output=True, text=True, env=env)
 
@@ -157,9 +157,9 @@ class BootProfiles(unittest.TestCase):
                 with self.subTest(script=script, value=value):
                     result = subprocess.run(
                         [str(ROOT / "scripts" / script)], capture_output=True, text=True,
-                        env={**os.environ, "CATTEN_SERVICE_HEARTBEATS": value})
+                        env={**os.environ, "KNYTOS_SERVICE_HEARTBEATS": value})
                     self.assertNotEqual(result.returncode, 0)
-                    self.assertIn("CATTEN_SERVICE_HEARTBEATS must be 0 or 1", result.stderr)
+                    self.assertIn("KNYTOS_SERVICE_HEARTBEATS must be 0 or 1", result.stderr)
 
     def test_minimal_rejects_guest_test_options_before_building(self):
         for runner in ("run-aarch64.sh", "run-x86_64.sh"):

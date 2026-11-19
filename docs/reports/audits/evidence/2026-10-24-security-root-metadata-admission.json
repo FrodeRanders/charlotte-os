@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.root-metadata-admission.v1",
+  "schema": "knytos.security.root-metadata-admission.v1",
   "report_date": "2026-10-24",
   "reviewed_revision": "5a118028d92a45faa0185f9f3795039572d2f168",
   "classification": {
@@ -67,7 +67,7 @@
       "arch": "aarch64",
       "instance": "sec07-root-metadata-arm",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19900 CATTEN_DEPLOY_HOST_PORT=20064 scripts/run-aarch64.sh --security-test --http-test --instance sec07-root-metadata-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19900 KNYTOS_DEPLOY_HOST_PORT=20064 scripts/run-aarch64.sh --security-test --http-test --instance sec07-root-metadata-arm --fresh-storage --timeout 300",
       "kernel_sha256": "1263f9c609765c6a4c45e1fc29f457d070222ebc918889c87b052454f2e92b73",
       "boot_image_sha256": "7d9da523912ac4bb77a23504bdccb1ebb23142c3df134a5857d8e8c8263cd4e6",
       "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
@@ -169,7 +169,7 @@
       "arch": "x86_64",
       "instance": "sec07-root-metadata-x86",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19901 CATTEN_DEPLOY_HOST_PORT=20065 scripts/run-x86_64.sh --security-test --http-test --instance sec07-root-metadata-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19901 KNYTOS_DEPLOY_HOST_PORT=20065 scripts/run-x86_64.sh --security-test --http-test --instance sec07-root-metadata-x86 --fresh-storage --timeout 300",
       "kernel_sha256": "77e048f9ad11c03bd546b2a155ff85e150606084f346f82cadad5ce64bab9ddb",
       "boot_image_sha256": "06b7bd66290c31ed4ee7ca8e7cc6fc1af583dd8d8f158bbbae14724cfcd198fd",
       "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
@@ -288,19 +288,19 @@
       {
         "arch": "aarch64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "2eb42788d71a0029ed4c5f40c3fa18c68ec8c9861eada3515d7b5d625f183424"
       },
       {
         "arch": "x86_64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "d519390ab032f66723c199b54a900931e72c612b2f60473a56a0076752d791bc"
       }
     ]
   },
   "formal": {
-    "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_status": 0,
     "safe": 47,
     "expected_counterexamples": 143,

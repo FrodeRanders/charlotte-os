@@ -83,7 +83,7 @@ The normal network-enabled service set starts `clusterctl`, the node agent,
 and `deployd`. `deployd` accepts a bounded `POST /v1/deployments` on guest TCP
 port 7444. Its body is exactly one signed descriptor; no upload bytes or
 credentials traverse Raft. Under QEMU's default user network, host port
-`${CATTEN_DEPLOY_HOST_PORT:-8081}` forwards to this listener. The host tool can
+`${KNYTOS_DEPLOY_HOST_PORT:-8081}` forwards to this listener. The host tool can
 submit it directly:
 
 ```text
@@ -93,11 +93,11 @@ cluster-sign deployment-notify orders.cdep 127.0.0.1:8081
 Several generated components can be operated as one readiness wait without
 giving the generator or application object-store credentials:
 
-![Durga-to-Knytos generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
+![Durga-to-Knytos generation and deployment flow](../manual-v2/figures/durga-knytos-generation.svg)
 
 Durga's Knytos target retains execution limits, replica count,
 every-eligible-node selection, spread, affinity, and anti-affinity in the
-developer-owned `charlotte/resources.yaml`. It derives matching `CDEPLOY6`
+developer-owned `knytos/resources.yaml`. It derives matching `CDEPLOY6`
 signing options and declares the CLS2 parallel-instance requirement whenever
 the policy can launch concurrent copies.
 

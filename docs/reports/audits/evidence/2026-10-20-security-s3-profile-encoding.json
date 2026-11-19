@@ -49,7 +49,7 @@
     "observer_sha256": "744cafafdae8cbc4883483fc24e12e5188038d90afa1f57af24dbf2adb518e0d",
     "manifest": "[package]\nname=\"knytos-protocol-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dev-dependencies]\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n\n[[test]]\nname=\"parity\"\npath=\"parity.rs\"\n",
     "lockfile_sha256": "5a4d815194aceb230fdfc111583b3e2279f7f49df8ac363ad6e8648f0ab484ee",
-    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/charlotte-os');b=Path('/private/tmp/charlotte-sec15-s3-wire-baseline');(b/'src').mkdir(parents=True,exist_ok=True);(b/'examples').mkdir(exist_ok=True)\nfor name in ['src/lib.rs','tests/profile.rs']:\n p=b/name;p.parent.mkdir(exist_ok=True);p.write_bytes(subprocess.check_output(['git','show','50c5abf:crates/knytos-protocol-s3/'+name],cwd=r))\n(b/'Cargo.toml').write_text('''[package]\nname=\"knytos-protocol-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dev-dependencies]\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n''')\ns=(r/'tests/transport/s3_profile_wire_erasure.rs').read_text();a=s.index('fn fixture()');z=s.index('\\n#[test]',a);fixture=s[a:z]\n(b/'support.rs').write_bytes((r/'tests/transport/support.rs').read_bytes())\n(b/'release.rs').write_text('''use knytos_protocol_s3 as wire;\nuse zeroize::Zeroizing;\nmod support;\nuse support::observe;\n'''+fixture+'''\n#[test]\nfn encoded_secret_release(){\n let observed=observe(0,0,secret_offset(&fixture()),||{let encoded=fixture().encode().unwrap();drop(encoded);});\n assert!(observed.copy_erased,\"encoded secret retained: {observed:?}\");\n}\n#[test]\nfn abandoned_secret_release(){\n fn rejected()->Option<()>{let _encoded=fixture().encode()?;None}\n let observed=observe(0,0,secret_offset(&fixture()),||assert!(rejected().is_none()));\n assert!(observed.copy_erased,\"abandoned secret retained: {observed:?}\");\n}\n#[test]\nfn existing_kernel_wrapper_erases(){\n let observed=observe(0,0,secret_offset(&fixture()),||{let encoded=Zeroizing::new(fixture().encode().unwrap());drop(encoded);});\n assert!(observed.copy_erased,\"wrapped secret retained: {observed:?}\");\n assert_eq!(observed.allocations,1);assert_eq!(observed.growths,0);assert_eq!(observed.copy_releases,1);\n}\n#[test]\nfn debug_includes_credential_fields(){\n let profile=fixture();let text=format!(\"{profile:?}\");\n assert!(text.contains(&format!(\"secret_key: {:?}\",profile.secret_key)));\n assert!(text.contains(&format!(\"access_key: {:?}\",profile.access_key)));\n}\n''')\na=s.index('fn profile_preserves_fixed_wire_fixture()');parity=s[a:];(b/'parity.rs').write_text('use knytos_protocol_s3 as wire;\\n'+fixture+'\\n#[test]\\n'+parity)\nwith (b/'Cargo.toml').open('a') as f:f.write('\\n[[test]]\\nname=\"parity\"\\npath=\"parity.rs\"\\n')\nmain='fn requires_debug<T: core::fmt::Debug>() {}\\nfn main(){requires_debug::<knytos_protocol_s3::Profile<\\'static>>();}\\n'\n(b/'examples/profile_debug.rs').write_text(main)\nc=Path('/private/tmp/charlotte-sec15-s3-wire-debug-control');(c/'src').mkdir(parents=True,exist_ok=True);(c/'src/main.rs').write_text(main);(c/'Cargo.toml').write_text('''[package]\nname=\"s3-wire-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-s3={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-protocol-s3\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n''')\nprint('Exact baseline wire crate and controls prepared')\n",
+    "setup_script": "from pathlib import Path\nimport subprocess\nr=Path('/Users/froran/Projects/private/knytos');b=Path('/private/tmp/knytos-sec15-s3-wire-baseline');(b/'src').mkdir(parents=True,exist_ok=True);(b/'examples').mkdir(exist_ok=True)\nfor name in ['src/lib.rs','tests/profile.rs']:\n p=b/name;p.parent.mkdir(exist_ok=True);p.write_bytes(subprocess.check_output(['git','show','50c5abf:crates/knytos-protocol-s3/'+name],cwd=r))\n(b/'Cargo.toml').write_text('''[package]\nname=\"knytos-protocol-s3\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dev-dependencies]\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n[[test]]\nname=\"release\"\npath=\"release.rs\"\n''')\ns=(r/'tests/transport/s3_profile_wire_erasure.rs').read_text();a=s.index('fn fixture()');z=s.index('\\n#[test]',a);fixture=s[a:z]\n(b/'support.rs').write_bytes((r/'tests/transport/support.rs').read_bytes())\n(b/'release.rs').write_text('''use knytos_protocol_s3 as wire;\nuse zeroize::Zeroizing;\nmod support;\nuse support::observe;\n'''+fixture+'''\n#[test]\nfn encoded_secret_release(){\n let observed=observe(0,0,secret_offset(&fixture()),||{let encoded=fixture().encode().unwrap();drop(encoded);});\n assert!(observed.copy_erased,\"encoded secret retained: {observed:?}\");\n}\n#[test]\nfn abandoned_secret_release(){\n fn rejected()->Option<()>{let _encoded=fixture().encode()?;None}\n let observed=observe(0,0,secret_offset(&fixture()),||assert!(rejected().is_none()));\n assert!(observed.copy_erased,\"abandoned secret retained: {observed:?}\");\n}\n#[test]\nfn existing_kernel_wrapper_erases(){\n let observed=observe(0,0,secret_offset(&fixture()),||{let encoded=Zeroizing::new(fixture().encode().unwrap());drop(encoded);});\n assert!(observed.copy_erased,\"wrapped secret retained: {observed:?}\");\n assert_eq!(observed.allocations,1);assert_eq!(observed.growths,0);assert_eq!(observed.copy_releases,1);\n}\n#[test]\nfn debug_includes_credential_fields(){\n let profile=fixture();let text=format!(\"{profile:?}\");\n assert!(text.contains(&format!(\"secret_key: {:?}\",profile.secret_key)));\n assert!(text.contains(&format!(\"access_key: {:?}\",profile.access_key)));\n}\n''')\na=s.index('fn profile_preserves_fixed_wire_fixture()');parity=s[a:];(b/'parity.rs').write_text('use knytos_protocol_s3 as wire;\\n'+fixture+'\\n#[test]\\n'+parity)\nwith (b/'Cargo.toml').open('a') as f:f.write('\\n[[test]]\\nname=\"parity\"\\npath=\"parity.rs\"\\n')\nmain='fn requires_debug<T: core::fmt::Debug>() {}\\nfn main(){requires_debug::<knytos_protocol_s3::Profile<\\'static>>();}\\n'\n(b/'examples/profile_debug.rs').write_text(main)\nc=Path('/private/tmp/knytos-sec15-s3-wire-debug-control');(c/'src').mkdir(parents=True,exist_ok=True);(c/'src/main.rs').write_text(main);(c/'Cargo.toml').write_text('''[package]\nname=\"s3-wire-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-s3={path=\"/Users/froran/Projects/private/knytos/crates/knytos-protocol-s3\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n''')\nprint('Exact baseline wire crate and controls prepared')\n",
     "command": "cargo test --release --offline --manifest-path <baseline>/Cargo.toml --test release",
     "scope": "Exact old protocol implementation, without a byte-operation adapter. Bare-output normal and early-return release controls fail; original kernel Zeroizing wrapper pattern and aggregate Debug credential-field fixture pass. No baseline guest run or actual production Debug logging claim."
   },
@@ -180,7 +180,7 @@
         "error: could not compile `s3-wire-debug-control` (bin \"s3-wire-debug-control\") due to 1 previous error"
       ],
       "command": "cargo check --offline --manifest-path <control>/Cargo.toml",
-      "manifest": "[package]\nname=\"s3-wire-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-s3={path=\"/Users/froran/Projects/private/charlotte-os/crates/knytos-protocol-s3\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n",
+      "manifest": "[package]\nname=\"s3-wire-debug-control\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nknytos-protocol-s3={path=\"/Users/froran/Projects/private/knytos/crates/knytos-protocol-s3\"}\nzeroize={version=\"=1.9.0\",default-features=false,features=[\"alloc\"]}\n",
       "lockfile_sha256": "48a65a09712f95f59e25ca5914b98a2fff6dfd254b43acffbbbe621e9cd3e1b7"
     },
     "interpretation": "Expected E0277 for removed aggregate Debug implementation, retained by compile-fail doctest. Explicit fields or encoded bytes remain formattable."
@@ -290,61 +290,61 @@
       ],
       "runtime_tests_passed": 77,
       "compile_fail_doctests_passed": 7,
-      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-s3 -p knytos-s3 -p charlotte-transport-tests"
+      "command": "cargo test --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-s3 -p knytos-s3 -p knytos-transport-tests"
     },
     "release": {
       "exit_status": 0,
       "log_sha256": "5158eaa4ca1436bccd14a088fb04f1bab52343fe5c12c79bcd8f7e759419ec1e",
       "diagnostics": [
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
-        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
+        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
+        "     Running tests/deployment.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
+        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
+        "     Running tests/ingress.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
+        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
+        "     Running tests/operations.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
+        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
+        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
+        "     Running tests/sha256.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
+        "     Running tests/shutdown.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
+        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
         "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s",
-        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
+        "     Running tests/trust.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-s3/e698f35f1b93c1ea/out/knytos_protocol_s3-e698f35f1b93c1ea)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-protocol-s3/e698f35f1b93c1ea/out/knytos_protocol_s3-e698f35f1b93c1ea)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/profile.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-protocol-s3/bf13b2e57913589f/out/profile-bf13b2e57913589f)",
+        "     Running tests/profile.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-protocol-s3/bf13b2e57913589f/out/profile-bf13b2e57913589f)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-s3/033cae8f3a8ba57e/out/knytos_s3-033cae8f3a8ba57e)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/1e9eeb7a3cabea4f/out/receive_erasure-1e9eeb7a3cabea4f)",
+        "     Running receive_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/1e9eeb7a3cabea4f/out/receive_erasure-1e9eeb7a3cabea4f)",
         "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/b81b7488ef3bb22e/out/s3_canonical_erasure-b81b7488ef3bb22e)",
+        "     Running s3_canonical_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/b81b7488ef3bb22e/out/s3_canonical_erasure-b81b7488ef3bb22e)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/1461a3b7cd30aec1/out/s3_metadata_erasure-1461a3b7cd30aec1)",
+        "     Running s3_metadata_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/1461a3b7cd30aec1/out/s3_metadata_erasure-1461a3b7cd30aec1)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/d2a30f9478c8fc32/out/s3_path_erasure-d2a30f9478c8fc32)",
+        "     Running s3_path_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/d2a30f9478c8fc32/out/s3_path_erasure-d2a30f9478c8fc32)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/a97f9f3f03c1cfc4/out/s3_profile_erasure-a97f9f3f03c1cfc4)",
+        "     Running s3_profile_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/a97f9f3f03c1cfc4/out/s3_profile_erasure-a97f9f3f03c1cfc4)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/e1077827406b43a2/out/s3_profile_wire_erasure-e1077827406b43a2)",
+        "     Running s3_profile_wire_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/e1077827406b43a2/out/s3_profile_wire_erasure-e1077827406b43a2)",
         "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/43949b52f48b9ef6/out/s3_request_erasure-43949b52f48b9ef6)",
+        "     Running s3_request_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/43949b52f48b9ef6/out/s3_request_erasure-43949b52f48b9ef6)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/2c32c07ed61bd722/out/s3_response_erasure-2c32c07ed61bd722)",
+        "     Running s3_response_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/2c32c07ed61bd722/out/s3_response_erasure-2c32c07ed61bd722)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
         "   Doc-tests knytos_kafka",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
@@ -357,7 +357,7 @@
       ],
       "runtime_tests_passed": 167,
       "compile_fail_doctests_passed": 11,
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-s3 -p knytos-s3 -p charlotte-transport-tests -p knytos-kafka -p knytos-launch"
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-s3 -p knytos-s3 -p knytos-transport-tests -p knytos-kafka -p knytos-launch"
     },
     "strict_clippy": {
       "exit_status": 0,
@@ -365,7 +365,7 @@
       "diagnostics": [
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 1.87s"
       ],
-      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-s3 -p knytos-s3 -p charlotte-transport-tests -p knytos-kafka --all-targets -- -D warnings"
+      "command": "cargo clippy --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-protocol-s3 -p knytos-s3 -p knytos-transport-tests -p knytos-kafka --all-targets -- -D warnings"
     },
     "workspace_fmt": {
       "exit_status": 0,
@@ -404,7 +404,7 @@
         "               found struct `zeroize::Zeroizing<Vec<_>>`",
         "134 |     cases.push(invalid_utf8.to_vec());",
         "For more information about this error, try `rustc --explain E0308`.",
-        "error: could not compile `charlotte-transport-tests` (test \"s3_profile_erasure\") due to 3 previous errors"
+        "error: could not compile `knytos-transport-tests` (test \"s3_profile_erasure\") due to 3 previous errors"
       ],
       "cause": "Three old malformed-profile fixture collection insertions still expected Vec<u8> after encoder return changed to Zeroizing<Vec<u8>>.",
       "correction": "Collection retains zeroizing owners; no plain-output compatibility encoder or conversion back to plain vectors added.",
@@ -466,7 +466,7 @@
       "exit_status": 0,
       "log_sha256": "f879f600c09e04971be231b6bb1bfc231c6b8bacbb1f707ae22ba2bb888b5a01",
       "diagnostics": [
-        ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/aarch64-unknown-none."
+        ">>> Staged and signed AArch64 EL0 service bundle at /Users/froran/Projects/private/knytos/target/embedded-services/aarch64-unknown-none."
       ],
       "command": "scripts/build-knytos-services.sh --embed"
     },
@@ -482,7 +482,7 @@
       "exit_status": 0,
       "log_sha256": "111e674f3c79938478c9282f617c851a4b8106d82d60a3776a4210c52311dd19",
       "diagnostics": [
-        ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/charlotte-os/target/embedded-services/x86_64-unknown-none."
+        ">>> Staged and signed x86_64 EL0 service bundle at /Users/froran/Projects/private/knytos/target/embedded-services/x86_64-unknown-none."
       ],
       "command": "scripts/build-knytos-services-x86_64.sh"
     }
@@ -617,7 +617,7 @@
       "[+    13.991204] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
       ">>> All registered deferred self-tests passed."
     ],
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-s3-wire CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --s3-test --instance sec15-s3-wire --fresh-storage --timeout 300",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-s3-wire KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --s3-test --instance sec15-s3-wire --fresh-storage --timeout 300",
     "passed": 20,
     "failed": 0,
     "pending": 0,
@@ -633,12 +633,12 @@
       "containers": {
         "remaining": 0,
         "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "filter": "com.docker.compose.project=charlotte-sec15-s3-wire"
+        "filter": "com.docker.compose.project=knytos-sec15-s3-wire"
       },
       "volumes": {
         "remaining": 0,
         "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "filter": "com.docker.compose.project=charlotte-sec15-s3-wire"
+        "filter": "com.docker.compose.project=knytos-sec15-s3-wire"
       }
     },
     "image": {
@@ -651,7 +651,7 @@
         "sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8 [\"rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6\"]"
       ],
       "local_inspection_sha256": "d3b1382e2547f885d0f06608f6be6c4a94a0b1ad1cc05522779c7b33f3ce39d9",
-      "running_server_inspection": "/charlotte-sec15-s3-wire-rustfs-1 rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
+      "running_server_inspection": "/knytos-sec15-s3-wire-rustfs-1 rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
       "running_server_inspection_sha256": "cad6ea3e7d0c1bb8c95678fe9cb6bce3a2a2214ab2e18921536e308c944ddd47",
       "running_init_image_id_captured": false,
       "verification_limit": "Running server ID captured; removed init container has configured immutable reference and local inspection without separate running-instance ID."
@@ -854,7 +854,7 @@
     "scope": "Local byte owners/trait bounds are outside existing projections; no new modeled transition or TLC result claimed."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "start_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "final_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "modified_from_head_before_this_batch": false,

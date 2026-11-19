@@ -121,12 +121,12 @@ Only kernel source changed, so the already-built/signed service bundles were
 reused; no syscall/runtime ABI changed.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance preparation-drop-intel-verified-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance preparation-drop-amd-verified-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18539 CATTEN_DEPLOY_HOST_PORT=17839 scripts/run-aarch64.sh --security-test --instance preparation-drop-arm-verified-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance preparation-drop-intel-verified-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance preparation-drop-amd-verified-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18539 KNYTOS_DEPLOY_HOST_PORT=17839 scripts/run-aarch64.sh --security-test --instance preparation-drop-arm-verified-20261009 --fresh-storage --timeout 180
 scripts/run-host-tests.sh
-CATTEN_X86_64_SERVICE_BUNDLE="$PWD/target/embedded-services/x86_64-unknown-none" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json -- -D warnings
-CATTEN_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings
+KNYTOS_X86_64_SERVICE_BUNDLE="$PWD/target/embedded-services/x86_64-unknown-none" cargo clippy --locked -p knytos --target target_specs/x86_64-unknown-none-knytos.json -- -D warnings
+KNYTOS_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none" cargo clippy --locked -p knytos --target target_specs/aarch64-unknown-none-knytos.json -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 ```

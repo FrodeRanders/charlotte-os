@@ -86,7 +86,7 @@
       "instance": "ipc-publication-arm",
       "exit_status": 0,
       "guest_attempt": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19914 CATTEN_DEPLOY_HOST_PORT=20078 scripts/run-aarch64.sh --security-test --http-test --instance ipc-publication-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19914 KNYTOS_DEPLOY_HOST_PORT=20078 scripts/run-aarch64.sh --security-test --http-test --instance ipc-publication-arm --fresh-storage --timeout 300",
       "kernel_sha256": "db3d42bbb0ed5e7fb81747af3391cf706b18b21d67c4d13bb4e7be3964becccb",
       "boot_image_sha256": "ea529ca839d0e9435128ad6d5c23737fbd8cc21f61e5a8a33b672e0528d63f38",
       "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
@@ -219,7 +219,7 @@
       "instance": "ipc-publication-x86",
       "exit_status": 0,
       "guest_attempt": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19915 CATTEN_DEPLOY_HOST_PORT=20079 scripts/run-x86_64.sh --security-test --http-test --instance ipc-publication-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19915 KNYTOS_DEPLOY_HOST_PORT=20079 scripts/run-x86_64.sh --security-test --http-test --instance ipc-publication-x86 --fresh-storage --timeout 300",
       "kernel_sha256": "d36cb0a258753435d93d8fd5a8b68fd578f15e2dadcc059b8b69b28c62632be2",
       "boot_image_sha256": "99144bb844c90d5c32088148b2f4d37cd065b7affeb5d8308f27140eebd3d4a8",
       "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
@@ -378,13 +378,13 @@
       {
         "arch": "aarch64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "9a5f74f7ce6f7386b268079de353e101de8ba0c815e5446557fd16c9b8178a74"
       },
       {
         "arch": "x86_64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "0f67c0de269d0646dc13ccc76bf457fe10622cd3b9896dbbc2596ef1f4da5e1d"
       }
     ],
@@ -434,7 +434,7 @@
     "runs": [
       {
         "module": "CharlotteIpcPublication",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcPublication",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcPublication",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 7634722,
@@ -507,7 +507,7 @@
       },
       {
         "module": "CharlotteIpcTransaction",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcTransaction",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcTransaction",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 26,
@@ -539,7 +539,7 @@
       },
       {
         "module": "CharlotteRootRetirement",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteRootRetirement",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteRootRetirement",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 2978,

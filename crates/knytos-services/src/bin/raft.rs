@@ -14,7 +14,7 @@ use alloc::{
 };
 
 use knytos_graft::{
-    charlotte::CharlotteTransport,
+    knytos::CharlotteTransport,
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,

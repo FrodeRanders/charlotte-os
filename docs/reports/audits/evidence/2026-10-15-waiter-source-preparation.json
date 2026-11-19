@@ -136,7 +136,7 @@
       "timeout_seconds": 180
     }
   ],
-  "schema": "charlotte.audit.waiter-source-preparation.v1",
+  "schema": "knytos.audit.waiter-source-preparation.v1",
   "source_limit": "Runtime Rust and native probes were frozen before this matrix. Per-file reviewed hashes cover changed Rust files, not a full-tree manifest.",
   "unchanged_service_bundles_sha256": {
     "aarch64": {

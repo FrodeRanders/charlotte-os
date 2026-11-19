@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.framebuffer-bounds.v1",
+  "schema": "knytos.framebuffer-bounds.v1",
   "started_date": "2026-11-04",
   "completed_date": "2026-11-05",
   "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
@@ -176,7 +176,7 @@
     "focused": "python3 scripts/tests/test-boot-allocation-edges.py",
     "host": "scripts/run-host-tests.sh",
     "format": "cargo fmt --all -- --check",
-    "strict": "CATTEN_<ARCH>_SERVICE_BUNDLE=<matching minimal/test bundle> AR_<target>=<LLVM llvm-ar> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features <acpi,display|acpi,display,kernel_tests> -- -D warnings"
+    "strict": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<matching minimal/test bundle> AR_<target>=<LLVM llvm-ar> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features <acpi,display|acpi,display,kernel_tests> -- -D warnings"
   },
   "native": [
     {
@@ -186,7 +186,7 @@
       "cpus": 4,
       "outer_deadline_seconds": 240,
       "grant_probe_deadline_ms": 45000,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18712 CATTEN_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18712 KNYTOS_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm",
       "framebuffer_device_present": true,
       "prepared_utc": "2026-11-04T22:53:04Z",
       "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
@@ -366,7 +366,7 @@
       "cpus": 4,
       "outer_deadline_seconds": 240,
       "grant_probe_deadline_ms": 45000,
-      "command": "CATTEN_SKIP_KERNEL_BUILD=1 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18712 CATTEN_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm-repeat",
+      "command": "KNYTOS_SKIP_KERNEL_BUILD=1 KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18712 KNYTOS_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm-repeat",
       "framebuffer_device_present": true,
       "prepared_utc": "2026-11-04T22:58:32Z",
       "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
@@ -547,7 +547,7 @@
       "cpus": 4,
       "outer_deadline_seconds": 240,
       "grant_probe_deadline_ms": 45000,
-      "command": "CATTEN_SKIP_KERNEL_BUILD=1 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18712 CATTEN_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm-no-ramfb",
+      "command": "KNYTOS_SKIP_KERNEL_BUILD=1 KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18712 KNYTOS_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm-no-ramfb",
       "framebuffer_device_present": false,
       "prepared_utc": "2026-11-04T23:03:22Z",
       "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",

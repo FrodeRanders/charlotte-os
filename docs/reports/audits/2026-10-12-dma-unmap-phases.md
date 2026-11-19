@@ -142,7 +142,7 @@ ingress controls passed; shutdown requested PSCI power-off at 13.858284 s.
 No guest failure was captured in this matrix. Concurrent x86 samples are not a
 production contention soak or reliability claim.
 
-Commands used `CATTEN_SKIP_EMBED_BUILD=1` after both bundle builds:
+Commands used `KNYTOS_SKIP_EMBED_BUILD=1` after both bundle builds:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance dma-unmap-arm-final

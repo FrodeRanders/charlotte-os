@@ -164,8 +164,8 @@ The final guest command used an isolated fresh-storage instance and existing
 rebuilt service bundle:
 
 ```sh
-CATTEN_SKIP_SERVICE_BUILD=1 CATTEN_HTTP_HOST_PORT=18285 \
-CATTEN_DEPLOY_HOST_PORT=17585 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_SERVICE_BUILD=1 KNYTOS_HTTP_HOST_PORT=18285 \
+KNYTOS_DEPLOY_HOST_PORT=17585 scripts/run-aarch64.sh --security-test \
   --instance remediation-20261005-complete --fresh-storage --timeout 130
 ```
 

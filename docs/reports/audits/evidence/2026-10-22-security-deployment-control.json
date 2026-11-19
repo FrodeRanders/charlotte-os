@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.deployment-control.v1",
+  "schema": "knytos.security.deployment-control.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "debef33e6f21f18ddaa643056d3a7801b4fc38b4",
   "classification": {
@@ -79,7 +79,7 @@
       ],
       "host_passes": [],
       "terminal_diagnostics": [
-        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-ep536ixv"
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-ep536ixv"
       ],
       "failure_capture": {
         "reason": "kernel-panic",
@@ -471,14 +471,14 @@
     }
   },
   "native_commands": [
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-control-security-final --fresh-storage --timeout 300",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-control-security-x86 --fresh-storage --timeout 300",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-control-http --fresh-storage --timeout 240",
-    "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=18880 CATTEN_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-control-http-x86-final --fresh-storage --timeout 240",
-    "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec06-control CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-control-deploy --fresh-storage --timeout 300"
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19282 KNYTOS_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-control-security-final --fresh-storage --timeout 300",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19283 KNYTOS_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-control-security-x86 --fresh-storage --timeout 300",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-control-http --fresh-storage --timeout 240",
+    "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=18880 KNYTOS_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-control-http-x86-final --fresh-storage --timeout 240",
+    "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec06-control KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19281 KNYTOS_DEPLOY_HOST_PORT=19445 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-control-deploy --fresh-storage --timeout 300"
   ],
   "host": {
-    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib (cwd /private/tmp)",
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-services --lib (cwd /private/tmp)",
     "result": "170 passed; 0 failed",
     "log_sha256": "17f6dc74b3bd433b7ceb3512f42f27d8d13b4052e24b16706bd425cd2d1ffefd",
     "qualification": "Transport adapters model rejection and Drop order; binding abort adapter checks owners before host unwind. Native actual mapping/binding rejection is not fault-injected."
@@ -487,7 +487,7 @@
     "format": "cargo fmt --all -- --check",
     "diff": "git diff --check",
     "shell": "bash -n docs/tla/check.sh",
-    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings (cwd /private/tmp)",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings (cwd /private/tmp)",
     "native_clippy": "cargo clippy --manifest-path crates/knytos-services/Cargo.toml --target crates/knytos-services/aarch64-unknown-none.json --target-dir crates/knytos-services/target --release -Z build-std=core,alloc --bin deployd --bin tcpip --bin security_probe -- -D warnings",
     "host_clippy_log_sha256": "df512d036b94910b5b3a5c45672aeee1da44df09f2bf2a1bf033cdc6253a0ae9",
     "native_clippy_log_sha256": "ce663f05dd18e3beea69f7ac693b03f19fa1c532ed6aef489cc7f1f36ab5eaeb",
@@ -503,7 +503,7 @@
     "reason": "Added serial five-second held-controller cancellation case to an already bounded sequence; initial native run passed this case but expired its overall observer before all later checks finished. No production timeout widened."
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_code": 0,
     "safe_configurations": 38,
     "expected_counterexamples": 113,

@@ -74,7 +74,7 @@ These are the claims that, after review, match the implementation:
   extents, integrity hashes, allocation reconstruction, copy-on-write).
 - **Raft:** transport-independent core with two-node election, persistent
   single-voter restart, discovery-led join; host tests pass (see §3 C1).
-- **Artifact signing:** CLS2 Ed25519 `.note.charlotte-sig` binding bytes to
+- **Artifact signing:** CLS2 Ed25519 `.note.knytos-sig` binding bytes to
   name/class/release-rollback/parallel-permission/provenance, enforced by the
   loader and the deploy path.
 

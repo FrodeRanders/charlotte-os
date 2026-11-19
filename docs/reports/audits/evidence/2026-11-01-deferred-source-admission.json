@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.deferred-source-admission.v1",
+  "schema": "knytos.deferred-source-admission.v1",
   "date": "2026-11-01",
   "base_revision": "c35f40d260a8e6136445b567a0cb621ca7238136",
   "scope": "Independent requested-byte/count admission for IPC claim, memory-close and DMA-readiness disposal nodes, including candidates and producer-LP queued storage through actual deallocation.",

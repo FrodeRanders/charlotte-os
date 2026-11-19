@@ -24,7 +24,7 @@ pub(super) const BOOTSTRAP_PUBLIC: [u8; 32] = [
 /// The host fixture commits this public snapshot before building the next
 /// authenticated kernel. It is not rollback-resistant platform storage.
 pub(super) fn installed() -> signed_policy::VerifiedBootPolicy {
-    let bytes = include_bytes!(env!("CATTEN_BOOT_TEST_INSTALLED_POLICY_FILE"));
+    let bytes = include_bytes!(env!("KNYTOS_BOOT_TEST_INSTALLED_POLICY_FILE"));
     let public = knytos_launch::trust::AdmissionTrust::decode(
         &bytes[signed_policy::HEADER_LEN..signed_policy::SIGNATURE_OFFSET],
     )

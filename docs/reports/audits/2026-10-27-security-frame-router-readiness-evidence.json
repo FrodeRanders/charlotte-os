@@ -65,11 +65,11 @@
         {
           "phase": "three-voter-ready",
           "owner": "node-0",
-          "leader": "charlotte:42e27584",
+          "leader": "knytos:42e27584",
           "term": 1,
           "snapshots": {
             "node-0": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": true,
               "truncated": false,
@@ -79,8 +79,8 @@
                 "commit_index": 14,
                 "membership_epoch": 12,
                 "observed_millis": 62942,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e27584"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e27584"
               },
               "nodes": [
                 {
@@ -145,7 +145,7 @@
               ]
             },
             "node-1": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -155,8 +155,8 @@
                 "commit_index": 14,
                 "membership_epoch": 12,
                 "observed_millis": 42156,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e27737"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e27737"
               },
               "nodes": [
                 {
@@ -221,7 +221,7 @@
               ]
             },
             "node-2": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -231,8 +231,8 @@
                 "commit_index": 14,
                 "membership_epoch": 12,
                 "observed_millis": 15905,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e278ea"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e278ea"
               },
               "nodes": [
                 {
@@ -313,7 +313,7 @@
           "phase": "replacement-leader",
           "old_owner": "node-0",
           "owner": "node-1",
-          "leader": "charlotte:42e27737",
+          "leader": "knytos:42e27737",
           "term": 2,
           "committed_before": {
             "node-0": {
@@ -340,7 +340,7 @@
           },
           "snapshots": {
             "node-1": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": true,
               "truncated": false,
@@ -350,8 +350,8 @@
                 "commit_index": 18,
                 "membership_epoch": 12,
                 "observed_millis": 60079,
-                "leader": "charlotte:42e27737",
-                "served_by": "charlotte:42e27737"
+                "leader": "knytos:42e27737",
+                "served_by": "knytos:42e27737"
               },
               "nodes": [
                 {
@@ -416,7 +416,7 @@
               ]
             },
             "node-2": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -426,8 +426,8 @@
                 "commit_index": 18,
                 "membership_epoch": 12,
                 "observed_millis": 33725,
-                "leader": "charlotte:42e27737",
-                "served_by": "charlotte:42e278ea"
+                "leader": "knytos:42e27737",
+                "served_by": "knytos:42e278ea"
               },
               "nodes": [
                 {
@@ -607,7 +607,7 @@
           "[+    11.659063] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    11.914583] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=513 pending=0 queued=0",
           "[+    13.239405] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793132089 utc=2026-10-27T20:14:49.410149978Z stratum=3 uncertainty_ms=509 drift_ppb=0",
-          "[+    15.621477] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27584\") millis=3973 pending=0 queued=0",
+          "[+    15.621477] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e27584\") millis=3973 pending=0 queued=0",
           "[+    16.400448] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=14442883527426920475 backends=1/1",
           "[+    16.403106] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=14442883527426920475 backends=1/1",
           "[+    42.283626] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=2608049622110242200 backends=1/1",
@@ -624,16 +624,16 @@
           "[+    11.628528] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    11.942604] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=488 pending=0 queued=0",
           "[+    13.249489] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793132111 utc=2026-10-27T20:15:11.978656674Z stratum=3 uncertainty_ms=506 drift_ppb=0",
-          "[+    15.319712] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27737\") millis=3656 pending=0 queued=0",
+          "[+    15.319712] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e27737\") millis=3656 pending=0 queued=0",
           "[+    15.351737] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27737 epoch=14442883527426920475 backends=1/1",
           "[+    15.353155] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27737 epoch=14442883527426920475 backends=1/1",
-          "[+    15.660414] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4208 pending=1 queued=0",
+          "[+    15.660414] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"knytos:42e27584\") millis=4208 pending=1 queued=0",
           "[+    20.485527] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27737 epoch=2608049622110242200 backends=1/1",
           "[+    20.486969] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27737 epoch=2608049622110242200 backends=1/1",
           "[+    56.843444] [EL0 LOG] lp=0 asid=130 [management] connection=1 certificate=348d53d9aae1c73431ba82fd0afbeecbd88b897198aa450b24bf714a25886a2d role=Reader permission=Mutate allowed=false",
           "[+    58.096085] [EL0 LOG] lp=0 asid=130 [management] connection=2 certificate=163b516ed0dbaf9bb5668dd7d97d3923a5ecabcd2a2f03a40b50758e01aa21d3 role=Administrator permission=Mutate allowed=true",
           "[+    67.517961] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=2 leader=None millis=55897 pending=2 queued=1",
-          "[+    68.198452] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"charlotte:42e27737\") millis=56745 pending=2 queued=2",
+          "[+    68.198452] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"knytos:42e27737\") millis=56745 pending=2 queued=2",
           "[+    69.651601] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27737 epoch=15925032041054879075 backends=3/3",
           "[+    69.652830] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27737 epoch=15925032041054879075 backends=3/3",
           "[+    83.403230] [EL0 LOG] lp=0 asid=126 [management] connection=7 client policy rejected",
@@ -642,7 +642,7 @@
           "[+    95.806559] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=5 leader=None millis=84199 pending=2 queued=0",
           "[+    98.269954] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=6 leader=None millis=86652 pending=2 queued=0",
           "[+   102.055429] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=7 leader=None millis=90459 pending=2 queued=0",
-          "[+   102.991335] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=7 leader=Some(\"charlotte:42e27737\") millis=91539 pending=2 queued=0",
+          "[+   102.991335] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=7 leader=Some(\"knytos:42e27737\") millis=91539 pending=2 queued=0",
           "[+   103.429139] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27737 epoch=15925032041054879075 backends=3/3",
           "[+   103.430405] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27737 epoch=15925032041054879075 backends=3/3",
           "[+    87.411152] [EL0 LOG] lp=0 asid=121 [frouter] hb rx=1039 fwd=978 dropped=60 unknown=0 routes=5 ingress=0/0/0 epoch=15925032041054879075",
@@ -653,10 +653,10 @@
           "[+    11.908896] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    12.131764] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=484 pending=0 queued=0",
           "[+    13.462490] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793132139 utc=2026-10-27T20:15:39.903513126Z stratum=3 uncertainty_ms=506 drift_ppb=0",
-          "[+    15.478958] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e278ea\") millis=3623 pending=0 queued=0",
+          "[+    15.478958] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e278ea\") millis=3623 pending=0 queued=0",
           "[+    15.528824] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=14442883527426920475 backends=1/1",
           "[+    15.530144] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=14442883527426920475 backends=1/1",
-          "[+    15.856472] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4210 pending=1 queued=0",
+          "[+    15.856472] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"knytos:42e27584\") millis=4210 pending=1 queued=0",
           "[+    40.257960] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=2 leader=None millis=28611 pending=1 queued=0",
           "[+    46.496372] [EL0 LOG] lp=0 asid=130 [management] connection=2 certificate=348d53d9aae1c73431ba82fd0afbeecbd88b897198aa450b24bf714a25886a2d role=Reader permission=Mutate allowed=false",
           "[+    47.618852] [EL0 LOG] lp=0 asid=130 [management] connection=3 certificate=163b516ed0dbaf9bb5668dd7d97d3923a5ecabcd2a2f03a40b50758e01aa21d3 role=Administrator permission=Mutate allowed=true",
@@ -867,11 +867,11 @@
         {
           "phase": "three-voter-ready",
           "owner": "node-0",
-          "leader": "charlotte:42e27584",
+          "leader": "knytos:42e27584",
           "term": 1,
           "snapshots": {
             "node-0": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": true,
               "truncated": false,
@@ -881,8 +881,8 @@
                 "commit_index": 13,
                 "membership_epoch": 11,
                 "observed_millis": 53453,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e27584"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e27584"
               },
               "nodes": [
                 {
@@ -947,7 +947,7 @@
               ]
             },
             "node-1": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -957,8 +957,8 @@
                 "commit_index": 13,
                 "membership_epoch": 11,
                 "observed_millis": 32968,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e27737"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e27737"
               },
               "nodes": [
                 {
@@ -1023,7 +1023,7 @@
               ]
             },
             "node-2": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -1033,8 +1033,8 @@
                 "commit_index": 13,
                 "membership_epoch": 11,
                 "observed_millis": 8456,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e278ea"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e278ea"
               },
               "nodes": [
                 {
@@ -1115,7 +1115,7 @@
           "phase": "replacement-leader",
           "old_owner": "node-0",
           "owner": "node-2",
-          "leader": "charlotte:42e278ea",
+          "leader": "knytos:42e278ea",
           "term": 2,
           "committed_before": {
             "node-0": {
@@ -1142,7 +1142,7 @@
           },
           "snapshots": {
             "node-1": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -1152,8 +1152,8 @@
                 "commit_index": 17,
                 "membership_epoch": 11,
                 "observed_millis": 40548,
-                "leader": "charlotte:42e278ea",
-                "served_by": "charlotte:42e27737"
+                "leader": "knytos:42e278ea",
+                "served_by": "knytos:42e27737"
               },
               "nodes": [
                 {
@@ -1218,7 +1218,7 @@
               ]
             },
             "node-2": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": true,
               "truncated": false,
@@ -1228,8 +1228,8 @@
                 "commit_index": 18,
                 "membership_epoch": 11,
                 "observed_millis": 16021,
-                "leader": "charlotte:42e278ea",
-                "served_by": "charlotte:42e278ea"
+                "leader": "knytos:42e278ea",
+                "served_by": "knytos:42e278ea"
               },
               "nodes": [
                 {
@@ -1475,7 +1475,7 @@
           "[+    12.876681] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    13.071276] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=429 pending=0 queued=0",
           "[+    14.413894] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793133013 utc=2026-10-27T20:30:13.422719663Z stratum=3 uncertainty_ms=511 drift_ppb=0",
-          "[+    16.875102] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27584\") millis=3978 pending=0 queued=0",
+          "[+    16.875102] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e27584\") millis=3978 pending=0 queued=0",
           "[+    17.284837] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=14442883527426920475 backends=1/1",
           "[+    17.288310] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=14442883527426920475 backends=1/1",
           "[+    39.367447] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=9128259017361818784 backends=1/1",
@@ -1492,8 +1492,8 @@
           "[+    11.851876] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    12.047604] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=458 pending=0 queued=0",
           "[+    13.380874] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793133034 utc=2026-10-27T20:30:34.369575182Z stratum=3 uncertainty_ms=509 drift_ppb=0",
-          "[+    15.497504] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27737\") millis=3668 pending=0 queued=0",
-          "[+    15.888618] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4302 pending=1 queued=0",
+          "[+    15.497504] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e27737\") millis=3668 pending=0 queued=0",
+          "[+    15.888618] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"knytos:42e27584\") millis=4302 pending=1 queued=0",
           "[+    17.292200] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27737 epoch=9128259017361818784 backends=1/1",
           "[+    17.294858] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27737 epoch=9128259017361818784 backends=1/1",
           "[+    45.580740] [EL0 LOG] lp=0 asid=130 [management] connection=1 certificate=a5f006914ed9d894ceea8ad9525c8c6f3f655070d4523ae67fafde5acf1d0d0e role=Reader permission=Mutate allowed=false",
@@ -1512,10 +1512,10 @@
           "[+    11.766585] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    11.962304] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=417 pending=0 queued=0",
           "[+    13.306761] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793133059 utc=2026-10-27T20:30:59.328693192Z stratum=3 uncertainty_ms=507 drift_ppb=0",
-          "[+    15.405456] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e278ea\") millis=3638 pending=0 queued=0",
-          "[+    15.807587] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4264 pending=1 queued=0",
+          "[+    15.405456] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e278ea\") millis=3638 pending=0 queued=0",
+          "[+    15.807587] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"knytos:42e27584\") millis=4264 pending=1 queued=0",
           "[+    26.098014] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=2 leader=None millis=14425 pending=2 queued=0",
-          "[+    26.492144] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"charlotte:42e278ea\") millis=14950 pending=2 queued=0",
+          "[+    26.492144] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"knytos:42e278ea\") millis=14950 pending=2 queued=0",
           "[+    27.150064] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=8132193794162199227 backends=3/3",
           "[+    27.151120] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=8132193794162199227 backends=3/3",
           "[+    34.304680] [EL0 LOG] lp=0 asid=126 [management] connection=9 client policy rejected",
@@ -1809,11 +1809,11 @@
         {
           "phase": "three-voter-ready",
           "owner": "node-0",
-          "leader": "charlotte:42e27584",
+          "leader": "knytos:42e27584",
           "term": 1,
           "snapshots": {
             "node-0": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": true,
               "truncated": false,
@@ -1823,8 +1823,8 @@
                 "commit_index": 13,
                 "membership_epoch": 11,
                 "observed_millis": 53491,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e27584"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e27584"
               },
               "nodes": [
                 {
@@ -1889,7 +1889,7 @@
               ]
             },
             "node-1": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -1899,8 +1899,8 @@
                 "commit_index": 13,
                 "membership_epoch": 11,
                 "observed_millis": 33033,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e27737"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e27737"
               },
               "nodes": [
                 {
@@ -1965,7 +1965,7 @@
               ]
             },
             "node-2": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -1975,8 +1975,8 @@
                 "commit_index": 13,
                 "membership_epoch": 11,
                 "observed_millis": 8582,
-                "leader": "charlotte:42e27584",
-                "served_by": "charlotte:42e278ea"
+                "leader": "knytos:42e27584",
+                "served_by": "knytos:42e278ea"
               },
               "nodes": [
                 {
@@ -2057,7 +2057,7 @@
           "phase": "replacement-leader",
           "old_owner": "node-0",
           "owner": "node-2",
-          "leader": "charlotte:42e278ea",
+          "leader": "knytos:42e278ea",
           "term": 2,
           "committed_before": {
             "node-0": {
@@ -2084,7 +2084,7 @@
           },
           "snapshots": {
             "node-1": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": false,
               "truncated": false,
@@ -2094,8 +2094,8 @@
                 "commit_index": 15,
                 "membership_epoch": 11,
                 "observed_millis": 40294,
-                "leader": "charlotte:42e278ea",
-                "served_by": "charlotte:42e27737"
+                "leader": "knytos:42e278ea",
+                "served_by": "knytos:42e27737"
               },
               "nodes": [
                 {
@@ -2160,7 +2160,7 @@
               ]
             },
             "node-2": {
-              "schema": "charlotte.cluster.v2",
+              "schema": "knytos.cluster.v2",
               "fresh_committed": true,
               "served_by_leader": true,
               "truncated": false,
@@ -2170,8 +2170,8 @@
                 "commit_index": 18,
                 "membership_epoch": 11,
                 "observed_millis": 15847,
-                "leader": "charlotte:42e278ea",
-                "served_by": "charlotte:42e278ea"
+                "leader": "knytos:42e278ea",
+                "served_by": "knytos:42e278ea"
               },
               "nodes": [
                 {
@@ -2402,7 +2402,7 @@
           "[+    11.664920] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    11.861444] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=472 pending=0 queued=0",
           "[+    13.184949] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793133231 utc=2026-10-27T20:33:51.253349630Z stratum=3 uncertainty_ms=510 drift_ppb=0",
-          "[+    15.592959] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27584\") millis=3964 pending=0 queued=0",
+          "[+    15.592959] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e27584\") millis=3964 pending=0 queued=0",
           "[+    16.105842] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=14442883527426920475 backends=1/1",
           "[+    16.109645] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=14442883527426920475 backends=1/1",
           "[+    38.143222] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=9128259017361818784 backends=1/1",
@@ -2419,8 +2419,8 @@
           "[+    11.754866] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    11.942334] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=469 pending=0 queued=0",
           "[+    13.279798] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793133252 utc=2026-10-27T20:34:12.187721520Z stratum=3 uncertainty_ms=509 drift_ppb=0",
-          "[+    15.394448] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27737\") millis=3669 pending=0 queued=0",
-          "[+    15.750246] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4280 pending=1 queued=0",
+          "[+    15.394448] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e27737\") millis=3669 pending=0 queued=0",
+          "[+    15.750246] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"knytos:42e27584\") millis=4280 pending=1 queued=0",
           "[+    17.223512] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27737 epoch=9128259017361818784 backends=1/1",
           "[+    17.228156] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27737 epoch=9128259017361818784 backends=1/1",
           "[+    45.516268] [EL0 LOG] lp=0 asid=130 [management] connection=1 certificate=bbb2e2d4130e0271788bf38b11ddbd16ef8c9278b38a1c3a24f2ed1714a30c42 role=Reader permission=Mutate allowed=false",
@@ -2438,12 +2438,12 @@
           "[+    11.799788] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    11.989666] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=495 pending=0 queued=0",
           "[+    13.322503] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793133277 utc=2026-10-27T20:34:37.103936422Z stratum=3 uncertainty_ms=507 drift_ppb=0",
-          "[+    15.354642] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e278ea\") millis=3630 pending=0 queued=0",
+          "[+    15.354642] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e278ea\") millis=3630 pending=0 queued=0",
           "[+    15.361109] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=14442883527426920475 backends=1/1",
           "[+    15.363445] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=14442883527426920475 backends=1/1",
-          "[+    15.768595] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4275 pending=1 queued=0",
+          "[+    15.768595] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"knytos:42e27584\") millis=4275 pending=1 queued=0",
           "[+    26.204958] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=2 leader=None millis=14565 pending=2 queued=0",
-          "[+    26.610661] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"charlotte:42e278ea\") millis=15113 pending=2 queued=0",
+          "[+    26.610661] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"knytos:42e278ea\") millis=15113 pending=2 queued=0",
           "[+    27.163653] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=8132193794162199227 backends=3/3",
           "[+    27.164670] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=8132193794162199227 backends=3/3",
           "[+    33.905633] [EL0 LOG] lp=0 asid=126 [management] connection=8 client policy rejected",

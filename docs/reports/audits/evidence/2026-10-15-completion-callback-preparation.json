@@ -120,7 +120,7 @@
       "timeout_seconds": 180
     }
   ],
-  "schema": "charlotte.audit.completion-callback-preparation.v1",
+  "schema": "knytos.audit.completion-callback-preparation.v1",
   "source_limit": "Runtime Rust and native probes were frozen before this matrix. Reviewed per-file hashes cover changed Rust, not a full-tree manifest.",
   "unchanged_service_bundles_sha256": {
     "aarch64": {

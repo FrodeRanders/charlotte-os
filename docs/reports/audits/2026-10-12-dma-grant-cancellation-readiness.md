@@ -163,7 +163,7 @@ scheduled cancellation assertions; the first AMD guest failed later network
 progress. Deferred totals include the scheduled CQ-wait fixture; synchronous
 assertions are additional. These samples are not a pressure-soak/reliability claim.
 
-Commands used `CATTEN_SKIP_EMBED_BUILD=1` after both bundle builds:
+Commands used `KNYTOS_SKIP_EMBED_BUILD=1` after both bundle builds:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance dma-cancel-arm
@@ -175,7 +175,7 @@ scripts/run-x86_64.sh --http-test --dhcp-test --iommu amd --fresh-storage --time
 
 HTTP/deployment ports were 19344/18644, 19345/18645, 19346/18646,
 19347/18647 and 19348/18648. The AMD repeat additionally used
-`CATTEN_SKIP_KERNEL_BUILD=1` only after the current ELF matched the immutable
+`KNYTOS_SKIP_KERNEL_BUILD=1` only after the current ELF matched the immutable
 failed AMD boot hash. Per-boot hashes precede subsequent profile rebuilds:
 
 | Artifact | SHA-256 |

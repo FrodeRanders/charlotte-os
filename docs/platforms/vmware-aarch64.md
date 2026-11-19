@@ -41,16 +41,16 @@ Limine image. Broadcom's
 [ARM compatibility guidance](https://knowledge.broadcom.com/external/article/315602/)
 requires ARM guests and UEFI on Apple silicon and lists SATA and NVMe disks.
 
-- `charlotte-boot.vmdk` contains `EFI/BOOT/BOOTAA64.EFI`, Limine configuration
+- `knytos-boot.vmdk` contains `EFI/BOOT/BOOTAA64.EFI`, Limine configuration
   and the AArch64 kernel. It is attached through SATA in nonpersistent mode.
-- `charlotte-data.vmdk` is a blank persistent NVMe disk. If protected storage
+- `knytos-data.vmdk` is a blank persistent NVMe disk. If protected storage
   bring-up succeeds, the ordinary object-store startup formats it and installs
   signed services from the kernel's installation bundle. The QEMU runner's
   preseeded disk is not copied into this appliance.
 - The kernel includes the framebuffer console for the firmware-provided
   display. The captured Fusion SPCR selects an 8-bit MMIO 16550 at `0x3fff03f8`
   (interface `0x12`, GSI 36); the kernel selects that register contract and writes
-  boot diagnostics to `charlotte-serial.log`.
+  boot diagnostics to `knytos-serial.log`.
 - Networking is disabled. Broadcom recommends VMXNET3 for ARM guests;
   Knytos has no VMXNET3 driver, and its AArch64 service bundle does not
   include the x86 appliance's E1000E driver.

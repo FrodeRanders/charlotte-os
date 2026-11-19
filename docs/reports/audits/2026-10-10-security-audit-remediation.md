@@ -146,14 +146,14 @@ query. The live-upgrade and scoped-launch guest paths continue to pass.
 Guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18837 CATTEN_DEPLOY_HOST_PORT=18137 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18837 KNYTOS_DEPLOY_HOST_PORT=18137 \
   scripts/run-aarch64.sh --security-test \
   --instance fixes-final-20261010 --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18835 CATTEN_DEPLOY_HOST_PORT=18135 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18835 KNYTOS_DEPLOY_HOST_PORT=18135 \
   scripts/run-aarch64.sh --relmsg-test --net-listen 12052 \
   --instance relmsg3-a --mac 52:54:00:12:34:01 --fresh-storage --timeout 120
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18836 CATTEN_DEPLOY_HOST_PORT=18136 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18836 KNYTOS_DEPLOY_HOST_PORT=18136 \
   scripts/run-aarch64.sh --relmsg-test --net-connect 127.0.0.1:12052 \
   --instance relmsg3-b --mac 52:54:00:12:34:02 --fresh-storage --timeout 120
 ```

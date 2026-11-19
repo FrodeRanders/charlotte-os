@@ -74,7 +74,7 @@
       "instance": "ipc-reply-arm",
       "exit_status": 0,
       "guest_attempt": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19906 CATTEN_DEPLOY_HOST_PORT=20070 scripts/run-aarch64.sh --security-test --http-test --instance ipc-reply-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19906 KNYTOS_DEPLOY_HOST_PORT=20070 scripts/run-aarch64.sh --security-test --http-test --instance ipc-reply-arm --fresh-storage --timeout 300",
       "kernel_sha256": "a481435b18d2c6d896f2d9926f21b991ef66c21e06e064bd5e1220474df5ff9e",
       "boot_image_sha256": "9b41f7154753c3ce4b6eacdcd9095d1d551ab2f537b0a5790ba9ae19386331a3",
       "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
@@ -199,7 +199,7 @@
       "instance": "ipc-reply-x86",
       "exit_status": 0,
       "guest_attempt": 1,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19907 CATTEN_DEPLOY_HOST_PORT=20071 scripts/run-x86_64.sh --security-test --http-test --instance ipc-reply-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19907 KNYTOS_DEPLOY_HOST_PORT=20071 scripts/run-x86_64.sh --security-test --http-test --instance ipc-reply-x86 --fresh-storage --timeout 300",
       "kernel_sha256": "95c3432e88c674b0023ba42e1304a88adfa1f3c9fa5666205f32d841ae194fe8",
       "boot_image_sha256": "8342797addb160c2236f3473b48247ffc782a2a4633c390d00e0f87165489f92",
       "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
@@ -344,13 +344,13 @@
       {
         "arch": "aarch64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "66b034efe2c704708ca77647754cd323cba622d4cdc355ae2ba2d895d8e33492"
       },
       {
         "arch": "x86_64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "6a44a69a3e70b804f717d0e5bde6b00adf38f73dcc82e89daa540d9585e6b8f1"
       }
     ],
@@ -400,7 +400,7 @@
     "runs": [
       {
         "module": "CharlotteIpcPublication",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcPublication",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcPublication",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 7634722,
@@ -473,7 +473,7 @@
       },
       {
         "module": "CharlotteIpcTransaction",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcTransaction",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcTransaction",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 26,
@@ -505,7 +505,7 @@
       },
       {
         "module": "CharlotteRootRetirement",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteRootRetirement",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteRootRetirement",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 2978,

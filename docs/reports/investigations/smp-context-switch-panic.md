@@ -51,13 +51,13 @@ SMP2/SMP4 boots before declaring the issue fully closed.
 ## 2. How to reproduce / tools used
 
 Environment: macOS (Apple Silicon), `qemu-system-aarch64`, `mtools`, Rust nightly with
-the custom target `target_specs/aarch64-unknown-none-catten.json`.
+the custom target `target_specs/aarch64-unknown-none-knytos.json`.
 
 Build (headless, no C `flanterm` dependency so it links cleanly):
 
 ```
 cargo build --package catten \
-  --target target_specs/aarch64-unknown-none-catten.json \
+  --target target_specs/aarch64-unknown-none-knytos.json \
   --no-default-features --features acpi
 ```
 
@@ -65,16 +65,16 @@ Boot scripts (in `scripts/`) — **note: these `mcopy` the freshly built kernel 
 `.img`; a raw `qemu` invocation against an old image will silently run a stale kernel
 (see §8)**:
 
-- `scripts/boot-smp1.sh` — 1 LP, 60 s, serial to `/tmp/charlotte-serial.log`.
-- `scripts/boot-smp2.sh` — 2 LPs, 90 s, serial to `/tmp/charlotte-smp2.log`.
+- `scripts/boot-smp1.sh` — 1 LP, 60 s, serial to `/tmp/knytos-serial.log`.
+- `scripts/boot-smp2.sh` — 2 LPs, 90 s, serial to `/tmp/knytos-smp2.log`.
 - `scripts/run-aarch64.sh --smp 4` — 4 LPs, serial to stdout (also `--hvf` on macOS).
 - `scripts/run-aarch64.sh [--gdb]` — builds an ESP image and boots; `--gdb` adds `-s -S`.
 
 Fast manual loop actually used for statistics (rebuild the image first!):
 
 ```
-K=target/aarch64-unknown-none-catten/debug/catten
-IMG=./os-images/charlotte-aarch64-fresh.img
+K=target/aarch64-unknown-none-knytos/debug/catten
+IMG=./os-images/knytos-aarch64-fresh.img
 dd if=/dev/zero of="$IMG" bs=1m count=64 status=none
 mformat -i "$IMG" -F -v CATOS ::
 mmd -i "$IMG" ::/EFI ::/EFI/BOOT
@@ -103,7 +103,7 @@ Disassembly (to identify the faulting instruction):
 SYSROOT=$(rustc --print sysroot); HOST=$(rustc -vV | awk '/^host:/{print $2}')
 "$SYSROOT/lib/rustlib/$HOST/bin/llvm-objdump" -d \
   --start-address=0xffffffff80000280 --stop-address=0xffffffff80000320 \
-  target/aarch64-unknown-none-catten/debug/catten
+  target/aarch64-unknown-none-knytos/debug/catten
 ```
 
 ---
@@ -317,7 +317,7 @@ Validation after adding the `x30` save:
 
 ```
 cargo build --package catten \
-  --target target_specs/aarch64-unknown-none-catten.json \
+  --target target_specs/aarch64-unknown-none-knytos.json \
   --no-default-features --features acpi
 
 ./scripts/boot-smp2.sh
@@ -365,7 +365,7 @@ instrumentation that had already been reverted in source). Conclusions about hyp
 
 ## 9. Changes made (kept in the tree)
 
-All changes compile cleanly for `aarch64-unknown-none-catten`. The final `x30` change made the
+All changes compile cleanly for `aarch64-unknown-none-knytos`. The final `x30` change made the
 known `scripts/boot-smp2.sh` reproducer complete its full 90 s window in both traced and clean
 post-cleanup builds without the data abort; more SMP2/SMP4 soak runs are still recommended.
 
@@ -482,7 +482,7 @@ If the panic returns after the `x30` fix, capture the actual machine state at th
    line in §2.
 2. Connect a debugger that understands bare‑metal AArch64 ELF (lldb ships on macOS):
    ```
-   lldb target/aarch64-unknown-none-catten/debug/catten
+   lldb target/aarch64-unknown-none-knytos/debug/catten
    (lldb) gdb-remote localhost:1234
    (lldb) breakpoint set --name sync_dispatcher
    (lldb) continue                # re-run a few times; the bug is ~40%

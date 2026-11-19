@@ -77,12 +77,12 @@ Contract: [kernel-frame retirement](../../reference/kernel-frame-retirement.md).
 | Arm SMMUv3 security QEMU | **19 passed, 0 failed, 0 pending**; scoped probes `0xffff`, publication generations 1/2, concurrent cancellation retired 4,668 requests. |
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance kernel-preparation-intel-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance kernel-preparation-amd-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance kernel-preparation-arm-20261007 --fresh-storage --timeout 180
 ```
 

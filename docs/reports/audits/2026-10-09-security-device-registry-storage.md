@@ -152,9 +152,9 @@ permissions (249 x86 native entries, one Arm). Arm used the authorized runner
 because local forwarding ports are sandbox-blocked.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance device-registry-intel-final-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance device-registry-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18719 CATTEN_DEPLOY_HOST_PORT=18019 scripts/run-aarch64.sh --security-test --instance device-registry-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance device-registry-intel-final-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance device-registry-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18719 KNYTOS_DEPLOY_HOST_PORT=18019 scripts/run-aarch64.sh --security-test --instance device-registry-arm-20261009 --fresh-storage --timeout 180
 ```
 
 ## Limits and remaining work

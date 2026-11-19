@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-sec04-boot-receipts-evidence-v1",
+  "schema": "knytos-sec04-boot-receipts-evidence-v1",
   "report_date": "2026-10-19 Europe/Stockholm",
   "reviewed_revision": "d224a13e9fa6c56f6d7ab9b59c00bebb3f40114e",
   "classification": "Shared API hardening. The existing native fixture already rejected uninstalled successors; no baseline unsafe boot reproduced. Production remains disabled; no protected installer/state/custody implemented.",
@@ -105,11 +105,11 @@
       "runner_log_sha256": "28f3125a2791f000e465f6bdbd2159c665bc5c9fcd131832d99f7025e4aaabdf",
       "preparation_log_sha256": "d89b8630face083d356e65e6950beee470a506ea9fe697f7ed8e8985192711a3",
       "diagnostics": [
-        ">>> Creating boot image /private/tmp/charlotte-sec04-boot-native/private.crsq9y_9/base.img...",
+        ">>> Creating boot image /private/tmp/knytos-sec04-boot-native/private.crsq9y_9/base.img...",
         "Disk full",
-        "error: failed to create boot image /private/tmp/charlotte-sec04-boot-native/private.crsq9y_9/base.img"
+        "error: failed to create boot image /private/tmp/knytos-sec04-boot-native/private.crsq9y_9/base.img"
       ],
-      "runner_diagnostic": "DEVELOPMENT QEMU Secure Boot fixture; public test policy/recipient. Evidence: /private/tmp/charlotte-sec04-boot-native\nSecure Boot fixture failed: Command '['bash', '-c', 'source \"$1/scripts/lib/boot-common.sh\"; catten_boot_create_uefi_image \"$2\" 64 \"$3\" \"$4\" \"$5\" CATOS', 'secure-test', '/Users/froran/Projects/private/charlotte-os', '/private/tmp/charlotte-sec04-boot-native/private.crsq9y_9/base.img', '/private/tmp/charlotte-sec04-boot-native/private.crsq9y_9/BOOTX64.EFI', '/private/tmp/charlotte-sec04-boot-native/private.crsq9y_9/kernel-snapshot', '/private/tmp/charlotte-sec04-boot-native/limine.conf']' returned non-zero exit status 1.",
+      "runner_diagnostic": "DEVELOPMENT QEMU Secure Boot fixture; public test policy/recipient. Evidence: /private/tmp/knytos-sec04-boot-native\nSecure Boot fixture failed: Command '['bash', '-c', 'source \"$1/scripts/lib/boot-common.sh\"; knytos_boot_create_uefi_image \"$2\" 64 \"$3\" \"$4\" \"$5\" CATOS', 'secure-test', '/Users/froran/Projects/private/knytos', '/private/tmp/knytos-sec04-boot-native/private.crsq9y_9/base.img', '/private/tmp/knytos-sec04-boot-native/private.crsq9y_9/BOOTX64.EFI', '/private/tmp/knytos-sec04-boot-native/private.crsq9y_9/kernel-snapshot', '/private/tmp/knytos-sec04-boot-native/limine.conf']' returned non-zero exit status 1.",
       "kernel_bytes": 66334264,
       "unsigned_loader_bytes": 368640,
       "boot_image_mib": 64,
@@ -421,7 +421,7 @@
     "limit": "Disposable enrolled QEMU firmware/test authorities and public policy/recipient only. All case-specific signed EFI images and VM disks were intentionally temporary; their exact file digests were not captured. Retained public certs, enrollment/config, firmware/kernel/policy hashes and logs support the test-chain result, not production enrollment or byte-for-byte reconstruction of those temporary signed images."
   },
   "arm_native": {
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh debug --instance sec04boot --fresh-storage --timeout 120",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh debug --instance sec04boot --fresh-storage --timeout 120",
     "exit_status": 0,
     "kernel_sha256": "7d5ce4bc25a6047fdc3abe0a7a2432c6181274b5fc023a8e0b44d98c1775137b",
     "runner_log_sha256": "99a97841f2372396a4018e3eb4be2a2473aa029fbbd2b1bd19d471df0adbb78b",

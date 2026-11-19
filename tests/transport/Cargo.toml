@@ -1,5 +1,5 @@
 [package]
-name = "charlotte-transport-tests"
+name = "knytos-transport-tests"
 version = "0.1.0"
 edition = "2024"
 publish = false

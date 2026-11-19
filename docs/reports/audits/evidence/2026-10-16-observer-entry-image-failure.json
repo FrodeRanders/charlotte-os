@@ -7,10 +7,10 @@
   "efi_loader_sha256": "8df2bdd73aa9e4f679b4dec73b1665268343b50c5de76ea17c8de498d717ef30",
   "environment": {
     "CARGO_BUILD_RUSTFLAGS": "-D warnings",
-    "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
-    "CATTEN_DEPLOY_HOST_PORT": "19181",
-    "CATTEN_HTTP_HOST_PORT": "19180",
-    "CATTEN_SKIP_EMBED_BUILD": "1"
+    "KNYTOS_ALLOW_SANDBOX_NETWORK": "1",
+    "KNYTOS_DEPLOY_HOST_PORT": "19181",
+    "KNYTOS_HTTP_HOST_PORT": "19180",
+    "KNYTOS_SKIP_EMBED_BUILD": "1"
   },
   "failed_runner_output_sha256": "f79cdc9c845f22a26cf2e2a343401f92c5adbd24339caa0411e6292a2996d48e",
   "guest_diagnostics_created": false,
@@ -23,9 +23,9 @@
   "observations": [
     ">>> Kernel assembly permissions: 249 native entries verified",
     ">>> Kernel SHA-256: 3a58164a643ef105a332759b799c6b09003ed7007d2562760f63ea1c5f1073a0",
-    ">>> Creating boot image ./os-images/charlotte-x86_64-debug-entry-construction-intel-security.img...",
+    ">>> Creating boot image ./os-images/knytos-x86_64-debug-entry-construction-intel-security.img...",
     "Disk full",
-    "error: failed to create boot image ./os-images/charlotte-x86_64-debug-entry-construction-intel-security.img"
+    "error: failed to create boot image ./os-images/knytos-x86_64-debug-entry-construction-intel-security.img"
   ],
   "payload_input_bytes_total": 66230028,
   "pre_fix_runner_sha256": {

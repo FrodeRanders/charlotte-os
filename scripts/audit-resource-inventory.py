@@ -154,8 +154,8 @@ def main():
     paths = sorted((ROOT / "crates/catten/src").rglob("*.rs"))
     source_hashes = {str(p.relative_to(ROOT)): sha(p) for p in paths}
     inputs = ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo/config.toml",
-              "crates/catten/Cargo.toml", "target_specs/aarch64-unknown-none-catten.json",
-              "target_specs/x86_64-unknown-none-catten.json"]
+              "crates/catten/Cargo.toml", "target_specs/aarch64-unknown-none-knytos.json",
+              "target_specs/x86_64-unknown-none-knytos.json"]
     inputs += [f"crates/knytos-launch/src/{name}.rs" for name in
                ["lib", "deployment", "operations", "operations_pickup", "operations_bundle", "release", "shutdown"]]
     result = {

@@ -33,7 +33,7 @@ to convert; future deployed-store changes still require explicit,
 interruption-tested migration.
 
 Observability uses `CLOBSV2` / version 2, with 28-byte fixed deployment records,
-and `charlotte.cluster.v2` JSON. Both boot runners validate the current schema
+and `knytos.cluster.v2` JSON. Both boot runners validate the current schema
 and absence of object IDs. Markdown and LaTeX/PDF contracts, observers, console
 and native fixtures are updated. Historical reports remain unchanged.
 
@@ -112,7 +112,7 @@ separate work. The next ordered simplification is canonical authenticated IPC.
   S3 GET, scoped launch and generation-1 ready state. Unknown initial execution
   profile returned HTTP 409 / -23 before later capacity-qualified admission;
   this is expected warmup rejection, not authority to replay an accepted RPC.
-- x86 host keyhole returned a fresh `charlotte.cluster.v2` view with `greet`
+- x86 host keyhole returned a fresh `knytos.cluster.v2` view with `greet`
   ready, generation/service generation 1, demand 12 frames, desired and ready
   node arrays both `["0000000042e21edb"]`, and **no object_id**. Its runner
   asserted the schema and removed-field absence. ARM S3 preceded the final

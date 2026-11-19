@@ -95,9 +95,9 @@ Existing validated service bundles were reused; guest runners rebuilt kernels
 and enforced assembly-section permissions. Runs were sequential after Clippy.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance abort-handoff-intel-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance abort-handoff-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18629 CATTEN_DEPLOY_HOST_PORT=17929 scripts/run-aarch64.sh --security-test --instance abort-handoff-arm-approved-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance abort-handoff-intel-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance abort-handoff-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18629 KNYTOS_DEPLOY_HOST_PORT=17929 scripts/run-aarch64.sh --security-test --instance abort-handoff-arm-approved-20261009 --fresh-storage --timeout 180
 ```
 
 ## Remaining scope

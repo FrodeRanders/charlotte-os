@@ -71,7 +71,7 @@ built the debug/headless AArch64 kernel with its normal `acpi` feature. No
 embedded-build skip or stale-storage override was used:
 
 ```sh
-CATTEN_HTTP_HOST_PORT=18681 CATTEN_DEPLOY_HOST_PORT=18445 \
+KNYTOS_HTTP_HOST_PORT=18681 KNYTOS_DEPLOY_HOST_PORT=18445 \
   ./scripts/run-aarch64.sh --instance sitas-cq-20261029-2 \
   --fresh-storage --timeout 180 --smp 4
 ```

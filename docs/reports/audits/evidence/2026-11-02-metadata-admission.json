@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.metadata-admission.v1",
+  "schema": "knytos.metadata-admission.v1",
   "date": "2026-11-02",
   "base_revision": "a92a2446542ce9ddbad69438bb77521322b9ae3c",
   "scope": "Discrete consolidation of 22 independent metadata pools into family-typed charge mechanics and a read-only observer inventory; no numerical limit, register ABI or physical completion contract changes.",

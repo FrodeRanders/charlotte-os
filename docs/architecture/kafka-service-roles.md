@@ -75,7 +75,7 @@ endpoint capabilities may be held by one application when their commits are
 independent.
 
 Each connector is one Kafka group member using the bounded
-`charlotte-fixed-v1` assignor. Connectors with the same authorized partition
+`knytos-fixed-v1` assignor. Connectors with the same authorized partition
 elect one active member while the others heartbeat with empty assignments as
 standbys. Group-generation and member identity fence ordinary and transactional
 offset commits. A rebalance revokes outstanding delivery authority and aborts

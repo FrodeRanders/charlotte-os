@@ -235,17 +235,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "charlotte-transport-tests"
-version = "0.1.0"
-dependencies = [
- "embedded-io",
- "knytos-kafka",
- "knytos-s3",
- "knytos-services",
- "zeroize",
-]
-
-[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1100,6 +1089,17 @@ dependencies = [
 [[package]]
 name = "knytos-syscall"
 version = "0.1.0"
+
+[[package]]
+name = "knytos-transport-tests"
+version = "0.1.0"
+dependencies = [
+ "embedded-io",
+ "knytos-kafka",
+ "knytos-s3",
+ "knytos-services",
+ "zeroize",
+]
 
 [[package]]
 name = "knytos-user"

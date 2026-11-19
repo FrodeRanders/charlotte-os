@@ -170,8 +170,8 @@ binary has no Knytos config hash or signing identity enrolled.
 the repository default:
 
 ```sh
-CATTEN_LIMINE_CONFIG=limine-measured.conf scripts/run-aarch64.sh
-CATTEN_LIMINE_CONFIG=limine-measured.conf scripts/run-x86_64.sh
+KNYTOS_LIMINE_CONFIG=limine-measured.conf scripts/run-aarch64.sh
+KNYTOS_LIMINE_CONFIG=limine-measured.conf scripts/run-x86_64.sh
 ```
 
 Measurements occur only when firmware exposes a TPM2 TCG2 or confidential-

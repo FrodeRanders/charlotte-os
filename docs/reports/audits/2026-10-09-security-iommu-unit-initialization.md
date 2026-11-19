@@ -133,9 +133,9 @@ change and strict Clippy checks. The host harness was not rerun for kernel-only
 changes.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance unit-init-intel-final-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance unit-init-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18659 CATTEN_DEPLOY_HOST_PORT=17959 scripts/run-aarch64.sh --security-test --instance unit-init-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance unit-init-intel-final-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance unit-init-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18659 KNYTOS_DEPLOY_HOST_PORT=17959 scripts/run-aarch64.sh --security-test --instance unit-init-arm-20261009 --fresh-storage --timeout 180
 ```
 
 ## Remaining scope

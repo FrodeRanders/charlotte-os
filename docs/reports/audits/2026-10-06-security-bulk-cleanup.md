@@ -58,11 +58,11 @@ Both runners rebuilt the kernel and reused the previously rebuilt signed service
 bundles; no service source or dependency/lockfile change was needed. Commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance bulk-security-20261006-v2 --fresh-storage --timeout 160
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18387 \
-CATTEN_DEPLOY_HOST_PORT=17687 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18387 \
+KNYTOS_DEPLOY_HOST_PORT=17687 scripts/run-aarch64.sh --security-test \
   --instance bulk-security-20261006-v2 --fresh-storage --timeout 150
 ```
 

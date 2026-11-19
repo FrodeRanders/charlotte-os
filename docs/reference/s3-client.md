@@ -174,7 +174,7 @@ Plain HTTP remains available only when an explicitly provisioned profile sets
 
 The opt-in runner path starts an ephemeral RustFS container with a freshly
 generated P-256 test CA and server certificate, provisions the
-`charlotte-test` bucket, then boots Knytos. The in-guest smoke application
+`knytos-test` bucket, then boots Knytos. The in-guest smoke application
 performs PUT, HEAD, GET, body verification, and DELETE through the same owned
 client API applications use:
 
@@ -191,8 +191,8 @@ setup result in its failure diagnostic.
 Docker, Docker Compose, and OpenSSL are required. The fixture binds only to
 host port `19000`; QEMU's user-network gateway is `10.0.2.2`, while TLS and
 SigV4 use the certificate name `rustfs.test`. The runner removes the container
-and its named data volume on exit. Override `CATTEN_RUSTFS_IMAGE` or
-`CATTEN_RUSTFS_CLI_IMAGE` to test a pinned RustFS/`rc` image.
+and its named data volume on exit. Override `KNYTOS_RUSTFS_IMAGE` or
+`KNYTOS_RUSTFS_CLI_IMAGE` to test a pinned RustFS/`rc` image.
 
 QEMU's named `cortex-a710` model does not expose Arm `RNDR`. The ordinary
 AArch64 runner therefore attaches `virtio-rng-pci` to `/dev/urandom`; the

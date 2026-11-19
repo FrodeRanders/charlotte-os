@@ -107,7 +107,7 @@ the four diagnostics above. No lint allowance or unrelated code change is added.
 
 All guests use four LPs, isolated instances, no network, the rebuilt signed
 bundles and 180-second runner budgets. The environment uses
-`CATTEN_SKIP_EMBED_BUILD=1` and `CARGO_BUILD_RUSTFLAGS='-D warnings'`.
+`KNYTOS_SKIP_EMBED_BUILD=1` and `CARGO_BUILD_RUSTFLAGS='-D warnings'`.
 Each guest's storage fixture starts a durable voter, waits for election,
 tears down that process and restarts the same identity. All runners exit **0**.
 
@@ -131,7 +131,7 @@ Commands, with the environment above:
 ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance raft-diagnostics-arm
 ./scripts/run-aarch64.sh debug --smp 4 --no-network --reuse-storage --timeout 180 --instance raft-diagnostics-arm
 ./scripts/run-x86_64.sh debug --smp 4 --no-network --iommu intel --fresh-storage --timeout 180 --instance raft-diagnostics-intel
-CATTEN_SKIP_KERNEL_BUILD=1 ./scripts/run-x86_64.sh debug --smp 4 --no-network --iommu amd --fresh-storage --timeout 180 --instance raft-diagnostics-amd
+KNYTOS_SKIP_KERNEL_BUILD=1 ./scripts/run-x86_64.sh debug --smp 4 --no-network --iommu amd --fresh-storage --timeout 180 --instance raft-diagnostics-amd
 ```
 
 No network/DNS replication, HTTP recovery, security-profile rollout, actual

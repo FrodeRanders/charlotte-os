@@ -78,7 +78,7 @@ collapse replica rows. If the catalog reply is unavailable or invalid,
 `registered_count` comes independently from the status word and does not prove
 that catalog observation succeeded. An unavailable DNS service renders `dns:null`.
 Neither representation grants invocation authority or establishes a Raft read
-barrier. Cluster JSON keeps its separate `charlotte.cluster.v2` grammar.
+barrier. Cluster JSON keeps its separate `knytos.cluster.v2` grammar.
 
 ## Validation scope
 

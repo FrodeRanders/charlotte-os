@@ -81,7 +81,7 @@
       "instance": "memory-object-storage-arm",
       "exit_status": 0,
       "guest_attempt": 2,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19916 CATTEN_DEPLOY_HOST_PORT=20080 scripts/run-aarch64.sh --security-test --http-test --instance memory-object-storage-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19916 KNYTOS_DEPLOY_HOST_PORT=20080 scripts/run-aarch64.sh --security-test --http-test --instance memory-object-storage-arm --fresh-storage --timeout 300",
       "kernel_sha256": "702727bc2d126699499b3e5ea54de721da60dddd7112f6eb0b124e4ad1ae4eca",
       "boot_image_sha256": "40ce92879dd267c849aa56bba8a8981cd76f2258c468c76a47ad0bc5b1d0dcae",
       "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
@@ -215,7 +215,7 @@
       "instance": "memory-object-storage-x86",
       "exit_status": 0,
       "guest_attempt": 2,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19917 CATTEN_DEPLOY_HOST_PORT=20081 scripts/run-x86_64.sh --security-test --http-test --instance memory-object-storage-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19917 KNYTOS_DEPLOY_HOST_PORT=20081 scripts/run-x86_64.sh --security-test --http-test --instance memory-object-storage-x86 --fresh-storage --timeout 300",
       "kernel_sha256": "1768c37335edaca864d16c48cf4a0e2857978f489e179c9ca8cbe96a96f954c6",
       "boot_image_sha256": "7f404f3191f63a6f5c269d46b1ac46ed8396aa2d2ce6acac65f61be3bc859ddf",
       "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
@@ -375,13 +375,13 @@
       {
         "arch": "aarch64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "618c42e1651afbe52135e26e43081edf4a3c32dd07ed09691d8ff4dc7f20be31"
       },
       {
         "arch": "x86_64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "d27a9829104fe1de450da277290bfde8584ebf859965e62f8a473c33f05afe15"
       }
     ],
@@ -439,7 +439,7 @@
     "runs": [
       {
         "module": "CharlotteIpcPublication",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcPublication",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcPublication",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 7634722,
@@ -512,7 +512,7 @@
       },
       {
         "module": "CharlotteIpcTransaction",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcTransaction",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteIpcTransaction",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 26,
@@ -544,7 +544,7 @@
       },
       {
         "module": "CharlotteRootRetirement",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteRootRetirement",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlotteRootRetirement",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 2978,
@@ -591,7 +591,7 @@
       },
       {
         "module": "CharlottePrincipalBacking",
-        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlottePrincipalBacking",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlottePrincipalBacking",
         "exit_status": 0,
         "safe_graph": {
           "distinct": 72344,

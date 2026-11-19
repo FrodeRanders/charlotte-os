@@ -16,7 +16,7 @@ selected_module="${2:-}"
 selected_cases=0
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-model_dir="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-tla.XXXXXX")"
+model_dir="$(mktemp -d "${TMPDIR:-/tmp}/knytos-tla.XXXXXX")"
 trap 'rm -rf "${model_dir}"' EXIT
 
 run_model() {

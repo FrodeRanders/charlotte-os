@@ -114,11 +114,11 @@ Kernel SHA-256:
 Guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu intel \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu intel \
   --instance stack-fix-intel --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance stack-fix-amd --fresh-storage --timeout 150
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18851 CATTEN_DEPLOY_HOST_PORT=18151 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18851 KNYTOS_DEPLOY_HOST_PORT=18151 \
   scripts/run-aarch64.sh --security-test \
   --instance stack-fix-arm --fresh-storage --timeout 180
 ```

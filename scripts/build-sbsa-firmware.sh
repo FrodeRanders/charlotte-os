@@ -238,6 +238,6 @@ echo "    $OUT/SBSA_FLASH0.fd  (TF-A: EL1 handoff + CPU-topology SMC)"
 echo "    $OUT/SBSA_FLASH1.fd  (edk2 QemuSbsa UEFI)"
 echo
 echo ">>> To run:"
-echo "    CATTEN_SBSA_FLASH0='$OUT/SBSA_FLASH0.fd' \\"
-echo "    CATTEN_SBSA_FLASH1='$OUT/SBSA_FLASH1.fd' \\"
+echo "    KNYTOS_SBSA_FLASH0='$OUT/SBSA_FLASH0.fd' \\"
+echo "    KNYTOS_SBSA_FLASH1='$OUT/SBSA_FLASH1.fd' \\"
 echo "      '$ROOT_DIR/scripts/run-aarch64.sh' --sbsa-ref --no-network --timeout 240"

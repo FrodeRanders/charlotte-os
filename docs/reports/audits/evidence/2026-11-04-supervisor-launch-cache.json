@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.supervisor-launch-cache.v1",
+  "schema": "knytos.supervisor-launch-cache.v1",
   "date": "2026-11-04",
   "base_revision": "85e224ee883d37457188fb28f4d0761057286be3",
   "scope": "Q2: complete supervisor launch/upgrade parents and actual upgrade-syscall integration; byte-admitted handoff arrays; fixed publication/owned store image cache; stop seeding on denied/unreadable results. No new cleanup/recovery owner family.",
@@ -66,7 +66,7 @@
       "exit_status": 101,
       "diagnostics": [
         "    Blocking waiting for file lock on build directory",
-        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/knytos/crates/catten)",
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
         "error: unused import: `close_user_address_space_handle`",
         "  --> crates/catten/src/service/supervisor.rs:54:9",
@@ -165,7 +165,7 @@
         "[+    13.564360] [service] persistent upgrade completed: ns_waiters=1, ns_handled=1402",
         "[+    82.714452] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18692 CATTEN_DEPLOY_HOST_PORT=17692 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q2-20261104-arm"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18692 KNYTOS_DEPLOY_HOST_PORT=17692 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q2-20261104-arm"
     },
     {
       "arch": "x86_64",
@@ -208,7 +208,7 @@
         "[+    24.561787] [service] persistent upgrade completed: ns_waiters=0, ns_handled=1094",
         "[+    97.889974] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18693 CATTEN_DEPLOY_HOST_PORT=17693 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q2-20261104-intel"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18693 KNYTOS_DEPLOY_HOST_PORT=17693 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q2-20261104-intel"
     },
     {
       "arch": "x86_64",
@@ -251,7 +251,7 @@
         "[+    19.105369] [service] persistent upgrade completed: ns_waiters=1, ns_handled=1252",
         "[+    90.552821] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18693 CATTEN_DEPLOY_HOST_PORT=17693 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q2-20261104-amd"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18693 KNYTOS_DEPLOY_HOST_PORT=17693 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q2-20261104-amd"
     }
   ],
   "validation": {
@@ -323,7 +323,7 @@
         "",
         "---- image_cache::tests::count_denial_precedes_preparation_and_abandonment_retains_the_complete_prefix stdout ----",
         "",
-        "thread 'image_cache::tests::count_denial_precedes_preparation_and_abandonment_retains_the_complete_prefix' (8619116) panicked at /Users/froran/Projects/private/charlotte-os/crates/catten/src/service/store/image_cache/tests.rs:143:5:",
+        "thread 'image_cache::tests::count_denial_precedes_preparation_and_abandonment_retains_the_complete_prefix' (8619116) panicked at /Users/froran/Projects/private/knytos/crates/catten/src/service/store/image_cache/tests.rs:143:5:",
         "assertion `left == right` failed: abandonment released the complete image prefix",
         "  left: ([0, 0], [0, 0])",
         " right: ([129, 1], [0, 0])",

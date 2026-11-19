@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TLS = ROOT / "crates/knytos-services/src/tls_client.rs"
 TARGET = ROOT / "crates/knytos-services/x86_64-unknown-none.json"
 MANAGEMENT_TLS = ROOT / "crates/knytos-management-tls/src/crypto.rs"
-KERNEL_TARGET = ROOT / "target_specs/x86_64-unknown-none-catten.json"
+KERNEL_TARGET = ROOT / "target_specs/x86_64-unknown-none-knytos.json"
 
 
 class TlsGcmBackend(unittest.TestCase):
@@ -39,7 +39,7 @@ class TlsGcmBackend(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if output := os.environ.get("CATTEN_TLS_BACKEND_EVIDENCE"):
+        if output := os.environ.get("KNYTOS_TLS_BACKEND_EVIDENCE"):
             Path(output).write_text(json.dumps({
                 "target": str(TARGET.relative_to(ROOT)),
                 "guard": cls.guard,
@@ -68,7 +68,7 @@ class TlsGcmBackend(unittest.TestCase):
         (directory / "src/lib.rs").write_text(guard)
         env = dict(os.environ)
         for key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_TARGET_X86_64_UNKNOWN_NONE_RUSTFLAGS",
-                    "CARGO_TARGET_X86_64_UNKNOWN_NONE_CATTEN_RUSTFLAGS"):
+                    "CARGO_TARGET_X86_64_UNKNOWN_NONE_KNYTOS_RUSTFLAGS"):
             env.pop(key, None)
         if override_flags:
             # An explicit override shadows Cargo target configuration. The

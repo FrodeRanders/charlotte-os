@@ -12,7 +12,7 @@ or abandoned metadata after namespace authority has been retired.
 
 These are the defaults of `Policy.memory_capability_nodes`, selected through the
 central [resource policy](resource-policy.md). They are compile-time adjustable with
-`CATTEN_RESOURCE_POLICY`; see [Configuration](../guides/configuration.md). No
+`KNYTOS_RESOURCE_POLICY`; see [Configuration](../guides/configuration.md). No
 boot-time input or live resizing is introduced.
 
 ## Admission and ownership

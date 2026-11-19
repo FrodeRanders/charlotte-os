@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.dma-metadata-admission.v1",
+  "schema": "knytos.dma-metadata-admission.v1",
   "date": "2026-11-02",
   "base_revision": "e7078cc12de302c62d7f5cee65fe5f2b1ccb743c",
   "scope": "DMA mapping/quarantine and SMMU walker-cache nodes share the existing IommuNodes byte/count pool and retain the immutable original domain-grant class. Hardware completion, physical table budgets, numerical limits, the 22-pool catalog and version-9 snapshot remain unchanged.",

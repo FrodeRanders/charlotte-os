@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.named-status.v1",
+  "schema": "knytos.security.named-status.v1",
   "report_date": "2026-10-21",
   "reviewed_revision": "bad2113518db849e44080b095af0ea30d9078cab",
   "classification": {
@@ -693,13 +693,13 @@
         "cases_run": 3,
         "failed_cases": 2,
         "passed_cases": 1,
-        "diagnostics": "test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) ... \n  test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\r\\n\\r\\n{\"ignored\":true}') ... FAIL\n  test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='\\xa0{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\xa0') ... FAIL\n\n======================================================================\nFAIL: test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\r\\n\\r\\n{\"ignored\":true}')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-release-generation.py\", line 85, in test_malformed_component_status_stops\n    self.assertNotEqual(result.returncode,0,result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='\\xa0{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\xa0')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-release-generation.py\", line 85, in test_malformed_component_status_stops\n    self.assertNotEqual(result.returncode,0,result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n----------------------------------------------------------------------\nRan 1 test in 0.057s\n\nFAILED (failures=2)\n"
+        "diagnostics": "test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) ... \n  test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\r\\n\\r\\n{\"ignored\":true}') ... FAIL\n  test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='\\xa0{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\xa0') ... FAIL\n\n======================================================================\nFAIL: test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\r\\n\\r\\n{\"ignored\":true}')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/knytos/scripts/tests/test-release-generation.py\", line 85, in test_malformed_component_status_stops\n    self.assertNotEqual(result.returncode,0,result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='\\xa0{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\xa0')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/knytos/scripts/tests/test-release-generation.py\", line 85, in test_malformed_component_status_stops\n    self.assertNotEqual(result.returncode,0,result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n----------------------------------------------------------------------\nRan 1 test in 0.057s\n\nFAILED (failures=2)\n"
       }
     }
   },
   "host_validation": {
     "debug": {
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p cluster-sign",
       "exit_status": 0,
       "tests_passed": 81,
       "result_lines": [
@@ -713,7 +713,7 @@
       ]
     },
     "release": {
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked --release -p cluster-sign",
       "exit_status": 0,
       "tests_passed": 81,
       "result_lines": [
@@ -729,7 +729,7 @@
   },
   "host_test_context": {
     "cwd": "/private/tmp",
-    "manifest": "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+    "manifest": "/Users/froran/Projects/private/knytos/Cargo.toml",
     "flags": "--offline --locked",
     "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)"
   },
@@ -2090,7 +2090,7 @@
       "exit_status": 0
     },
     "clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
       "exit_status": 0
     },
     "arm_build": {
@@ -2142,7 +2142,7 @@
     "model_transitions_changed": false
   },
   "preserved_pdf": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "edited_or_rendered": false
   },

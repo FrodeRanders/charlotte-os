@@ -134,9 +134,9 @@ entries, one Arm). Arm used the authorized runner because its local forwarding
 ports are sandbox-blocked.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance capability-namespace-intel-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance capability-namespace-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18729 CATTEN_DEPLOY_HOST_PORT=18029 scripts/run-aarch64.sh --security-test --instance capability-namespace-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance capability-namespace-intel-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance capability-namespace-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18729 KNYTOS_DEPLOY_HOST_PORT=18029 scripts/run-aarch64.sh --security-test --instance capability-namespace-arm-20261009 --fresh-storage --timeout 180
 ```
 
 ## Limits and remaining work

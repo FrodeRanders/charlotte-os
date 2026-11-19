@@ -46,7 +46,7 @@ are accepted; duplicate, unknown, missing or extended fields reject. See the
 
 The normal network-and-storage service set starts `clusterctl`, `agent`, and
 `deployd`. `deployd` listens on guest TCP port 7444. The QEMU runners forward
-`${CATTEN_DEPLOY_HOST_PORT:-8081}` to that port under the default user network,
+`${KNYTOS_DEPLOY_HOST_PORT:-8081}` to that port under the default user network,
 so the host tool defaults to `127.0.0.1:8081`.
 
 All seven deployment HTTP controls use owning `deployment_control::Controls`
@@ -501,20 +501,20 @@ The fixture deploys the bundled `greet` artifact by default and accepts any
 externally signed ELF through environment overrides:
 
 ```text
-CATTEN_DEPLOY_NAME=<artifact> CATTEN_DEPLOY_ELF=<path> \
-CATTEN_DEPLOY_OBJECT_KEY=deployments/<file>.elf \
-CATTEN_DEPLOY_STACK_PAGES=<n> CATTEN_DEPLOY_MAX_THREADS=<n> \
-CATTEN_DEPLOY_GRACE_MS=<ms> \
-CATTEN_DEPLOY_GRANTS="<service>=client <artifact>=publish" \
-CATTEN_APP_HOST_PORT=<host-port> CATTEN_APP_GUEST_PORT=<guest-port> \
-CATTEN_APP_HOLD_SECONDS=<seconds> \
+KNYTOS_DEPLOY_NAME=<artifact> KNYTOS_DEPLOY_ELF=<path> \
+KNYTOS_DEPLOY_OBJECT_KEY=deployments/<file>.elf \
+KNYTOS_DEPLOY_STACK_PAGES=<n> KNYTOS_DEPLOY_MAX_THREADS=<n> \
+KNYTOS_DEPLOY_GRACE_MS=<ms> \
+KNYTOS_DEPLOY_GRANTS="<service>=client <artifact>=publish" \
+KNYTOS_APP_HOST_PORT=<host-port> KNYTOS_APP_GUEST_PORT=<guest-port> \
+KNYTOS_APP_HOLD_SECONDS=<seconds> \
 scripts/run-aarch64.sh debug --deployment-ingress-test --timeout 300
 ```
 
 The ELF must already carry a CLS2 note from the cluster artifact key, since the
-fixture signs the descriptor, not the binary. `CATTEN_APP_HOST_PORT` and
-`CATTEN_APP_GUEST_PORT` add a SLIRP forward so a host client can reach the
-deployed service; `CATTEN_APP_HOLD_SECONDS` keeps the guest alive after
+fixture signs the descriptor, not the binary. `KNYTOS_APP_HOST_PORT` and
+`KNYTOS_APP_GUEST_PORT` add a SLIRP forward so a host client can reach the
+deployed service; `KNYTOS_APP_HOLD_SECONDS` keeps the guest alive after
 readiness so that client can run before the runner exits. Out-of-tree projects
 drive this through `knytos-kafka-broker/tools/qemu-smoke.sh`, which packages
 the artifact, deploys it, and runs the host smoke client end to end.

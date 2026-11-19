@@ -63,7 +63,7 @@ boot-result, syscall-emitter and signed-envelope tool checks. Both service
 bundles build and strict service Clippy passes with `-D warnings`. The initial
 post-removal host build identified the now-unused scalar `svc5` helper; all
 three target implementations were removed before final validation. Two initial
-kernel lint invocations omitted `CATTEN_S3_TEST_CA_DER` and failed at the
+kernel lint invocations omitted `KNYTOS_S3_TEST_CA_DER` and failed at the
 fixture's compile-time certificate include, not at changed Rust logic; invocations
 with the runner-provided certificate and bundle environment passed.
 
@@ -106,7 +106,7 @@ and `1b8fccb80ef89449fe55232af1394be541c3bec19a63ec4bfd914840d955e080`.
 
 Both final runs use fresh NVMe fixture disks, debug kernels and the normal
 `--deployment-ingress-test --timeout 240` runners, with signed bundles already
-rebuilt (`CATTEN_SKIP_EMBED_BUILD=1`). The kernel profile is
+rebuilt (`KNYTOS_SKIP_EMBED_BUILD=1`). The kernel profile is
 `acpi,virtio_net_test,dhcp_test,s3_test`. Each native runner checks executable,
 read-only assembly sections and captures an immutable kernel hash. The local
 RustFS TLS development fixture is regenerated separately for each run, so its

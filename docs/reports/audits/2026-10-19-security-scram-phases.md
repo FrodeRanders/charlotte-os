@@ -76,7 +76,7 @@ final-source/signature freshness passes.
 
 The native AArch64 fixture uses three Apache Kafka 4.1.1 brokers, verified TLS,
 required P-256 mTLS and SCRAM-SHA-256. It runs in its own Compose project,
-`charlotte-sec15-scram`; no existing containers were found before startup.
+`knytos-sec15-scram`; no existing containers were found before startup.
 After authentication, the host kills output-route leader `kafka2` in the
 required fault window. The suite completes **20 passed / zero failed / zero
 pending**, bitmap `0x503ffff`. Its diagnostic records:

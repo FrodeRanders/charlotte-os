@@ -73,7 +73,7 @@ use knytos_launch::{
 use rand_core::UnwrapErr;
 use zeroize::Zeroizing;
 
-const NOTE_SECTION_NAME: &[u8] = b".note.charlotte-sig";
+const NOTE_SECTION_NAME: &[u8] = b".note.knytos-sig";
 const SHT_NOTE: u32 = 7;
 const ELF64_SECTION_HEADER_LEN: usize = 64;
 
@@ -902,7 +902,7 @@ fn operations_bundle_notify(args: &[String]) -> Result<()> {
         .ok_or_else(|| "operational bundle is malformed".to_owned())?;
     let header = format!(
         "POST /v1/operations HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
-         application/vnd.charlotte.operations-bundle\r\nContent-Length: {}\r\nConnection: \
+         application/vnd.knytos.operations-bundle\r\nContent-Length: {}\r\nConnection: \
          close\r\n\r\n",
         bytes.len()
     );
@@ -1430,7 +1430,7 @@ fn shutdown_notify(args: &[String]) -> Result<()> {
     shutdown::decode(&bytes).ok_or_else(|| "shutdown intent is malformed".to_owned())?;
     let header = format!(
         "POST /v1/shutdowns HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
-         application/vnd.charlotte.shutdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+         application/vnd.knytos.shutdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
     let response = http_client::exchange(endpoint, header.as_bytes(), &bytes, deadline)?;
@@ -1587,7 +1587,7 @@ fn ingress_policy_notify(args: &[String]) -> Result<()> {
     ingress_policy::decode(&bytes).ok_or_else(|| "ingress policy is malformed".to_owned())?;
     let header = format!(
         "POST /v1/ingress-policy HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
-         application/vnd.charlotte.ingress-policy\r\nContent-Length: {}\r\nConnection: \
+         application/vnd.knytos.ingress-policy\r\nContent-Length: {}\r\nConnection: \
          close\r\n\r\n",
         bytes.len()
     );
@@ -1655,7 +1655,7 @@ fn deployment_notify_bytes(
     deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let header = format!(
         "POST /v1/deployments HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
-         application/vnd.charlotte.deployment\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+         application/vnd.knytos.deployment\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
     let response = http_client::exchange(endpoint, header.as_bytes(), bytes, deadline)?;
@@ -1714,7 +1714,7 @@ fn release_attempt(
     release::decode(bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
     let header = format!(
         "POST /v1/releases HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
-         application/vnd.charlotte.release\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+         application/vnd.knytos.release\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
     let response = http_client::exchange_checked(endpoint, header.as_bytes(), bytes, deadline)

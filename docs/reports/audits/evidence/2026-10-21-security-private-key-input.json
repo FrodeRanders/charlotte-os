@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.private-key-input.v1",
+  "schema": "knytos.security.private-key-input.v1",
   "report_date": "2026-10-21",
   "reviewed_revision": "758a90ac2db13a739676bfc7f1d58d6b46b73049",
   "classification": {
@@ -102,7 +102,7 @@
   },
   "host_validation": {
     "debug": {
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p cluster-sign",
       "exit_status": 0,
       "tests_passed": 92,
       "result_lines": [
@@ -117,7 +117,7 @@
       ]
     },
     "release": {
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked --release -p cluster-sign",
       "exit_status": 0,
       "tests_passed": 92,
       "result_lines": [
@@ -159,7 +159,7 @@
   },
   "checks": {
     "clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
       "exit_status": 0
     },
     "format": {
@@ -217,7 +217,7 @@
   },
   "development_failures": [],
   "preserved_pdf": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"
   },
   "reviewed_source_sha256": {

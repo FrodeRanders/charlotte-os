@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-snapshot-restore-model-evidence-v1",
+  "schema": "knytos-snapshot-restore-model-evidence-v1",
   "reviewed_revision": "21155f0601fc2cae3b3542c0fdd82a4555f69afa",
   "tooling": {
     "release": "TLA+ Tools v1.7.4",

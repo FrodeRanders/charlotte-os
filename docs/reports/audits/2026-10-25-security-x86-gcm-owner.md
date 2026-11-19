@@ -108,7 +108,7 @@ round trip.
 The AArch64 fixture verifies a **33-byte S3 PUT/HEAD/GET/DELETE round trip** over
 TLS. Its server and CLI image IDs/digests were inspected before launch and
 selected by immutable image ID. Running-container inspection confirmed the exact
-server image and isolated `charlotte-gcm-owner-arm` project. Runner cleanup left
+server image and isolated `knytos-gcm-owner-arm` project. Runner cleanup left
 that project's container and volume inventories empty. Public development
 credentials and generated ephemeral CA/server keys are the fixture inputs; no
 production credential or private key bytes are recorded.

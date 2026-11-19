@@ -159,15 +159,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-mapping-preparation-arm.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-mapping-preparation-arm.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -177,9 +177,9 @@
         "-nic",
         "none",
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::19956-:80,hostfwd=tcp::20120-:7444",
+        "user,id=knytos-net,hostfwd=tcp::19956-:80,hostfwd=tcp::20120-:7444",
         "-device",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
         "-display",
         "none",
         "-qmp",
@@ -187,7 +187,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-mutg1x34/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-mapping-preparation-arm-serial.log"
+        "file:/tmp/knytos-mapping-preparation-arm-serial.log"
       ],
       "backend": "smmuv3",
       "exit_status": 0,
@@ -228,7 +228,7 @@
         {
           "diagnostic": "HTTP transport TimeoutError; retry 1/2",
           "preceding": [
-            ">>> Booting under QEMU (300s timeout, serial to /tmp/charlotte-mapping-preparation-arm-serial.log)...",
+            ">>> Booting under QEMU (300s timeout, serial to /tmp/knytos-mapping-preparation-arm-serial.log)...",
             ">>> Probing guest node and cluster keyholes through port 19956 ..."
           ],
           "following": [
@@ -313,7 +313,7 @@
         "serial.log": "d7581869a1db7ce74cf6c40bc9368ca0fe27ee06bddd2b873a1e89354a45a02e",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19956 CATTEN_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance mapping-preparation-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19956 KNYTOS_DEPLOY_HOST_PORT=20120 scripts/run-aarch64.sh --security-test --http-test --instance mapping-preparation-arm --fresh-storage --timeout 300",
       "source_qualification": "Final runtime/test hashes recorded explicitly. Source frozen before builds; first guest execution on each backend, no guest repeat or widened bound. x86 kernel builds serialized. Host failed request attempts remain separate from guest completion and successful retries."
     },
     {
@@ -382,7 +382,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-mapping-preparation-intel.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-mapping-preparation-intel.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -407,7 +407,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-xyzpkv6k/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-mapping-preparation-intel-serial.log"
+        "file:/tmp/knytos-x86-mapping-preparation-intel-serial.log"
       ],
       "backend": "intel-vtd",
       "exit_status": 0,
@@ -448,7 +448,7 @@
         {
           "diagnostic": "HTTP transport TimeoutError; retry 1/2",
           "preceding": [
-            ">>> Booting under QEMU (480s timeout, serial to /tmp/charlotte-x86-mapping-preparation-intel-serial.log)...",
+            ">>> Booting under QEMU (480s timeout, serial to /tmp/knytos-x86-mapping-preparation-intel-serial.log)...",
             ">>> Probing guest node and cluster keyholes through port 19957 ..."
           ],
           "following": [
@@ -533,7 +533,7 @@
         "serial.log": "87a561021103b0163eb3df3a16bdb5b4de395dcc7b8247f2ebeebb2c04738bae",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19957 CATTEN_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance mapping-preparation-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19957 KNYTOS_DEPLOY_HOST_PORT=20121 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance mapping-preparation-intel --fresh-storage --timeout 480",
       "source_qualification": "Final runtime/test hashes recorded explicitly. Source frozen before builds; first guest execution on each backend, no guest repeat or widened bound. x86 kernel builds serialized. Host failed request attempts remain separate from guest completion and successful retries."
     },
     {
@@ -602,7 +602,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-mapping-preparation-amd.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-mapping-preparation-amd.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -627,7 +627,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-dk9rgi8t/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-mapping-preparation-amd-serial.log"
+        "file:/tmp/knytos-x86-mapping-preparation-amd-serial.log"
       ],
       "backend": "amd-vi",
       "exit_status": 0,
@@ -739,7 +739,7 @@
         "serial.log": "8e3494fd662abef28e804ac4b620c38e8e7fcd0af5ca9d5ff30700b8330d95eb",
         "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19958 CATTEN_DEPLOY_HOST_PORT=20122 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance mapping-preparation-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19958 KNYTOS_DEPLOY_HOST_PORT=20122 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance mapping-preparation-amd --fresh-storage --timeout 480",
       "source_qualification": "Final runtime/test hashes recorded explicitly. Source frozen before builds; first guest execution on each backend, no guest repeat or widened bound. x86 kernel builds serialized. Host failed request attempts remain separate from guest completion and successful retries."
     }
   ],
@@ -770,8 +770,8 @@
     "strict_base_kernel_clippy": {
       "aarch64": "pass",
       "x86_64": "pass",
-      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
-      "bundles": "Existing target/embedded-services/<arch>-unknown-none via CATTEN_<ARCH>_SERVICE_BUNDLE"
+      "arguments": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
+      "bundles": "Existing target/embedded-services/<arch>-unknown-none via KNYTOS_<ARCH>_SERVICE_BUNDLE"
     },
     "formatting": "cargo fmt --all -- --check: pass",
     "whitespace": "git diff --check: pass",

@@ -970,7 +970,7 @@
     "scripts/tests/test-management-startup.py": "b508eb2115b9c6ef4af00af254489653208d51ee9aee44fd2eea12382f34462b",
     "scripts/lib/boot-common.sh": "b17415fe4fb44a8c33e171568778457243ac0b6e59b5f657dede80df4ad42726",
     "docs/manual-v2/chapters/22-configuration.tex": "5b07b08d3d3bf082e39712ce776cd2ae967ef285c1b33aa4e809b32337ab3a1b",
-    "docs/manual-v2/charlotte.pdf": "eb75cc5b23d070b6c5452d7e40a2b1d4b81e3ab706abab8d7a25a29c390f8e5b"
+    "docs/manual-v2/knytos.pdf": "eb75cc5b23d070b6c5452d7e40a2b1d4b81e3ab706abab8d7a25a29c390f8e5b"
   },
   "signed_service_sha256": {
     "target/embedded-services/aarch64-unknown-none/httpd.elf": "8cff1832556ca9b03c5ee8633e1dad43ee9c7f3baebb356c031d88a88813a8b8",

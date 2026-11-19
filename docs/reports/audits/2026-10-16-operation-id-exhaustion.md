@@ -95,7 +95,7 @@ exit watches. There was no failed native sample, panic or Raft persistence
 fail-stop in these two completed runs. This focused cross-architecture check
 does not repeat the prior AMD/security matrix or qualify integrated pressure.
 
-Commands, with common environment `CATTEN_SKIP_EMBED_BUILD=1
+Commands, with common environment `KNYTOS_SKIP_EMBED_BUILD=1
 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh

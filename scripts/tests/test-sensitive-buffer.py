@@ -13,7 +13,7 @@ def run():
     channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     cargo = subprocess.check_output(["rustup", "which", "--toolchain", channel, "cargo"], text=True).strip()
     rustc = subprocess.check_output(["rustup", "which", "--toolchain", channel, "rustc"], text=True).strip()
-    env = dict(os.environ, RUSTC=rustc, CATTEN_RESOURCE_POLICY_FILE=str(ROOT / "crates/catten/src/resource_policy/defaults.rs"))
+    env = dict(os.environ, RUSTC=rustc, KNYTOS_RESOURCE_POLICY_FILE=str(ROOT / "crates/catten/src/resource_policy/defaults.rs"))
     with tempfile.TemporaryDirectory(prefix="knytos-sensitive-buffer-") as temporary:
         directory = Path(temporary)
         (directory / "src").mkdir()

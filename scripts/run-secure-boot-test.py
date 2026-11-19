@@ -109,7 +109,7 @@ def configuration(kernel_hash, policy_hash, modules=1):
         f" KERNEL_PATH: boot():/catten#{kernel_hash}\n KASLR: no\n"
     )
     for _ in range(modules):
-        data += f" MODULE_PATH: boot():/boot-policy.bin#{policy_hash}\n MODULE_STRING: charlotte.boot-trust-test\n"
+        data += f" MODULE_PATH: boot():/boot-policy.bin#{policy_hash}\n MODULE_STRING: knytos.boot-trust-test\n"
     return data.encode("ascii")
 
 
@@ -182,7 +182,7 @@ def main():
     selected = args.cases.split(",")
     if args.timeout <= 0 or not selected or any(case not in CASES for case in selected):
         parser.error("positive timeout and known comma-separated cases required")
-    if os.environ.get("CATTEN_TRUST_MODE", "development") != "development":
+    if os.environ.get("KNYTOS_TRUST_MODE", "development") != "development":
         parser.error("disposable boot fixture requires development mode; production remains disabled")
     tools = args.tools_dir.resolve()
     signer = tools / "osslsigncode-build/osslsigncode"
@@ -200,9 +200,9 @@ def main():
     print(f"DEVELOPMENT QEMU Secure Boot fixture; public test policy/recipient. Evidence: {output}", flush=True)
     run([ROOT / "scripts/verify-limine.sh"], preparation)
     environment = os.environ.copy()
-    environment["CATTEN_TRUST_MODE"] = "development"
-    environment.pop("CATTEN_BOOT_TEST_INSTALLED_POLICY", None)
-    environment.pop("CATTEN_MANAGEMENT_TLS_RESOURCE", None)
+    environment["KNYTOS_TRUST_MODE"] = "development"
+    environment.pop("KNYTOS_BOOT_TEST_INSTALLED_POLICY", None)
+    environment.pop("KNYTOS_MANAGEMENT_TLS_RESOURCE", None)
     development_bundle = ROOT / "target/embedded-services/x86_64-unknown-none"
     policy_dir = ROOT / "crates/catten/src/service/admission"
     policy = policy_dir / "test-policy.bin"
@@ -235,14 +235,14 @@ with os.fdopen(os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                            env=signing_environment, stdout=log, stderr=log, check=True)
 
         def build_kernel(source_bundle, name):
-            environment["CATTEN_X86_64_SERVICE_BUNDLE"] = str(source_bundle)
+            environment["KNYTOS_X86_64_SERVICE_BUNDLE"] = str(source_bundle)
             with preparation.open("ab") as log:
                 subprocess.run(["cargo", "build", "--locked", "-p", "catten", "--target",
-                                "target_specs/x86_64-unknown-none-catten.json", "--no-default-features",
+                                "target_specs/x86_64-unknown-none-knytos.json", "--no-default-features",
                                 "--features", "acpi,boot_trust_test"], cwd=ROOT, env=environment,
                                stdout=log, stderr=log, check=True)
             snapshot = private / name
-            shutil.copyfile(ROOT / "target/x86_64-unknown-none-catten/debug/catten", snapshot)
+            shutil.copyfile(ROOT / "target/x86_64-unknown-none-knytos/debug/catten", snapshot)
             run(["python3", ROOT / "scripts/check-kernel-asm-sections.py", snapshot], preparation)
             return snapshot
 
@@ -267,7 +267,7 @@ with os.fdopen(os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
              "-key", certificates["db"][0], "-in", enrolled_loader, "-out", signed_loader], preparation)
         run([signer, "verify", "-CAfile", certificates["db"][1], "-in", signed_loader], preparation)
         base_image = private / "base.img"
-        run(["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; catten_boot_create_uefi_image "$2" "$3" "$4" "$5" "$6" CATOS',
+        run(["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; knytos_boot_create_uefi_image "$2" "$3" "$4" "$5" "$6" CATOS',
              "secure-test", ROOT, base_image, str(BOOT_IMAGE_MIB), signed_loader, kernel, config], preparation)
         run(["mcopy", "-i", base_image, policy, "::/boot-policy.bin"], preparation)
         data_image = private / "data.img"

@@ -191,7 +191,7 @@ Last serial lines:
 
 Compiled AArch64 prologues: 32 KiB-request kernel a6b90e230a04db7d5c06b8539a3103f68154e2e7343fa2249eb1fc5f4553db72
 (lldb) target create "target/boot-diagnostics/aarch64-il4efblz/kernel.elf"
-Current executable set to '/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-il4efblz/kernel.elf' (aarch64).
+Current executable set to '/Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-il4efblz/kernel.elf' (aarch64).
 (lldb) settings set interpreter.stop-command-source-on-error false
 (lldb) disassemble -n bsp_main -c 20
 kernel.elf`bsp_main:

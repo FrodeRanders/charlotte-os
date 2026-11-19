@@ -134,10 +134,10 @@ stack lease or completion of the concurrent recovery gate.
 Commands (unchanged userspace/ABI; existing signed staged bundles reused):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance iommu-preparation-intel-diagnostics-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance iommu-preparation-intel-confirm-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance iommu-preparation-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18579 CATTEN_DEPLOY_HOST_PORT=17879 scripts/run-aarch64.sh --security-test --instance iommu-preparation-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance iommu-preparation-intel-diagnostics-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance iommu-preparation-intel-confirm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance iommu-preparation-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18579 KNYTOS_DEPLOY_HOST_PORT=17879 scripts/run-aarch64.sh --security-test --instance iommu-preparation-arm-20261009 --fresh-storage --timeout 180
 ```
 
 Executed final diagnostic kernel SHA-256:

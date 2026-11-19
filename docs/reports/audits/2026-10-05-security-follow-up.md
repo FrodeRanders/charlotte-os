@@ -97,11 +97,11 @@ All three corrections are implemented. Final checks:
 Final guest commands reused the already rebuilt signed bundles:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance followup-security-20261005-final --fresh-storage --timeout 160
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18385 \
-CATTEN_DEPLOY_HOST_PORT=17685 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18385 \
+KNYTOS_DEPLOY_HOST_PORT=17685 scripts/run-aarch64.sh --security-test \
   --instance followup-security-20261005-approved --fresh-storage --timeout 150
 ```
 

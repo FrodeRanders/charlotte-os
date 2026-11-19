@@ -83,7 +83,7 @@ Initial kernel Clippy invocations incorrectly pointed both bundle environment
 variables at nonexistent `target/knytos-services/.../knytos-services.bundle`
 directories. They failed on missing embedded ELF files (ARM 11 compiler errors,
 x86 33). Corrected runs used the rebuilt `target/embedded-services` directories
-and ARM's generated `CATTEN_SECURITY_TEST_DIR`; both passed. These are
+and ARM's generated `KNYTOS_SECURITY_TEST_DIR`; both passed. These are
 validation-command errors, not observed guest failures. No failed guest run
 occurred in this change's validation.
 
@@ -101,7 +101,7 @@ are synchronous and additional to these registered deferred-test counts.
 Existing remote-abort, scheduler-lifecycle and exit-watch checks remained
 enabled. Shutdown also reached PSCI power-off after the drain checks.
 
-Runner commands used `CATTEN_SKIP_EMBED_BUILD=1` after rebuilding both bundles:
+Runner commands used `KNYTOS_SKIP_EMBED_BUILD=1` after rebuilding both bundles:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance thread-metadata-arm
@@ -112,7 +112,7 @@ scripts/run-aarch64.sh --shutdown-ingress-test --fresh-storage --timeout 180 --i
 
 HTTP/deployment host ports were respectively 19280/18580, 19281/18581,
 19282/18582 and 19283/18583. AMD reused the exact successfully booted Intel
-kernel with `CATTEN_SKIP_KERNEL_BUILD=1`. Immutable per-boot kernel hashes,
+kernel with `KNYTOS_SKIP_KERNEL_BUILD=1`. Immutable per-boot kernel hashes,
 captured before later profile builds, were:
 
 | Artifact | SHA-256 |
@@ -124,7 +124,7 @@ captured before later profile builds, were:
 | x86 bundled service ELFs | `2bf773dfb18cbd457ddbe31a7c2d81816e5d8d147d9e57a6425f11f4ee5bc999` |
 
 Bundle digests hash sorted `basename:ELF-sha256` lines, each newline terminated,
-using the runner's `catten_boot_bundle_sha256` convention. Services are
+using the runner's `knytos_boot_bundle_sha256` convention. Services are
 unchanged from the preceding CQ follow-up.
 
 ## Remaining boundaries

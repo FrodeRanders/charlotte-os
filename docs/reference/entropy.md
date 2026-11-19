@@ -82,8 +82,8 @@ The ordinary AArch64 runner attaches the device even when no test verifier is
 selected:
 
 ```text
--object rng-random,filename=/dev/urandom,id=charlotte-rng
--device virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4
+-object rng-random,filename=/dev/urandom,id=knytos-rng
+-device virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4
 ```
 
 `iommu_platform=on` is required: Knytos negotiates

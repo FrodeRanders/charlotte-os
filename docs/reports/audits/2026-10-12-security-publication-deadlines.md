@@ -39,7 +39,7 @@ Shutdown records Time acknowledgement at guest 14.649928 s, ReliableMessaging at
 
 Kernel SHA-256: ARM combined `d6ec262b6924dc57d43a40c3e22ca098ebd420f4bccfd170fdc266b5d29da0ab`; x86 AMD/Intel `88f65c8355b521327ca907667bdf44f9e47e6553a8c00ce133b28ea48cca8e9f`; separate ARM shutdown profile `966edb8e782fa39f69114bf625912f7f3017e205e31c2dc8f6fc1bf3ac388d82`. Runtime service images are also identified by the complete signed bundle digest below; an unchanged shutdown kernel does not imply unchanged runtime service ELFs.
 
-Bundle SHA-256, using `catten_boot_bundle_sha256`'s sorted `filename:ELF-digest` lines: ARM `65c49de5dd3f2db973701af3afa89ef8bcf4758dfe6de7375d45d5fedf18a0e3`; x86 `46b7170ba11d146b34f5cf35f12c8f2fabba60815afb3ad4b7e864562aa5fd9e`.
+Bundle SHA-256, using `knytos_boot_bundle_sha256`'s sorted `filename:ELF-digest` lines: ARM `65c49de5dd3f2db973701af3afa89ef8bcf4758dfe6de7375d45d5fedf18a0e3`; x86 `46b7170ba11d146b34f5cf35f12c8f2fabba60815afb3ad4b7e864562aa5fd9e`.
 
 Selected signed ELF SHA-256:
 

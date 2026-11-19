@@ -121,7 +121,7 @@ in these runs. Prior failed samples remain separately preserved in the
 [backlog refund report](2026-10-16-completion-backlog-refunds.md); passing this
 matrix does not establish historical failure causes.
 
-The no-network commands use `CATTEN_SKIP_EMBED_BUILD=1` and
+The no-network commands use `KNYTOS_SKIP_EMBED_BUILD=1` and
 `CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
@@ -132,9 +132,9 @@ The no-network commands use `CATTEN_SKIP_EMBED_BUILD=1` and
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance cq-map-intel-security
 ```
 
-AMD additionally uses `CATTEN_SKIP_KERNEL_BUILD=1` after Intel completes; their
+AMD additionally uses `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel completes; their
 no-network kernel ELF hashes match. Security runs add
-`CATTEN_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment port inputs 19080/19081 on
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment port inputs 19080/19081 on
 ARM and 19180/19181 on Intel. Exact environment and actual network forwards are
 recorded in evidence. All staged service files and each run's bundle inventory
 match the preceding baseline byte for byte; no service/runtime library changed

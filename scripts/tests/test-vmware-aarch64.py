@@ -22,8 +22,8 @@ class VMwareAarch64(unittest.TestCase):
         (self.root / "vmware").mkdir()
         self.builder = self.root / "scripts/build-vmware-aarch64.sh"
         shutil.copy2(ROOT / "scripts/build-vmware-aarch64.sh", self.builder)
-        shutil.copy2(ROOT / "vmware/charlotte-os-aarch64.vmx",
-                     self.root / "vmware/charlotte-os-aarch64.vmx")
+        shutil.copy2(ROOT / "vmware/knytos-aarch64.vmx",
+                     self.root / "vmware/knytos-aarch64.vmx")
         # Stub compilation only; use real qemu-img for VMDK creation/conversion.
         runner = self.root / "scripts/run-aarch64.sh"
         runner.write_text('''#!/usr/bin/env python3

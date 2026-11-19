@@ -85,15 +85,15 @@ real remote abort/scheduler-lifecycle tests remain enabled.
 | Arm SMMUv3 security QEMU | **19 passed, 0 failed, 0 pending**; scoped probes `0xffff`, publication generations 1/2, concurrent cancellation retired 4,676 requests. |
 
 ```sh
-rustc --edition=2024 --test crates/catten/src/klib/collections/retirement_list.rs \
+rustc --edition=2024 --test crates/knytos/src/klib/collections/retirement_list.rs \
   -o target/host-self-tests/retirement-list-tests
 target/host-self-tests/retirement-list-tests
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance thread-retirement-intel-final-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance thread-retirement-amd-final-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance thread-retirement-arm-final-20261007 --fresh-storage --timeout 180
 ```
 

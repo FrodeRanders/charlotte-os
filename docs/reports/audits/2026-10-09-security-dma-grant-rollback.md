@@ -109,7 +109,7 @@ Assembly permission checks verified 249 x86 and one Arm native entries.
 `cargo fmt --all -- --check`, diff whitespace and local documentation
 links/anchors passed; eighteen owner-family rows and seven gates are unchanged.
 These are kernel-only changes; runners used the existing bundled services with
-`CATTEN_SKIP_EMBED_BUILD=1`. Instances were `dma-grant-rollback-{intel,amd,arm}-20261009`,
+`KNYTOS_SKIP_EMBED_BUILD=1`. Instances were `dma-grant-rollback-{intel,amd,arm}-20261009`,
 with fresh storage and a 180-second timeout; x86 was headless/no-network and Arm
 used `--security-test`, HTTP port 18609 and deployment port 17909. QEMU ran
 sequentially after the host/lint checks.

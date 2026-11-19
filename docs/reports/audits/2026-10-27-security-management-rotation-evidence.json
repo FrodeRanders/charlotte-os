@@ -506,8 +506,8 @@
       "host knytos-management-tls --all-targets",
       "knytos-services httpd/deployd on crates/knytos-services/aarch64-unknown-none.json",
       "knytos-services httpd/deployd on crates/knytos-services/x86_64-unknown-none.json",
-      "catten acpi on target_specs/aarch64-unknown-none-catten.json with explicit current service bundle",
-      "catten acpi,boot_trust_test,virtio_net_test on target_specs/x86_64-unknown-none-catten.json with explicit current service bundle"
+      "knytos acpi on target_specs/aarch64-unknown-none-knytos.json with explicit current service bundle",
+      "knytos acpi,boot_trust_test,virtio_net_test on target_specs/x86_64-unknown-none-knytos.json with explicit current service bundle"
     ],
     "native_assembly_permissions": "all three rotation kernels and the default regression kernel passed",
     "cargo_fmt_all_check": "passed",

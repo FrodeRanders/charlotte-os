@@ -99,7 +99,7 @@ def run():
             results.append({"control": "old-parser" if control else "production", "exit_status": result.returncode,
                             "receipts": [line for line in output.splitlines() if "test result:" in line or "captured_openssl4" in line]})
     evidence = {"parser_sha256": hashlib.sha256(SOURCE.read_bytes()).hexdigest(), "controls": results}
-    if output := os.environ.get("CATTEN_TLS_SIGNATURE_EVIDENCE"):
+    if output := os.environ.get("KNYTOS_TLS_SIGNATURE_EVIDENCE"):
         Path(output).write_text(json.dumps(evidence, indent=2) + "\n")
     print(json.dumps(evidence, indent=2))
 

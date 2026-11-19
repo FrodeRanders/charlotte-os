@@ -112,9 +112,9 @@ The five commands use `--smp 4 --fresh-storage --timeout 180`:
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance arc-payload-intel-security
 ```
 
-All use `CATTEN_SKIP_EMBED_BUILD=1` and `CARGO_BUILD_RUSTFLAGS='-D warnings'`.
-AMD adds `CATTEN_SKIP_KERNEL_BUILD=1` after Intel completes; the two no-network
-kernel ELF hashes match. Security profiles add `CATTEN_ALLOW_SANDBOX_NETWORK=1`
+All use `KNYTOS_SKIP_EMBED_BUILD=1` and `CARGO_BUILD_RUSTFLAGS='-D warnings'`.
+AMD adds `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel completes; the two no-network
+kernel ELF hashes match. Security profiles add `KNYTOS_ALLOW_SANDBOX_NETWORK=1`
 and HTTP/deployment ports 19080/19081 on ARM, 19180/19181 on Intel.
 All staged service hashes and run inventories match the prior baseline; no
 service/runtime library was edited or rebuilt. Frozen Rust hashes are rechecked

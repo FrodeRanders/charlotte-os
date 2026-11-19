@@ -12,7 +12,7 @@ node-pickup path, and the work still needed for production. Private-key custody,
 rotation, audit, and connector rollout are not ready for production use.
 
 Current builds and boot logs explicitly identify development trust.
-`CATTEN_TRUST_MODE=production` refuses the build until protected provisioning
+`KNYTOS_TRUST_MODE=production` refuses the build until protected provisioning
 exists. Offline signing/decryption now reads restricted key files instead of
 real private keys in argv; see
 [Signing and development trust](../guides/signing-and-trust.md). Those tooling
@@ -225,7 +225,7 @@ For the default development cluster, derive its ID and notify an already signed
 bundle with:
 
 ```sh
-cluster-sign cluster-id charlotte
+cluster-sign cluster-id knytos
 cluster-sign operations-bundle-notify orders.copsbundle 127.0.0.1:8081
 ```
 

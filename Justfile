@@ -1,11 +1,11 @@
-build-catten arch="x86_64" profile="debug" features="kernel_tests":
+build-knytos arch="x86_64" profile="debug" features="kernel_tests":
     cargo build --package catten \
-        --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} \
+        --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-knytos.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-knytos.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-knytos.json" } else { arch + "-unknown-none" } }} \
         --no-default-features --features "acpi{{ if features != "" { "," + features } else { "" } }}" \
         {{ if profile == "release" { "--release" } else { "" } }}
 
-build-catten-docs arch="x86_64" profile="debug" features="":
-    cargo doc --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
+build-knytos-docs arch="x86_64" profile="debug" features="":
+    cargo doc --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-knytos.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-knytos.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-knytos.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
     "" {"--features " + features} else {""} }} --no-deps --open
 
 # Build and sign the architecture-qualified bundle used by the boot runners.
@@ -20,7 +20,7 @@ boot-test arch="aarch64" profile="debug":
     ./scripts/run-{{arch}}.sh {{profile}} --tests --timeout 300
 
 image_dir := "./os-images"
-create-image arch="x86_64" profile="debug" features="kernel_tests": (build-catten arch profile features)
+create-image arch="x86_64" profile="debug" features="kernel_tests": (build-knytos arch profile features)
     ./scripts/create-boot-image.sh --arch "{{arch}}" --profile "{{profile}}"
 
 verify-limine:
@@ -50,7 +50,7 @@ qemu-run-riscv64 profile="debug" gdb="false": (create-image "riscv64" profile)
         -device usb-mouse,bus=xhci.0 \
         -device usb-net,netdev=usbnet0,bus=xhci.0 \
         -device riscv-iommu-pci \
-        -drive file={{image_dir}}/charlotte-riscv64-{{profile}}.img,format=raw \
+        -drive file={{image_dir}}/knytos-riscv64-{{profile}}.img,format=raw \
         -device usb-storage,bus=xhci.0,drive=usbdrive0 \
         -drive if=none,id=usbdrive0,format=raw,file={{usb_image_path}} \
         {{ if gdb == "true" {"-s -S"} else {""} }}
@@ -69,7 +69,7 @@ distclean: clean
 # before pushing. Equivalent to `RUSTFLAGS="-D warnings" cargo check ...`
 check arch="aarch64":
     RUSTFLAGS="-D warnings" cargo check --package catten \
-        --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else { "target_specs/aarch64-unknown-none-catten.json" } }} \
+        --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-knytos.json" } else { "target_specs/aarch64-unknown-none-knytos.json" } }} \
         --no-default-features --features acpi
 
 # Build and check raft service binary

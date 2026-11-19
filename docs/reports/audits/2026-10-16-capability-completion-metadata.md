@@ -163,7 +163,7 @@ failure causes. Shared authority release also runs through existing multi-kind
 admission/disposal and device/IPC/loader controls; passing them does not qualify
 every outer caller or physical platform.
 
-Commands, with common environment `CATTEN_SKIP_EMBED_BUILD=1
+Commands, with common environment `KNYTOS_SKIP_EMBED_BUILD=1
 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
@@ -174,9 +174,9 @@ CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance capability-map-intel-security
 ```
 
-AMD additionally sets `CATTEN_SKIP_KERNEL_BUILD=1` after Intel completes,
+AMD additionally sets `KNYTOS_SKIP_KERNEL_BUILD=1` after Intel completes,
 using its identical no-network ELF. Security runs set
-`CATTEN_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment port inputs 19080/19081 for
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1` and HTTP/deployment port inputs 19080/19081 for
 ARM and 19180/19181 for Intel; actual network forwards appear in evidence.
 All staged service files and each run's inventory match the preceding baseline
 byte for byte. Services and userspace runtime libraries were not edited or

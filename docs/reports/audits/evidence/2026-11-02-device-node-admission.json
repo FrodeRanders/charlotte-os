@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.device-node-admission.v1",
+  "schema": "knytos.device-node-admission.v1",
   "date": "2026-11-02",
   "base_revision": "c63c782361b9c9467319cdafc6b53de36ea9a290",
   "scope": "Independent requested-byte/count backing admission for device namespace and MMIO/IRQ/DMA capability payload nodes, through empty candidates, published descriptors and complete detached/retired owners.",
@@ -197,7 +197,7 @@
     "shared_collection_log_sha256": "6608b3ec856f0de7674ea01d73b8ed802cdcc57febeae534a168dfabb607ad93",
     "policy": "python3 scripts/tests/test-resource-policy.py; three groups passed; exit zero",
     "policy_log_sha256": "0cd95db4867762c8996e7062eecdee86ea6e6801086994b153f2799aea82060b",
-    "kernel_tests_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
+    "kernel_tests_clippy": "KNYTOS_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
     "kernel_tests_clippy_log_sha256": "ea1790407c52ce36a2a679feb15925b6059c265c4090317f6927237bc650dbe7",
     "minimal_clippy": "Same target/strict offline locked command with minimal bundle and acpi only; exit zero",
     "minimal_clippy_log_sha256": "09a5bbd412e25fd2c87e1715067dc18f593244b5860cbb0b31197432276cbcc5",

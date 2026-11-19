@@ -132,10 +132,10 @@ any service binary.
   Sitas core/native/Unix backends for host tests and EL0 builds.
 - `sdk.json` binds the exact source snapshot, file hashes, runtime ABI, Sitas
   revision and toolchain. `VERSION` retains the basic tooling metadata.
-- `charlotte doctor`, `charlotte new DIR`, `charlotte test DIR` and
-  `charlotte build DIR --arch aarch64 --output app.elf` provide the development
+- `knytos doctor`, `knytos new DIR`, `knytos test DIR` and
+  `knytos build DIR --arch aarch64 --output app.elf` provide the development
   loop. `package` requires an explicit key file, version and rollback counter;
-  it signs an ELF and never submits a deployment. `charlotte.json` is a local
+  it signs an ELF and never submits a deployment. `knytos.json` is a local
   development plan, not a new signed deployment format.
 - External Cargo dependencies and toolchain components are resolved normally;
   this is a source SDK, not a fully offline distribution.

@@ -88,12 +88,12 @@ Current contracts: [stack admission](../../reference/stack-admission.md),
 Commands (instance names retain the starting date):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance stack-admission-intel-20261006 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance stack-admission-amd-20261006 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance stack-admission-arm-20261006 --fresh-storage --timeout 180
 ```
 

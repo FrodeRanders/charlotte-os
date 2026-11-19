@@ -1,9 +1,9 @@
 {
-  "schema": "charlotte.q4-capacity-baseline.v1",
+  "schema": "knytos.q4-capacity-baseline.v1",
   "date": "2026-11-05",
   "base_revision": "d1cf898b7fe2fb37173d38c101b73c7e7977a128",
   "default_policy_capture": {
-    "schema": "charlotte.resource-capacity.v1",
+    "schema": "knytos.resource-capacity.v1",
     "rust_toolchain": "nightly-2026-07-27",
     "host_pointer_bits": 64,
     "selected_policy": "crates/catten/src/resource_policy/defaults.rs",
@@ -460,7 +460,7 @@
     ]
   },
   "larger_policy_control": {
-    "schema": "charlotte.resource-capacity.v1",
+    "schema": "knytos.resource-capacity.v1",
     "rust_toolchain": "nightly-2026-07-27",
     "host_pointer_bits": 64,
     "selected_policy": "crates/catten/src/resource_policy/larger.rs",

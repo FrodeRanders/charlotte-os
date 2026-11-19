@@ -34,7 +34,7 @@ without replay. C18 records the containing transaction and its limits.
 
 HTTP reads the exact meaningful byte length, rejects lengths above its bound
 or backing, and decodes the complete set. Node JSON uses the schema
-`charlotte.dns-catalog.v1` and an entries array, retaining replica rows. A
+`knytos.dns-catalog.v1` and an entries array, retaining replica rows. A
 rejected/unavailable catalog is null; a valid empty set is explicitly empty.
 Status `registered_count` remains separate observation, not proof of a dump.
 
@@ -137,8 +137,8 @@ Both runners exit **0**. ARM finishes **19/0/0** at **16.240356 s**
 (0x23ffff); x86 finishes **17/0/0** at **23.280680 s** (0x23bbff).
 
 Both node JSON captures retain exactly one alpha row:
-`schema=charlotte.dns-catalog.v1`, `count=1`, `entries=[{name:alpha,
-node:charlotte:42e21edb,generation:1}]`, independent `registered_count=1`.
+`schema=knytos.dns-catalog.v1`, `count=1`, `entries=[{name:alpha,
+node:knytos:42e21edb,generation:1}]`, independent `registered_count=1`.
 The host requires the schema, array/count, nonempty identities, positive
 generation and alpha row on initial, EOF, abortive and idle recovery requests.
 All eleven node/deployment controls pass. Deployment trickle rejection is

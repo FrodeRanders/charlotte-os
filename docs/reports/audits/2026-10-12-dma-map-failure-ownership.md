@@ -178,7 +178,7 @@ probes. The failed Intel sample remains separate from its passing repeat.
 Synchronous assertions supplement the deferred result counts. No passing guest
 reproduced the old AMD map rejection; that is not proof of its resolution.
 
-Commands used `CATTEN_SKIP_EMBED_BUILD=1` after bundle builds:
+Commands used `KNYTOS_SKIP_EMBED_BUILD=1` after bundle builds:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance dma-map-arm
@@ -190,7 +190,7 @@ scripts/run-aarch64.sh --shutdown-ingress-test --fresh-storage --timeout 180 --i
 
 HTTP/deployment ports were 19349/18649, 19350/18650, 19353/18653,
 19351/18651 and 19352/18652. Intel repeat and AMD used
-`CATTEN_SKIP_KERNEL_BUILD=1` only after the current x86 ELF matched the original
+`KNYTOS_SKIP_KERNEL_BUILD=1` only after the current x86 ELF matched the original
 Intel boot hash. Immutable per-boot hashes precede later profile rebuilds:
 
 | Artifact | SHA-256 |

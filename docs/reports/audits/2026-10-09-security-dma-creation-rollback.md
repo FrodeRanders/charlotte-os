@@ -137,7 +137,7 @@ Formatting, diff whitespace and all 97 local documentation links/anchors passed;
 eighteen owner-family rows and seven gates remain unchanged.
 
 These are kernel-only changes; runners reused existing bundled services through
-`CATTEN_SKIP_EMBED_BUILD=1`. Fresh-storage instances were
+`KNYTOS_SKIP_EMBED_BUILD=1`. Fresh-storage instances were
 `dma-creation-rollback-intel-20261009`, `dma-creation-rollback-amd-20261009`,
 `dma-creation-rollback-amd-repeat-20261009` and
 `dma-creation-rollback-arm-20261009`, each with a 180-second timeout. x86 was

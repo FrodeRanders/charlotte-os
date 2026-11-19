@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared signed-image inventory. Source before selecting a bundle.
 # Operational services never depend on the optional regression applications.
-catten_service_bundle() {
+knytos_service_bundle() {
     local arch="$1" mode="$2" root="$3"
     case "$mode" in
         minimal|test) ;;
@@ -9,10 +9,10 @@ catten_service_bundle() {
     esac
     local default_heartbeats=1
     [ "$mode" != "minimal" ] || default_heartbeats=0
-    SERVICE_HEARTBEATS="${CATTEN_SERVICE_HEARTBEATS-$default_heartbeats}"
+    SERVICE_HEARTBEATS="${KNYTOS_SERVICE_HEARTBEATS-$default_heartbeats}"
     case "$SERVICE_HEARTBEATS" in
         0|1) ;;
-        *) echo "error: CATTEN_SERVICE_HEARTBEATS must be 0 or 1" >&2; return 1 ;;
+        *) echo "error: KNYTOS_SERVICE_HEARTBEATS must be 0 or 1" >&2; return 1 ;;
     esac
     SERVICE_FEATURE_ARGS=(--no-default-features)
     if [ "$SERVICE_HEARTBEATS" = "1" ]; then
@@ -38,7 +38,7 @@ catten_service_bundle() {
     [ "$mode" != "minimal" ] || BUNDLE="$BUNDLE-minimal"
 }
 
-catten_validate_service_bundle() {
+knytos_validate_service_bundle() {
     local mode="$1" arch="$2" service elf name
     if [ ! -f "$BUNDLE/service-heartbeats" ] \
         || [ "$(cat "$BUNDLE/service-heartbeats")" != "$SERVICE_HEARTBEATS" ]; then

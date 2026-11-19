@@ -157,7 +157,7 @@ fn parse_cluster_tcp_service(value: &'static str) -> Option<ClusterTcpService> {
 }
 
 pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
-    let entries = option_env!("CATTEN_CLUSTER_SERVICES")
+    let entries = option_env!("KNYTOS_CLUSTER_SERVICES")
         .unwrap_or("")
         .split(';')
         .filter(|entry| !entry.is_empty());
@@ -1099,7 +1099,7 @@ pub(crate) fn launch_steady_state_with_trust(
                 &ns,
                 storage.is_some(),
                 &cluster_services,
-                option_env!("CATTEN_CLUSTER_STATIC_NETWORK") != Some("1"),
+                option_env!("KNYTOS_CLUSTER_STATIC_NETWORK") != Some("1"),
                 TcpipSocketPolicy::default(),
                 management.as_ref().map(|profile| profile.bytes()),
             )),
@@ -1115,8 +1115,8 @@ pub(crate) fn launch_steady_state_with_trust(
     } else {
         None
     };
-    logln!(concat!("CHARLOTTE_OTLP_PROFILE_SHA256=", env!("CATTEN_OTLP_PROFILE_SHA256"), ";"));
-    let telemetry_profile = include_bytes!(env!("CATTEN_OTLP_PROFILE_FILE"));
+    logln!(concat!("CHARLOTTE_OTLP_PROFILE_SHA256=", env!("KNYTOS_OTLP_PROFILE_SHA256"), ";"));
+    let telemetry_profile = include_bytes!(env!("KNYTOS_OTLP_PROFILE_FILE"));
     let telemetry = if network.is_some() && !telemetry_profile.is_empty() {
         Some(crate::service::supervisor::spawn_with_manifest(
             crate::service::store::service_elf(b"otlp").expect("[launch] otlp.elf"),

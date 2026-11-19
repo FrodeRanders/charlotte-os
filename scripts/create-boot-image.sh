@@ -21,9 +21,9 @@ usage: scripts/create-boot-image.sh [options]
   --arch ARCH       x86_64, aarch64, or riscv64 (default: x86_64)
   --profile PROFILE debug or release (default: debug)
   --kernel PATH     override the inferred kernel path
-  --output PATH     override os-images/charlotte-ARCH-PROFILE.img
+  --output PATH     override os-images/knytos-ARCH-PROFILE.img
   --size-mib N      override the shared 128 MiB boot-image default
-  --config PATH     override limine.conf (also: CATTEN_LIMINE_CONFIG)
+  --config PATH     override limine.conf (also: KNYTOS_LIMINE_CONFIG)
 EOF
 }
 
@@ -46,7 +46,7 @@ while [ "$#" -gt 0 ]; do
             SIZE_MIB="$2"; shift 2 ;;
         --config)
             [ "$#" -ge 2 ] || { echo "Missing value for --config" >&2; exit 1; }
-            CATTEN_LIMINE_CONFIG="$2"; shift 2 ;;
+            KNYTOS_LIMINE_CONFIG="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
     esac
@@ -59,34 +59,34 @@ esac
 
 case "$ARCH" in
     x86_64)
-        TARGET_DIR="x86_64-unknown-none-catten"
+        TARGET_DIR="x86_64-unknown-none-knytos"
         EFI_BOOT_FILE="BOOTX64.EFI"
         VOLUME_LABEL="CATOS"
         ;;
     aarch64)
-        TARGET_DIR="aarch64-unknown-none-catten"
+        TARGET_DIR="aarch64-unknown-none-knytos"
         EFI_BOOT_FILE="BOOTAA64.EFI"
         ;;
     riscv64)
-        TARGET_DIR="riscv64gc-unknown-none-catten"
+        TARGET_DIR="riscv64gc-unknown-none-knytos"
         EFI_BOOT_FILE="BOOTRISCV64.EFI"
         ;;
     *) echo "error: unsupported architecture: ${ARCH}" >&2; exit 1 ;;
 esac
 
-catten_boot_init "$ROOT_DIR"
+knytos_boot_init "$ROOT_DIR"
 cd "$ROOT_DIR"
 
 KERNEL="${KERNEL:-${ROOT_DIR}/target/${TARGET_DIR}/${PROFILE}/catten}"
-OUTPUT="${OUTPUT:-${ROOT_DIR}/os-images/charlotte-${ARCH}-${PROFILE}.img}"
-SIZE_MIB="${SIZE_MIB:-${CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB}}"
+OUTPUT="${OUTPUT:-${ROOT_DIR}/os-images/knytos-${ARCH}-${PROFILE}.img}"
+SIZE_MIB="${SIZE_MIB:-${KNYTOS_BOOT_DEFAULT_IMAGE_SIZE_MIB}}"
 
-catten_boot_report_kernel "$KERNEL"
-catten_boot_create_uefi_image \
+knytos_boot_report_kernel "$KERNEL"
+knytos_boot_create_uefi_image \
     "$OUTPUT" \
     "$SIZE_MIB" \
     "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
     "$KERNEL" \
-    "$CATTEN_BOOT_LIMINE_CONFIG" \
+    "$KNYTOS_BOOT_LIMINE_CONFIG" \
     "$VOLUME_LABEL"
 echo ">>> Boot image ready: ${OUTPUT}"

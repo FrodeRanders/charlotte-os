@@ -89,15 +89,15 @@ On any host with Docker and QEMU:
 
 ```sh
 # in the broker repository, with CHARLOTTE_OS_DIR pointing at a full checkout
-CHARLOTTE_OS_DIR=../charlotte-os tools/soak/run_soak.sh --duration 1200 --rate 20
+CHARLOTTE_OS_DIR=../knytos tools/soak/run_soak.sh --duration 1200 --rate 20
 ```
 
 The guest serial log and kernel symbols needed for offline symbolization are:
 
 ```sh
 scripts/symbolize-kernel-panic.py \
-  --symbols target/aarch64-unknown-none-catten/debug/catten.symbols \
-  /tmp/charlotte-serial.log
+  --symbols target/aarch64-unknown-none-knytos/debug/knytos.symbols \
+  /tmp/knytos-serial.log
 ```
 
 The failure is intermittent; the first observed run lasted 781 s of client
@@ -145,7 +145,7 @@ not retired, while SP itself reached its guard boundary.
    deallocation as one atomic record containing `(LP, reap LP, tid, generation,
    ASID, stack range, current SP, on_cpu, abort owner)`. At timeout,
    `scripts/run-aarch64.sh` extracts and decodes it to
-   `/tmp/charlotte-thread-lifecycle-trace.log`. Find the record whose stack
+   `/tmp/knytos-thread-lifecycle-trace.log`. Find the record whose stack
    starts at `0xffff8100000cc000`; its preceding stage and reap records identify
    the thread and the lifecycle decision that released the live mapping.
 2. Kernel same-EL abort diagnostics record reconstructed exception-entry SP and
@@ -197,7 +197,7 @@ extraction. The watchdog now emits the sparse lifecycle recorder to serial
 *before* the much larger ordinary scheduler trace. Kernel-abort diagnostics
 also report the exception-entry SP and the lock-free current
 LP/TID/generation/ASID snapshot. A subsequent client-triggered early teardown
-will therefore retain the decisive evidence in `charlotte-serial.log` without
+will therefore retain the decisive evidence in `knytos-serial.log` without
 depending on a debugger attachment.
 
 ## Decisive lifecycle capture and corrected diagnosis

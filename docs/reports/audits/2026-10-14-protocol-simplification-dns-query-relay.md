@@ -68,13 +68,13 @@ x86 never started. The runner reported:
 error: two-QEMU socket networking is unavailable in this sandbox
        CODEX_SANDBOX_NETWORK_DISABLED=1 prevents the listener/connect path.
        Re-run outside the sandbox (or with network permission).
-       Set CATTEN_ALLOW_SANDBOX_NETWORK=1 only if the sandbox is known to allow it.
+       Set KNYTOS_ALLOW_SANDBOX_NETWORK=1 only if the sandbox is known to allow it.
 ```
 
 This was an inherited environment-flag preflight rejection, not a guest test or
 executed network failure. The same authorized localhost fixture was rerun using
 the explicitly approved unsandboxed tool invocation with
-`CATTEN_ALLOW_SANDBOX_NETWORK=1`. The subsequent actual listener and linked
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1`. The subsequent actual listener and linked
 guest results below are separate evidence; they do not erase this rejection.
 
 ## Linked ARM/x86 execution

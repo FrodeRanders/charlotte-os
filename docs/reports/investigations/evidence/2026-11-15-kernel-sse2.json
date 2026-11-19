@@ -147,7 +147,7 @@
     "scripts/check-kernel-asm-sections.py": "8d956e3405cd408e2bfe1f9fca3e21e489e58059778405ccc8754bd61e5b0df3",
     "scripts/tests/fixtures/boot-allocation-edges.rs": "5df9447ee3b7ac58009fddc51acdaafde3211939000325cf1718641cfda44eed",
     "scripts/tests/test-x86-userspace-abi.py": "1d98999d8f106e0586dc8e28210a8be82000696f757a21a081fda374f596fdec",
-    "target_specs/x86_64-unknown-none-catten.json": "614db9cbd50f63c14c3a2ecd3a1faf4a5275cbfe0dd39a9a8f40d0b81ed864c4",
+    "target_specs/x86_64-unknown-none-knytos.json": "614db9cbd50f63c14c3a2ecd3a1faf4a5275cbfe0dd39a9a8f40d0b81ed864c4",
     "crates/catten/src/cpu/isa/x86_64/init/boot.rs": "62386ec101799ca31657aa76d5d18dd92c6951cc85169b0020ed48b7a5414fe8",
     ".cargo/config.toml": "ee5add326b9194e024f9eae1ca22a7f0e3941889a22049f3f77dd04677e96def",
     "Cargo.lock": "c516b44bd41c5aa77f4df60e3e6249f2019df65ae19675e83911b2a85f08524a",

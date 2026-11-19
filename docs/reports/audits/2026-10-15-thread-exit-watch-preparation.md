@@ -140,11 +140,11 @@ verify executable/read-only native assembly sections. No userspace source,
 signature, ABI or stored-format changes are needed; existing signed bundles
 are reused from the [persistence diagnostics batch](2026-10-15-raft-persistence-diagnostics.md#artifact-identity).
 
-Commands use `CATTEN_SKIP_EMBED_BUILD=1` and
+Commands use `KNYTOS_SKIP_EMBED_BUILD=1` and
 `CARGO_BUILD_RUSTFLAGS='-D warnings'`. Both no-network kernels are rebuilt;
 the x86 image is prepared with `--build-only` before running Intel and AMD
-with `CATTEN_SKIP_KERNEL_BUILD=1`. Security kernels are separately rebuilt
-with their current fixture inputs, with `CATTEN_ALLOW_SANDBOX_NETWORK=1`.
+with `KNYTOS_SKIP_KERNEL_BUILD=1`. Security kernels are separately rebuilt
+with their current fixture inputs, with `KNYTOS_ALLOW_SANDBOX_NETWORK=1`.
 ARM security uses HTTP/deployment host ports 18880/18881; x86 uses 18980/18981.
 Each instance has separate fresh test storage.
 

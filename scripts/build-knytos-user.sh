@@ -16,7 +16,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib/signing-policy.sh"
-catten_require_development_trust
+knytos_require_development_trust
 cd "$ROOT"
 
 MANIFEST="crates/knytos-user/Cargo.toml"

@@ -57,25 +57,25 @@ RISC-V custom target & Planned, not actively
 \subsection{Kernel build}
 
 The commands below use
-\repofiletext|target_specs/aarch64-unknown-none-catten.json|{the AArch64 target specification}
+\repofiletext|target_specs/aarch64-unknown-none-knytos.json|{the AArch64 target specification}
 and
-\repofiletext|target_specs/x86_64-unknown-none-catten.json|{the x86-64 target specification}.
+\repofiletext|target_specs/x86_64-unknown-none-knytos.json|{the x86-64 target specification}.
 
 \begin{verbatim}
 BUNDLES="$PWD/target/embedded-services"
 # AArch64 (headless, serial console only):
 scripts/build-knytos-services.sh --embed
 scripts/build-knytos-user.sh --embed
-export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLES/aarch64-unknown-none"
+export KNYTOS_AARCH64_SERVICE_BUNDLE="$BUNDLES/aarch64-unknown-none"
 cargo build --package catten \
-  --target target_specs/aarch64-unknown-none-catten.json \
+  --target target_specs/aarch64-unknown-none-knytos.json \
   --no-default-features --features acpi
 
 # x86-64:
 scripts/build-knytos-services-x86_64.sh
-export CATTEN_X86_64_SERVICE_BUNDLE="$BUNDLES/x86_64-unknown-none"
+export KNYTOS_X86_64_SERVICE_BUNDLE="$BUNDLES/x86_64-unknown-none"
 cargo build --package catten \
-  --target target_specs/x86_64-unknown-none-catten.json \
+  --target target_specs/x86_64-unknown-none-knytos.json \
   --no-default-features --features acpi
 \end{verbatim}
 

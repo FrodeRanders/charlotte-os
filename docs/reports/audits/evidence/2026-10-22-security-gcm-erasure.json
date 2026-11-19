@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.gcm-erasure.v1",
+  "schema": "knytos.security.gcm-erasure.v1",
   "report_date": "2026-10-22",
   "reviewed_revision": "cb205cd94de3eb33a06da3eb95c78db87f92fa72",
   "classification": {
@@ -39,7 +39,7 @@
           "cargo",
           "tree",
           "--manifest-path",
-          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "/Users/froran/Projects/private/knytos/Cargo.toml",
           "--offline",
           "--locked",
           "-p",
@@ -50,14 +50,14 @@
           "aes-gcm"
         ],
         "exit_status": 0,
-        "graph": "aes-gcm v0.10.3\n\u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n\u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n"
+        "graph": "aes-gcm v0.10.3\n\u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services)\n\u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n"
       },
       "ghash": {
         "command": [
           "cargo",
           "tree",
           "--manifest-path",
-          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "/Users/froran/Projects/private/knytos/Cargo.toml",
           "--offline",
           "--locked",
           "-p",
@@ -68,14 +68,14 @@
           "ghash"
         ],
         "exit_status": 0,
-        "graph": "ghash v0.5.1\n\u2514\u2500\u2500 aes-gcm v0.10.3\n    \u251c\u2500\u2500 aes-gcm feature \"aes\"\n    \u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n    \u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n    \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n    \u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n    \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n    \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n    \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n        \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2514\u2500\u2500 ghash feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n"
+        "graph": "ghash v0.5.1\n\u2514\u2500\u2500 aes-gcm v0.10.3\n    \u251c\u2500\u2500 aes-gcm feature \"aes\"\n    \u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services)\n    \u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n    \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n    \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n    \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n    \u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n    \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n    \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n    \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n        \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2514\u2500\u2500 ghash feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n"
       },
       "polyval": {
         "command": [
           "cargo",
           "tree",
           "--manifest-path",
-          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "/Users/froran/Projects/private/knytos/Cargo.toml",
           "--offline",
           "--locked",
           "-p",
@@ -86,7 +86,7 @@
           "polyval"
         ],
         "exit_status": 0,
-        "graph": "polyval v0.6.2\n\u251c\u2500\u2500 polyval feature \"default\"\n\u2502   \u2514\u2500\u2500 ghash v0.5.1\n\u2502       \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502           \u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)\n\u2502           \u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502           \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502           \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2502           \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n\u2502               \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2502       \u2514\u2500\u2500 ghash feature \"zeroize\"\n\u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n\u2514\u2500\u2500 polyval feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services) (*)\n"
+        "graph": "polyval v0.6.2\n\u251c\u2500\u2500 polyval feature \"default\"\n\u2502   \u2514\u2500\u2500 ghash v0.5.1\n\u2502       \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502           \u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2502   \u251c\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services)\n\u2502           \u2502   \u2502   \u2514\u2500\u2500 knytos-services feature \"default\" (command-line)\n\u2502           \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502           \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502           \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2502           \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n\u2502               \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2502       \u2514\u2500\u2500 ghash feature \"zeroize\"\n\u2502           \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n\u2514\u2500\u2500 polyval feature \"zeroize\"\n    \u2514\u2500\u2500 knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services) (*)\n"
       }
     },
     "source_sha256": {
@@ -128,7 +128,7 @@
         "Cargo.lock": "aea1ebbc892fe567a7b70beccd42552eed2f0070170536ba2b5b03d9ac0e5ffa",
         "src/lib.rs": "459edde20bb63affc66fb80197e7398c8c289ef80192244b069f0ff6000edba9"
       },
-      "diagnostics": "    Blocking waiting for file lock on package cache\n     Locking 1 package to highest compatible version\n      Adding zeroize v1.9.0 (available: v1.9.1)\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Checking zeroize v1.9.0\n    Checking gcm-erasure-false v0.0.0 (/private/tmp/charlotte-gcm-erasure-controls/disabled)\nerror[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()\n --> src/lib.rs:4:5\n  |\n4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here\n\nFor more information about this error, try `rustc --explain E0080`.\nerror: could not compile `gcm-erasure-false` (lib) due to 1 previous error\n"
+      "diagnostics": "    Blocking waiting for file lock on package cache\n     Locking 1 package to highest compatible version\n      Adding zeroize v1.9.0 (available: v1.9.1)\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Checking zeroize v1.9.0\n    Checking gcm-erasure-false v0.0.0 (/private/tmp/knytos-gcm-erasure-controls/disabled)\nerror[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()\n --> src/lib.rs:4:5\n  |\n4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here\n\nFor more information about this error, try `rustc --explain E0080`.\nerror: could not compile `gcm-erasure-false` (lib) due to 1 previous error\n"
     },
     "enabled": {
       "command": "cargo check --manifest-path <isolated-control>/Cargo.toml --offline",
@@ -140,12 +140,12 @@
         "Cargo.lock": "1c6ddd74e007119ba2711074df8017351dcba687c446c5e9fc7add702b398401",
         "src/lib.rs": "459edde20bb63affc66fb80197e7398c8c289ef80192244b069f0ff6000edba9"
       },
-      "diagnostics": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n     Locking 1 package to highest compatible version\n Downgrading zeroize v1.9.1 -> v1.9.0 (available: v1.9.1)\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Checking zeroize v1.9.0\n    Checking polyval v0.6.2\n    Checking ghash v0.5.1\n    Checking gcm-erasure-true v0.0.0 (/private/tmp/charlotte-gcm-erasure-controls/enabled)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s\n"
+      "diagnostics": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n     Locking 1 package to highest compatible version\n Downgrading zeroize v1.9.1 -> v1.9.0 (available: v1.9.1)\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Checking zeroize v1.9.0\n    Checking polyval v0.6.2\n    Checking ghash v0.5.1\n    Checking gcm-erasure-true v0.0.0 (/private/tmp/knytos-gcm-erasure-controls/enabled)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s\n"
     },
     "enabled_pmull": {
       "command": "RUSTFLAGS='--cfg polyval_armv8' cargo check --manifest-path <enabled-control>/Cargo.toml --offline --locked",
       "exit_status": 101,
-      "diagnostics": "   Compiling version_check v0.9.5\n   Compiling libc v0.2.190\n    Checking typenum v1.20.1\n    Checking subtle v2.6.1\n    Checking cfg-if v1.0.5\n    Checking opaque-debug v0.3.1\n    Checking zeroize v1.9.0\n   Compiling generic-array v0.14.7\n    Checking cpufeatures v0.2.17\n    Checking crypto-common v0.1.7\n    Checking universal-hash v0.5.1\n    Checking polyval v0.6.2\n    Checking ghash v0.5.1\n    Checking gcm-erasure-true v0.0.0 (/private/tmp/charlotte-gcm-erasure-controls/enabled)\nerror[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()\n --> src/lib.rs:4:5\n  |\n4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here\n\nFor more information about this error, try `rustc --explain E0080`.\nerror: could not compile `gcm-erasure-true` (lib) due to 1 previous error\n",
+      "diagnostics": "   Compiling version_check v0.9.5\n   Compiling libc v0.2.190\n    Checking typenum v1.20.1\n    Checking subtle v2.6.1\n    Checking cfg-if v1.0.5\n    Checking opaque-debug v0.3.1\n    Checking zeroize v1.9.0\n   Compiling generic-array v0.14.7\n    Checking cpufeatures v0.2.17\n    Checking crypto-common v0.1.7\n    Checking universal-hash v0.5.1\n    Checking polyval v0.6.2\n    Checking ghash v0.5.1\n    Checking gcm-erasure-true v0.0.0 (/private/tmp/knytos-gcm-erasure-controls/enabled)\nerror[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()\n --> src/lib.rs:4:5\n  |\n4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here\n\nFor more information about this error, try `rustc --explain E0080`.\nerror: could not compile `gcm-erasure-true` (lib) due to 1 previous error\n",
       "scope": "Compile only on aarch64-apple-darwin; no Knytos CPU feature or PMULL execution enabled."
     }
   },
@@ -173,12 +173,12 @@
   },
   "host_validation": {
     "debug": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline -p knytos-services --lib",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline -p knytos-services --lib",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests --quiet",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-kafka -p knytos-s3 -p knytos-transport-tests --quiet",
       "transport_exit_status": 0,
       "transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
@@ -202,12 +202,12 @@
       "counting": "150 service-library cases plus 110 Kafka/S3/transport runtime cases. Last two transport result lines are 3 Kafka and 6 S3 compile-fail doctests."
     },
     "release": {
-      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-services --lib --quiet",
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked --release -p knytos-services --lib --quiet",
       "library_exit_status": 0,
       "library_result_lines": [
         "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
       ],
-      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p knytos-kafka -p knytos-s3 -p charlotte-transport-tests --quiet",
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked --release -p knytos-kafka -p knytos-s3 -p knytos-transport-tests --quiet",
       "transport_exit_status": 0,
       "transport_result_lines": [
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
@@ -239,7 +239,7 @@
   },
   "checks": {
     "clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
       "exit_status": 0
     },
     "format": {
@@ -266,10 +266,10 @@
     "native_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)"
   },
   "native": {
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-gcm CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --s3-test --instance sec15-gcm --fresh-storage --timeout 300",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-gcm KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --s3-test --instance sec15-gcm --fresh-storage --timeout 300",
     "exit_status": 0,
     "kernel": {
-      "path": "target/aarch64-unknown-none-catten/debug/catten",
+      "path": "target/aarch64-unknown-none-knytos/debug/catten",
       "sha256": "8b3537a165bead5f254c5fa1dc670e249cc852e05bd6d4653e42fd588f3a47a4"
     },
     "results": {
@@ -298,15 +298,15 @@
         "local_image_id": "sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8"
       },
       "running_inspection_limitation": {
-        "command": "docker inspect charlotte-sec15-gcm-rustfs-1 --format {{.Name}} {{.Image}}",
+        "command": "docker inspect knytos-sec15-gcm-rustfs-1 --format {{.Name}} {{.Image}}",
         "exit_status": 1,
-        "diagnostic": "error: no such object: charlotte-sec15-gcm-rustfs-1",
+        "diagnostic": "error: no such object: knytos-sec15-gcm-rustfs-1",
         "interpretation": "Attempt ran after the successful fixture had cleaned up. No running-container image capture is claimed; immutable requested refs and pre-launch local IDs are recorded."
       }
     },
     "post_run_cleanup": {
-      "container_command": "docker ps -a --filter label=com.docker.compose.project=charlotte-sec15-gcm --format {{.Names}}",
-      "volume_command": "docker volume ls --filter label=com.docker.compose.project=charlotte-sec15-gcm --format {{.Name}}",
+      "container_command": "docker ps -a --filter label=com.docker.compose.project=knytos-sec15-gcm --format {{.Names}}",
+      "volume_command": "docker volume ls --filter label=com.docker.compose.project=knytos-sec15-gcm --format {{.Name}}",
       "both_exit_status": 0,
       "containers": [],
       "volumes": []
@@ -500,7 +500,7 @@
   },
   "incidental_source_test_failures": [],
   "preserved_pdf": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "edited_or_rendered": false
   },

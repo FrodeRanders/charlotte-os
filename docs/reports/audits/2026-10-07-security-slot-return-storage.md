@@ -93,15 +93,15 @@ quarantine fixtures and their retained frames/accounts remain unchanged.
 | Arm SMMUv3 security QEMU | **19 passed, 0 failed, 0 pending**; scoped probes `0xffff`, publication generations 1/2, concurrent cancellation retired 4,780 requests. |
 
 ```sh
-rustc --edition=2024 --test crates/catten/src/klib/collections/id_table.rs \
+rustc --edition=2024 --test crates/knytos/src/klib/collections/id_table.rs \
   -o target/host-self-tests/id-table-tests
 target/host-self-tests/id-table-tests
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance slot-storage-intel-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance slot-storage-amd-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance slot-storage-arm-20261007 --fresh-storage --timeout 180
 ```
 

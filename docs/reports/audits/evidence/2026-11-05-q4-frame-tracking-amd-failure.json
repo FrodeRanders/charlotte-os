@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.q4-frame-tracking-amd-failure.v1",
+  "schema": "knytos.q4-frame-tracking-amd-failure.v1",
   "date": "2026-11-05",
   "base_revision": "bbb923797a06ca655d8725ef2953dc7ac629eb2b",
   "scope": "Original four-CPU AMD-Vi security campaign, before any fixture change. Not included among passing campaigns.",
@@ -28,7 +28,7 @@
     "crates/catten/src/klib/collections/id_table/preparation.rs": "83421713752c919f738af43821b9eeba78460dc098fdbbbdf48282fd75fc1050"
   },
   "artifact_manifest": {
-    "schema": "charlotte.boot-diagnostics.v1",
+    "schema": "knytos.boot-diagnostics.v1",
     "arch": "x86_64",
     "instance": "q4-frames-amd",
     "cpus": 4,
@@ -49,7 +49,7 @@
       "?? scripts/tests/test-frame-tracking.py"
     ],
     "tracked_diff_sha256": "37ad3cbdf4a5e572e93d9a967ef102770a4f1d46006779e0412476452c26c4c1",
-    "kernel_source": "/Users/froran/Projects/private/charlotte-os/target/x86_64-unknown-none-catten/debug/catten",
+    "kernel_source": "/Users/froran/Projects/private/knytos/target/x86_64-unknown-none-knytos/debug/catten",
     "kernel_sha256": "0b74987aca930bcd9aafe0ed6563de91807e54ce961a708104b982d70a22a452",
     "bundle_sha256": {
       "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
@@ -91,11 +91,11 @@
       "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
       "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
     },
-    "boot_image": "/Users/froran/Projects/private/charlotte-os/os-images/charlotte-x86_64-debug-q4-frames-amd.img",
+    "boot_image": "/Users/froran/Projects/private/knytos/os-images/knytos-x86_64-debug-q4-frames-amd.img",
     "boot_image_sha256": "f86b48d6e74ba2fbc6bfefbf73e57467382736840b0a7707bbfc22765b42ffcb",
-    "disk": "/Users/froran/Projects/private/charlotte-os/os-images/x86-data-q4-frames-amd.img",
+    "disk": "/Users/froran/Projects/private/knytos/os-images/x86-data-q4-frames-amd.img",
     "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
-    "serial_log": "/private/tmp/charlotte-x86-q4-frames-amd-serial.log",
+    "serial_log": "/private/tmp/knytos-x86-q4-frames-amd-serial.log",
     "timeout_seconds": 240,
     "prepared_utc": "2026-11-05T17:02:02Z",
     "tooling_sha256": {
@@ -117,7 +117,7 @@
       "-drive",
       "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
       "-drive",
-      "if=none,file=./os-images/charlotte-x86_64-debug-q4-frames-amd.img,format=raw,id=esp,readonly=on",
+      "if=none,file=./os-images/knytos-x86_64-debug-q4-frames-amd.img,format=raw,id=esp,readonly=on",
       "-device",
       "qemu-xhci,id=xhci",
       "-device",
@@ -129,9 +129,9 @@
       "-device",
       "amd-iommu,dma-remap=on",
       "-object",
-      "rng-random,filename=/dev/urandom,id=charlotte-rng",
+      "rng-random,filename=/dev/urandom,id=knytos-rng",
       "-device",
-      "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+      "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
       "-display",
       "none",
       "-no-reboot",
@@ -146,7 +146,7 @@
       "-gdb",
       "unix:/tmp/ctdiag-rsfan1hu/gdb.sock,server=on,wait=off",
       "-serial",
-      "file:/tmp/charlotte-x86-q4-frames-amd-serial.log"
+      "file:/tmp/knytos-x86-q4-frames-amd-serial.log"
     ]
   },
   "runner_result": {

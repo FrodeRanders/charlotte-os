@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.ipc-payload-node-admission.v1",
+  "schema": "knytos.ipc-payload-node-admission.v1",
   "date": "2026-11-02",
   "base_revision": "a87827b01825d8fa03d7c46469e6197cd6f8274e",
   "scope": "IPC capability and endpoint payload nodes join pending-call and reply-token nodes in the existing ipc_nodes requested-byte/count pool. Each node retains backing and its optional logical reservation through preparation, hidden results, detached cleanup and actual deallocation. No new metadata pool, holder allocation, cleanup registry, SDK or wire change.",

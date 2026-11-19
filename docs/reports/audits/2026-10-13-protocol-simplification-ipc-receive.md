@@ -86,7 +86,7 @@ See [register/ownership contract](../../reference/ipc-receive.md) and
   In particular, `request` also retries healthy status controls after deliberately
   interrupted peers; subsequent success does not qualify immediate availability.
   The trickled-body check rejects at 30.21 s without restarting its total deadline.
-  The returned `charlotte.cluster.v2` view is fresh, leader-served and shows
+  The returned `knytos.cluster.v2` view is fresh, leader-served and shows
   greet generation/service generation 1 ready on node `0000000042e21edb`, with
   no object ID.
 - ARM security fixture, instance `s05a-security-arm`, four LPs, fresh storage,
@@ -106,7 +106,7 @@ execution. The invocation overlapped the security guest and used its same defaul
 deployment port 8081; QEMU could not install the SLIRP forwarding rule:
 
 ```text
--netdev user,id=charlotte-net,hostfwd=tcp::8081-:7444:
+-netdev user,id=knytos-net,hostfwd=tcp::8081-:7444:
 Could not set up host forwarding rule 'tcp::8081-:7444'
 error: QEMU exited before the 240s test window elapsed
 ```
@@ -115,7 +115,7 @@ Runner exit 1, no guest self-test counts or conclusions. This is a host fixture
 port conflict, separate from the prior DMA admission issue. No port-owner capture
 was taken; attribution to the overlapping security fixture is an inference from
 its shared forwarding port and timing. The fresh repeat
-uses `CATTEN_DEPLOY_HOST_PORT=19082` and a distinct instance; the failure remains
+uses `KNYTOS_DEPLOY_HOST_PORT=19082` and a distinct instance; the failure remains
 recorded here rather than being replaced by a passing repeat.
 
 ## Limits and unresolved findings

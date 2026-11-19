@@ -10,8 +10,8 @@ if not __debug__:
 
 
 def context(role=None):
-    ca = os.environ["CATTEN_MANAGEMENT_CA_FILE"]
-    prefix = "CATTEN_MANAGEMENT_" + (role.upper() + "_" if role else "")
+    ca = os.environ["KNYTOS_MANAGEMENT_CA_FILE"]
+    prefix = "KNYTOS_MANAGEMENT_" + (role.upper() + "_" if role else "")
     cert = os.environ[prefix + "CERT_FILE"]
     key = os.environ[prefix + "KEY_FILE"]
     result = ssl.create_default_context(cafile=ca)
@@ -28,7 +28,7 @@ def connect(port, timeout=12, host="127.0.0.1", role=None):
     raw = socket.create_connection((host, port), timeout=timeout)
     try:
         raw.settimeout(max(0.001, end - time.monotonic()))
-        return policy.wrap_socket(raw, server_hostname=os.environ.get("CATTEN_MANAGEMENT_SERVER_NAME", host))
+        return policy.wrap_socket(raw, server_hostname=os.environ.get("KNYTOS_MANAGEMENT_SERVER_NAME", host))
     except BaseException:
         raw.close()
         raise

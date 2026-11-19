@@ -15,7 +15,7 @@ five passing rotation/rejection cases.
 
 ## Implementation and trust boundary
 
-`CATTEN_BOOT_TEST_INSTALLED_POLICY` accepts an absolute regular-file path only
+`KNYTOS_BOOT_TEST_INSTALLED_POLICY` accepts an absolute regular-file path only
 inside the x86 development `boot_trust_test` feature. The build bounds and
 structurally validates a complete current signed-policy record, staging a
 separate compiled snapshot. The default remains the public revision 7 fixture.

@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-name-publication-model-evidence-v1",
+  "schema": "knytos-name-publication-model-evidence-v1",
   "reviewed_revision": "1c6963a2887d7d69472af9179374f81ecd0750d4",
   "tooling": {
     "jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
@@ -351,15 +351,15 @@
       "-bios",
       "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
       "-drive",
-      "file=./os-images/charlotte-aarch64-debug-ns-publication-arm.img,format=raw,if=none,id=boot0",
+      "file=./os-images/knytos-aarch64-debug-ns-publication-arm.img,format=raw,if=none,id=boot0",
       "-device",
       "virtio-blk-pci,drive=boot0,addr=3",
       "-cpu",
       "cortex-a710",
       "-object",
-      "rng-random,filename=/dev/urandom,id=charlotte-rng",
+      "rng-random,filename=/dev/urandom,id=knytos-rng",
       "-device",
-      "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+      "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
       "-smp",
       "4",
       "-drive",
@@ -375,9 +375,9 @@
       "-gdb",
       "unix:/tmp/ctdiag-zqfd4rxb/gdb.sock,server=on,wait=off",
       "-serial",
-      "file:/tmp/charlotte-ns-publication-arm-serial.log"
+      "file:/tmp/knytos-ns-publication-arm-serial.log"
     ],
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings' ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance ns-publication-arm",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings' ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance ns-publication-arm",
     "runner_exit": 0,
     "signed_ns_sha256": "77d0cb593aa1743e7eb76cb628d81e8555aa6c90ed9aaf2372bcd0c2e14f83be",
     "serial_sha256": "f7ae842643694e9b86ecb63e57c5c8f79482890de4a9bef9f7e4175b492278b5",

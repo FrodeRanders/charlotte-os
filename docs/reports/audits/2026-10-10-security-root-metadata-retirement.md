@@ -107,9 +107,9 @@ Fresh-storage guests run sequentially, reusing validated embedded bundles becaus
 only kernel code changed:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance root-metadata-intel-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance root-metadata-amd-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18789 CATTEN_DEPLOY_HOST_PORT=18089 scripts/run-aarch64.sh --security-test --instance root-metadata-arm-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance root-metadata-intel-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance root-metadata-amd-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18789 KNYTOS_DEPLOY_HOST_PORT=18089 scripts/run-aarch64.sh --security-test --instance root-metadata-arm-20261010 --fresh-storage --timeout 180
 ```
 
 | Guest | Final result | Instrumented mailbox / authority release entries |

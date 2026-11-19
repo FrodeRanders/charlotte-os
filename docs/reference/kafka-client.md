@@ -239,7 +239,7 @@ are filtered using the broker's aborted-transaction ranges and control
 markers.
 
 Each connector joins its configured group with the bounded
-`charlotte-fixed-v1` assignor. A member advertises exactly the topic/partition
+`knytos-fixed-v1` assignor. A member advertises exactly the topic/partition
 authorized by its immutable profile. The group leader assigns each advertised
 topic/partition to one member; duplicate members remain heartbeating standbys
 with an empty assignment and can acquire the partition after a join, leave, or
@@ -265,7 +265,7 @@ counter per profile route. Monitoring derives rates from the per-route
 counters; the connector does not maintain an unbounded time series.
 
 This fixed-partition protocol is for Knytos connector members. A conventional
-Kafka consumer that does not advertise `charlotte-fixed-v1` cannot join the same
+Kafka consumer that does not advertise `knytos-fixed-v1` cannot join the same
 group. It is deliberately smaller than Kafka's subscription assignors: topic
 discovery and arbitrary partition selection remain deployment-controller work.
 
@@ -403,7 +403,7 @@ TLS feature set.
 The opt-in runner creates an ephemeral CA, server certificate, and P-256 client
 identity, starts a fresh three-broker Apache Kafka KRaft fixture with verified
 external TLS, required mTLS, and SCRAM-SHA-256 client authentication
-listeners, creates three-replica `charlotte-events` and `charlotte-results`
+listeners, creates three-replica `knytos-events` and `knytos-results`
 partitions on different leaders, and boots an
 in-guest smoke application
 that checks:
@@ -422,7 +422,7 @@ that checks:
 - the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 
 Once the connector has discovered its initial routes, the guest opens a
-bounded fault window. The host kills the broker leading `charlotte-results`,
+bounded fault window. The host kills the broker leading `knytos-results`,
 keeps it down beyond the connector's bounded receive timeout, and then
 restarts it. The verifier requires the transaction to finish through the
 replacement leader, at least one routing retry, and a successful post-fault
@@ -468,7 +468,7 @@ scripts/run-aarch64.sh --kafka-fencing-test --timeout 300
 The certificate identifies the three `kafka-N.test` endpoints; their
 provisioned transports connect to QEMU's user-network gateway at
 `10.0.2.2:19092`, `:19094`, and `:19096`. The fixture and
-its volumes are removed on exit. Set `CATTEN_KAFKA_IMAGE` to exercise another
+its volumes are removed on exit. Set `KNYTOS_KAFKA_IMAGE` to exercise another
 compatible Kafka image. The switch adds the fixture, test trust anchor, and
 verifier; the ordinary network, DHCP, TCP/IP, entropy, and time services are
 not test-only functionality.

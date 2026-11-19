@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Probe EOF and idle-client recovery against an isolated running guest.
 
-Example: --port 18080 --ready-log /private/tmp/charlotte-security-serial.log
+Example: --port 18080 --ready-log /private/tmp/knytos-security-serial.log
 run-aarch64.sh --http-test invokes this before terminating its guest. It can
 also be used against a guest deliberately left running, using its forwarded port.
 """

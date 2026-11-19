@@ -143,23 +143,23 @@ def main():
             for case in args.cases:
                 instance = f"management-startup-{architecture[:3]}-{case}-{private.name[-6:]}"
                 environment = dict(os.environ)
-                for name in ("CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_MANAGEMENT_VALIDITY_DIR", "CATTEN_BOOT_TEST_INSTALLED_POLICY", "CATTEN_SKIP_KERNEL_BUILD", "CATTEN_CLUSTER_SERVICES",
-                             "CATTEN_CLUSTER_STATIC_NETWORK", "CATTEN_RESOURCE_POLICY", "CATTEN_LIMINE_CONFIG",
-                             "CATTEN_QEMU_PID_FILE", "CATTEN_QEMU_MONITOR", "CATTEN_QEMU_DEBUG_STUB"):
+                for name in ("KNYTOS_MANAGEMENT_TLS_RESOURCE", "KNYTOS_MANAGEMENT_VALIDITY_DIR", "KNYTOS_BOOT_TEST_INSTALLED_POLICY", "KNYTOS_SKIP_KERNEL_BUILD", "KNYTOS_CLUSTER_SERVICES",
+                             "KNYTOS_CLUSTER_STATIC_NETWORK", "KNYTOS_RESOURCE_POLICY", "KNYTOS_LIMINE_CONFIG",
+                             "KNYTOS_QEMU_PID_FILE", "KNYTOS_QEMU_MONITOR", "KNYTOS_QEMU_DEBUG_STUB"):
                     environment.pop(name, None)
-                environment.update(CATTEN_TRUST_MODE="development", CATTEN_SKIP_EMBED_BUILD="1",
-                                   CATTEN_HTTP_HOST_PORT=str(args.status_port), CATTEN_DEPLOY_HOST_PORT=str(args.deployment_port),
-                                   CATTEN_MANAGEMENT_CA_FILE=str(credentials / "ca.pem"),
-                                   CATTEN_MANAGEMENT_CERT_FILE=str(credentials / "administrator.pem"),
-                                   CATTEN_MANAGEMENT_KEY_FILE=str(credentials / "administrator.key"),
-                                   CATTEN_MANAGEMENT_READER_CERT_FILE=str(credentials / "reader.pem"),
-                                   CATTEN_MANAGEMENT_READER_KEY_FILE=str(credentials / "reader.key"),
-                                   CATTEN_MANAGEMENT_SERVER_NAME="127.0.0.1")
+                environment.update(KNYTOS_TRUST_MODE="development", KNYTOS_SKIP_EMBED_BUILD="1",
+                                   KNYTOS_HTTP_HOST_PORT=str(args.status_port), KNYTOS_DEPLOY_HOST_PORT=str(args.deployment_port),
+                                   KNYTOS_MANAGEMENT_CA_FILE=str(credentials / "ca.pem"),
+                                   KNYTOS_MANAGEMENT_CERT_FILE=str(credentials / "administrator.pem"),
+                                   KNYTOS_MANAGEMENT_KEY_FILE=str(credentials / "administrator.key"),
+                                   KNYTOS_MANAGEMENT_READER_CERT_FILE=str(credentials / "reader.pem"),
+                                   KNYTOS_MANAGEMENT_READER_KEY_FILE=str(credentials / "reader.key"),
+                                   KNYTOS_MANAGEMENT_SERVER_NAME="127.0.0.1")
                 if case in ("validity", "chain-validity"):
-                    environment["CATTEN_MANAGEMENT_VALIDITY_DIR"] = str(credentials)
+                    environment["KNYTOS_MANAGEMENT_VALIDITY_DIR"] = str(credentials)
                 resource = variants[case]
                 if resource:
-                    environment["CATTEN_MANAGEMENT_TLS_RESOURCE"] = str(resource)
+                    environment["KNYTOS_MANAGEMENT_TLS_RESOURCE"] = str(resource)
                 arguments = [ROOT / f"scripts/run-{architecture}.sh", "--management-startup-test", CASES[case],
                              "--instance", instance, "--timeout", str(args.timeout), "--no-failure-capture"]
                 print(f"START {architecture} {case}", flush=True)

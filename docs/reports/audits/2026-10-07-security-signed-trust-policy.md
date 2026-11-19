@@ -81,7 +81,7 @@ Commands: [signing guide](../../guides/signing-and-trust.md#signed-trust-policy)
 - `scripts/build-knytos-services.sh --embed`: passed.
 - Arm kernel Clippy with its required bundle environment, `--locked`,
   `-D warnings`: passed.
-- Direct `CATTEN_TRUST_MODE=production` kernel check: rejected with the expected
+- Direct `KNYTOS_TRUST_MODE=production` kernel check: rejected with the expected
   build-script diagnostic; policy signing does not bypass that gate.
 - `cargo fmt --all -- --check`, `git diff --check` and local documentation-link
   checks: passed.

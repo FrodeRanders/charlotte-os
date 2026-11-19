@@ -525,7 +525,7 @@
     "Cargo.lock": "c516b44bd41c5aa77f4df60e3e6249f2019df65ae19675e83911b2a85f08524a",
     "rust-toolchain.toml": "a0665391d1aa1a019bb02e2af6b9e19dde456912abdd252b9d8ca5afc8cd82d4",
     ".cargo/config.toml": "ee5add326b9194e024f9eae1ca22a7f0e3941889a22049f3f77dd04677e96def",
-    "target_specs/x86_64-unknown-none-catten.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
+    "target_specs/x86_64-unknown-none-knytos.json": "201448bf16914c3832c246efb3affabcb4247317add134c757b6ffe3dcd8907f",
     "crates/knytos-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc"
   },
   "host_validation": {

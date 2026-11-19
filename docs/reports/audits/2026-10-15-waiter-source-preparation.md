@@ -166,7 +166,7 @@ SHA-256 identities of the executed kernel ELF and final UART bytes:
 
 ## Reproduction and artifact identity
 
-Use `CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'` with:
+Use `KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'` with:
 
 ```sh
 ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance source-waiter-arm
@@ -176,8 +176,8 @@ Use `CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'` with:
 ./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance source-waiter-x86-security
 ```
 
-AMD reuses the Intel no-network kernel with `CATTEN_SKIP_KERNEL_BUILD=1`.
-Security profiles use `CATTEN_ALLOW_SANDBOX_NETWORK=1`, HTTP/deploy host ports
+AMD reuses the Intel no-network kernel with `KNYTOS_SKIP_KERNEL_BUILD=1`.
+Security profiles use `KNYTOS_ALLOW_SANDBOX_NETWORK=1`, HTTP/deploy host ports
 19080/19081 for ARM and 19180/19181 for x86. Runner checks require executable,
 read-only native assembly sections. There are no assembly or userspace changes;
 no linked-pair, reset or outstanding-I/O campaign is claimed.

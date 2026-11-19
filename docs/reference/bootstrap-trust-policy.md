@@ -150,7 +150,7 @@ That check now uses the shared `verify_for_boot` boundary instead of a separate
 fixture-local assertion.
 For restart/rotation qualification, the x86 development fixture can compile a
 different complete signed snapshot selected through
-`CATTEN_BOOT_TEST_INSTALLED_POLICY`. Boot authenticates that snapshot against the
+`KNYTOS_BOOT_TEST_INSTALLED_POLICY`. Boot authenticates that snapshot against the
 pinned test anchor; a separately supplied candidate still must match its exact
 revision/digest. The [rotation campaign](../reports/audits/2026-10-27-security-management-rotation.md)
 advances public fixture state before rebuilding and observes older signed-kernel

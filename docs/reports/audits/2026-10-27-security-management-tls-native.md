@@ -26,7 +26,7 @@ work. Boot opens it using the same `PreparedBootTrust` recipient owner **before
 trust publication** and launches both services through the existing owning
 read-only profile transaction. It creates no independent service trust source.
 
-`CATTEN_MANAGEMENT_TLS_RESOURCE` is an absolute ciphertext file input to the
+`KNYTOS_MANAGEMENT_TLS_RESOURCE` is an absolute ciphertext file input to the
 kernel build. The current delivery mechanism requires rebuild/restart to
 replace it; it is not a live update interface. Missing resources disable both
 listeners while preserving cooperative shutdown. Invalid envelope/policy input

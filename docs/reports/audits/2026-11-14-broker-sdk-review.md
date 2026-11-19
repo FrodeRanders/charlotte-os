@@ -115,8 +115,8 @@ incompatible types. The host conformance suite uses `knytos-kafka` and
 `sitas-unix`, which are not currently exported. Their deliberate Git pins may
 remain, or an optional test source profile can include them with the same graph.
 
-The broker's older `charlotte.lock` and Cargo dependencies intentionally agree.
-A pin bump alone is insufficient: its `charlotte-sdk.sh fetch` sparse-checks out
+The broker's older `knytos.lock` and Cargo dependencies intentionally agree.
+A pin bump alone is insufficient: its `knytos-sdk.sh fetch` sparse-checks out
 only service tooling, launch, signer and scripts, while the new exporter also
 needs runtime/application source and a pinned Sitas source checkout. Consume a
 prebuilt SDK or update that fetch closure. Commit the platform foundation before

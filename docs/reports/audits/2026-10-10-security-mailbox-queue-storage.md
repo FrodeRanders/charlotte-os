@@ -113,9 +113,9 @@ Fresh-storage guests run sequentially, reusing validated embedded service bundle
 because only kernel code changed:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance mailbox-queue-intel-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance mailbox-queue-amd-20261010 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18799 CATTEN_DEPLOY_HOST_PORT=18099 scripts/run-aarch64.sh --security-test --instance mailbox-queue-arm-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance mailbox-queue-intel-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance mailbox-queue-amd-20261010 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18799 KNYTOS_DEPLOY_HOST_PORT=18099 scripts/run-aarch64.sh --security-test --instance mailbox-queue-arm-20261010 --fresh-storage --timeout 180
 ```
 
 | Guest | Final result | Queue preparation / completion entries |

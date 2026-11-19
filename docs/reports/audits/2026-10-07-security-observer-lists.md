@@ -83,17 +83,17 @@ Contract: [observer-list admission](../../reference/observer-list-admission.md).
 | Arm SMMUv3 security QEMU | **19 passed, 0 failed, 0 pending**; scoped probes `0xffff`, publication generations 1/2, concurrent cancellation retired 4,728 requests. |
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance observer-list-intel-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance observer-list-amd-20261007 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18503 \
-CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18503 \
+KNYTOS_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
   --instance observer-list-arm-20261007 --fresh-storage --timeout 180
 ```
 
 The host command is `cargo +nightly-2026-07-27 test --locked --manifest-path
-/path/to/charlotte-os/crates/knytos-lifecycle/Cargo.toml --test
+/path/to/knytos/crates/knytos-lifecycle/Cargo.toml --test
 charged_allocator`, invoked outside the repository's kernel build-std config.
 Guests rebuild kernels and enforce assembly section permissions. This kernel-only
 change reuses validated embedded services. Arm uses required local port-binding

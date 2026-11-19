@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.release-generation.v1",
+  "schema": "knytos.security.release-generation.v1",
   "report_date": "2026-10-21",
   "reviewed_revision": "7bf380f1e87cfc13fc999a57df7357686ab6da2c",
   "classification": {
@@ -36,7 +36,7 @@
   "failures_preserved_separately": [
     {
       "kind": "optimized production defect",
-      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign -p knytos-launch -p knytos-services --lib",
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked --release -p cluster-sign -p knytos-launch -p knytos-services --lib",
       "exit_status": 101,
       "test": "operations_admission::tests::release_reservations_are_charged_cumulatively",
       "diagnostic": "assertion left == right failed; left: Ok([[1], [1]]); right: Err(InsufficientCapacity)",
@@ -134,7 +134,7 @@
   },
   "host_test_context": {
     "cwd": "/private/tmp",
-    "manifest": "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+    "manifest": "/Users/froran/Projects/private/knytos/Cargo.toml",
     "flags": "--offline --locked",
     "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)",
     "tests_per_profile": 233
@@ -197,11 +197,11 @@
       "exit_status": 0
     },
     "host_clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign -p knytos-launch --all-targets -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p cluster-sign -p knytos-launch --all-targets -- -D warnings",
       "exit_status": 0
     },
     "service_clippy": {
-      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/knytos/Cargo.toml --offline --locked -p knytos-services --lib -- -D warnings",
       "exit_status": 0
     },
     "arm_build": {
@@ -663,7 +663,7 @@
     "scope": "Existing static promise model; no receipt/framing/client-loop proof and no new full-suite claim."
   },
   "preserved_pdf": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
     "edited_or_rendered": false
   },

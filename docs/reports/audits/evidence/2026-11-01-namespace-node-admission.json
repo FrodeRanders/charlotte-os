@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.namespace-node-admission.v1",
+  "schema": "knytos.namespace-node-admission.v1",
   "date": "2026-11-01",
   "base_revision": "fbbb18e82997be10e0dd1a1e490e738bc92c4fc2",
   "scope": "Independent requested-byte/count admission for the five global capability, IPC, completion, mailbox-capability and mailbox-word namespace map nodes, including empty preparation, detached storage and terminal retention.",

@@ -204,9 +204,9 @@ that architecture-qualified bundle path while compiling the kernel. A direct
 AArch64 kernel build must do the same:
 
 ```sh
-export CATTEN_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none"
+export KNYTOS_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none"
 cargo build --package catten \
-  --target target_specs/aarch64-unknown-none-catten.json \
+  --target target_specs/aarch64-unknown-none-knytos.json \
   --no-default-features --features acpi
 ```
 
@@ -220,7 +220,7 @@ scripts/run-x86_64.sh debug --smp 4 --timeout 20
 
 The generated services are staged under
 `target/embedded-services/x86_64-unknown-none/`, and the runner exports
-`CATTEN_X86_64_SERVICE_BUNDLE`. A direct kernel build that enables x86 service
+`KNYTOS_X86_64_SERVICE_BUNDLE`. A direct kernel build that enables x86 service
 tests must point that variable at an already built and signed native bundle.
 Service bundles are architecture-qualified and must never be shared between
 AArch64 and x86-64 builds.
@@ -272,5 +272,5 @@ toolchain. A project unpacks it and builds against it without a Knytos
 checkout.
 
 The `knytos-kafka-broker` repository is the reference out-of-tree project:
-its `tools/charlotte-sdk.sh`, `tools/build-elf.sh`, and `tools/package.sh`
+its `tools/knytos-sdk.sh`, `tools/build-elf.sh`, and `tools/package.sh`
 resolve either a checkout or an exported SDK, build the EL0 image, and sign it.

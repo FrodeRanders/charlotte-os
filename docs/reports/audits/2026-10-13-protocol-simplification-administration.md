@@ -64,7 +64,7 @@ remain intact. This is compatibility removal, not removal of safety compensation
   were `--deploy-test --fresh-storage --timeout 300`, instances `s04b2a-arm`
   and `s04b2a-x86`, ARM `--net-listen 19059 --mac 52:54:00:12:34:01`, x86
   `--net-connect 127.0.0.1:19059 --mac 52:54:00:12:34:02`, with
-  `CATTEN_SKIP_EMBED_BUILD=1` and the authorized socket-network fixture override.
+  `KNYTOS_SKIP_EMBED_BUILD=1` and the authorized socket-network fixture override.
   Native assembly permissions passed before boot.
 - Each controller fixture rejected retired controller 2 with -1 and DNS 8/9
   with -3, answered short and long missing names with -1, and rejected zero,

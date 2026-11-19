@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-security-evidence-v1",
+  "schema": "knytos-security-evidence-v1",
   "report_date": "2026-10-26",
   "reviewed_revision": "0a79a800f5ed0fd5965937602c1518f891375b6f",
   "scope": {
@@ -274,7 +274,7 @@
   },
   "checks": {
     "gate_tests": {
-      "command": "CATTEN_ADVISORY_TEST_DB=target/security-audit/advisory-db python3 scripts/tests/test-dependency-advisories.py",
+      "command": "KNYTOS_ADVISORY_TEST_DB=target/security-audit/advisory-db python3 scripts/tests/test-dependency-advisories.py",
       "passed": 12,
       "failed": 0,
       "results": [
@@ -615,7 +615,7 @@
             "   Compiling hpke v0.14.0",
             "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/debug/build/knytos-launch/ca28bfa825d9a715/out/hpke_erasure-ca28bfa825d9a715)",
+            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/knytos/target/host-unit-tests/debug/build/knytos-launch/ca28bfa825d9a715/out/hpke_erasure-ca28bfa825d9a715)",
             "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
@@ -698,7 +698,7 @@
             "   Compiling hpke v0.14.0",
             "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/release/build/knytos-launch/e57fded3a3fe2fa7/out/hpke_erasure-e57fded3a3fe2fa7)",
+            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/knytos/target/host-unit-tests/release/build/knytos-launch/e57fded3a3fe2fa7/out/hpke_erasure-e57fded3a3fe2fa7)",
             "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
             "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
@@ -778,15 +778,15 @@
         "test_informational_warning_rejects_without_a_vulnerability (__main__.RealScanner.test_informational_warning_rejects_without_a_vulnerability) ... ERROR",
         "test_known_vulnerability_rejects (__main__.RealScanner.test_known_vulnerability_rejects) ... ERROR",
         "ERROR: test_clean_lockfile_passes (__main__.RealScanner.test_clean_lockfile_passes)",
-        "  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-dependency-advisories.py\", line 123, in test_clean_lockfile_passes",
+        "  File \"/Users/froran/Projects/private/knytos/scripts/tests/test-dependency-advisories.py\", line 123, in test_clean_lockfile_passes",
         "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
         "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
         "ERROR: test_informational_warning_rejects_without_a_vulnerability (__main__.RealScanner.test_informational_warning_rejects_without_a_vulnerability)",
-        "  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-dependency-advisories.py\", line 134, in test_informational_warning_rejects_without_a_vulnerability",
+        "  File \"/Users/froran/Projects/private/knytos/scripts/tests/test-dependency-advisories.py\", line 134, in test_informational_warning_rejects_without_a_vulnerability",
         "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
         "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
         "ERROR: test_known_vulnerability_rejects (__main__.RealScanner.test_known_vulnerability_rejects)",
-        "  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-dependency-advisories.py\", line 129, in test_known_vulnerability_rejects",
+        "  File \"/Users/froran/Projects/private/knytos/scripts/tests/test-dependency-advisories.py\", line 129, in test_known_vulnerability_rejects",
         "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
         "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
         "FAILED (errors=3)"
@@ -980,7 +980,7 @@
       },
       "tracked_diff_sha256": "0d304a12242db3caadc1546a4fcc0227123d33f4233dea1aaa161ff398c0c85d",
       "backend": "smmuv3",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20018 CATTEN_DEPLOY_HOST_PORT=20182 scripts/run-aarch64.sh --security-test --http-test --instance advisory-ctutils-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20018 KNYTOS_DEPLOY_HOST_PORT=20182 scripts/run-aarch64.sh --security-test --http-test --instance advisory-ctutils-arm --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -1086,7 +1086,7 @@
       },
       "tracked_diff_sha256": "fa285ecb7261d4de1fbc706632e80748e8add26713a7413969ef75652d5453d9",
       "backend": "intel",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20019 CATTEN_DEPLOY_HOST_PORT=20183 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance advisory-ctutils-intel --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20019 KNYTOS_DEPLOY_HOST_PORT=20183 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance advisory-ctutils-intel --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -1190,7 +1190,7 @@
       },
       "tracked_diff_sha256": "b08218d9552a7ef407bca9bfdf48eee13d8c6215818ee84557f4f60db1fd8d13",
       "backend": "smmuv3",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20020 CATTEN_DEPLOY_HOST_PORT=20184 scripts/run-aarch64.sh --security-test --http-test --instance advisory-ctutils-arm-final --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20020 KNYTOS_DEPLOY_HOST_PORT=20184 scripts/run-aarch64.sh --security-test --http-test --instance advisory-ctutils-arm-final --fresh-storage --timeout 300",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -1294,7 +1294,7 @@
       },
       "tracked_diff_sha256": "e8c8dfb505471d69e56f88804508a43305f034e9701c8b7d0357c0b59a4b9d0b",
       "backend": "amd",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20021 CATTEN_DEPLOY_HOST_PORT=20185 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance advisory-ctutils-amd --fresh-storage --timeout 480",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=20021 KNYTOS_DEPLOY_HOST_PORT=20185 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance advisory-ctutils-amd --fresh-storage --timeout 480",
       "result": {
         "reason": "complete",
         "snapshot": "not-requested"
@@ -1348,7 +1348,7 @@
   ],
   "unexpected_final_native_failures": [],
   "manual": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "9b6ea15a8d4829ab9b89807e466652935ea20cc1fd185c9f285fbe167bfe1459",
     "source_sha256": {
       "docs/manual-v2/chapters/16-development.tex": "fea387690f1580c957a7a718fa391683f9f291c8478dc30354bb579184755dba",

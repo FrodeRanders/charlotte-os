@@ -157,11 +157,11 @@ assembly sections. Early fixture checks caught an address-space generation
 atomic typed as `u64` rather than `usize`, and Clippy required `expect_err`;
 these were corrected before native execution and final checks.
 
-Environment: `CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`.
+Environment: `KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`.
 Both no-network kernels are rebuilt. Intel/AMD share that x86 profile after a
-`--build-only` preparation, using `CATTEN_SKIP_KERNEL_BUILD=1` for execution.
+`--build-only` preparation, using `KNYTOS_SKIP_KERNEL_BUILD=1` for execution.
 Security profiles are rebuilt separately with their current signed fixture
-inputs and `CATTEN_ALLOW_SANDBOX_NETWORK=1`. ARM security uses host HTTP/deployment
+inputs and `KNYTOS_ALLOW_SANDBOX_NETWORK=1`. ARM security uses host HTTP/deployment
 ports 18680/18681; x86 uses 18780/18781. All stores are fresh and instance-local.
 Service source/signatures are unchanged, reusing the signed bundles identified
 in the [persistence diagnostics batch](2026-10-15-raft-persistence-diagnostics.md#artifact-identity).

@@ -153,7 +153,7 @@
       "timeout_seconds": 180
     }
   ],
-  "schema": "charlotte.audit.completion-terminal-disposal.v1",
+  "schema": "knytos.audit.completion-terminal-disposal.v1",
   "source_limit": "Runtime Rust and native probes were frozen before the completed matrix. A preliminary compile was deliberately stopped before guest launch to correct a weak-capture accounting assertion. Reviewed per-file hashes cover changed Rust, not a full-tree manifest.",
   "unchanged_service_bundles_sha256": {
     "aarch64": {

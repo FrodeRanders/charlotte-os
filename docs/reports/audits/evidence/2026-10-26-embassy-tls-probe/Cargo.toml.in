@@ -1,5 +1,5 @@
 [package]
-name="charlotte-embassy-migration-probe"
+name="knytos-embassy-migration-probe"
 version="0.0.0"
 edition="2024"
 [workspace]

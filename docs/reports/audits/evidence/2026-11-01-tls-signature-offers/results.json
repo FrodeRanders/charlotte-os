@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.tls-signature-offers.v1",
+  "schema": "knytos.tls-signature-offers.v1",
   "date": "2026-11-01",
   "base_revision": "43c266bd",
   "upstream_revision": "6487c62bb084c33361822022e21836ddfd48388f",
@@ -109,7 +109,7 @@
     "exit_status": 0,
     "services_tests": 268,
     "tail": [
-      "     Running tests/public_key_input.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/public_key_input-2c30d02a9669b8c9)",
+      "     Running tests/public_key_input.rs (/Users/froran/Projects/private/knytos/target/debug/deps/public_key_input-2c30d02a9669b8c9)",
       "",
       "running 1 test",
       "test operational_commands_share_bounded_public_key_file_admission ... ok",

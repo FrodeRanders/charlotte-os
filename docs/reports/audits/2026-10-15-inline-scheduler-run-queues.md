@@ -179,10 +179,10 @@ Workspace formatting, whitespace and changed-document local links pass. Native
 runners verify executable/read-only kernel assembly sections. No assembly,
 syscall ABI, userspace source, wire/storage grammar or signing input changes.
 
-All guests use `CATTEN_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`.
+All guests use `KNYTOS_SKIP_EMBED_BUILD=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`.
 The no-network kernels rebuild, and AMD reuses Intel's exact kernel with
-`CATTEN_SKIP_KERNEL_BUILD=1`. Security profiles rebuild separately, with
-`CATTEN_ALLOW_SANDBOX_NETWORK=1`; host HTTP/deployment ports are Arm 19080/19081
+`KNYTOS_SKIP_KERNEL_BUILD=1`. Security profiles rebuild separately, with
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1`; host HTTP/deployment ports are Arm 19080/19081
 and x86 19180/19181. QEMU's private diagnostic sockets run with the required
 host permission. Stores are fresh and instance-local. Signed service bundles
 are unchanged from the

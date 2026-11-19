@@ -101,7 +101,7 @@ the Git fixture results corrected the test before the final passing checks.
 All guests use four LPs, isolated fresh disks, no network, unchanged kernels
 and the signed bundles rebuilt in the preceding batch. Native runners still
 check executable/read-only assembly sections. Environment:
-`CATTEN_SKIP_EMBED_BUILD=1 CATTEN_SKIP_KERNEL_BUILD=1`.
+`KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_SKIP_KERNEL_BUILD=1`.
 
 | Run | Guest / runner outcome | Capture outcome |
 | --- | --- | --- |

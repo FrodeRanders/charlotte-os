@@ -429,7 +429,7 @@ This is not a certification that every acceptance case has been exercised.
 | --- | --- |
 | `scripts/run-host-tests.sh` | Passed. All workspace host suites plus the standalone id-table, retirement-list and scratch fixtures reported 336 tests and zero failures; signing-policy, boot-result, secure-boot-result and cluster-sign self-tests passed. |
 | Fresh AArch64 security guest | **19 passed, 0 failed, 0 pending**, `passed_bitmap=0x2003ffff`; the scoped probe reported `checks=0xffff`; publication generations reached 2; concurrent cancellation traffic retired after **4872 requests**. |
-| AArch64 kernel Clippy | Passed with `-D warnings` (default features, `CATTEN_AARCH64_SERVICE_BUNDLE` set). |
+| AArch64 kernel Clippy | Passed with `-D warnings` (default features, `KNYTOS_AARCH64_SERVICE_BUNDLE` set). |
 | x86_64 kernel Clippy | Passed with `-D warnings` (`--no-default-features --features acpi`). |
 | `cargo fmt --all -- --check` | Passed. |
 | Committed dependency graph | `cargo-audit 0.22.2`: **177 dependencies, 0 vulnerabilities**. Advisory database: 1,296 advisories, commit `7eebec69c352c7191b1f13eb95dd510eeca5d1de`, updated `2026-10-09T10:12:02+02:00`. Machine-readable result: [dependency scan](2026-10-10-security-audit-dependencies.json). Database-relative, not proof of dependency safety. |
@@ -438,7 +438,7 @@ Successful guest command (embedded bundles reused from a previously built
 bundle because only review, not code, changed):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18819 CATTEN_DEPLOY_HOST_PORT=18119 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18819 KNYTOS_DEPLOY_HOST_PORT=18119 \
   scripts/run-aarch64.sh --security-test \
   --instance renewed-audit-20261010 --fresh-storage --timeout 180
 ```

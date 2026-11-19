@@ -5,7 +5,7 @@ output and the kernel boot log identify that fact. Do not place real Kafka,
 S3 or other credentials under the development recipient key, even if their
 envelope is signed and encrypted.
 
-`CATTEN_TRUST_MODE` accepts `development` (the current default) or `production`.
+`KNYTOS_TRUST_MODE` accepts `development` (the current default) or `production`.
 Production mode deliberately refuses both scripted and direct kernel builds.
 Protected boot, bootstrap-root provisioning and privileged recipient-key
 custody are not yet implemented. Unknown or empty mode values also fail.

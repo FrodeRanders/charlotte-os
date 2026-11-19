@@ -141,11 +141,11 @@ assembly sections. Bundled service source/signatures are unchanged from the
 [persistence diagnostics batch](2026-10-15-raft-persistence-diagnostics.md#artifact-identity);
 this batch does not claim a new service build or service Clippy run.
 
-Commands use `CATTEN_SKIP_EMBED_BUILD=1`; kernel rebuilds retain
+Commands use `KNYTOS_SKIP_EMBED_BUILD=1`; kernel rebuilds retain
 `CARGO_BUILD_RUSTFLAGS='-D warnings'`. Only the identified, already-built kernel
-profile is reused with `CATTEN_SKIP_KERNEL_BUILD=1`. Fresh instances keep
+profile is reused with `KNYTOS_SKIP_KERNEL_BUILD=1`. Fresh instances keep
 failed and passing stores separate. Linked execution also sets
-`CATTEN_ALLOW_SANDBOX_NETWORK=1`.
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1`.
 
 ```sh
 ./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance matrix-arm-fixed

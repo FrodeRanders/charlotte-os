@@ -41,62 +41,62 @@
     "collector_image": "otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750",
     "decoded_metrics_example": [
       {
-        "name": "charlotte.threads",
+        "name": "knytos.threads",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "26"
       },
       {
-        "name": "charlotte.domains",
+        "name": "knytos.domains",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "18"
       },
       {
-        "name": "charlotte.memory.frames.free",
+        "name": "knytos.memory.frames.free",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "98641"
       },
       {
-        "name": "charlotte.memory.frames.usable",
+        "name": "knytos.memory.frames.usable",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "120092"
       },
       {
-        "name": "charlotte.memory.frames.owned",
+        "name": "knytos.memory.frames.owned",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "1033"
       },
       {
-        "name": "charlotte.heap.allocated",
+        "name": "knytos.heap.allocated",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "354680"
       },
       {
-        "name": "charlotte.heap.peak",
+        "name": "knytos.heap.peak",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "566978"
       },
       {
-        "name": "charlotte.stack.reserved",
+        "name": "knytos.stack.reserved",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "132"
       },
       {
-        "name": "charlotte.stack.used_high_water",
+        "name": "knytos.stack.used_high_water",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "12"
       },
       {
-        "name": "charlotte.threads.high_water",
+        "name": "knytos.threads.high_water",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "1"
       },
       {
-        "name": "charlotte.cpu.logical_processors",
+        "name": "knytos.cpu.logical_processors",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "4"
       },
       {
-        "name": "charlotte.cpu.utilization",
+        "name": "knytos.cpu.utilization",
         "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
         "value": "0.010603"
       }
@@ -226,8 +226,8 @@
         "commit_index": 3,
         "membership_epoch": 0,
         "observed_millis": 12695,
-        "leader": "charlotte:42e21edb",
-        "served_by": "charlotte:42e21edb"
+        "leader": "knytos:42e21edb",
+        "served_by": "knytos:42e21edb"
       }
     },
     "after": {
@@ -254,8 +254,8 @@
         "commit_index": 3,
         "membership_epoch": 0,
         "observed_millis": 26112,
-        "leader": "charlotte:42e21edb",
-        "served_by": "charlotte:42e21edb"
+        "leader": "knytos:42e21edb",
+        "served_by": "knytos:42e21edb"
       }
     }
   },

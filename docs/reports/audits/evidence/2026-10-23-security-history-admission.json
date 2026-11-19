@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.history-admission.v1",
+  "schema": "knytos.security.history-admission.v1",
   "report_date": "2026-10-23",
   "reviewed_revision": "fcb5df09112b37d8cc2d281798245cc37f927d1e",
   "classification": {
@@ -81,7 +81,7 @@
       "arch": "aarch64",
       "instance": "sec07-history-admission-arm",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19890 CATTEN_DEPLOY_HOST_PORT=20054 scripts/run-aarch64.sh --security-test --http-test --instance sec07-history-admission-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19890 KNYTOS_DEPLOY_HOST_PORT=20054 scripts/run-aarch64.sh --security-test --http-test --instance sec07-history-admission-arm --fresh-storage --timeout 300",
       "kernel_sha256": "0bb915551c53a499fac8c98421e90c806e0dd4e622692fb1c656308c1936986e",
       "boot_image_sha256": "4a2d4def22aa1cda626c9b1e4731123ade88a8c066199a1ab29d9a51c9865fb6",
       "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
@@ -184,7 +184,7 @@
       "arch": "x86_64",
       "instance": "sec07-history-admission-x86",
       "exit_status": 0,
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19891 CATTEN_DEPLOY_HOST_PORT=20055 scripts/run-x86_64.sh --security-test --http-test --instance sec07-history-admission-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19891 KNYTOS_DEPLOY_HOST_PORT=20055 scripts/run-x86_64.sh --security-test --http-test --instance sec07-history-admission-x86 --fresh-storage --timeout 300",
       "kernel_sha256": "0679c3a92668233c6147bd58dcd6edacf8884250314f7256de4c53a8b55819f7",
       "boot_image_sha256": "46aa1109ddfd7d425f45c4f5f7d40e575f87c22119b4b6c48fc11ecc08a7bc05",
       "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
@@ -307,19 +307,19 @@
       {
         "arch": "aarch64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "caa70d3e60dc88c5e6897f3e56d5b205b219bda847b5d32d9239125d3b59770e"
       },
       {
         "arch": "x86_64",
         "exit_status": 0,
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "capture_sha256": "2f6f00bd94ae8efb18ec96d988d61a9285ad4fe0e80b83727371bb76142a26f5"
       }
     ]
   },
   "formal": {
-    "focused_command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlottePrincipalHistory",
+    "focused_command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar CharlottePrincipalHistory",
     "focused_exit_status": 0,
     "focused_safe": 1,
     "focused_expected_counterexamples": 6,
@@ -625,7 +625,7 @@
       "qualification": "Historical full run; not an execution of expanded 190-case suite."
     },
     "unknown_selector_control": {
-      "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar NoSuchCharlotteModel",
+      "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar NoSuchCharlotteModel",
       "expected_exit_status": 1,
       "actual_exit_status": 1,
       "capture_sha256": "c3aa5bbf66aaa07fe100bc7ca75378f1385507b25e1553b5fe8a5ea03d6d35f5",

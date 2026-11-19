@@ -1051,12 +1051,12 @@ impl PreparingObserver {
     fn start(self) -> Result<ServiceDomain, ObserverLaunchError> {
         bootstrap::write_bootstrap_cap(self.domain.loaded().config_frame, self.connection);
         bootstrap::write_system_observer_cap(self.domain.loaded().config_frame, self.observer);
-        let archive_interval_ms = env!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS")
+        let archive_interval_ms = env!("KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS")
             .parse::<u64>()
             .expect("build validated telemetry archive interval");
         crate::logln!(concat!(
             "CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS=",
-            env!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS"),
+            env!("KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS"),
             ";"
         ));
         bootstrap::write_manifest(

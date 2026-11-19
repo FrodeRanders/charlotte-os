@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.thread-metadata.v1",
+  "schema": "knytos.security.thread-metadata.v1",
   "report_date": "2026-10-23",
   "reviewed_revision": "738d90648ed35d05b8868afdca8a3c12a00c9311",
   "classification": {
@@ -78,7 +78,7 @@
       "arch": "x86_64",
       "instance": "sec07-thread-metadata-final-x86",
       "phase": "final-layout failure",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19885 CATTEN_DEPLOY_HOST_PORT=20049 scripts/run-x86_64.sh --security-test --http-test --instance sec07-thread-metadata-final-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19885 KNYTOS_DEPLOY_HOST_PORT=20049 scripts/run-x86_64.sh --security-test --http-test --instance sec07-thread-metadata-final-x86 --fresh-storage --timeout 300",
       "exit_status": 1,
       "result": {
         "reason": "kernel-panic",
@@ -214,7 +214,7 @@
       "arch": "aarch64",
       "instance": "sec07-thread-metadata-final-arm",
       "phase": "final-layout pass",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19884 CATTEN_DEPLOY_HOST_PORT=20048 scripts/run-aarch64.sh --security-test --http-test --instance sec07-thread-metadata-final-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19884 KNYTOS_DEPLOY_HOST_PORT=20048 scripts/run-aarch64.sh --security-test --http-test --instance sec07-thread-metadata-final-arm --fresh-storage --timeout 300",
       "exit_status": 0,
       "result": {
         "reason": "complete",
@@ -329,7 +329,7 @@
       "arch": "x86_64",
       "instance": "sec07-thread-metadata-repeat-x86",
       "phase": "same-kernel repeat",
-      "command": "CATTEN_SKIP_KERNEL_BUILD=1 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19886 CATTEN_DEPLOY_HOST_PORT=20050 scripts/run-x86_64.sh --security-test --http-test --instance sec07-thread-metadata-repeat-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_KERNEL_BUILD=1 KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19886 KNYTOS_DEPLOY_HOST_PORT=20050 scripts/run-x86_64.sh --security-test --http-test --instance sec07-thread-metadata-repeat-x86 --fresh-storage --timeout 300",
       "exit_status": 0,
       "result": {
         "reason": "complete",
@@ -448,20 +448,20 @@
     "base_kernel_clippy": [
       {
         "arch": "arm",
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "exit_status": 0,
         "capture_sha256": "b7b29ee6708440897c8eccdcfb3b7d7cf05ce427d6c56487672ea6b535cc966f"
       },
       {
         "arch": "x86",
-        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
         "exit_status": 0,
         "capture_sha256": "209f24bd06f0156207d4a4430c8b4df20b8213be81f71eb0d620816bd13a743b"
       }
     ]
   },
   "formal": {
-    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "command": "docs/tla/check.sh /private/tmp/knytos-tla2tools-1.7.4.jar",
     "exit_status": 0,
     "safe": 46,
     "expected_counterexamples": 137,

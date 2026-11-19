@@ -108,9 +108,9 @@ did not recur, which does not establish its cause or resolution.
 Commands (existing signed service bundles were reused; no service/ABI changes):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance table-drop-intel-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance table-drop-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18549 CATTEN_DEPLOY_HOST_PORT=17849 scripts/run-aarch64.sh --security-test --instance table-drop-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance table-drop-intel-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance table-drop-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18549 KNYTOS_DEPLOY_HOST_PORT=17849 scripts/run-aarch64.sh --security-test --instance table-drop-arm-20261009 --fresh-storage --timeout 180
 ```
 
 Kernel SHA-256 after execution:

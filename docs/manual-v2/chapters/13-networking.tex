@@ -621,7 +621,7 @@ leader-side controller reconciles automatic assignments after membership or
 drain-state changes. The runner accepts repeatable
 \texttt{--cluster-service [NAME=]VIP:PORT} options. The paired name flag and
 singleton VIP/port/name build variables are retired. Builds consume only the
-semicolon-separated \texttt{CATTEN\_CLUSTER\_SERVICES} table.
+semicolon-separated \texttt{KNYTOS\_CLUSTER\_SERVICES} table.
 Address-specific socket binds allow
 distinct VIPs to use the same conventional TCP port.
 
@@ -842,7 +842,7 @@ lifecycle explicit. They do not make arbitrary application side effects outside
 Kafka part of an exactly-once transaction.
 
 The connector joins its configured group with the bounded
-\texttt{charlotte-fixed-v1} assignor. Each member advertises exactly the
+\texttt{knytos-fixed-v1} assignor. Each member advertises exactly the
 topic/partition authorized by its immutable profile. The group leader assigns
 each partition once, while duplicate connectors remain heartbeating standbys with an
 empty assignment and can take ownership after membership changes. One connector

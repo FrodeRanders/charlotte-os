@@ -24,14 +24,14 @@ use crate::{
     },
 };
 
-const IMAGE: &[u8] = include_bytes!(concat!(env!("CATTEN_SECURITY_TEST_DIR"), "/probe.elf"));
-const POLICY: &[u8] = include_bytes!(concat!(env!("CATTEN_SECURITY_TEST_DIR"), "/admitted.cdep"));
+const IMAGE: &[u8] = include_bytes!(concat!(env!("KNYTOS_SECURITY_TEST_DIR"), "/probe.elf"));
+const POLICY: &[u8] = include_bytes!(concat!(env!("KNYTOS_SECURITY_TEST_DIR"), "/admitted.cdep"));
 const ALTERNATE: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_SECURITY_TEST_DIR"), "/alternate.cdep"));
+    include_bytes!(concat!(env!("KNYTOS_SECURITY_TEST_DIR"), "/alternate.cdep"));
 const ARTIFACT_KEY_HEX: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_SECURITY_TEST_DIR"), "/artifact.pub"));
+    include_bytes!(concat!(env!("KNYTOS_SECURITY_TEST_DIR"), "/artifact.pub"));
 const DEPLOYMENT_KEY_HEX: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_SECURITY_TEST_DIR"), "/deployment.pub"));
+    include_bytes!(concat!(env!("KNYTOS_SECURITY_TEST_DIR"), "/deployment.pub"));
 
 /// Own a test domain at the kernel/runtime boundary without constructing a userspace
 /// capability.

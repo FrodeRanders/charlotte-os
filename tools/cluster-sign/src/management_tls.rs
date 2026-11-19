@@ -65,7 +65,7 @@ fn input(name: &str) -> crate::Result<profile_input::ProfileInput> {
              private-key files"
         )
     })?;
-    let reader = if name == "CATTEN_MANAGEMENT_KEY_FILE" {
+    let reader = if name == "KNYTOS_MANAGEMENT_KEY_FILE" {
         profile_input::read_bounded_private_file
     } else {
         profile_input::read_bounded_file
@@ -89,14 +89,14 @@ fn certificates(name: &str) -> crate::Result<Vec<CertificateDer<'static>>> {
 }
 fn configuration() -> crate::Result<ClientConfig> {
     let mut roots = RootCertStore::empty();
-    for root in certificates("CATTEN_MANAGEMENT_CA_FILE")? {
+    for root in certificates("KNYTOS_MANAGEMENT_CA_FILE")? {
         roots.add(root).map_err(|_| "invalid management CA".to_owned())?;
     }
-    let chain = certificates("CATTEN_MANAGEMENT_CERT_FILE")?;
+    let chain = certificates("KNYTOS_MANAGEMENT_CERT_FILE")?;
     if chain.len() > knytos_launch::management::Limits::DEFAULT.max_chain_certificates {
         return Err("management client chain capacity exceeded".into());
     }
-    let bytes = input("CATTEN_MANAGEMENT_KEY_FILE")?;
+    let bytes = input("KNYTOS_MANAGEMENT_KEY_FILE")?;
     let key = PrivateKeyDer::from_pem_slice(bytes.as_bytes())
         .map_err(|_| "invalid management private-key PEM".to_owned())?;
     let mut provider = rustls::crypto::ring::default_provider();
@@ -119,7 +119,7 @@ pub(super) fn connect(
 ) -> std::result::Result<StreamOwned<ClientConnection, BudgetedSocket>, ExchangeFailure> {
     deadline.remaining().map_err(|error| ExchangeFailure::BeforeSubmission(error.to_string()))?;
     let config = configuration().map_err(ExchangeFailure::Configuration)?;
-    let name = match std::env::var("CATTEN_MANAGEMENT_SERVER_NAME") {
+    let name = match std::env::var("KNYTOS_MANAGEMENT_SERVER_NAME") {
         Ok(name) => ServerName::try_from(name)
             .map_err(|_| ExchangeFailure::Configuration("invalid management server name".into()))?,
         Err(std::env::VarError::NotPresent) => ServerName::IpAddress(endpoint.ip().into()),

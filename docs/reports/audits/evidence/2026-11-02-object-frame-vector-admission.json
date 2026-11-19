@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.object-frame-vector-admission.v1",
+  "schema": "knytos.object-frame-vector-admission.v1",
   "date": "2026-11-02",
   "base_revision": "386242f6b71d15b8a1fe4219d5321dcfe56adc3c",
   "scope": "Physical-address catalog capacity for private and published memory objects uses byte-only admission from memory_capability_nodes. The complete catalog retains its original backing-source class and allocation through moves, consumed release identities and uncertain physical cleanup. Numeric limits, node counts, physical completion rules and the statistics/SDK ABI are unchanged.",

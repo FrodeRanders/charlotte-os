@@ -36,7 +36,7 @@ extern "C" fn verify_el0_s3() {
         let base: *mut u8 = appliance.time.status_frame.into();
         base
     };
-    let ca_der = include_bytes!(env!("CATTEN_S3_TEST_CA_DER"));
+    let ca_der = include_bytes!(env!("KNYTOS_S3_TEST_CA_DER"));
     let service = crate::service::launch::launch_s3_profile(
         ns,
         &S3Profile {

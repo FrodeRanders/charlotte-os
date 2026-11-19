@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.security.release-startup.v1",
+  "schema": "knytos.security.release-startup.v1",
   "report_date": "2026-10-23",
   "work_began": "2026-10-22",
   "reviewed_revision": "beefef8840a1398b769261a489276fccf15db611",
@@ -644,7 +644,7 @@
             ]
           ],
           "stdout": "accepted \"app\": {\"generation\":2}\n",
-          "stderr": "error: release stopped while notifying \"app2\" from \"/var/folders/ld/gmfpcx6n12j8w922_4_sbcvc0000gn/T/charlotte-deployment-generation-ds5agso1/app2.cdep\": read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed; this and earlier descriptors may already be committed\n"
+          "stderr": "error: release stopped while notifying \"app2\" from \"/var/folders/ld/gmfpcx6n12j8w922_4_sbcvc0000gn/T/knytos-deployment-generation-ds5agso1/app2.cdep\": read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed; this and earlier descriptors may already be committed\n"
         },
         {
           "case": "test_exact_receipt_and_ready_controls_succeed",
@@ -923,7 +923,7 @@
   "native_runs": [
     {
       "id": "parallel_arm_setup",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19582 CATTEN_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19582 KNYTOS_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm --fresh-storage --timeout 300",
       "exit_status": 1,
       "runner": {
         "sha256": "b85297a16af76c53808f5c0a6802d7b20ef90f35fa6b2d2db7b536d90b57c1e5",
@@ -935,7 +935,7 @@
     },
     {
       "id": "parallel_x86_setup",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19583 CATTEN_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19583 KNYTOS_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86 --fresh-storage --timeout 300",
       "exit_status": 1,
       "runner": {
         "sha256": "db9caaf1f9f71bfcf47491e381e567c6b5dc7b422a1cb2af678556f70d935a26",
@@ -947,7 +947,7 @@
     },
     {
       "id": "arm_immediate_lost_receipt",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19582 CATTEN_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19582 KNYTOS_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm --fresh-storage --timeout 300",
       "exit_status": 1,
       "runner": {
         "sha256": "7fa9d698e8dc430118e80c428bd55cefd985fc9376332b0525ec1e4419b5bf7f",
@@ -958,10 +958,10 @@
           "[+    12.405702] [xLP] receiver on LP2: received 1002 (OK)",
           "[+    12.406077] [xLP] receiver on LP1: received 1001 (OK)",
           "[+    12.409697] [xLP] receiver on LP0: received 1000 (OK)",
-          "[+    17.836806] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2119 pending=0 queued=0",
+          "[+    17.836806] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e21edb\") millis=2119 pending=0 queued=0",
           "[+    19.106004] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    30.113012] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1",
-          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-u8srm9rh"
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-u8srm9rh"
         ]
       },
       "arch": "aarch64",
@@ -1004,7 +1004,7 @@
       },
       "selected_guest_observations": [
         "[+    15.460725] [EL0 LOG] lp=0 asid=118 [deployd] listening port=7444",
-        "[+    17.836806] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2119 pending=0 queued=0",
+        "[+    17.836806] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e21edb\") millis=2119 pending=0 queued=0",
         "[+    19.106004] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
         "[+    29.373183] [EL0 LOG] lp=0 asid=117 [agent] launched \"greet\" generation=1 asid=140 principal=0xa31bf89d72682689",
         "[+    30.113012] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1"
@@ -1032,7 +1032,7 @@
     },
     {
       "id": "x86_listener_only_rejection",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19583 CATTEN_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86-gated --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19583 KNYTOS_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86-gated --fresh-storage --timeout 300",
       "exit_status": 1,
       "runner": {
         "sha256": "0f1a13c3b0766d121d41c451b919f2dc40937af6a92f20e47cfae4516c5855c5",
@@ -1043,7 +1043,7 @@
           "[+    13.659702] [xLP] receiver on LP1: received 1001 (OK)",
           "[+    13.660003] [xLP] receiver on LP2: received 1002 (OK)",
           "[+    13.664842] [xLP] receiver on LP0: received 1000 (OK)",
-          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-z6z9jul2"
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-z6z9jul2"
         ]
       },
       "arch": "x86_64",
@@ -1103,7 +1103,7 @@
     },
     {
       "id": "x86_final",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19583 CATTEN_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86-ready --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19583 KNYTOS_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86-ready --fresh-storage --timeout 300",
       "exit_status": 0,
       "runner": {
         "sha256": "3bc17c68b65d9d60ba088166ce3daf92c6d9073262351235116b7697d5246935",
@@ -1114,7 +1114,7 @@
           "[+    13.605474] [xLP] receiver on LP1: received 1001 (OK)",
           "[+    13.605899] [xLP] receiver on LP2: received 1002 (OK)",
           "[+    13.607729] [xLP] receiver on LP0: received 1000 (OK)",
-          "[+    19.042246] [EL0 LOG] lp=0 asid=111 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2121 pending=0 queued=0",
+          "[+    19.042246] [EL0 LOG] lp=0 asid=111 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e21edb\") millis=2121 pending=0 queued=0",
           "[+    20.501746] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x303bbff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    24.997426] [EL0 LOG] lp=0 asid=116 [agent] published \"greet\" deployment_generation=1 service_generation=1",
           "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
@@ -1155,7 +1155,7 @@
       },
       "selected_guest_observations": [
         "[+    16.654722] [EL0 LOG] lp=0 asid=117 [deployd] listening port=7444",
-        "[+    19.042246] [EL0 LOG] lp=0 asid=111 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2121 pending=0 queued=0",
+        "[+    19.042246] [EL0 LOG] lp=0 asid=111 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e21edb\") millis=2121 pending=0 queued=0",
         "[+    20.501746] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x303bbff failed_bitmap=0x0 pending_bitmap=0x0",
         "[+    24.309709] [EL0 LOG] lp=0 asid=116 [agent] launched \"greet\" generation=1 asid=138 principal=0xa31bf89d72682689",
         "[+    24.997426] [EL0 LOG] lp=0 asid=116 [agent] published \"greet\" deployment_generation=1 service_generation=1"
@@ -1180,7 +1180,7 @@
     },
     {
       "id": "arm_final",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19582 CATTEN_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm-ready --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19582 KNYTOS_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm-ready --fresh-storage --timeout 300",
       "exit_status": 0,
       "runner": {
         "sha256": "508fd272276c61a901f2ce26dc7cb47f59db067f4181777719fb9ad6bdc59345",
@@ -1191,7 +1191,7 @@
           "[+    10.856006] [xLP] receiver on LP3: received 1003 (OK)",
           "[+    10.856197] [xLP] receiver on LP1: received 1001 (OK)",
           "[+    10.859654] [xLP] receiver on LP0: received 1000 (OK)",
-          "[+    16.307176] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2120 pending=0 queued=0",
+          "[+    16.307176] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e21edb\") millis=2120 pending=0 queued=0",
           "[+    17.734736] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
           "[+    24.947757] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1",
           "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
@@ -1232,7 +1232,7 @@
       },
       "selected_guest_observations": [
         "[+    13.908081] [EL0 LOG] lp=0 asid=118 [deployd] listening port=7444",
-        "[+    16.307176] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2120 pending=0 queued=0",
+        "[+    16.307176] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"knytos:42e21edb\") millis=2120 pending=0 queued=0",
         "[+    17.734736] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
         "[+    24.195648] [EL0 LOG] lp=0 asid=117 [agent] launched \"greet\" generation=1 asid=140 principal=0xa31bf89d72682689",
         "[+    24.947757] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1"

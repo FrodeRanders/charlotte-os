@@ -43,11 +43,11 @@
       "result": "pass"
     },
     {
-      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi",
+      "command": "KNYTOS_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi",
       "result": "pass; compile only"
     },
     {
-      "command": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo check --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi",
+      "command": "KNYTOS_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo check --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi",
       "result": "pass; compile only"
     },
     {
@@ -77,8 +77,8 @@
       "result": "sandboxed TLS GCM fixtures failed six Cargo fetches with Could not resolve host: index.crates.io; the suite stopped at that test group"
     },
     {
-      "command": "cargo check --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests",
-      "result": "rejected with 34 compile-time macro errors because CATTEN_X86_64_SERVICE_BUNDLE was omitted; runner-based builds supply the required environment"
+      "command": "cargo check --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests",
+      "result": "rejected with 34 compile-time macro errors because KNYTOS_X86_64_SERVICE_BUNDLE was omitted; runner-based builds supply the required environment"
     },
     {
       "command": "scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 240 --instance audit-close-final",

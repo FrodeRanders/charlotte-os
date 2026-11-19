@@ -60,10 +60,10 @@ scripts/build-knytos-services.sh --embed
 scripts/build-knytos-services-x86_64.sh
 ```
 
-For each central-store run, set `CATTEN_SKIP_EMBED_BUILD=1`, use the ARM
-`greet.elf` as `CATTEN_DEPLOY_ELF`, the x86 `greet.elf` as
-`CATTEN_DEPLOY_VARIANT_ELF`, and distinct `CATTEN_DEPLOY_OBJECT_KEY` /
-`CATTEN_DEPLOY_VARIANT_OBJECT_KEY`. Run `--deployment-ingress-test
+For each central-store run, set `KNYTOS_SKIP_EMBED_BUILD=1`, use the ARM
+`greet.elf` as `KNYTOS_DEPLOY_ELF`, the x86 `greet.elf` as
+`KNYTOS_DEPLOY_VARIANT_ELF`, and distinct `KNYTOS_DEPLOY_OBJECT_KEY` /
+`KNYTOS_DEPLOY_VARIANT_OBJECT_KEY`. Run `--deployment-ingress-test
 --fresh-storage --timeout 240` on each architecture **serially**: Docker
 certificates and ingress fixture files are shared.
 
@@ -71,7 +71,7 @@ For the mixed run, start both runners together, using `--deploy-test
 --fresh-storage --timeout 300`, ARM `--net-listen 19057 --mac
 52:54:00:12:34:01`, and x86 `--net-connect 127.0.0.1:19057 --mac
 52:54:00:12:34:02`. The approved socket fixture uses
-`CATTEN_ALLOW_SANDBOX_NETWORK=1`. Instances were `multiarch-complete-arm` and
+`KNYTOS_ALLOW_SANDBOX_NETWORK=1`. Instances were `multiarch-complete-arm` and
 `multiarch-complete-x86`. The helper prepares six current signed descriptors
 (two pins, three revisions) in a test-only framed bundle. It does not install
 an old-format reader or production trust policy.

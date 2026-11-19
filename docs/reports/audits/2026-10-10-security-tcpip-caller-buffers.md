@@ -178,7 +178,7 @@ chosen host deadlines. A dashboard probe attempted after runner exit met a
 closed host port and adds no evidence about the live stall. The combined
 failure's cause remains unresolved; the isolated passing run does not erase it.
 
-Reproduction uses `CATTEN_SKIP_EMBED_BUILD=1` after building both signed
+Reproduction uses `KNYTOS_SKIP_EMBED_BUILD=1` after building both signed
 bundles. Execute `scripts/run-aarch64.sh --security-test --http-test --dhcp-test
 --instance NAME --fresh-storage --timeout 180` with dedicated HTTP/deployment
 host ports for the combined profile, or omit `--security-test` for isolation.
@@ -186,7 +186,7 @@ The TCP pair uses `--tcpip-test --net-listen PORT` and
 `--tcpip-test --net-connect 127.0.0.1:PORT`, distinct instances, MAC suffixes
 `02` (listener) and `01` (connector), fresh storage and the same 180-second
 runner window. Start the peer immediately after the first kernel build boots;
-the peer may reuse that exact kernel with `CATTEN_SKIP_KERNEL_BUILD=1`.
+the peer may reuse that exact kernel with `KNYTOS_SKIP_KERNEL_BUILD=1`.
 Neither peer uses SLIRP/DHCP. Kernel verifier deadlines remain unchanged.
 
 Signed AArch64 service SHA-256 values used for the final network/security runs:

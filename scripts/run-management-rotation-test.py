@@ -153,7 +153,7 @@ def main():
     for path in (args.firmware_code, args.vars_template, tools / "limine", tools / "osslsigncode-build/osslsigncode", tools / "venv/bin/virt-fw-vars"):
         if not path.is_file():
             parser.error(f"missing fixture input/tool: {path}")
-    if os.environ.get("CATTEN_TRUST_MODE", "development") != "development":
+    if os.environ.get("KNYTOS_TRUST_MODE", "development") != "development":
         parser.error("production remains disabled")
     output = (args.output or ROOT / "target/management-rotation-tests" / f"run-{time.time_ns()}").resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -220,19 +220,19 @@ with open(sys.argv[3],'w') as out: out.write(public.hex()+'\\n')
         bundle = private / "platform-bundle"
         shutil.copytree(ROOT / "target/embedded-services/x86_64-unknown-none", bundle)
         environment = dict(os.environ)
-        for name in ("CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_BOOT_TEST_INSTALLED_POLICY", "CATTEN_CLUSTER_SERVICES", "CATTEN_RESOURCE_POLICY"):
+        for name in ("KNYTOS_MANAGEMENT_TLS_RESOURCE", "KNYTOS_BOOT_TEST_INSTALLED_POLICY", "KNYTOS_CLUSTER_SERVICES", "KNYTOS_RESOURCE_POLICY"):
             environment.pop(name, None)
-        environment.update(CATTEN_TRUST_MODE="development", CATTEN_X86_64_SERVICE_BUNDLE=str(bundle))
+        environment.update(KNYTOS_TRUST_MODE="development", KNYTOS_X86_64_SERVICE_BUNDLE=str(bundle))
         signing_environment = dict(environment, CLUSTER_SIGN_KEY_FILE=str(private / "artifact.key"))
         run(ROOT / "scripts/sign-service-elfs.sh", bundle, env=signing_environment)
         certificates, variables = secure.prepare_firmware_authority(private, output, args.vars_template, "openssl", tools / "venv/bin/virt-fw-vars", preparation)
         state = private / "installed-policy.snapshot"
         def build(revision, resource_revision):
             kernel = private / f"kernel-{revision}-{resource_revision}"
-            build_env = dict(environment, CATTEN_BOOT_TEST_INSTALLED_POLICY=str(state), CATTEN_MANAGEMENT_TLS_RESOURCE=str(private / f"resource-{resource_revision}"))
-            run("cargo", "build", "--locked", "-p", "catten", "--target", "target_specs/x86_64-unknown-none-catten.json",
+            build_env = dict(environment, KNYTOS_BOOT_TEST_INSTALLED_POLICY=str(state), KNYTOS_MANAGEMENT_TLS_RESOURCE=str(private / f"resource-{resource_revision}"))
+            run("cargo", "build", "--locked", "-p", "catten", "--target", "target_specs/x86_64-unknown-none-knytos.json",
                 "--no-default-features", "--features", "acpi,boot_trust_test,virtio_net_test", env=build_env)
-            shutil.copyfile(ROOT / "target/x86_64-unknown-none-catten/debug/catten", kernel)
+            shutil.copyfile(ROOT / "target/x86_64-unknown-none-knytos/debug/catten", kernel)
             run("python3", ROOT / "scripts/check-kernel-asm-sections.py", kernel)
             return kernel
         def image(kernel, policy, name):
@@ -250,7 +250,7 @@ with open(sys.argv[3],'w') as out: out.write(public.hex()+'\\n')
                 "-key", certificates["db"][0], "-in", loader, "-out", signed)
             run(tools / "osslsigncode-build/osslsigncode", "verify", "-CAfile", certificates["db"][1], "-in", signed)
             disk = private / (name + ".img")
-            run("bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; catten_boot_create_uefi_image "$2" "$3" "$4" "$5" "$6" CATOS',
+            run("bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; knytos_boot_create_uefi_image "$2" "$3" "$4" "$5" "$6" CATOS',
                 "rotation-image", ROOT, disk, secure.BOOT_IMAGE_MIB, signed, kernel, config)
             run("mcopy", "-i", disk, policy, "::/boot-policy.bin")
             return disk, signed

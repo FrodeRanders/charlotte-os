@@ -31,7 +31,7 @@ provided. Positive startup expectations reject missing input files before build.
 
 Raw telemetry disk archiving is disabled by default in both modes. Live
 observability, bounded memory history and fresh placement reports remain active.
-Set `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000` to opt into diagnostic archiving
+Set `KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS=60000` to opt into diagnostic archiving
 when building; changing it requires rebuild/restart and cached kernels must
 match. See [telemetry policy](../guides/configuration.md#diagnostic-telemetry-persistence).
 
@@ -126,11 +126,11 @@ scripts/build-knytos-services-x86_64.sh --mode minimal
 ```
 
 Periodic service console heartbeats default off for minimal bundles and on for
-test bundles. Override either default with `CATTEN_SERVICE_HEARTBEATS=0` or `1`:
+test bundles. Override either default with `KNYTOS_SERVICE_HEARTBEATS=0` or `1`:
 
 ```sh
-CATTEN_SERVICE_HEARTBEATS=1 scripts/run-aarch64.sh --minimal
-CATTEN_SERVICE_HEARTBEATS=0 scripts/run-x86_64.sh --tests
+KNYTOS_SERVICE_HEARTBEATS=1 scripts/run-aarch64.sh --minimal
+KNYTOS_SERVICE_HEARTBEATS=0 scripts/run-x86_64.sh --tests
 ```
 
 Both runners and standalone service builders accept this build-time setting;
@@ -142,7 +142,7 @@ Operational status counters, startup/error/state-change messages, time
 synchronization and network/Raft/Kafka protocol heartbeats remain active.
 The staged bundle records its selection; reuse rejects a missing or mismatched
 record. Rebuild services, kernel and disk images when changing the setting;
-`CATTEN_SKIP_KERNEL_BUILD` still means retaining the existing embedded services.
+`KNYTOS_SKIP_KERNEL_BUILD` still means retaining the existing embedded services.
 There is no live toggle for a running node.
 
 `scripts/lib/service-bundle.sh` owns the architecture-specific operational and
@@ -160,8 +160,8 @@ Raft runtime in minimal builds. Batch signing builds the pinned host signer once
 then starts a separate signing process for each ELF, preserving per-process key
 ownership while avoiding repeated Cargo startup.
 
-For a direct headless kernel build, export `CATTEN_AARCH64_SERVICE_BUNDLE` or
-`CATTEN_X86_64_SERVICE_BUNDLE` to the matching absolute bundle path and use
+For a direct headless kernel build, export `KNYTOS_AARCH64_SERVICE_BUNDLE` or
+`KNYTOS_X86_64_SERVICE_BUNDLE` to the matching absolute bundle path and use
 `--no-default-features --features acpi`. Add `kernel_tests` for native regressions.
 The runners handle these details, signatures and image creation automatically.
 
@@ -198,7 +198,7 @@ hardware configuration with prior Intel Fusion qualification.
 
 When combining AArch64 `--deployment-ingress-test` and
 `--shutdown-ingress-test`, shutdown waits for exact-run deployment readiness and
-`CATTEN_APP_HOLD_SECONDS` before submission. The host probe window therefore
+`KNYTOS_APP_HOLD_SECONDS` before submission. The host probe window therefore
 precedes the signed shutdown/drain check instead of racing application startup.
 
 ## Retired development exercises

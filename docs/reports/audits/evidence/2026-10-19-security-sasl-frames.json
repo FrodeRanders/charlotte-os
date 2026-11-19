@@ -94,7 +94,7 @@
     "compiler_controls": [
       {
         "fixture": "move",
-        "manifest": "[package]\nname = \"sasl-move-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-kafka = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-kafka\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n",
+        "manifest": "[package]\nname = \"sasl-move-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-kafka = { path = \"/Users/froran/Projects/private/knytos/crates/knytos-kafka\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n",
         "source": "pub fn cannot_reuse_input() {\n let frame = zeroize::Zeroizing::new(vec![0u8; 8]);\n let _ = knytos_kafka::parse_sasl_authenticate(frame, 7);\n drop(frame);\n}\n",
         "lockfile_sha256": "d32a1e965e07bfd4227061a5284d447a84119da3689bcfa8c33f484e23b9dc40",
         "command": "cargo check --offline --manifest-path <fixture>/Cargo.toml",
@@ -104,7 +104,7 @@
       },
       {
         "fixture": "borrow",
-        "manifest": "[package]\nname = \"sasl-borrow-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-kafka = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-kafka\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n",
+        "manifest": "[package]\nname = \"sasl-borrow-control\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nknytos-kafka = { path = \"/Users/froran/Projects/private/knytos/crates/knytos-kafka\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n",
         "source": "pub fn cannot_release_borrowed_reply() {\n let frame = zeroize::Zeroizing::new(vec![0u8; 8]);\n let reply = knytos_kafka::parse_sasl_authenticate(frame, 7).unwrap();\n let bytes = reply.auth_bytes();\n drop(reply);\n let _ = bytes.len();\n}\n",
         "lockfile_sha256": "137d177de33b70b5125359fed7ab83c7fdb0dab492c04d03daefa765b73def41",
         "command": "cargo check --offline --manifest-path <fixture>/Cargo.toml",
@@ -216,7 +216,7 @@
     }
   },
   "native_kafka_fault_run": {
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-sasl CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --kafka-test --instance sec15-sasl --fresh-storage --timeout 300 (permitted Docker/QEMU access)",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-sasl KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --kafka-test --instance sec15-sasl --fresh-storage --timeout 300 (permitted Docker/QEMU access)",
     "exit_status": 0,
     "log_sha256": "eeb894495793a552575f17f292e2e2c670e84d00101179aa81b2c717cca41a35",
     "passed": 20,
@@ -227,7 +227,7 @@
     "serial_sha256": "af302cfa3818349a79c008d8e140abd8cb0a0eb962175c1a4bade8ab52aefb2b",
     "diagnostics": [
       "[+     7.387932] [kafka-test] Kafka service spawned (asid=121)",
-      "[+    15.924286] [EL0 LOG] lp=0 asid=121 [kafka] serving instance=kafka/selftest/main endpoints=3 broker=kafka-1.test:19092 tls=true consume-topic=charlotte-events partition=0 produce-routes=1 group=charlotte-qemu-smoke-group transactional-id=charlotte-qemu-smoke-transaction-0 ceiling=0x7",
+      "[+    15.924286] [EL0 LOG] lp=0 asid=121 [kafka] serving instance=kafka/selftest/main endpoints=3 broker=kafka-1.test:19092 tls=true consume-topic=knytos-events partition=0 produce-routes=1 group=knytos-qemu-smoke-group transactional-id=knytos-qemu-smoke-transaction-0 ceiling=0x7",
       "[+    15.924864] [EL0 LOG] lp=0 asid=121 [kafka] coordinators group=1 transaction=2",
       "[+    15.925260] [kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted",
       "[+    24.906454] [EL0 LOG] lp=0 asid=121 [kafka] TLS handshake transport failed (6)",
@@ -273,10 +273,10 @@
     "scope": "Verified TLS, required P-256 mTLS and SCRAM authentication, route-leader interruption and generic transactional step. No native malformed-frame erasure, coordinator-movement/fencing repeat, native x86 Kafka, production provisioning/custody or end-to-end plaintext-erasure claim."
   },
   "failed_container_metadata_inspection": {
-    "command": "docker inspect --format {{.Name}} {{.Id}} {{.Image}} charlotte-sec15-sasl-kafka1-1 charlotte-sec15-sasl-kafka2-1 charlotte-sec15-sasl-kafka3-1",
+    "command": "docker inspect --format {{.Name}} {{.Id}} {{.Image}} knytos-sec15-sasl-kafka1-1 knytos-sec15-sasl-kafka2-1 knytos-sec15-sasl-kafka3-1",
     "exit_status": 1,
     "stdout_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-    "stderr": "error: no such object: charlotte-sec15-sasl-kafka1-1\nerror: no such object: charlotte-sec15-sasl-kafka2-1\nerror: no such object: charlotte-sec15-sasl-kafka3-1\n",
+    "stderr": "error: no such object: knytos-sec15-sasl-kafka1-1\nerror: no such object: knytos-sec15-sasl-kafka2-1\nerror: no such object: knytos-sec15-sasl-kafka3-1\n",
     "stderr_sha256": "970c9a79ec56b104c19f0a80aae0ccc7a51901286e2ea92f326345f524b9c306",
     "scope": "Missing objects after fixture cleanup; metadata failure only. No per-container image identity inferred."
   },
@@ -473,7 +473,7 @@
     "scope": "Existing models do not project SASL frame byte ownership or these Rust containers; no transition change or fresh TLC result claimed."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
     "changed_by_this_batch": false
   },

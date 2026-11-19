@@ -1,7 +1,7 @@
 # The Knytos Operating System
 
 This repository was initially forked from the
-[CharlotteOS project](https://github.com/charlotte-os/charlotte-os). CharlotteOS,
+[CharlotteOS project](https://github.com/knytos/knytos). CharlotteOS,
 its original architecture, and the substantial foundation on which this work
 builds were created by the upstream project and its contributors. 
 
@@ -37,7 +37,7 @@ deployment, content-addressed and provenance-aware software delivery,
 replicated naming and lifecycle state, bounded asynchronous execution,
 failure-domain-aware placement, and generation of Knytos applications from
 higher-level process models such as
-[Durga](https://github.com/FrodeRanders/durga/tree/feature/charlotte-target). The
+[Durga](https://github.com/FrodeRanders/durga/tree/feature/knytos-target). The
 aspiration is an understandable substrate for long-lived service systems whose
 security and failure behaviour can be inspected end to end.
 
@@ -238,7 +238,7 @@ The main additions and extensions currently maintained here are:
   [documentation index](docs/README.md) separates living architecture,
   implementation reference, contributor guides, platform status, historical
   reports, and research context. The
-  [LaTeX manual](docs/manual-v2/charlotte.pdf) provides the integrated narrative.
+  [LaTeX manual](docs/manual-v2/knytos.pdf) provides the integrated narrative.
 
 Automated AArch64 and x86-64 QEMU paths exercise these mechanisms, with
 additional opt-in Docker fixtures for S3 and Kafka and a VMware appliance path.
@@ -255,11 +255,6 @@ see [boot modes](docs/reference/boot-modes.md).
 Run target-independent suites with `scripts/run-host-tests.sh`. The split
 between host tests and target/QEMU tests is documented in
 [`docs/guides/testing.md`](docs/guides/testing.md).
-
-For the upstream project, its history, and its community, please visit
-<https://github.com/charlotte-os/charlotte-os>. Changes from upstream are kept
-as ordinary Git history so that upstream updates can continue to be merged into
-this fork.
 
 ## Architectural optimisations
 
@@ -362,14 +357,14 @@ capabilities the component may acquire, and service publication is generation
 fenced. `clusterctl` exposes signed deployment notification and full-name status.
 The test console retains local upload and status; unsigned deploy is removed. Artifacts are real ELF binaries blessed and
 signed in place with Ed25519: the signature lives in a standard 
-`.note.charlotte-sig` ELF note (added by `tools/cluster-sign elf-sign`), 
+`.note.knytos-sig` ELF note (added by `tools/cluster-sign elf-sign`), 
 the public key is injected at build time and committed to the replicated state 
 by the key ceremony, and the EL0 loader (which refuses any unsigned or invalidly 
 signed image -- the build pipeline signs every staged service ELF with a
 *publicly known* version-controlled development key in
 `tools/cluster-sign/dev-key.hex`) and the deploy path validate both bytes
 and logical identity. Builds and boot logs identify these as development
-images; `CATTEN_TRUST_MODE=production` fails closed until protected provisioning
+images; `KNYTOS_TRUST_MODE=production` fails closed until protected provisioning
 exists. Signing commands accept private-key file paths, not real key bytes in
 argv; see [Signing and development trust](docs/guides/signing-and-trust.md).
 Known third-party-containing services can therefore be
@@ -380,7 +375,7 @@ readiness, and membership- or drain-driven rescheduling are implemented;
 capacity-aware placement, failure-domain scheduling, rolling replacement,
 coordinated rollback, and a richer process-level release bundle are not yet
 implemented. These boundaries are called out in
-Chapter 17 of [the manual](docs/manual-v2/charlotte.pdf) ("Server-Class
+Chapter 17 of [the manual](docs/manual-v2/knytos.pdf) ("Server-Class
 Cluster Vision"), which describes the vision against what already exists
 (consensus, the distributed name service, the object store, and live upgrade).
 
@@ -544,14 +539,5 @@ along with clean, maintainable code.
 The Knytos Operating System is licensed under the GNU Affero General Public License version 3.0 (or any later version). By contributing, you agree that your work may be distributed under the AGPL version 3.0 or later.
 
 ---
-
-## Community
-
-Find us on:
-
-- **Discord:** <https://discord.gg/vE7bCCKx4X>  
-- **Matrix:** <https://matrix.to/#/#charlotteos:matrix.org>
-- **Reddit** <https://www.reddit.com/r/charlotteos>
-- **E-Mail** <charlotte-os@outlook.com>
 
 [^1]: These requirements are estimates that may change in the course of development.

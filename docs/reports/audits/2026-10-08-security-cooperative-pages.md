@@ -97,24 +97,24 @@ all eleven phases and three adapters, followed by the PSCI terminal poweroff
 marker. Thus optional-platform coverage does not weaken present-phase checks.
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance service-pages-intel-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd \
   --instance service-pages-amd-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18513 \
-CATTEN_DEPLOY_HOST_PORT=17813 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18513 \
+KNYTOS_DEPLOY_HOST_PORT=17813 scripts/run-aarch64.sh --security-test \
   --instance service-pages-arm-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --shutdown-test \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --shutdown-test \
   --instance service-pages-shutdown-intel-final-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --shutdown-test \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --shutdown-test \
   --instance service-pages-shutdown-amd-final-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18516 CATTEN_DEPLOY_HOST_PORT=17816 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18516 KNYTOS_DEPLOY_HOST_PORT=17816 \
 scripts/run-x86_64.sh --shutdown-test \
   --instance service-pages-shutdown-intel-network-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18517 CATTEN_DEPLOY_HOST_PORT=17817 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18517 KNYTOS_DEPLOY_HOST_PORT=17817 \
 scripts/run-x86_64.sh --iommu amd --shutdown-test \
   --instance service-pages-shutdown-amd-network-20261008 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18515 CATTEN_DEPLOY_HOST_PORT=17815 \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18515 KNYTOS_DEPLOY_HOST_PORT=17815 \
 scripts/run-aarch64.sh --shutdown-test \
   --instance service-pages-shutdown-arm-final-20261008 --fresh-storage --timeout 180
 ```

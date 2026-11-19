@@ -7,7 +7,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib/signing-policy.sh"
-catten_require_development_trust
+knytos_require_development_trust
 cd "$ROOT"
 
 CLEAN=0
@@ -24,7 +24,7 @@ done
 MANIFEST="crates/knytos-services/Cargo.toml"
 TARGET="crates/knytos-services/x86_64-unknown-none.json"
 OUTPUT="crates/knytos-services/target/x86_64-unknown-none/release"
-catten_service_bundle x86_64 "$BUNDLE_MODE" "$ROOT"
+knytos_service_bundle x86_64 "$BUNDLE_MODE" "$ROOT"
 BUNDLE_PARENT="$(dirname "$BUNDLE")"
 
 if [ "$CLEAN" = "1" ]; then
@@ -64,5 +64,5 @@ mv "$STAGING" "$BUNDLE"
 STAGING=""
 trap - EXIT
 
-catten_validate_service_bundle "$BUNDLE_MODE" x86_64
+knytos_validate_service_bundle "$BUNDLE_MODE" x86_64
 echo ">>> Staged and signed x86_64 EL0 service bundle at $BUNDLE."

@@ -17,7 +17,7 @@ CPU memory-object mapping records share fixed requested-layout admission:
 | Prepared, published or retained nodes | 8192 | 6144 |
 
 These values are the default of the central compile-time
-[resource policy](resource-policy.md). `CATTEN_RESOURCE_POLICY` can select a
+[resource policy](resource-policy.md). `KNYTOS_RESOURCE_POLICY` can select a
 reviewed build profile; see [Configuration](../guides/configuration.md). Allocation
 and cleanup checks keep the same owners and captured charges. Boot-time policy
 installation and live resizing are not implemented.

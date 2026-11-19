@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.waiter-account-admission.v1",
+  "schema": "knytos.waiter-account-admission.v1",
   "date": "2026-11-01",
   "base_revision": "020775b72836ade37f6323b84cd9ae0d8654b99e",
   "scope": "Independent fixed-bundle backing admission for generation-owned scheduler waiter accounts, preserving original trusted classification through actual strong/weak/allocator lifetime.",

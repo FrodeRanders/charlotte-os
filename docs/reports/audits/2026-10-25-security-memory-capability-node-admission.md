@@ -13,7 +13,7 @@ Both node layouts now reserve before allocation, retain original charges
 through actual storage lifetime and reject without publishing a destination.
 Defaults are **4 MiB / 32768 nodes total**, **3 MiB / 24576 ordinary**.
 `Policy.memory_capability_nodes` groups both dimensions centrally; operators can
-select a reviewed compile-time profile with `CATTEN_RESOURCE_POLICY`. Existing
+select a reviewed compile-time profile with `KNYTOS_RESOURCE_POLICY`. Existing
 defaults in other families are unchanged. The [current contract](../../reference/memory-capability-node-admission.md)
 documents tuning, two-node preparation overlap and exclusions.
 

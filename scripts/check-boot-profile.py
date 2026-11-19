@@ -18,27 +18,27 @@ def otlp_profile(env):
         if not text or any(c < "0" or c > "9" for c in text):
             raise ValueError("OTLP budgets must be ASCII decimal")
         return int(text)
-    if "CATTEN_OTLP_ENDPOINT" not in env:
-        if any(name in env for name in ("CATTEN_OTLP_INTERVAL_MS", "CATTEN_OTLP_TIMEOUT_MS")):
-            raise ValueError("OTLP interval/timeout require CATTEN_OTLP_ENDPOINT")
+    if "KNYTOS_OTLP_ENDPOINT" not in env:
+        if any(name in env for name in ("KNYTOS_OTLP_INTERVAL_MS", "KNYTOS_OTLP_TIMEOUT_MS")):
+            raise ValueError("OTLP interval/timeout require KNYTOS_OTLP_ENDPOINT")
         return b""
-    endpoint = env["CATTEN_OTLP_ENDPOINT"]
+    endpoint = env["KNYTOS_OTLP_ENDPOINT"]
     if not endpoint.startswith("http://"):
-        raise ValueError("CATTEN_OTLP_ENDPOINT requires explicit HTTP/IPv4")
+        raise ValueError("KNYTOS_OTLP_ENDPOINT requires explicit HTTP/IPv4")
     authority, slash, path = endpoint[7:].partition("/")
     path = ("/" + path) if slash else "/v1/metrics"
     host, colon, port = authority.partition(":")
     octets = host.split(".")
     if len(octets) != 4 or any(not p or any(c < "0" or c > "9" for c in p) for p in octets):
-        raise ValueError("CATTEN_OTLP_ENDPOINT requires IPv4")
+        raise ValueError("KNYTOS_OTLP_ENDPOINT requires IPv4")
     values = [int(p) for p in octets]
     if any(v > 255 for v in values) or not 0 < values[0] < 224:
         raise ValueError("OTLP destination must be unicast IPv4")
     if colon and (not port or any(c < "0" or c > "9" for c in port)):
         raise ValueError("OTLP port must be decimal")
     port = int(port) if colon else 4318
-    interval = number("CATTEN_OTLP_INTERVAL_MS", 30000)
-    timeout = number("CATTEN_OTLP_TIMEOUT_MS", 3000)
+    interval = number("KNYTOS_OTLP_INTERVAL_MS", 30000)
+    timeout = number("KNYTOS_OTLP_TIMEOUT_MS", 3000)
     if (not 0 < port <= 65535 or not 1000 <= interval <= 86400000
             or not 100 <= timeout <= 60000 or timeout > interval
             or not path.startswith("/") or len(path) > 256
@@ -96,12 +96,12 @@ def main():
     parser.add_argument("--mode", choices=MODES, required=True)
     args = parser.parse_args()
     try:
-        selected = os.environ.get("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS", "0")
+        selected = os.environ.get("KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS", "0")
         if not selected or any(char < "0" or char > "9" for char in selected):
-            raise ValueError("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000")
+            raise ValueError("KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000")
         interval = int(selected)
         if interval != 0 and not 1000 <= interval <= 86400000:
-            raise ValueError("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000")
+            raise ValueError("KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000")
         validate(args.kernel.read_bytes(), args.mode, interval,
                  hashlib.sha256(otlp_profile(os.environ)).hexdigest())
     except (ValueError, OSError, struct.error, IndexError) as error:

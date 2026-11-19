@@ -40,14 +40,14 @@ class ResourcePolicy(unittest.TestCase):
         cls.temporary.cleanup()
 
     def compile(self, profile):
-        env = dict(os.environ, CATTEN_RESOURCE_POLICY_FILE=str(profile))
+        env = dict(os.environ, KNYTOS_RESOURCE_POLICY_FILE=str(profile))
         return subprocess.run(["rustc", "--edition", "2024", "--test", str(self.harness),
                                "-D", "warnings", "-o", str(self.directory / "tests")],
                               cwd=ROOT, env=env, capture_output=True, text=True)
 
     def test_default_and_larger_profiles_execute_actual_policy_and_counter_tests(self):
         profiles = [DEFAULT, LARGER]
-        if selected := os.environ.get("CATTEN_RESOURCE_POLICY"):
+        if selected := os.environ.get("KNYTOS_RESOURCE_POLICY"):
             selection = self.selector(selected)
             self.assertEqual(selection.returncode, 0, selection.stderr)
             profiles.append(Path(selected).resolve())
@@ -102,10 +102,10 @@ class ResourcePolicy(unittest.TestCase):
 
     def selector(self, path=None):
         env = {k: v for k, v in os.environ.items()
-               if not k.startswith("CARGO_FEATURE_") and k != "CATTEN_RESOURCE_POLICY"}
+               if not k.startswith("CARGO_FEATURE_") and k != "KNYTOS_RESOURCE_POLICY"}
         env.update(OUT_DIR=str(self.directory / "boot-out"), CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"), CARGO_CFG_TARGET_ARCH="x86_64")
         if path is not None:
-            env["CATTEN_RESOURCE_POLICY"] = str(path)
+            env["KNYTOS_RESOURCE_POLICY"] = str(path)
         return subprocess.run([str(type(self).selector_binary)], cwd=ROOT, env=env, capture_output=True, text=True)
 
     def test_selector_defaults_tracks_absolute_override_and_rejects_bad_paths(self):
@@ -113,8 +113,8 @@ class ResourcePolicy(unittest.TestCase):
             result = self.selector(value)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"cargo:rerun-if-changed={expected}", result.stdout)
-            self.assertIn(f"cargo:rustc-env=CATTEN_RESOURCE_POLICY_FILE={expected}", result.stdout)
-            self.assertIn("cargo:rerun-if-env-changed=CATTEN_RESOURCE_POLICY", result.stdout)
+            self.assertIn(f"cargo:rustc-env=KNYTOS_RESOURCE_POLICY_FILE={expected}", result.stdout)
+            self.assertIn("cargo:rerun-if-env-changed=KNYTOS_RESOURCE_POLICY", result.stdout)
         for path in ["", "relative.rs", self.directory, self.directory / "missing.rs"]:
             with self.subTest(path=str(path)):
                 self.assertNotEqual(self.selector(path).returncode, 0)

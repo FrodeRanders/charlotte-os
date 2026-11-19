@@ -172,7 +172,7 @@ Shutdown drained children at 13.922200 s and requested PSCI power-off at
 storage; these limited samples are not a production reliability or pressure-soak
 claim, and no historical failure is overwritten by their passes.
 
-Commands used `CATTEN_SKIP_EMBED_BUILD=1` after both bundle builds:
+Commands used `KNYTOS_SKIP_EMBED_BUILD=1` after both bundle builds:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance dma-start-arm-final
@@ -185,7 +185,7 @@ scripts/run-x86_64.sh --http-test --dhcp-test --iommu intel --fresh-storage --ti
 
 HTTP/deployment ports were 19325/18625, 19326/18626, 19327/18627,
 19328/18628, 19329/18629 and 19330/18630. AMD and both Intel repeats used
-`CATTEN_SKIP_KERNEL_BUILD=1` only after matching the current ELF hash against the
+`KNYTOS_SKIP_KERNEL_BUILD=1` only after matching the current ELF hash against the
 immutable final Intel boot hash. Per-boot hashes precede later profile rebuilds:
 
 | Artifact | SHA-256 |

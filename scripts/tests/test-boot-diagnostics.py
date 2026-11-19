@@ -42,19 +42,19 @@ class BootDiagnostics(unittest.TestCase):
                 result = subprocess.run(
                     ["/bin/bash", "-euo", "pipefail", "-c", r'''
 source "$1/scripts/lib/boot-common.sh"
-CATTEN_BOOT_ROOT_DIR="$1"
-CATTEN_DIAGNOSTICS_DIR="$2"
+KNYTOS_BOOT_ROOT_DIR="$1"
+KNYTOS_DIAGNOSTICS_DIR="$2"
 probe_arguments="$3"
 python3() { printf '%s\0' "$@" > "$probe_arguments"; }
 true &
-CATTEN_DIAGNOSTICS_WATCHER=$!
+KNYTOS_DIAGNOSTICS_WATCHER=$!
 if [ -n "$4" ]; then
-    catten_boot_diagnostics_finish "selftests complete" "$4"
+    knytos_boot_diagnostics_finish "selftests complete" "$4"
 else
-    catten_boot_diagnostics_finish "selftests complete"
+    knytos_boot_diagnostics_finish "selftests complete"
 fi
-[ -z "$CATTEN_DIAGNOSTICS_WATCHER" ]
-[ "$CATTEN_DIAGNOSTICS_FAILED" = "0" ]
+[ -z "$KNYTOS_DIAGNOSTICS_WATCHER" ]
+[ "$KNYTOS_DIAGNOSTICS_FAILED" = "0" ]
 ''', "boot-finish-test", str(ROOT), str(self.directory / "diagnostics with spaces"),
                      str(arguments), snapshot], capture_output=True, text=True,
                 )

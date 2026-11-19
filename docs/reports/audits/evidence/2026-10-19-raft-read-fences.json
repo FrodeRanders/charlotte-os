@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-raft-read-fences-evidence-v1",
+  "schema": "knytos-raft-read-fences-evidence-v1",
   "report_date": "2026-10-19 Europe/Stockholm; work began 2026-10-18",
   "reviewed_revision": "f489c8f21d295dc0880b89250123ee15318f42c8",
   "tooling": {
@@ -1267,7 +1267,7 @@
   ],
   "failed_runs": [
     {
-      "case": "charlotte-raft-fence-build-initial.log",
+      "case": "knytos-raft-fence-build-initial.log",
       "meaning": "Draft used nonexistent Connection.borrow and OwnedMemory.map_read_write methods and retained unused imports; corrected APIs/imports.",
       "exit_status": 101,
       "log_sha256": "b29a9a05ed41b99e0b30872bcfa81c65e79f08898160f60db9d9298672b26beb",
@@ -1303,7 +1303,7 @@
       ]
     },
     {
-      "case": "charlotte-raft-fence-tlc.log",
+      "case": "knytos-raft-fence-tlc.log",
       "meaning": "First draft omitted old-prefix contact; current-term omission control unexpectedly satisfied its invariant. Harness rejected lost sensitivity.",
       "exit_status": 1,
       "log_sha256": "75c96743e69af3e19f4197e51c1033370f209ea5ef889600755f6df2505069a1",
@@ -1315,55 +1315,55 @@
       ]
     },
     {
-      "case": "charlotte-raft-fence-bundle-check-final.log",
+      "case": "knytos-raft-fence-bundle-check-final.log",
       "meaning": "Staged DNS ELF failed byte-for-byte freshness check. Sequential rebuild/sign/check and repeat native run follow; cause not established.",
       "exit_status": 1,
       "log_sha256": "e7684a57aa5bc9d948f30a9bc597de2969caebd29a2f7d12c88668225c9b57b4",
       "diagnostics": [
-        "   Compiling knytos-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/knytos-services)",
+        "   Compiling knytos-services v0.1.0 (/Users/froran/Projects/private/knytos/crates/knytos-services)",
         "    Finished `release` profile [optimized] target(s) in 9.83s",
         "error: staged AArch64 dns.elf is stale",
         "run scripts/build-knytos-services.sh --embed"
       ]
     },
     {
-      "case": "charlotte-raft-fence-manual-complete1.log",
-      "meaning": "Manual command used repository-root cwd and could not find charlotte.tex; corrected builds use docs/manual-v2.",
+      "case": "knytos-raft-fence-manual-complete1.log",
+      "meaning": "Manual command used repository-root cwd and could not find knytos.tex; corrected builds use docs/manual-v2.",
       "exit_status": 1,
       "log_sha256": "2d39f73c17c9ca539a493d1ed672c4f5276f6bd220706f0d0ae96b1a874632d8",
       "diagnostics": [
         "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/MacPorts 2026.78235_5) (preloaded format=pdflatex)",
         "entering extended mode",
-        "! I can't find file `charlotte.tex'.",
-        "<*> charlotte.tex",
+        "! I can't find file `knytos.tex'.",
+        "<*> knytos.tex",
         "                 ",
         "(Press Enter to retry, or Control-D to exit)",
         "Please type another input file name",
         "! Emergency stop.",
-        "<*> charlotte.tex",
+        "<*> knytos.tex",
         "                 ",
         "!  ==> Fatal error occurred, no output PDF file produced!",
-        "Transcript written on /private/tmp/charlotte-raft-fence-manual/texput.log."
+        "Transcript written on /private/tmp/knytos-raft-fence-manual/texput.log."
       ]
     },
     {
-      "case": "charlotte-raft-fence-manual-complete2.log",
+      "case": "knytos-raft-fence-manual-complete2.log",
       "meaning": "Second command from the same wrong-cwd manual attempt also failed to find input.",
       "exit_status": 1,
       "log_sha256": "2d39f73c17c9ca539a493d1ed672c4f5276f6bd220706f0d0ae96b1a874632d8",
       "diagnostics": [
         "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/MacPorts 2026.78235_5) (preloaded format=pdflatex)",
         "entering extended mode",
-        "! I can't find file `charlotte.tex'.",
-        "<*> charlotte.tex",
+        "! I can't find file `knytos.tex'.",
+        "<*> knytos.tex",
         "                 ",
         "(Press Enter to retry, or Control-D to exit)",
         "Please type another input file name",
         "! Emergency stop.",
-        "<*> charlotte.tex",
+        "<*> knytos.tex",
         "                 ",
         "!  ==> Fatal error occurred, no output PDF file produced!",
-        "Transcript written on /private/tmp/charlotte-raft-fence-manual/texput.log."
+        "Transcript written on /private/tmp/knytos-raft-fence-manual/texput.log."
       ]
     }
   ],
@@ -1555,8 +1555,8 @@
     "meaning": "Shared no-op grammar unchanged. Prior evidence retains core/runtime source extracts; no upstream execution or mixed-cluster validation in this batch."
   },
   "native_validation": {
-    "command": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh debug --dns-test --instance <rmfence4-a2|rmfence4-b2> --mac <52:54:00:12:34:01|52:54:00:12:34:02> --fresh-storage --timeout 180 <--net-listen 12449|--net-connect 127.0.0.1:12449>",
-    "second_guest_environment": "CATTEN_SKIP_KERNEL_BUILD=1; exact same built kernel",
+    "command": "KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh debug --dns-test --instance <rmfence4-a2|rmfence4-b2> --mac <52:54:00:12:34:01|52:54:00:12:34:02> --fresh-storage --timeout 180 <--net-listen 12449|--net-connect 127.0.0.1:12449>",
+    "second_guest_environment": "KNYTOS_SKIP_KERNEL_BUILD=1; exact same built kernel",
     "coordination": "Bounded host-only lsof listener inspection; no TCP readiness connection. Both guest runners awaited with a bounded host budget.",
     "coordinator_sha256": "f4622c1c8e66c923cbd757d54399e76fd4b21060967ac36f9c3785e57b6e753a",
     "result_sha256": "f3e8a02728992341cfb25ea3346196861d5b4bede284e83861a75f49b168f443",
@@ -1658,7 +1658,7 @@
     "command_sequence": [
       "scripts/build-knytos-services.sh --embed",
       "scripts/build-knytos-services.sh --check",
-      "paired native run with CATTEN_SKIP_EMBED_BUILD=1"
+      "paired native run with KNYTOS_SKIP_EMBED_BUILD=1"
     ],
     "sequence": "The failed stale-ELF check was followed by a sequential build/sign/check before this final native repeat. Every staged file still matches this captured verified manifest after both runs.",
     "staged_file_count": 41,
@@ -1709,7 +1709,7 @@
     "verification": "check exit 0; Staged AArch64 service bundle signatures verified."
   },
   "manual_validation": {
-    "command": "pdflatex -interaction=nonstopmode -halt-on-error -output-directory=/private/tmp/charlotte-raft-fence-manual charlotte.tex (two corrected final passes from docs/manual-v2)",
+    "command": "pdflatex -interaction=nonstopmode -halt-on-error -output-directory=/private/tmp/knytos-raft-fence-manual knytos.tex (two corrected final passes from docs/manual-v2)",
     "exit_statuses": [
       0,
       0

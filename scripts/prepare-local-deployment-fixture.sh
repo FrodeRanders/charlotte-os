@@ -26,7 +26,7 @@ PARTS="$(mktemp -d "${OUTPUT}.parts.XXXXXX")"
 for sequence in 1 2 3; do
     for node in 0x42e278ea 0x42e27737; do
         "$SIGNER" deployment-sign "${PARTS}/${sequence}.${node}" greet fixture/greet-arm.elf "$PRIMARY" \
-            "$node" "$sequence" 4 1 5000 "$(catten_signing_key_file "$ROOT")" "${VARIANTS[@]}" greet=publish
+            "$node" "$sequence" 4 1 5000 "$(knytos_signing_key_file "$ROOT")" "${VARIANTS[@]}" greet=publish
     done
 done
 python3 - "$OUTPUT" "$PARTS" <<'PYTHON'

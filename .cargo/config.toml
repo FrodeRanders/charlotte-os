@@ -8,12 +8,12 @@ build-std-features = ["compiler-builtins-mem"]
 # retain their existing code-generation settings.
 # Target flags override build.rustflags, so retain the denied-warning policy
 # here too. CI uses CARGO_BUILD_RUSTFLAGS; global RUSTFLAGS would shadow these.
-[target.x86_64-unknown-none-catten]
+[target.x86_64-unknown-none-knytos]
 # Workspace Clippy also compiles management TLS for the kernel target.
 # Keep the same erasing POLYVAL backend as the x86 service target below.
 rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes", "--cfg", "polyval_force_soft"]
 
-[target.aarch64-unknown-none-catten]
+[target.aarch64-unknown-none-knytos]
 rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes"]
 
 # POLYVAL 0.6.2's x86 dispatcher does not drop its active authentication
@@ -24,12 +24,12 @@ rustflags = ["-D", "warnings", "--cfg", "polyval_force_soft"]
 
 [env]
 # Tell clang/cc and bindgen to use a real clang triple instead of our custom one,
-# since clang doesn't know about the 'catten' environment component.
+# since clang doesn't know about the 'knytos' environment component.
 # GCC on Linux can enable PIE by default even when cc-rs omits -fPIC for
 # bare-metal targets. The static kernel code model requires both disabled.
-CFLAGS_x86_64-unknown-none-catten = "-ffreestanding -mcmodel=kernel -fno-pic -fno-pie"
-BINDGEN_EXTRA_CLANG_ARGS_x86_64-unknown-none-catten = "--target=x86_64-unknown-none-elf -ffreestanding -mcmodel=kernel"
-CFLAGS_aarch64-unknown-none-catten = "-ffreestanding"
-BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-none-catten = "--target=aarch64-unknown-none-elf -ffreestanding"
+CFLAGS_x86_64-unknown-none-knytos = "-ffreestanding -mcmodel=kernel -fno-pic -fno-pie"
+BINDGEN_EXTRA_CLANG_ARGS_x86_64-unknown-none-knytos = "--target=x86_64-unknown-none-elf -ffreestanding -mcmodel=kernel"
+CFLAGS_aarch64-unknown-none-knytos = "-ffreestanding"
+BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-none-knytos = "--target=aarch64-unknown-none-elf -ffreestanding"
 # One node address plus the bounded launch-policy table of cluster VIPs.
 SMOLTCP_IFACE_MAX_ADDR_COUNT = "17"

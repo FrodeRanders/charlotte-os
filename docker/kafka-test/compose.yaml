@@ -23,9 +23,9 @@ x-kafka-environment: &kafka-environment
   KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf
 
 x-kafka-service: &kafka-service
-  image: ${CATTEN_KAFKA_IMAGE:-apache/kafka:4.1.1}
+  image: ${KNYTOS_KAFKA_IMAGE:-apache/kafka:4.1.1}
   volumes:
-    - ${CATTEN_KAFKA_CERT_DIR:?set CATTEN_KAFKA_CERT_DIR}:/etc/kafka/secrets:ro
+    - ${KNYTOS_KAFKA_CERT_DIR:?set KNYTOS_KAFKA_CERT_DIR}:/etc/kafka/secrets:ro
   healthcheck:
     test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/29092'"]
     interval: 5s
@@ -37,7 +37,7 @@ services:
   kafka1:
     <<: *kafka-service
     ports:
-      - "${CATTEN_KAFKA_PORT:-19092}:19092"
+      - "${KNYTOS_KAFKA_PORT:-19092}:19092"
     environment:
       <<: *kafka-environment
       KAFKA_NODE_ID: 1
@@ -46,7 +46,7 @@ services:
   kafka2:
     <<: *kafka-service
     ports:
-      - "${CATTEN_KAFKA_PORT_2:-19094}:19092"
+      - "${KNYTOS_KAFKA_PORT_2:-19094}:19092"
     environment:
       <<: *kafka-environment
       KAFKA_NODE_ID: 2
@@ -55,7 +55,7 @@ services:
   kafka3:
     <<: *kafka-service
     ports:
-      - "${CATTEN_KAFKA_PORT_3:-19096}:19092"
+      - "${KNYTOS_KAFKA_PORT_3:-19096}:19092"
     environment:
       <<: *kafka-environment
       KAFKA_NODE_ID: 3

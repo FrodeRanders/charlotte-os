@@ -132,7 +132,7 @@ Validated 2026-10-13:
 - Both signed service bundles rebuilt; strict AArch64 service Clippy passed.
   Both corrected kernels built and passed strict Clippy for the exact
   DNS/discovery profile. Initial kernel Clippy invocations rejected missing
-  compile-time `CATTEN_AARCH64_SERVICE_BUNDLE` / `CATTEN_X86_64_SERVICE_BUNDLE`
+  compile-time `KNYTOS_AARCH64_SERVICE_BUNDLE` / `KNYTOS_X86_64_SERVICE_BUNDLE`
   variables (exit 101); corrected invocations supplied the rebuilt paths and
   exited 0. No source change was needed for those invocation errors.
 - `cargo fmt --all -- --check`, `git diff --check` and local Markdown link

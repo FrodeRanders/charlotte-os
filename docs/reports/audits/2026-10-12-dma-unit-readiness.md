@@ -129,7 +129,7 @@ every guest. No guest failure was captured in this matrix. The Intel repeat
 addresses the historical intermittent concern as a limited additional sample;
 it is not a reliability or pressure-soak claim.
 
-Commands use `CATTEN_SKIP_EMBED_BUILD=1` after both bundle builds:
+Commands use `KNYTOS_SKIP_EMBED_BUILD=1` after both bundle builds:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance dma-readiness-arm
@@ -141,7 +141,7 @@ scripts/run-x86_64.sh --http-test --dhcp-test --iommu intel --fresh-storage --ti
 
 HTTP/deployment ports were 19331/18631, 19332/18632, 19333/18633 and
 19334/18634 and 19335/18635. The repeat additionally used
-`CATTEN_SKIP_KERNEL_BUILD=1` only after the current ELF matched the immutable
+`KNYTOS_SKIP_KERNEL_BUILD=1` only after the current ELF matched the immutable
 initial Intel boot hash. AMD's rebuilt ELF and the repeat's loaded artifact
 match that same hash. Immutable per-boot kernel hashes are recorded before
 later profile builds overwrite the development ELF:

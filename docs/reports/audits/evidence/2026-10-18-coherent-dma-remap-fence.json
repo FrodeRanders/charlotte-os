@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte-coherent-dma-remap-fence-evidence-v1",
+  "schema": "knytos-coherent-dma-remap-fence-evidence-v1",
   "reviewed_revision": "1c6963a2887d7d69472af9179374f81ecd0750d4",
   "before_fix": {
     "object_source_sha256": "21ad105c7c111b27d5fda7021fd2b76e8955fa7d1c7d267beafe68b9c372a4f3",
@@ -79,15 +79,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-dma-remap-red.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-dma-remap-red.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -103,7 +103,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-j49lzafl/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-dma-remap-red-serial.log"
+        "file:/tmp/knytos-dma-remap-red-serial.log"
       ],
       "prepared_utc": "2026-10-18T15:40:52Z",
       "runner_exit": 1,
@@ -181,15 +181,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-dma-remap-arm.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-dma-remap-arm.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -205,7 +205,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-sbehgm40/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-dma-remap-arm-serial.log"
+        "file:/tmp/knytos-dma-remap-arm-serial.log"
       ],
       "prepared_utc": "2026-10-18T15:52:44Z",
       "runner_exit": 0,
@@ -283,7 +283,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-dma-remap-intel.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-dma-remap-intel.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -304,7 +304,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-c19290tu/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-dma-remap-intel-serial.log"
+        "file:/tmp/knytos-x86-dma-remap-intel-serial.log"
       ],
       "prepared_utc": "2026-10-18T15:53:46Z",
       "runner_exit": 0,
@@ -325,12 +325,12 @@
       "exit": 0
     },
     {
-      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=<bundle> cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings",
+      "command": "KNYTOS_AARCH64_SERVICE_BUNDLE=<bundle> cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json -- -D warnings",
       "exit": 0,
       "output_sha256": "d904e7151776fa53686b2a44e4ca64684774267f85432d1955fddf63345cf6be"
     },
     {
-      "command": "CATTEN_X86_64_SERVICE_BUNDLE=<bundle> cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "command": "KNYTOS_X86_64_SERVICE_BUNDLE=<bundle> cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
       "exit": 0,
       "output_sha256": "d8eb92dbd06a03bfd801afb9f604a2d437b861c3572d1c200933ebc1819de024"
     },

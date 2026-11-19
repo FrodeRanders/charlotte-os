@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.authority-node-admission.v1",
+  "schema": "knytos.authority-node-admission.v1",
   "date": "2026-11-01",
   "base_revision": "e943419533a4190cb216477cb1c14dfb40929dc6",
   "scope": "Independent requested-byte/count admission for unified authority-record backing, including unused candidates, published/escrowed records, detached storage and terminal retention.",

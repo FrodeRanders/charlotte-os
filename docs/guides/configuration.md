@@ -9,15 +9,15 @@ This guide matches the manual's **Configuration** chapter.
 
 | Configuration | Current source and lifetime |
 | --- | --- |
-| Management TLS | One complete signed/encrypted `CMGTENC1` resource contains credentials, exact leaf/role enrollments and all eleven `Limits` fields. `CATTEN_MANAGEMENT_TLS_RESOURCE` selects its absolute ciphertext path when building. Networked development runners generate two-day credentials if absent, including for minimal and VMware images; explicit missing/invalid-resource startup controls preserve their inputs. Boot verifies the resource against the same selected admission policy and supplies read-only launch profiles to both services. Replacement requires rebuild/restart. See [management TLS](../reference/management-tls.md). |
-| Installed policy test snapshot | Only the x86 development `boot_trust_test` fixture accepts `CATTEN_BOOT_TEST_INSTALLED_POLICY`, an absolute path to a complete signed public snapshot compiled into the kernel. The default is revision 7. The separately supplied boot module must match this snapshot exactly, and it cannot select installed state. See [Secure Boot testing](qemu-secure-boot.md). This is not protected installation or rollback-resistant storage. |
+| Management TLS | One complete signed/encrypted `CMGTENC1` resource contains credentials, exact leaf/role enrollments and all eleven `Limits` fields. `KNYTOS_MANAGEMENT_TLS_RESOURCE` selects its absolute ciphertext path when building. Networked development runners generate two-day credentials if absent, including for minimal and VMware images; explicit missing/invalid-resource startup controls preserve their inputs. Boot verifies the resource against the same selected admission policy and supplies read-only launch profiles to both services. Replacement requires rebuild/restart. See [management TLS](../reference/management-tls.md). |
+| Installed policy test snapshot | Only the x86 development `boot_trust_test` fixture accepts `KNYTOS_BOOT_TEST_INSTALLED_POLICY`, an absolute path to a complete signed public snapshot compiled into the kernel. The default is revision 7. The separately supplied boot module must match this snapshot exactly, and it cannot select installed state. See [Secure Boot testing](qemu-secure-boot.md). This is not protected installation or rollback-resistant storage. |
 | Domain TLS entropy | Startup consumes `EntropyConfig` with an owned `rng` connection (or explicit architectural-only source) and a positive request budget. The compiled default is `5000` ms, and admission retains that complete configuration through each operation. See [TLS configuration](../reference/tls-client.md). |
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node. See [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
-| Diagnostic telemetry archive | `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving, while `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
-| Service console heartbeats | `CATTEN_SERVICE_HEARTBEATS=0` or `1` selects the `knytos-services` feature `service-heartbeats` at service build time. Runners/builders default off for minimal bundles and on for test bundles. Rebuild/restart to change it; status counters and protocol heartbeats remain active. See [boot modes](../reference/boot-modes.md#compile-time-and-bundle-selection). |
-| Native telemetry export | Unset `CATTEN_OTLP_ENDPOINT` launches no exporter. An explicit HTTP/IPv4 collector plus interval/timeout selects one complete read-only outbound profile, and its hash is checked when reusing a kernel. |
-| Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time, and runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
+| Diagnostic telemetry archive | `KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving, while `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
+| Service console heartbeats | `KNYTOS_SERVICE_HEARTBEATS=0` or `1` selects the `knytos-services` feature `service-heartbeats` at service build time. Runners/builders default off for minimal bundles and on for test bundles. Rebuild/restart to change it; status counters and protocol heartbeats remain active. See [boot modes](../reference/boot-modes.md#compile-time-and-bundle-selection). |
+| Native telemetry export | Unset `KNYTOS_OTLP_ENDPOINT` launches no exporter. An explicit HTTP/IPv4 collector plus interval/timeout selects one complete read-only outbound profile, and its hash is checked when reusing a kernel. |
+| Bootstrap service assignments | `KNYTOS_CLUSTER_SERVICES` at build time, and runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
 | Launch/grant trust | One prepared kernel boot-trust policy. Resource capacity settings grant no signing authority or platform classification. Production trust remains disabled pending protected provisioning/custody. |
 | Application limits and capabilities | Signed deployment plus kernel admission, including stack/thread limits, executable variants and protocol-specific launch profiles. Requests do not enlarge node capacity. |
 | Persistent state | Explicit store formats and committed state. Capacity changes authorize neither reset nor silent reformatting. |
@@ -37,7 +37,7 @@ The [typed policy and validation](../../crates/catten/src/resource_policy.rs)
 define dimensions and relationships. Numerical defaults are preserved by this
 centralization.
 
-Either edit the central defaults or set `CATTEN_RESOURCE_POLICY` to an existing
+Either edit the central defaults or set `KNYTOS_RESOURCE_POLICY` to an existing
 **absolute file path**. Unset selects the defaults. Empty, relative, missing and
 directory paths reject. The file is trusted Rust build source, compiled in the
 policy module's scope, so never accept it from an application manifest or upload.
@@ -51,10 +51,10 @@ For example, copy that profile to `ops/resource-policy.rs`, review its settings,
 then run:
 
 ```sh
-CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
+KNYTOS_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
   python3 scripts/tests/test-resource-policy.py
 
-CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
+KNYTOS_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
   scripts/run-aarch64.sh --security-test --http-test
 ```
 
@@ -126,9 +126,9 @@ memory history without writing them to disk. Enable local diagnostic archiving
 explicitly, for example once per minute:
 
 ```sh
-CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000 scripts/run-aarch64.sh release --minimal
+KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS=60000 scripts/run-aarch64.sh release --minimal
 # Rebuild with archiving disabled again.
-CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=0 scripts/run-aarch64.sh release --minimal
+KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS=0 scripts/run-aarch64.sh release --minimal
 ```
 
 The input works on both architectures and with either boot mode. It must be
@@ -147,8 +147,8 @@ state and committed resource promises still require persistence. See
 Remote export is a separate choice:
 
 ```sh
-CATTEN_OTLP_ENDPOINT=http://192.0.2.20:4318/v1/metrics \
-CATTEN_OTLP_INTERVAL_MS=30000 CATTEN_OTLP_TIMEOUT_MS=3000 \
+KNYTOS_OTLP_ENDPOINT=http://192.0.2.20:4318/v1/metrics \
+KNYTOS_OTLP_INTERVAL_MS=30000 KNYTOS_OTLP_TIMEOUT_MS=3000 \
   scripts/run-aarch64.sh release --minimal
 ```
 

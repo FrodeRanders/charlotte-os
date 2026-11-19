@@ -316,8 +316,8 @@ That diagnostic is now available with
 feature-gated 16,384-entry atomic ring and extracts it through QEMU's debugger
 stub at timeout, so retrieval does not depend on a functioning kernel timer or
 thread. The decoded trace is written to
-`/tmp/charlotte-scheduler-trace.log`; all-LP backtraces and exception registers
-are written to `/tmp/charlotte-trace-lldb.log`.
+`/tmp/knytos-scheduler-trace.log`; all-LP backtraces and exception registers
+are written to `/tmp/knytos-trace-lldb.log`.
 
 The first externally captured early stall changes the diagnosis materially.
 Three LPs were spinning with interrupts masked: the Raft verifier waited for
@@ -394,7 +394,7 @@ binary, the AArch64 runner now also accepts `--debug-snapshot`. Unlike
 `--scheduler-trace`, it does not enable the trace feature or add trace-ring
 atomics; it only exposes QEMU's debugger stub and captures all-LP backtraces
 and exception registers at timeout in
-`/tmp/charlotte-debug-snapshot-lldb.log`. Three consecutive ordinary SMP4 HVF
+`/tmp/knytos-debug-snapshot-lldb.log`. Three consecutive ordinary SMP4 HVF
 runs with this option subsequently observed every required marker. Their
 snapshots showed normal quiescence (idle loops plus the intentionally resident
 EL0 workloads), with no allocator or completion lock convoy. This does not

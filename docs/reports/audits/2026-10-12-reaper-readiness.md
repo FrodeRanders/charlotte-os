@@ -116,7 +116,7 @@ Fresh-storage guests used a 180-second runner deadline:
 
 Zero failed/pending bitmaps accompany every result. Synchronous boot fixtures
 are additional to those registered deferred-test counts. Runner commands used
-`CATTEN_SKIP_EMBED_BUILD=1` only after rebuilding both bundles:
+`KNYTOS_SKIP_EMBED_BUILD=1` only after rebuilding both bundles:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance reaper-readiness-arm
@@ -127,7 +127,7 @@ scripts/run-aarch64.sh --shutdown-ingress-test --fresh-storage --timeout 180 --i
 
 HTTP/deployment ports were 19284/18584, 19285/18585, 19286/18586 and
 19287/18587 respectively. AMD reused the exact successfully booted Intel
-kernel using `CATTEN_SKIP_KERNEL_BUILD=1`. Immutable per-boot kernel hashes
+kernel using `KNYTOS_SKIP_KERNEL_BUILD=1`. Immutable per-boot kernel hashes
 were captured before subsequent profile builds:
 
 | Artifact | SHA-256 |

@@ -316,7 +316,7 @@ Use `CLUSTER_SIGN_KEY_FILE` instead. Signer invocations in these callers now
 select the repository's pinned toolchain outside the bare-metal Cargo config.
 The host-test wrapper runs signer unit tests, and CI lints its test target too.
 
-`CATTEN_TRUST_MODE` defaults to `development`. The scripts and kernel build
+`KNYTOS_TRUST_MODE` defaults to `development`. The scripts and kernel build
 script refuse `production`, unknown and empty values. Build output and boot
 logs warn that fixture trust must not protect real credentials. This is an
 intentional safety gate, **not a production provisioning implementation**.

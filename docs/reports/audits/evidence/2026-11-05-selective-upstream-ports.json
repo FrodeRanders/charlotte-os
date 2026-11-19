@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.selective-upstream-ports.v1",
+  "schema": "knytos.selective-upstream-ports.v1",
   "date": "2026-11-05",
   "base_revision": "91893e1f4380fb69c608201cc699d70134b16c17",
   "scope": "Address-map invariants and bounded mandatory ACPI/PCI boot metadata. No upstream kernel merge, new reset authority, runtime ceiling increase or finding closure.",
@@ -91,10 +91,10 @@
   "commands": {
     "host": "scripts/run-host-tests.sh",
     "format": "cargo fmt --all -- --check",
-    "strict": "CATTEN_<ARCH>_SERVICE_BUNDLE=<matching test/minimal bundle> cargo clippy --locked --package catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features <acpi,kernel_tests|acpi> -- -D warnings",
-    "ARM": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18722 CATTEN_DEPLOY_HOST_PORT=17722 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance selective-ports-arm",
-    "Intel": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18723 CATTEN_DEPLOY_HOST_PORT=17723 scripts/run-x86_64.sh --tests --security-test --smp 4 --iommu intel --timeout 240 --fresh-storage --instance selective-ports-intel",
-    "AMD": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18723 CATTEN_DEPLOY_HOST_PORT=17723 scripts/run-x86_64.sh --tests --security-test --smp 4 --iommu amd --timeout 240 --fresh-storage --instance selective-ports-amd"
+    "strict": "KNYTOS_<ARCH>_SERVICE_BUNDLE=<matching test/minimal bundle> cargo clippy --locked --package catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features <acpi,kernel_tests|acpi> -- -D warnings",
+    "ARM": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18722 KNYTOS_DEPLOY_HOST_PORT=17722 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance selective-ports-arm",
+    "Intel": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18723 KNYTOS_DEPLOY_HOST_PORT=17723 scripts/run-x86_64.sh --tests --security-test --smp 4 --iommu intel --timeout 240 --fresh-storage --instance selective-ports-intel",
+    "AMD": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18723 KNYTOS_DEPLOY_HOST_PORT=17723 scripts/run-x86_64.sh --tests --security-test --smp 4 --iommu amd --timeout 240 --fresh-storage --instance selective-ports-amd"
   },
   "failed_preflights": [
     {
@@ -124,7 +124,7 @@
       "status": "failed preflight, excluded from final qualification",
       "log_sha256": "edf0b0dbf1130a345ba2fd91362dd0f036ee243b5b68943ca034e425b9b965d4",
       "diagnostics": [
-        "error: environment variable `CATTEN_AARCH64_SERVICE_BUNDLE` not defined at compile time",
+        "error: environment variable `KNYTOS_AARCH64_SERVICE_BUNDLE` not defined at compile time",
         "error: could not compile `catten` (bin \"catten\") due to 8 previous errors"
       ]
     },
@@ -133,7 +133,7 @@
       "status": "failed preflight, excluded from final qualification",
       "log_sha256": "024f0577917c2b7aadf4078fd0e668e8c4c2be85f9f5a53e4f5fa8cb6d38b623",
       "diagnostics": [
-        "error: environment variable `CATTEN_X86_64_SERVICE_BUNDLE` not defined at compile time",
+        "error: environment variable `KNYTOS_X86_64_SERVICE_BUNDLE` not defined at compile time",
         "error: could not compile `catten` (bin \"catten\") due to 34 previous errors"
       ]
     }
@@ -212,15 +212,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-selective-ports-arm.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-selective-ports-arm.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -230,9 +230,9 @@
         "-nic",
         "none",
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::17722-:7444",
+        "user,id=knytos-net,hostfwd=tcp::17722-:7444",
         "-device",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
         "-display",
         "none",
         "-qmp",
@@ -240,7 +240,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-277gb3i0/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-selective-ports-arm-serial.log"
+        "file:/tmp/knytos-selective-ports-arm-serial.log"
       ],
       "milestones": [
         "[+    12.614304] [PCI boot] real RAM builder: cycle/range fences, multifunction seven, stable reset cell and rejected private prefix passed; device=136 endpoint=200 bus=32 metadata ceiling=5768704 bytes",
@@ -331,7 +331,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-selective-ports-intel.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-selective-ports-intel.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -343,9 +343,9 @@
         "-device",
         "intel-iommu",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
         "-display",
         "none",
         "-no-reboot",
@@ -360,7 +360,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-scwu1k4n/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-selective-ports-intel-serial.log"
+        "file:/tmp/knytos-x86-selective-ports-intel-serial.log"
       ],
       "milestones": [
         "[+    15.425708] [PCI boot] real RAM builder: cycle/range fences, multifunction seven, stable reset cell and rejected private prefix passed; device=136 endpoint=200 bus=32 metadata ceiling=5768704 bytes",
@@ -451,7 +451,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-selective-ports-amd.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-selective-ports-amd.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -463,9 +463,9 @@
         "-device",
         "amd-iommu,dma-remap=on",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
         "-display",
         "none",
         "-no-reboot",
@@ -480,7 +480,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-xzdc06nh/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-selective-ports-amd-serial.log"
+        "file:/tmp/knytos-x86-selective-ports-amd-serial.log"
       ],
       "milestones": [
         "[+    14.218910] [PCI boot] real RAM builder: cycle/range fences, multifunction seven, stable reset cell and rejected private prefix passed; device=136 endpoint=200 bus=32 metadata ceiling=5768704 bytes",

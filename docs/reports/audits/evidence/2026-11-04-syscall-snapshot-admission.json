@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.syscall-snapshot-admission.v1",
+  "schema": "knytos.syscall-snapshot-admission.v1",
   "date": "2026-11-04",
   "base_revision": "321091491044c9aeeb2de3a71ace1d09390c1f10",
   "scope": "Q1: six primitive syscall image/descriptor/pickup/plaintext/shutdown buffers; shared source-validation/copy and allocation-lifetime byte admission. No persistent store-cache or supervisor-transaction qualification.",
@@ -112,7 +112,7 @@
         "[+     8.860712] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
         "[+    85.587674] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18682 CATTEN_DEPLOY_HOST_PORT=17682 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-arm-final"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18682 KNYTOS_DEPLOY_HOST_PORT=17682 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-arm-final"
     },
     {
       "arch": "x86_64",
@@ -150,7 +150,7 @@
         "[+    14.087556] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
         "[+   101.337544] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18683 CATTEN_DEPLOY_HOST_PORT=17683 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-intel-final"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18683 KNYTOS_DEPLOY_HOST_PORT=17683 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-intel-final"
     },
     {
       "arch": "x86_64",
@@ -188,7 +188,7 @@
         "[+    11.278974] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
         "[+    98.420681] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
       ],
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18683 CATTEN_DEPLOY_HOST_PORT=17683 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-amd-final"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18683 KNYTOS_DEPLOY_HOST_PORT=17683 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-amd-final"
     }
   ],
   "validation": {

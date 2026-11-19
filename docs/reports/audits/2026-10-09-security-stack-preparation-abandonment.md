@@ -105,9 +105,9 @@ deadline expired; this does not explain or resolve the previous batch's failure.
 Commands (existing signed service bundles reused; no userspace/ABI changes):
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance stack-preparation-intel-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance stack-preparation-amd-20261009 --fresh-storage --timeout 180
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18559 CATTEN_DEPLOY_HOST_PORT=17859 scripts/run-aarch64.sh --security-test --instance stack-preparation-arm-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --instance stack-preparation-intel-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network --iommu amd --instance stack-preparation-amd-20261009 --fresh-storage --timeout 180
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18559 KNYTOS_DEPLOY_HOST_PORT=17859 scripts/run-aarch64.sh --security-test --instance stack-preparation-arm-20261009 --fresh-storage --timeout 180
 ```
 
 Executed kernel SHA-256:

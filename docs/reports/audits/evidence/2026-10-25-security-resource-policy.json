@@ -30,7 +30,7 @@
     ]
   },
   "configuration": {
-    "selector": "CATTEN_RESOURCE_POLICY absolute existing file; unset selects defaults",
+    "selector": "KNYTOS_RESOURCE_POLICY absolute existing file; unset selects defaults",
     "file_is_trusted_rust_build_source": true,
     "tracks_environment_path_and_file": true,
     "empty_relative_missing_directory_reject": true,
@@ -78,7 +78,7 @@
       "actual allocator arena before mapping"
     ],
     "host": {
-      "command": "CATTEN_RESOURCE_POLICY=\"$PWD/crates/catten/src/resource_policy/larger.rs\" python3 scripts/tests/test-resource-policy.py",
+      "command": "KNYTOS_RESOURCE_POLICY=\"$PWD/crates/catten/src/resource_policy/larger.rs\" python3 scripts/tests/test-resource-policy.py",
       "exit_status": 0,
       "groups": 3,
       "rust_tests_per_compilation": 13,
@@ -103,7 +103,7 @@
       "default_aarch64": "pass",
       "default_x86_64": "pass",
       "larger_aarch64": "pass",
-      "command": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+      "command": "cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings"
     },
     "formatting": "cargo fmt --all -- --check: pass",
     "whitespace": "git diff --check: pass",
@@ -153,7 +153,7 @@
     "AGENTS.md": "6f2ea18519ea608718bc502207ce82dd1d758e02f5d8276d3a30ede3772eccfd",
     "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
     "crates/knytos-lifecycle/src/resources.rs": "68b602c7c679aea044d237ce3f9b9f84803f580504fa68588651b83c206c2686",
-    "docs/manual-v2/charlotte.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
+    "docs/manual-v2/knytos.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
     "docs/manual-v2/chapters/22-configuration.tex": "7fa827aec2b8251fb87fa830883ef55fbbdde2f83f8017215d0d83d8a1643c28",
     "docs/guides/configuration.md": "79b5c14afee2ee6e87e8140386185797d5b2c4ce9a31de2dd2f8f68318220d13",
     "docs/reference/resource-policy.md": "1cb2b3765f0e30cb4409219fa8a65776cba4b2ac8cf64ee2b30a8adecd27c4af"
@@ -177,10 +177,10 @@
         "staged time.elf (120600 bytes) at object 0xfffe85ef2e9f9384",
         "staged uart.elf (84264 bytes) at object 0xfffebee445cffa95",
         "wrote ./os-images/nvme-disk-resource-policy-arm.img (16777216 bytes, 41 objects)",
-        ">>> Per-run diagnostics: /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-bj3cawa_",
-        ">>> Booting under QEMU (300s timeout, serial to /tmp/charlotte-resource-policy-arm-serial.log)...",
+        ">>> Per-run diagnostics: /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-bj3cawa_",
+        ">>> Booting under QEMU (300s timeout, serial to /tmp/knytos-resource-policy-arm-serial.log)...",
         "qemu-system-aarch64: terminating on signal 15 from pid 98970 (<unknown process>)",
-        ">>> Diagnostic outcome: /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-bj3cawa_/result.json"
+        ">>> Diagnostic outcome: /Users/froran/Projects/private/knytos/target/boot-diagnostics/aarch64-bj3cawa_/result.json"
       ],
       "guest_started": true,
       "serial_sha256": "fd1ab1cd5b8db9d97bb9e7dc4819c3e7e9b073283a70a0ed072533cff5c837fd",
@@ -189,7 +189,7 @@
       ],
       "complete_summary_present": false,
       "manifest": {
-        "schema": "charlotte.boot-diagnostics.v1",
+        "schema": "knytos.boot-diagnostics.v1",
         "arch": "aarch64",
         "instance": "resource-policy-arm",
         "cpus": 4,
@@ -234,7 +234,7 @@
           "?? scripts/tests/test-resource-policy.py"
         ],
         "tracked_diff_sha256": "62176761bdba768ba96da9906a06c5568a777769c57fee8fcefafbdeac7372b7",
-        "kernel_source": "/Users/froran/Projects/private/charlotte-os/target/aarch64-unknown-none-catten/debug/catten",
+        "kernel_source": "/Users/froran/Projects/private/knytos/target/aarch64-unknown-none-knytos/debug/catten",
         "kernel_sha256": "fc9ebd0e788746933a5214430fb9cabd94464131b6fd8e8dd00417424af0c3f4",
         "bundle_sha256": {
           "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
@@ -279,11 +279,11 @@
           "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
           "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
         },
-        "boot_image": "/Users/froran/Projects/private/charlotte-os/os-images/charlotte-aarch64-debug-resource-policy-arm.img",
+        "boot_image": "/Users/froran/Projects/private/knytos/os-images/knytos-aarch64-debug-resource-policy-arm.img",
         "boot_image_sha256": "15c7ebd9dca8764d9a1b0c5e36405f92daff720be24cabd7a8df1123637e2959",
-        "disk": "/Users/froran/Projects/private/charlotte-os/os-images/nvme-disk-resource-policy-arm.img",
+        "disk": "/Users/froran/Projects/private/knytos/os-images/nvme-disk-resource-policy-arm.img",
         "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
-        "serial_log": "/private/tmp/charlotte-resource-policy-arm-serial.log",
+        "serial_log": "/private/tmp/knytos-resource-policy-arm-serial.log",
         "timeout_seconds": 300,
         "prepared_utc": "2026-10-25T10:54:58Z",
         "tooling_sha256": {
@@ -301,15 +301,15 @@
           "-bios",
           "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
           "-drive",
-          "file=./os-images/charlotte-aarch64-debug-resource-policy-arm.img,format=raw,if=none,id=boot0",
+          "file=./os-images/knytos-aarch64-debug-resource-policy-arm.img,format=raw,if=none,id=boot0",
           "-device",
           "virtio-blk-pci,drive=boot0,addr=3",
           "-cpu",
           "cortex-a710",
           "-object",
-          "rng-random,filename=/dev/urandom,id=charlotte-rng",
+          "rng-random,filename=/dev/urandom,id=knytos-rng",
           "-device",
-          "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+          "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
           "-smp",
           "4",
           "-drive",
@@ -319,9 +319,9 @@
           "-nic",
           "none",
           "-netdev",
-          "user,id=charlotte-net,hostfwd=tcp::19962-:80,hostfwd=tcp::20126-:7444",
+          "user,id=knytos-net,hostfwd=tcp::19962-:80,hostfwd=tcp::20126-:7444",
           "-device",
-          "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+          "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
           "-display",
           "none",
           "-qmp",
@@ -329,7 +329,7 @@
           "-gdb",
           "unix:/tmp/ctdiag-l4hw_7m7/gdb.sock,server=on,wait=off",
           "-serial",
-          "file:/tmp/charlotte-resource-policy-arm-serial.log"
+          "file:/tmp/knytos-resource-policy-arm-serial.log"
         ]
       },
       "result_present": true,
@@ -338,17 +338,17 @@
     "intel": {
       "host_sha256": "fbbabd6d5eb708b442f24750647e3be00a7fc96ca4218868e98354f59555f00a",
       "host_tail": [
-        "private key written mode 0600 to /Users/froran/Projects/private/charlotte-os/target/security-test/fixture.I4KB0F/artifact.hex; private bytes are never printed",
-        "generated Ed25519 key: public=/Users/froran/Projects/private/charlotte-os/target/security-test/fixture.I4KB0F/deployment.pub key-id=9bed077e785f76753d36622d7f599210d8622842f08869d3188b23cb31ffd39b",
-        "private key written mode 0600 to /Users/froran/Projects/private/charlotte-os/target/security-test/fixture.I4KB0F/deployment.hex; private bytes are never printed",
-        "signed artifact opened at /Users/froran/Projects/private/charlotte-os/target/security-test/fixture.I4KB0F/probe.elf as \"security_probe\" class=Service version=1 rollback=1 flags=0x1",
+        "private key written mode 0600 to /Users/froran/Projects/private/knytos/target/security-test/fixture.I4KB0F/artifact.hex; private bytes are never printed",
+        "generated Ed25519 key: public=/Users/froran/Projects/private/knytos/target/security-test/fixture.I4KB0F/deployment.pub key-id=9bed077e785f76753d36622d7f599210d8622842f08869d3188b23cb31ffd39b",
+        "private key written mode 0600 to /Users/froran/Projects/private/knytos/target/security-test/fixture.I4KB0F/deployment.hex; private bytes are never printed",
+        "signed artifact opened at /Users/froran/Projects/private/knytos/target/security-test/fixture.I4KB0F/probe.elf as \"security_probe\" class=Service version=1 rollback=1 flags=0x1",
         "public key id: 1479de842dccf4c86ecdca745f29d512",
         "artifact sha256: 6d3843c5477437b838979234bde8d781d2b5f2b683ecbdc24d7f5e3b70da9211",
-        "signed deployment /Users/froran/Projects/private/charlotte-os/target/security-test/fixture.I4KB0F/admitted.cdep: artifact=\"security_probe\" object=\"security/probe.elf\" node=0x0 sequence=1 stack_pages_per_thread=8 max_threads=1 shutdown_grace_ms=5000 replicas=1 placement_flags=0x0 grants=6",
-        "signed deployment /Users/froran/Projects/private/charlotte-os/target/security-test/fixture.I4KB0F/alternate.cdep: artifact=\"security_probe\" object=\"security/probe.elf\" node=0x0 sequence=2 stack_pages_per_thread=8 max_threads=1 shutdown_grace_ms=5000 replicas=1 placement_flags=0x0 grants=6",
+        "signed deployment /Users/froran/Projects/private/knytos/target/security-test/fixture.I4KB0F/admitted.cdep: artifact=\"security_probe\" object=\"security/probe.elf\" node=0x0 sequence=1 stack_pages_per_thread=8 max_threads=1 shutdown_grace_ms=5000 replicas=1 placement_flags=0x0 grants=6",
+        "signed deployment /Users/froran/Projects/private/knytos/target/security-test/fixture.I4KB0F/alternate.cdep: artifact=\"security_probe\" object=\"security/probe.elf\" node=0x0 sequence=2 stack_pages_per_thread=8 max_threads=1 shutdown_grace_ms=5000 replicas=1 placement_flags=0x0 grants=6",
         ">>> Building Catten kernel (x86_64, debug, headless)...",
         "    Blocking waiting for file lock on build directory",
-        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/knytos/crates/catten)",
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets"
       ],
       "guest_started": false,
@@ -422,15 +422,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-resource-policy-final-arm.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-resource-policy-final-arm.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -440,9 +440,9 @@
         "-nic",
         "none",
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::19962-:80,hostfwd=tcp::20126-:7444",
+        "user,id=knytos-net,hostfwd=tcp::19962-:80,hostfwd=tcp::20126-:7444",
         "-device",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
         "-display",
         "none",
         "-qmp",
@@ -450,7 +450,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-oquviwop/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-resource-policy-final-arm-serial.log"
+        "file:/tmp/knytos-resource-policy-final-arm-serial.log"
       ],
       "backend": "smmuv3",
       "profile": "development-default",
@@ -492,7 +492,7 @@
         {
           "diagnostic": "HTTP transport TimeoutError; retry 1/2",
           "preceding": [
-            ">>> Booting under QEMU (300s timeout, serial to /tmp/charlotte-resource-policy-final-arm-serial.log)...",
+            ">>> Booting under QEMU (300s timeout, serial to /tmp/knytos-resource-policy-final-arm-serial.log)...",
             ">>> Probing guest node and cluster keyholes through port 19962 ..."
           ],
           "following": [
@@ -593,7 +593,7 @@
         "ordinary_nodes": 6144,
         "total_nodes": 8192
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19962 CATTEN_DEPLOY_HOST_PORT=20126 scripts/run-aarch64.sh --security-test --http-test --instance resource-policy-final-arm --fresh-storage --timeout 300"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19962 KNYTOS_DEPLOY_HOST_PORT=20126 scripts/run-aarch64.sh --security-test --http-test --instance resource-policy-final-arm --fresh-storage --timeout 300"
     },
     {
       "arch": "x86_64",
@@ -661,7 +661,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-resource-policy-final-intel.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-resource-policy-final-intel.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -686,7 +686,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-yo3htgih/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-resource-policy-final-intel-serial.log"
+        "file:/tmp/knytos-x86-resource-policy-final-intel-serial.log"
       ],
       "backend": "intel-vtd",
       "profile": "development-default",
@@ -728,7 +728,7 @@
         {
           "diagnostic": "HTTP transport TimeoutError; retry 1/2",
           "preceding": [
-            ">>> Booting under QEMU (480s timeout, serial to /tmp/charlotte-x86-resource-policy-final-intel-serial.log)...",
+            ">>> Booting under QEMU (480s timeout, serial to /tmp/knytos-x86-resource-policy-final-intel-serial.log)...",
             ">>> Probing guest node and cluster keyholes through port 19963 ..."
           ],
           "following": [
@@ -829,7 +829,7 @@
         "ordinary_nodes": 6144,
         "total_nodes": 8192
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19963 CATTEN_DEPLOY_HOST_PORT=20127 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance resource-policy-final-intel --fresh-storage --timeout 480"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19963 KNYTOS_DEPLOY_HOST_PORT=20127 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance resource-policy-final-intel --fresh-storage --timeout 480"
     },
     {
       "arch": "x86_64",
@@ -897,7 +897,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-resource-policy-final-amd.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-resource-policy-final-amd.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -922,7 +922,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-wtf0ukw9/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-resource-policy-final-amd-serial.log"
+        "file:/tmp/knytos-x86-resource-policy-final-amd-serial.log"
       ],
       "backend": "amd-vi",
       "profile": "development-default",
@@ -1051,7 +1051,7 @@
         "ordinary_nodes": 6144,
         "total_nodes": 8192
       },
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19964 CATTEN_DEPLOY_HOST_PORT=20128 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance resource-policy-final-amd --fresh-storage --timeout 480"
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19964 KNYTOS_DEPLOY_HOST_PORT=20128 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance resource-policy-final-amd --fresh-storage --timeout 480"
     },
     {
       "arch": "aarch64",
@@ -1119,15 +1119,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-resource-policy-larger-arm.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-resource-policy-larger-arm.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -1137,9 +1137,9 @@
         "-nic",
         "none",
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::19965-:80,hostfwd=tcp::20129-:7444",
+        "user,id=knytos-net,hostfwd=tcp::19965-:80,hostfwd=tcp::20129-:7444",
         "-device",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
         "-display",
         "none",
         "-qmp",
@@ -1147,7 +1147,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-8uwmari5/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-resource-policy-larger-arm-serial.log"
+        "file:/tmp/knytos-resource-policy-larger-arm-serial.log"
       ],
       "backend": "smmuv3",
       "profile": "larger-metadata-test",
@@ -1276,7 +1276,7 @@
         "ordinary_nodes": 7680,
         "total_nodes": 10240
       },
-      "command": "CATTEN_RESOURCE_POLICY=\"$PWD/crates/catten/src/resource_policy/larger.rs\" CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19965 CATTEN_DEPLOY_HOST_PORT=20129 scripts/run-aarch64.sh --security-test --http-test --instance resource-policy-larger-arm --fresh-storage --timeout 300"
+      "command": "KNYTOS_RESOURCE_POLICY=\"$PWD/crates/catten/src/resource_policy/larger.rs\" KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_HTTP_HOST_PORT=19965 KNYTOS_DEPLOY_HOST_PORT=20129 scripts/run-aarch64.sh --security-test --http-test --instance resource-policy-larger-arm --fresh-storage --timeout 300"
     }
   ],
   "native_failures": [],
@@ -1303,7 +1303,7 @@
     }
   ],
   "manual": {
-    "pdf": "docs/manual-v2/charlotte.pdf",
+    "pdf": "docs/manual-v2/knytos.pdf",
     "pdf_sha256": "2bdf2035c78030a48c6b19b24f30299f9b05addd0920ce092d16f0348133447a",
     "pages": 249,
     "chapter_number": 20,
@@ -1315,7 +1315,7 @@
     "contents_page_visually_checked": 14,
     "new_chapter_overfull_boxes": 0,
     "unresolved_references": 0,
-    "build": "pdflatex --shell-escape -interaction=nonstopmode -halt-on-error charlotte.tex (two final passes)",
+    "build": "pdflatex --shell-escape -interaction=nonstopmode -halt-on-error knytos.tex (two final passes)",
     "qualification": "Focused visual review of new chapter/contents; existing layout warnings elsewhere are not resolved by this batch."
   },
   "formal": {

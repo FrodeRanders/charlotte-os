@@ -55,7 +55,7 @@ class CiRuntimeInputs(unittest.TestCase):
         self.assertIn('CARGO_BUILD_RUSTFLAGS: "-D warnings"', self.workflow)
         config = tomllib.loads((ROOT / ".cargo/config.toml").read_text())
         for arch in ("aarch64", "x86_64"):
-            flags = config["target"][f"{arch}-unknown-none-catten"]["rustflags"]
+            flags = config["target"][f"{arch}-unknown-none-knytos"]["rustflags"]
             self.assertIn("force-frame-pointers=yes", flags)
             self.assertIn("warnings", flags)
             self.assertIn("-D", flags)

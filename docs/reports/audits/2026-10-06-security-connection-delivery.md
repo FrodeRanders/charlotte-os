@@ -100,11 +100,11 @@ DMA or rejected-IPI experiment.
 Successful guest commands:
 
 ```sh
-CATTEN_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
+KNYTOS_SKIP_EMBED_BUILD=1 scripts/run-x86_64.sh --no-network \
   --instance connection-delivery-20261006 --fresh-storage --timeout 180
 
-CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18498 \
-CATTEN_DEPLOY_HOST_PORT=17798 scripts/run-aarch64.sh --security-test \
+KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=18498 \
+KNYTOS_DEPLOY_HOST_PORT=17798 scripts/run-aarch64.sh --security-test \
   --instance connection-delivery-20261006 --fresh-storage --timeout 180
 ```
 

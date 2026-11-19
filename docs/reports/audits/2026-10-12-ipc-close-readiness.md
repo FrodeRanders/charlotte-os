@@ -263,7 +263,7 @@ deferred counts. The lifecycle ownership probe also passed in all four guests;
 shutdown drained child domains at 14.463333 s and requested PSCI power-off at
 14.517370 s. The failed same-artifact Intel startup remains separate evidence.
 
-Commands used `CATTEN_SKIP_EMBED_BUILD=1` after rebuilding both bundles:
+Commands used `KNYTOS_SKIP_EMBED_BUILD=1` after rebuilding both bundles:
 
 ```sh
 scripts/run-aarch64.sh --security-test --http-test --dhcp-test --fresh-storage --timeout 180 --instance ipc-claim-arm-v2
@@ -273,7 +273,7 @@ scripts/run-aarch64.sh --shutdown-ingress-test --fresh-storage --timeout 180 --i
 ```
 
 HTTP/deployment ports were 19308/18608, 19310/18610, 19311/18611 and
-19312/18612. Intel repeat and AMD used `CATTEN_SKIP_KERNEL_BUILD=1` only after
+19312/18612. Intel repeat and AMD used `KNYTOS_SKIP_KERNEL_BUILD=1` only after
 checking the current ELF hash against the immutable captured final-source Intel
 boot hash. Per-boot hashes precede later profile rebuilds:
 

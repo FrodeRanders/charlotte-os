@@ -40,7 +40,7 @@
     "adapter_source": "\n// Baseline adapters retain the byte operations of the reviewed receive methods;\n// socket/session access is replaced by the same injected producer contract.\nfn read_owned_chunk(reader: &mut impl embedded_io::Read, len: usize)\n -> Result<Vec<u8>, knytos_services::tls_client::StreamError> {\n use knytos_services::tls_client::StreamError;\n let mut bytes = vec![0; len];\n let len = reader.read(&mut bytes).map_err(|_| StreamError)?;\n if len == 0 { return Err(StreamError); }\n bytes.truncate(len); Ok(bytes)\n}\nstruct FrameReceiver { received: Vec<u8> }\nimpl FrameReceiver {\n fn new() -> Self { Self { received: Vec::new() } }\n fn reset(&mut self) { self.received.clear(); }\n fn read_frame<E>(&mut self, mut receive: impl FnMut() -> Result<Zeroizing<Vec<u8>>, E>)\n  -> Result<Vec<u8>, ReceiveError<E>> {\n  let result = self.read_inner(&mut receive);\n  if result.is_err() { self.received.clear(); }\n  result\n }\n fn read_inner<E>(&mut self, receive: &mut impl FnMut() -> Result<Zeroizing<Vec<u8>>, E>)\n  -> Result<Vec<u8>, ReceiveError<E>> {\n  loop {\n   if self.received.len() >= 4 {\n    let payload = i32::from_be_bytes(self.received[..4].try_into().unwrap());\n    if payload < 4 || payload as usize > wire::MAX_FRAME_LEN {\n     return Err(ReceiveError::Protocol(wire::Error::Invalid));\n    }\n    let len = payload as usize + 4;\n    if self.received.len() >= len {\n     let rest = self.received.split_off(len);\n     return Ok(core::mem::replace(&mut self.received, rest));\n    }\n   }\n   self.received.extend_from_slice(&receive().map_err(ReceiveError::Transport)?);\n   if self.received.len() > wire::MAX_FRAME_LEN + 4 { return Err(ReceiveError::ChunkTooLarge); }\n  }\n }\n}\n",
     "adapter_sha256": "b6858470c58c18d412d05081214ea03438b3fb9cf3a5b6b7526cdc04e7048cba",
     "test_bridge_sha256": "8d4df18da09b2f1d76e1bfe30d7c767bae5c4851041fc152ece4f03acfebe4cf",
-    "manifest": "[package]\nname = \"transport-baseline-control\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n# Keep host integration tests above both layers. Testing knytos-services as the\n# selected package also builds its freestanding service entry points.\n[[test]]\nname = \"receive_erasure\"\npath = \"receive_erasure.rs\"\n\n[dev-dependencies]\nknytos-services = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-services\" }\nknytos-kafka = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-kafka\" }\nembedded-io = { version = \"0.7\", default-features = false }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
+    "manifest": "[package]\nname = \"transport-baseline-control\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n# Keep host integration tests above both layers. Testing knytos-services as the\n# selected package also builds its freestanding service entry points.\n[[test]]\nname = \"receive_erasure\"\npath = \"receive_erasure.rs\"\n\n[dev-dependencies]\nknytos-services = { path = \"/Users/froran/Projects/private/knytos/crates/knytos-services\" }\nknytos-kafka = { path = \"/Users/froran/Projects/private/knytos/crates/knytos-kafka\" }\nembedded-io = { version = \"0.7\", default-features = false }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
     "reproduction": "Copy the tracked tests/transport/receive_erasure.rs, remove read_owned_chunk and FrameReceiver imports, append adapter_source, then run cargo test --offline --manifest-path <isolated>/Cargo.toml --test receive_erasure erases_. The manifest uses current library dependencies only for the unchanged error/constants/owned-chunk vocabulary; the byte operations are the baseline adapters. Run outside repository build-std configuration.",
     "scope": "Private live transport methods are represented by explicit byte-operation adapters; no baseline guest execution or actual TLS partial-write error reproduction is claimed."
   },
@@ -80,7 +80,7 @@
       "log_sha256": "2bcb8c604626f1a14f0b5a91dd76a38dc1a7769bfb61db155ace39ff2a446824",
       "diagnostics": [
         "warning: unused import: `StreamError`",
-        "warning: `charlotte-transport-tests` (test \"receive_erasure\") generated 1 warning (run `cargo fix --test \"receive_erasure\" -p charlotte-transport-tests` to apply 1 suggestion)",
+        "warning: `knytos-transport-tests` (test \"receive_erasure\") generated 1 warning (run `cargo fix --test \"receive_erasure\" -p knytos-transport-tests` to apply 1 suggestion)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
       "limit": "Eight-test passing run emitted an unused StreamError import warning; removed before the final nine-test run."
@@ -239,39 +239,39 @@
       "diagnostics": [
         "error[E0152]: duplicate lang item in crate `core`: `sized`",
         "  = note: the lang item is first defined in crate `core` (which `subtle` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "error[E0152]: duplicate lang item in crate `core`: `sized`",
         "  = note: the lang item is first defined in crate `core` (which `cfg_if` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "For more information about this error, try `rustc --explain E0152`.",
         "error[E0152]: duplicate lang item in crate `core`: `sized`",
         "  = note: the lang item is first defined in crate `core` (which `cmov` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "error[E0152]: duplicate lang item in crate `core`: `sized`",
         "  = note: the lang item is first defined in crate `core` (which `rand_core` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "error: could not compile `cfg-if` (lib) due to 1 previous error",
         "error: could not compile `subtle` (lib) due to 1 previous error",
         "error: could not compile `cmov` (lib) due to 1 previous error",
         "error: could not compile `rand_core` (lib) due to 1 previous error",
         "error[E0152]: duplicate lang item in crate `core` (which `alloc` depends on): `sized`",
         "  = note: the lang item is first defined in crate `core` (which `zeroize` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "error: could not compile `zeroize` (lib) due to 1 previous error",
         "error[E0152]: duplicate lang item in crate `core`: `sized`",
         "  = note: the lang item is first defined in crate `core` (which `libc` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "error: could not compile `libc` (lib) due to 1 previous error",
         "error[E0152]: duplicate lang item in crate `core`: `sized`",
         "  = note: the lang item is first defined in crate `core` (which `typenum` depends on)",
-        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
-        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/charlotte-os/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
+        "  = note: first definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-a1e819dd9a44a021.rmeta",
+        "  = note: second definition in `core` loaded from /Users/froran/Projects/private/knytos/target/release/deps/libcore-32e3e2e423b04b0d.rmeta",
         "error: could not compile `typenum` (lib) due to 1 previous error"
       ],
       "cause": "The host command ran from the repository and inherited build-std. Repeated from /private/tmp, outside the repository configuration, it passes; no host runtime result is inferred from this failed build."
@@ -312,37 +312,37 @@
       "exit_status": 0,
       "log_sha256": "78a9eeda38044da73f651604dbd909dcbc243be47213238a56540670baf40b62",
       "diagnostics": [
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-kafka/1f3d27bdba0b43dc/out/knytos_kafka-1f3d27bdba0b43dc)",
         "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
-        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
+        "     Running tests/sasl_ownership.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a)",
         "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/39f5a3b0ca1f167b/out/knytos_launch-39f5a3b0ca1f167b)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/deployment.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
+        "     Running tests/deployment.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/3b57489552324c83/out/deployment-3b57489552324c83)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
+        "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/fa23746df6034b41/out/hpke_erasure-fa23746df6034b41)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
+        "     Running tests/ingress.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/21c6efdc798efca9/out/ingress-21c6efdc798efca9)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
+        "     Running tests/ingress_policy.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/4b88403d096ed478/out/ingress_policy-4b88403d096ed478)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
+        "     Running tests/operations.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/4a515edaef169e1c/out/operations-4a515edaef169e1c)",
         "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
+        "     Running tests/operations_bundle.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/670dd52727809f6e/out/operations_bundle-670dd52727809f6e)",
         "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
+        "     Running tests/operations_pickup.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/a5b1125a40135903/out/operations_pickup-a5b1125a40135903)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/sha256.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
+        "     Running tests/sha256.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/d52c3b36619eeadd/out/sha256-d52c3b36619eeadd)",
         "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running tests/shutdown.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
+        "     Running tests/shutdown.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/2e43b8a4160b7794/out/shutdown-2e43b8a4160b7794)",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
+        "     Running tests/signed_policy.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/fd88ba059f30b038/out/signed_policy-fd88ba059f30b038)",
         "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s",
-        "     Running tests/trust.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
+        "     Running tests/trust.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-launch/f57baa81b37bbeab/out/trust-f57baa81b37bbeab)",
         "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-        "     Running unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/knytos-s3/f0dafe5cd5aebdef/out/knytos_s3-f0dafe5cd5aebdef)",
+        "     Running unittests src/lib.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-s3/f0dafe5cd5aebdef/out/knytos_s3-f0dafe5cd5aebdef)",
         "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-        "     Running receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/build/charlotte-transport-tests/de2eb2fb8cf55576/out/receive_erasure-de2eb2fb8cf55576)",
+        "     Running receive_erasure.rs (/Users/froran/Projects/private/knytos/target/release/build/knytos-transport-tests/de2eb2fb8cf55576/out/receive_erasure-de2eb2fb8cf55576)",
         "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
         "   Doc-tests knytos_kafka",
         "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
@@ -351,7 +351,7 @@
         "   Doc-tests knytos_s3",
         "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
       ],
-      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p charlotte-transport-tests -p knytos-kafka -p knytos-launch -p knytos-s3",
+      "command": "cargo test --release --offline --locked --manifest-path <repository>/Cargo.toml -p knytos-transport-tests -p knytos-kafka -p knytos-launch -p knytos-s3",
       "working_directory": "outside repository Cargo build-std configuration",
       "runtime_tests_passed": 105,
       "compile_fail_doctests_passed": 4
@@ -532,7 +532,7 @@
       "kernel_sha256": "421c874d4a0598d4f726ea581f4981fa3b224b4d4a41953b5dc622baa1f4f286",
       "serial_sha256": "1e88c0580c011baf1ca22b09922c36a14741d54abf35c9b3c0523fa17be6dbde",
       "compose_sha256": "4f33ab72c1a548d2f72d0a9a95e186e9b71d41c0c25fc8690e4537e4e47c3d12",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-receive-kafka CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_KAFKA_IMAGE=apache/kafka:4.1.1 scripts/run-aarch64.sh --kafka-test --instance sec15-receive-kafka --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-receive-kafka KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_KAFKA_IMAGE=apache/kafka:4.1.1 scripts/run-aarch64.sh --kafka-test --instance sec15-receive-kafka --fresh-storage --timeout 300",
       "public_certificate_sha256": {
         "ca.der": "af89449ac224062d6087d37ee877412e789b04484e6629fdab958a79c33c1c95",
         "client.der": "77f4d1070969cbcf366a36ab6cd131a84a9e3982c581f1db913fc9f28acee61f"
@@ -541,12 +541,12 @@
         "containers": {
           "remaining": 0,
           "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "filter": "com.docker.compose.project=charlotte-sec15-receive-kafka"
+          "filter": "com.docker.compose.project=knytos-sec15-receive-kafka"
         },
         "volumes": {
           "remaining": 0,
           "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "filter": "com.docker.compose.project=charlotte-sec15-receive-kafka"
+          "filter": "com.docker.compose.project=knytos-sec15-receive-kafka"
         }
       },
       "image": {
@@ -610,7 +610,7 @@
       "kernel_sha256": "11bef2af034e17ea1d99b4351cfcc96ae48558ea151a6d81feb150e7b16d3982",
       "serial_sha256": "21c45a02483530ea1d626dea03ee5797017fdf3847b0e23f639701238e5767b8",
       "compose_sha256": "b1e6cad61cf875ca1718c90c66d84769cdf3ac4a28b2c94db5dfe5164b105d42",
-      "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-receive-s3 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_RUSTFS_IMAGE=rustfs/rustfs:latest CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc:latest scripts/run-aarch64.sh --s3-test --instance sec15-receive-s3 --fresh-storage --timeout 300",
+      "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-receive-s3 KNYTOS_ALLOW_SANDBOX_NETWORK=1 KNYTOS_RUSTFS_IMAGE=rustfs/rustfs:latest KNYTOS_RUSTFS_CLI_IMAGE=rustfs/rc:latest scripts/run-aarch64.sh --s3-test --instance sec15-receive-s3 --fresh-storage --timeout 300",
       "public_certificate_sha256": {
         "ca.der": "4582ba82321d01eeb8d84e353ae4f17a66503c6725c3563f8bf7b6e836bbb2b7"
       },
@@ -618,12 +618,12 @@
         "containers": {
           "remaining": 0,
           "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "filter": "com.docker.compose.project=charlotte-sec15-receive-s3"
+          "filter": "com.docker.compose.project=knytos-sec15-receive-s3"
         },
         "volumes": {
           "remaining": 0,
           "inspection_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "filter": "com.docker.compose.project=charlotte-sec15-receive-s3"
+          "filter": "com.docker.compose.project=knytos-sec15-receive-s3"
         }
       },
       "image": {
@@ -635,7 +635,7 @@
           "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e [\"rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21\"]",
           "sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8 [\"rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6\"]"
         ],
-        "running_server_inspection": "/charlotte-sec15-receive-s3-rustfs-1 rustfs/rustfs:latest sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
+        "running_server_inspection": "/knytos-sec15-receive-s3-rustfs-1 rustfs/rustfs:latest sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
         "init_container_image_captured": false,
         "limit": "The running RustFS server image was captured; the removed init container image was only inspected locally."
       }
@@ -836,7 +836,7 @@
     ]
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
     "modified_from_head_before_this_batch": true,
     "edited_by_this_batch": false

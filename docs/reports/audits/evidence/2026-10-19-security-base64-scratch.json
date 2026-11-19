@@ -7,7 +7,7 @@
     "revision": "9be5546",
     "original_scram_sha256": "ca521cd26ab4a39eafd757a359f3247021022989a0c654840f89ba4e543123f5",
     "fixture_scram_sha256": "aab221d48edaef70f62d3b1b1efd05fb5f0d7a16116e2886b8bdda54f4176785",
-    "fixture_manifest": "[package]\nname = \"knytos-kafka\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Bounded no_std Kafka wire protocol core for Knytos\"\n\n[lib]\ntest = true\nbench = false\n\n[dependencies]\nknytos-launch = { path = \"/Users/froran/Projects/private/charlotte-os/crates/knytos-launch\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
+    "fixture_manifest": "[package]\nname = \"knytos-kafka\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndescription = \"Bounded no_std Kafka wire protocol core for Knytos\"\n\n[lib]\ntest = true\nbench = false\n\n[dependencies]\nknytos-launch = { path = \"/Users/froran/Projects/private/knytos/crates/knytos-launch\" }\nzeroize = { version = \"1.9\", default-features = false, features = [\"alloc\"] }\n\n[workspace]\n",
     "fixture_lockfile_sha256": "40c06e4f46f14cf51e64fc2daafc2068abe730714671a7d004199d3aef7c22ee",
     "shared_probe_path": "crates/knytos-kafka/src/scram/erasure_tests.rs",
     "shared_probe_sha256": "c065d1d12939e89888d59f18080ba567733d9a53b6a8edab308d28b2780f383a",
@@ -194,7 +194,7 @@
     }
   },
   "native_kafka_fault_run": {
-    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-base64 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --kafka-test --instance sec15-base64 --fresh-storage --timeout 300 (permitted Docker/QEMU access)",
+    "command": "KNYTOS_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=knytos-sec15-base64 KNYTOS_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --kafka-test --instance sec15-base64 --fresh-storage --timeout 300 (permitted Docker/QEMU access)",
     "exit_status": 0,
     "log_sha256": "06b57b641328795a81052cf1b83c6149fee11ba4b6149d7b290b72563e4f64aa",
     "passed": 20,
@@ -205,7 +205,7 @@
     "serial_sha256": "7d55f79dcb74d8ca340640a0d42bc24daf50e14577bf899bcee27313782c9417",
     "diagnostics": [
       "[+     7.440066] [kafka-test] Kafka service spawned (asid=121)",
-      "[+    14.949076] [EL0 LOG] lp=0 asid=121 [kafka] serving instance=kafka/selftest/main endpoints=3 broker=kafka-1.test:19092 tls=true consume-topic=charlotte-events partition=0 produce-routes=1 group=charlotte-qemu-smoke-group transactional-id=charlotte-qemu-smoke-transaction-0 ceiling=0x7",
+      "[+    14.949076] [EL0 LOG] lp=0 asid=121 [kafka] serving instance=kafka/selftest/main endpoints=3 broker=kafka-1.test:19092 tls=true consume-topic=knytos-events partition=0 produce-routes=1 group=knytos-qemu-smoke-group transactional-id=knytos-qemu-smoke-transaction-0 ceiling=0x7",
       "[+    14.949666] [EL0 LOG] lp=0 asid=121 [kafka] coordinators group=2 transaction=1",
       "[+    14.950574] [kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted",
       "[+    23.659862] [EL0 LOG] lp=0 asid=121 [kafka] TLS handshake transport failed (6)",
@@ -243,11 +243,11 @@
     "scope": "Leader-failure and generic-step fixture over verified TLS, required P-256 mTLS and SCRAM. No coordinator-movement/producer-fencing repeat, native x86 Kafka, production enrollment/custody or target-memory erasure claim."
   },
   "failed_metadata_inspection": {
-    "command": "docker inspect --format {{.Name}} {{.Image}} charlotte-sec15-base64-kafka1-1 charlotte-sec15-base64-kafka2-1 charlotte-sec15-base64-kafka3-1",
+    "command": "docker inspect --format {{.Name}} {{.Image}} knytos-sec15-base64-kafka1-1 knytos-sec15-base64-kafka2-1 knytos-sec15-base64-kafka3-1",
     "diagnostics": [
-      "error: no such object: charlotte-sec15-base64-kafka1-1",
-      "error: no such object: charlotte-sec15-base64-kafka2-1",
-      "error: no such object: charlotte-sec15-base64-kafka3-1"
+      "error: no such object: knytos-sec15-base64-kafka1-1",
+      "error: no such object: knytos-sec15-base64-kafka2-1",
+      "error: no such object: knytos-sec15-base64-kafka3-1"
     ],
     "combined_shell_command_exit_status": 0,
     "verification_limit": "Inspection was between successful docker ps and image-inspect commands; its individual status/stderr were not separately saved. The tool returned these three errors; the combined final status belongs to the succeeding image inspection. No immutable per-container image identity is inferred.",
@@ -446,7 +446,7 @@
     "scope": "No existing model projects Base64 output bytes or allocator growth; no transition change or fresh TLC result claimed."
   },
   "preserved_user_work": {
-    "path": "docs/manual-v2/charlotte.pdf",
+    "path": "docs/manual-v2/knytos.pdf",
     "sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
     "changed_by_this_batch": false
   },

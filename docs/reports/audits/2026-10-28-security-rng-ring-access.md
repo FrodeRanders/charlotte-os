@@ -128,7 +128,7 @@ at guest **82.702303 s**, after those exchanges; no application response or
 authenticated identity was observed. The exact EOF diagnostics and that clock
 sample are retained in the evidence.
 
-Both runners now use the shared `catten_boot_http_probe_ready` precondition:
+Both runners now use the shared `knytos_boot_http_probe_ready` precondition:
 listener publication plus a positive native synchronized-time sample under the
 existing runner budget. This is a host assertion hint; each native connection
 still obtains a fresh real time-service reply. No synthetic UTC, verification

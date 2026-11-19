@@ -1,5 +1,5 @@
 {
-  "schema": "charlotte.q4-device-principals.v1",
+  "schema": "knytos.q4-device-principals.v1",
   "date": "2026-11-06",
   "base_revision": "1d09b64a11090e8c0e9b4503128f403e08a77ce0",
   "scope": "Device namespace and MMIO/IRQ/DMA enum payload-node requested-layout principal funding; Q4 remains open.",
@@ -151,10 +151,10 @@
       "^Node<.*DeviceObject.*DeviceNodes",
       "--name",
       "^NodeCharge<.*DeviceNodes",
-      "target/x86_64-unknown-none-catten/debug/catten"
+      "target/x86_64-unknown-none-knytos/debug/knytos"
     ],
     "diagnostics": [
-      "target/x86_64-unknown-none-catten/debug/catten:\tfile format elf64-x86-64",
+      "target/x86_64-unknown-none-knytos/debug/knytos:\tfile format elf64-x86-64",
       "",
       "0x00e8b55c: DW_TAG_structure_type",
       "              DW_AT_name\t(\"Node<(u64, catten::device::DeviceObject), catten::klib::admission::NodeCharge<catten::klib::admission::DeviceNodes, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
@@ -176,7 +176,7 @@
     ]
   },
   "capacity_census": {
-    "schema": "charlotte.resource-capacity.v2",
+    "schema": "knytos.resource-capacity.v2",
     "rust_toolchain": "nightly-2026-07-27",
     "host_pointer_bits": 64,
     "selected_policy": "crates/catten/src/resource_policy/defaults.rs",
@@ -678,7 +678,7 @@
     {
       "name": "ARM test",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests -- -D warnings",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests -- -D warnings",
       "log_sha256": "33f938a4d3361df3577f2bab8c5752a0d5088e4cfdae23de525eddfad838a816",
       "diagnostics": [
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
@@ -688,36 +688,36 @@
     {
       "name": "x86 test",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests -- -D warnings",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi,kernel_tests -- -D warnings",
       "log_sha256": "e60b78d0f4a7718b7b75526e14957d8978e493b160774a58a05246b6d83109d1",
       "diagnostics": [
         "    Blocking waiting for file lock on build directory",
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
-        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/knytos/crates/catten)",
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 5.24s"
       ]
     },
     {
       "name": "ARM minimal",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
       "log_sha256": "77d7110bff667f9bda6f2f8e25ff644f722716cd20329904a8a2e1ac6362b9d0",
       "diagnostics": [
         "    Blocking waiting for file lock on build directory",
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
-        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/knytos/crates/catten)",
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 1.18s"
       ]
     },
     {
       "name": "x86 minimal",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-knytos.json --no-default-features --features acpi -- -D warnings",
       "log_sha256": "60c01c5a60816e9f3e24730c3a4c51f86b185808a690d628dab2995b899aab91",
       "diagnostics": [
         "    Blocking waiting for file lock on build directory",
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
-        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/knytos/crates/catten)",
         "    Finished `dev` profile [optimized + debuginfo] target(s) in 2.46s"
       ]
     },
@@ -731,7 +731,7 @@
     {
       "profile": "ARM SMMUv3 security",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19102 CATTEN_DEPLOY_HOST_PORT=18102 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q4-device-principals-arm",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=19102 KNYTOS_DEPLOY_HOST_PORT=18102 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q4-device-principals-arm",
       "deferred_tests_passed": 19,
       "base_revision": "1d09b64a11090e8c0e9b4503128f403e08a77ce0",
       "cpus": 4,
@@ -797,15 +797,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-q4-device-principals-arm.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-q4-device-principals-arm.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -815,9 +815,9 @@
         "-nic",
         "none",
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::18102-:7444",
+        "user,id=knytos-net,hostfwd=tcp::18102-:7444",
         "-device",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
         "-display",
         "none",
         "-qmp",
@@ -825,7 +825,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-_y943pr6/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-q4-device-principals-arm-serial.log"
+        "file:/tmp/knytos-q4-device-principals-arm-serial.log"
       ],
       "bundle_unchanged_from_qualified_container_batch": true,
       "serial_sha256": "9cca40d5a291d7e6520efcd5a6ec9627c07bd127f7a42fc9567621f9102e00f9",
@@ -855,7 +855,7 @@
     {
       "profile": "Intel VT-d security",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_KERNEL_BUILD=1 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19103 CATTEN_DEPLOY_HOST_PORT=18103 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q4-device-principals-intel-repeat",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_SKIP_KERNEL_BUILD=1 KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=19103 KNYTOS_DEPLOY_HOST_PORT=18103 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q4-device-principals-intel-repeat",
       "deferred_tests_passed": 17,
       "base_revision": "1d09b64a11090e8c0e9b4503128f403e08a77ce0",
       "cpus": 4,
@@ -921,7 +921,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-q4-device-principals-intel-repeat.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-q4-device-principals-intel-repeat.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -933,9 +933,9 @@
         "-device",
         "intel-iommu",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
         "-display",
         "none",
         "-no-reboot",
@@ -950,7 +950,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-891f1dha/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-q4-device-principals-intel-repeat-serial.log"
+        "file:/tmp/knytos-x86-q4-device-principals-intel-repeat-serial.log"
       ],
       "bundle_unchanged_from_qualified_container_batch": true,
       "serial_sha256": "46549a4a116d0b01c8405f1a063b0463348c3c1f89535c45748abaaa161eab7a",
@@ -980,7 +980,7 @@
     {
       "profile": "AMD-Vi security",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19103 CATTEN_DEPLOY_HOST_PORT=18103 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q4-device-principals-amd",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=19103 KNYTOS_DEPLOY_HOST_PORT=18103 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q4-device-principals-amd",
       "deferred_tests_passed": 17,
       "base_revision": "1d09b64a11090e8c0e9b4503128f403e08a77ce0",
       "cpus": 4,
@@ -1046,7 +1046,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-q4-device-principals-amd.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-q4-device-principals-amd.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -1058,9 +1058,9 @@
         "-device",
         "amd-iommu,dma-remap=on",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
         "-display",
         "none",
         "-no-reboot",
@@ -1075,7 +1075,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-w664qwbv/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-q4-device-principals-amd-serial.log"
+        "file:/tmp/knytos-x86-q4-device-principals-amd-serial.log"
       ],
       "bundle_unchanged_from_qualified_container_batch": true,
       "serial_sha256": "b703833e1f36a4e2815780ced9fd8c47c03909f3066ba4cd730e12dfdb8b74fc",
@@ -1105,7 +1105,7 @@
     {
       "profile": "ARM SMMUv3 minimal",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19104 CATTEN_DEPLOY_HOST_PORT=18104 scripts/run-aarch64.sh --minimal --smp 4 --timeout 90 --fresh-storage --instance q4-device-principals-arm-minimal",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=19104 KNYTOS_DEPLOY_HOST_PORT=18104 scripts/run-aarch64.sh --minimal --smp 4 --timeout 90 --fresh-storage --instance q4-device-principals-arm-minimal",
       "deferred_tests_passed": null,
       "base_revision": "1d09b64a11090e8c0e9b4503128f403e08a77ce0",
       "cpus": 4,
@@ -1152,15 +1152,15 @@
         "-bios",
         "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
         "-drive",
-        "file=./os-images/charlotte-aarch64-debug-q4-device-principals-arm-minimal-minimal.img,format=raw,if=none,id=boot0",
+        "file=./os-images/knytos-aarch64-debug-q4-device-principals-arm-minimal-minimal.img,format=raw,if=none,id=boot0",
         "-device",
         "virtio-blk-pci,drive=boot0,addr=3",
         "-cpu",
         "cortex-a710",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on,addr=4",
         "-smp",
         "4",
         "-drive",
@@ -1170,9 +1170,9 @@
         "-nic",
         "none",
         "-netdev",
-        "user,id=charlotte-net,hostfwd=tcp::18104-:7444",
+        "user,id=knytos-net,hostfwd=tcp::18104-:7444",
         "-device",
-        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "virtio-net-pci,netdev=knytos-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
         "-display",
         "none",
         "-qmp",
@@ -1180,7 +1180,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-9veanzv3/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-q4-device-principals-arm-minimal-minimal-serial.log"
+        "file:/tmp/knytos-q4-device-principals-arm-minimal-minimal-serial.log"
       ],
       "bundle_unchanged_from_qualified_container_batch": true,
       "serial_sha256": "e81bb0c98872c761227ad5c5574b9b29b0806d56cac25c2263c65c84e8175180",
@@ -1197,7 +1197,7 @@
     {
       "profile": "Intel VT-d minimal",
       "status": "passed",
-      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19105 CATTEN_DEPLOY_HOST_PORT=18105 scripts/run-x86_64.sh --minimal --iommu intel --smp 4 --timeout 90 --fresh-storage --instance q4-device-principals-intel-minimal",
+      "command": "CARGO_NET_OFFLINE=true KNYTOS_SKIP_EMBED_BUILD=1 KNYTOS_HTTP_HOST_PORT=19105 KNYTOS_DEPLOY_HOST_PORT=18105 scripts/run-x86_64.sh --minimal --iommu intel --smp 4 --timeout 90 --fresh-storage --instance q4-device-principals-intel-minimal",
       "deferred_tests_passed": null,
       "base_revision": "1d09b64a11090e8c0e9b4503128f403e08a77ce0",
       "cpus": 4,
@@ -1249,7 +1249,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-q4-device-principals-intel-minimal-minimal.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-q4-device-principals-intel-minimal-minimal.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -1261,9 +1261,9 @@
         "-device",
         "intel-iommu",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
         "-display",
         "none",
         "-no-reboot",
@@ -1278,7 +1278,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-db3a_q1a/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-q4-device-principals-intel-minimal-minimal-serial.log"
+        "file:/tmp/knytos-x86-q4-device-principals-intel-minimal-minimal-serial.log"
       ],
       "bundle_unchanged_from_qualified_container_batch": true,
       "serial_sha256": "a243cd5da38aab4d339770476b6cf5a6e60fb1016a01e3fd1b12db79d561f428",
@@ -1360,7 +1360,7 @@
         "-drive",
         "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
         "-drive",
-        "if=none,file=./os-images/charlotte-x86_64-debug-q4-device-principals-intel.img,format=raw,id=esp,readonly=on",
+        "if=none,file=./os-images/knytos-x86_64-debug-q4-device-principals-intel.img,format=raw,id=esp,readonly=on",
         "-device",
         "qemu-xhci,id=xhci",
         "-device",
@@ -1372,9 +1372,9 @@
         "-device",
         "intel-iommu",
         "-object",
-        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "rng-random,filename=/dev/urandom,id=knytos-rng",
         "-device",
-        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "virtio-rng-pci,rng=knytos-rng,disable-legacy=on,iommu_platform=on",
         "-display",
         "none",
         "-no-reboot",
@@ -1389,7 +1389,7 @@
         "-gdb",
         "unix:/tmp/ctdiag-93muek43/gdb.sock,server=on,wait=off",
         "-serial",
-        "file:/tmp/charlotte-x86-q4-device-principals-intel-serial.log"
+        "file:/tmp/knytos-x86-q4-device-principals-intel-serial.log"
       ],
       "runner_result": {
         "reason": "deadline",
@@ -1510,8 +1510,8 @@
         "***"
       ],
       "lldb_diagnostics": [
-        "(lldb) target create \"/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-hdb5mfvq/kernel.elf\"",
-        "Current executable set to '/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-hdb5mfvq/kernel.elf' (x86_64).",
+        "(lldb) target create \"/Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-hdb5mfvq/kernel.elf\"",
+        "Current executable set to '/Users/froran/Projects/private/knytos/target/boot-diagnostics/x86_64-hdb5mfvq/kernel.elf' (x86_64).",
         "(lldb) settings set interpreter.stop-command-source-on-error false",
         "(lldb) process connect --plugin gdb-remote unix-connect:///tmp/ctdiag-93muek43/gdb.sock",
         "warning: This version of LLDB has no plugin for the language \"rust\". Inspection of frame variables will be limited.",
@@ -1601,7 +1601,7 @@
       "log_sha256": "54436036d73427a391560fea73ea96eaff7d10b9e5d86cdc4c3761b6cfb26bbc",
       "diagnostics": [
         "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
-        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/knytos/crates/catten)",
         "error: function `capture_address_space_storage` is never used",
         "   --> crates/catten/src/memory/mod.rs:549:15",
         "    |",

@@ -44,7 +44,7 @@ raise SystemExit(int(os.environ.get('BUILD_EXIT','0')))
 ''')
         cargo.chmod(0o755)
         self.environment = dict(os.environ, PATH=str(binaries) + os.pathsep + os.environ['PATH'],
-                                CLUSTER_SIGN_KEY_FILE=str(self.key), CATTEN_TRUST_MODE="development",
+                                CLUSTER_SIGN_KEY_FILE=str(self.key), KNYTOS_TRUST_MODE="development",
                                 CARGO_LOG=str(self.cargo_log), SIGN_LOG=str(self.sign_log), SIGNER=str(signer))
         self.environment.pop("CLUSTER_SIGN_PRIVATE_KEY", None)
 

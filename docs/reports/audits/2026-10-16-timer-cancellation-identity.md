@@ -117,8 +117,8 @@ No failed native sample, panic or Raft persistence fail-stop was observed in
 these runs. This focused cross-architecture matrix does not repeat the preceding
 AMD/no-network profiles or establish historical failure causes.
 
-Commands, with common environment `CATTEN_SKIP_EMBED_BUILD=1
-CATTEN_ALLOW_SANDBOX_NETWORK=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
+Commands, with common environment `KNYTOS_SKIP_EMBED_BUILD=1
+KNYTOS_ALLOW_SANDBOX_NETWORK=1 CARGO_BUILD_RUSTFLAGS='-D warnings'`:
 
 ```sh
 ./scripts/run-aarch64.sh debug --smp 4 --security-test --fresh-storage --timeout 180 --instance timer-identity-arm-security
