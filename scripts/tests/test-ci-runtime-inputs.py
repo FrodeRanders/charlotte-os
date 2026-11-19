@@ -25,9 +25,9 @@ class CiRuntimeInputs(unittest.TestCase):
     def setUp(self):
         self.workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 
-    def sitas_source(self, revision):
+    def sitas_source(self, revision, crate="sitas-knytos"):
         return subprocess.check_output(
-            ["git", "-C", str(SITAS), "show", f"{revision}:crates/sitas-knytos/src/lib.rs"],
+            ["git", "-C", str(SITAS), "show", f"{revision}:crates/{crate}/src/lib.rs"],
             text=True,
         )
 
@@ -40,7 +40,9 @@ class CiRuntimeInputs(unittest.TestCase):
         self.assertEqual(checked_wait_number(self.sitas_source(pin.group(1))), int(number.group(1)))
 
     def test_previous_ci_pin_is_rejected(self):
-        source = self.sitas_source("94eca68554e88f06721df4ccf3a69222a963c2c9")
+        # This immutable revision predates the crate rename; keep its historical path.
+        source = self.sitas_source("94eca68554e88f06721df4ccf3a69222a963c2c9",
+                                   crate="sitas-charlotte")
         with self.assertRaisesRegex(ValueError, "lacks the mandatory checked CQ wait"):
             checked_wait_number(source)
 
