@@ -95,7 +95,7 @@ scripts/build-knytos-services.sh --embed
 # x86-64 ring-3 service programs:
 scripts/build-knytos-services-x86_64.sh
 
-# Sitas user binary (requires external sitas crates):
+# Sitas user binary (requires external Sitas crates):
 scripts/build-knytos-user.sh --embed
 \end{verbatim}
 
@@ -183,9 +183,9 @@ then converts the FAT boot image and a blank data image to VMware VMDKs:
 
 Open
 \texttt{os-images/vmware/Knytos.vmwarevm/Knytos.vmx} in VMware
-Fusion or Workstation. The SATA boot disk is nonpersistent, while the NVMe data disk
+Fusion or Workstation. The SATA boot disk is non-persistent, while the NVMe data disk
 is persistent. On first boot the guest formats that disk and installs the
-missing signed x86-64 service artifacts. Later boots keep valid artifacts,
+missing signed x86-64 service artefacts. Later boots keep valid artefacts,
 including deployed upgrades. The builder refuses to overwrite an existing
 appliance unless \texttt{--replace} is supplied. The default 1~GiB data disk
 requires the shared 4~MiB userspace heap so the object store can hold its
@@ -202,17 +202,75 @@ unqualified. The complete setup and qualification record is in
 
 \section{Expected boot output}
 
+Expect output along the lines of:
+
 \begin{verbatim}
-Knytos booting...
-[init] BSP initialization complete.
-[init] Secondary CPUs brought online.
-[init] Starting scheduler...
-[async] coordinator: submitted worker, awaiting completion...
-[async] worker on LP1: sleeping 50ms
-[async] worker on LP1: exiting
-[async] COMPLETION RECEIVED, result Ok(42)
-[async] SUCCESS: async syscall round-trip complete
-Testing Complete. All Tests Passed!
+limine: Loading executable `boot():/catten`...
+[+     0.007340] Kernel Version x.y.z
+[+     0.007625] ========================================================================
+[+     0.008408] Logical Processor with local interrupt controller ID = 0 has been designated LP 0.
+[+     0.008645] [MPIDR] LP0 mpidr=2147483648 aff=0.0.0.0
+[+     0.009568] BSP: SCTLR_EL1 WXN clear before=0x30d0199d after=0x30d0199d
+[+     0.010110] BSP: Aarch64 ISA initialization complete.
+[+     0.010852] LP 0: PhysicalFrameAllocator: PhysicalFrameAllocator { bitmap_ptr: 0xffff00005cb98000, bitmap_len: 48403, next_free_hint: 32768, usable_bytes: 462135296, free_frames: 112812 }
+[+     0.011635] Resource policy: development-default (compile-time)
+[+     0.011884] Kernel heap: usable=440 MiB initial=8 MiB reserve=64 MiB total=72 MiB
+[+     0.024771] [hardware ASID] boot return storage prepared: 256 tags, 512 requested bytes; retirement cannot grow
+[+     0.025125] KNYTOS_BOOT_MODE=minimal
+[+     0.026350] [boot validation] memory passed: usable=440 MiB, free=94359 frames, heap reserve=64 MiB
+[+     0.028993] [boot trust] artifact authority selected before platform services
+[+     0.031499] [ACPI] Parsing XSDT at address PAddr { raw: 1555316504 }
+[+     0.031795] [ACPI] XSDT header located.
+[+     0.032263] [ACPI] XSDT data physical address: 0xffff00005cb43f3c, number of entries: 8
+[+     0.034102] [ACPI] Finished parsing XSDT. Found 6 tables.
+[+     0.035994] [MPIDR] LP1 mpidr=2147483651 aff=0.0.0.3
+[+     0.036754] [MPIDR] LP2 mpidr=2147483650 aff=0.0.0.2
+[+     0.036861] [MPIDR] LP3 mpidr=2147483649 aff=0.0.0.1
+[+     0.049147] [bootstrap storage] lp=2 local timer initialized without backing allocation
+[+     0.049287] [bootstrap storage] lp=3 local timer initialized without backing allocation
+[+     0.049421] [bootstrap storage] lp=0 local timer initialized without backing allocation
+[+     0.049726] [bootstrap storage] lp=1 local timer initialized without backing allocation
+[+     0.050500] [bootstrap storage] all 4 LP timers ready; shared timer queues and IRQ storage prepared
+[+     0.118066] [node] name service started (asid=1, tid=4)
+[+     0.162020] [node] capability grant controller started (asid=2, tid=5)
+[+     0.170625] [node] observability service started (asid=3, tid=6)
+[+     0.174789] [smmu] enabled SMMUv3 at 0x9050000: 16 StreamID bits, 4 KiB stage-1 translation
+[+     0.175396] [smmu] early initialization complete.
+[+     0.188937] [EL0 LOG] lp=0 asid=3 [observe] history=memory archive=disabled
+[+     0.200880] [security] DEVELOPMENT image: public fixture trust; not suitable for production.
+[+     0.256105] [boot trust] admission policy published: revision=1
+[+     0.259167] [nvme] MSI-X vector 0: address=0x8020040 data=80 intid=80
+[+     0.259369] [launch] NVMe controller at BAR0=0x800000c000 intid=80
+[+     0.278673] [launch] virtio-rng at BAR4=0x8000008000 requester=0x20
+[+     0.292214] [net] virtio cap type=5 bar=0 offset=0x0 length=0x0
+[+     0.292562] [net] virtio cap type=2 bar=4 offset=0x3000 length=0x1000
+[+     0.293695] [net] virtio cap type=4 bar=4 offset=0x2000 length=0x1000
+[+     0.293928] [net] virtio cap type=3 bar=4 offset=0x1000 length=0x1000
+[+     0.295431] [net] virtio cap type=1 bar=4 offset=0x0 length=0x1000
+[+     0.296374] [net] MSI-X vector 0: address=0x8020040 data=81 intid=81
+[+     0.297448] [launch] net controller at BAR0=0x8000000000 (interrupt 81, requester 0x8)
+[+     0.309121] [launch] driver grant batch prepared before threads: storage=true entropy=true network=true
+[+     0.369458] [EL0 LOG] lp=0 asid=5 [rng] serving host-backed VirtIO entropy
+[+     0.741321] [store] bootstrap seed complete: retained=8 written=0
+[+     0.972779] [launch] cluster services spawned: disco=9 relmsg=10 dns=11 (single Raft owner)
+[+     1.060262] [EL0 LOG] lp=0 asid=12 [tcpip] NIC MAC aa:bb:cc:dd:ee:ff
+[+     1.354977] [EL0 LOG] lp=0 asid=14 [time] serving; NTP 162.159.200.1:123 persistence=true
+[+     1.588987] [launch] deployment plane spawned: clusterctl=15 agent=16 ingress=17 port=7444
+[+     1.590043] [launch] steady-state service set published.
+[+     1.591068] [scheduler rebalance] moved 0 certified Ready thread(s) at boot quiescence.
+[+     4.607315] [node] boot-done marker registered (generation 1).
+[+     4.607480] BOOT COMPLETE: validation passed; local storage ready; services submitted
+[+     4.617974] [EL0 LOG] lp=0 asid=12 [tcpip] socket policy requested_slots=64 effective_slots=64 per_owner=16 buffer_quota=2048 KiB heap=4096 KiB
+[+     4.633625] [EL0 LOG] lp=0 asid=13 [http] listening port=443; bounded client reactor
+[+     4.645104] [EL0 LOG] lp=0 asid=12 [tcpip] DHCP assigned 10.0.2.15/24
+[+     4.651844] [EL0 LOG] lp=0 asid=17 [deployd] listening port=7444
+[+     5.237547] [EL0 LOG] lp=0 asid=11 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=3 finalize_pending=false term=1 leader=false
+[+     5.238479] [EL0 LOG] lp=0 asid=11 [dns] RAFT STATE state=Follower term=1 leader=None millis=571 pending=0 queued=0
+[+     5.628986] [EL0 LOG] lp=0 asid=14 [time] requesting NTP sample
+[+     6.647410] [EL0 LOG] lp=0 asid=14 [time] synchronized unix_s=1795130334 utc=2026-11-19T23:18:54.532464394Z stratum=3 uncertainty_ms=509 drift_ppb=0
+[+     7.706481] [EL0 LOG] lp=0 asid=11 [dns] RAFT STATE state=Leader term=2 leader=Some("knytos:42e21edb") millis=2825 pending=0 queued=0
+[+     9.683023] [EL0 LOG] lp=0 asid=11 [dns] seeded capacity control for node 42e21edb target=ExecutionTarget { architecture: Aarch64, runtime_abi: 4, features: 3 }
+[+     9.753804] [EL0 LOG] lp=0 asid=11 [dns] proposed filtered capacity for node 42e21edb
 \end{verbatim}
 
 \section{Dependency advisories}
@@ -241,7 +299,7 @@ commands, exact source/database identities and evidence are in
 The repository combines host-side library tests with boot-time kernel and EL0
 self-tests. Host suites cover components such as \texttt{knytos-graft},
 \texttt{knytos-protocol-msg}, and \texttt{knytos-smoltcp}. Boot tests run
-from \texttt{self\_test::run\_self\_tests()} after initialization, so assertion or
+from \texttt{self\_test::run\_self\_tests()} after initialisation, so assertion or
 verifier failure fails the boot suite.
 
 \architecturefigure{boot-and-testing}

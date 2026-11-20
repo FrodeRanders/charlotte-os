@@ -25,9 +25,9 @@ use crate::{
 };
 
 #[cfg(feature = "kernel_tests")]
-pub const MODE: &str = "CHARLOTTE_BOOT_MODE=tests";
+pub const MODE: &str = "KNYTOS_BOOT_MODE=tests";
 #[cfg(not(feature = "kernel_tests"))]
-pub const MODE: &str = "CHARLOTTE_BOOT_MODE=minimal";
+pub const MODE: &str = "KNYTOS_BOOT_MODE=minimal";
 
 pub fn validate_memory() {
     crate::logln!("{MODE}");

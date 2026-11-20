@@ -1500,7 +1500,7 @@
   "limits": [
     "Automatic proposal only; explicit/manual FINALIZE commands are outside the catch-up projection.",
     "Durable voting and log freshness are not modeled here; Rust regressions check existing-term vote retention.",
-    "No new Graft Jepsen execution, mixed Charlotte/Graft cluster, TCP gateway, source identity authentication or lease correctness claim.",
+    "No new Graft Jepsen execution, mixed Knytos/Graft cluster, TCP gateway, source identity authentication or lease correctness claim.",
     "No cleanup owner, recovery registry or physical completion behavior changes."
   ],
   "service_artifacts": {

@@ -206,7 +206,7 @@ contain allocation calls only in initialization, not the write/escape parser;
 host controls also exercise scrolling and escapes without new allocations.
 These controls qualify local heap cleanup, not hardware teardown or arbitrary
 caller/IRQ context. Provenance and the narrow C patch are recorded in
-[`CHARLOTTE.md`](../../crates/flanterm-bindings/CHARLOTTE.md).
+[`KNYTOS.md`](../../crates/flanterm-bindings/KNYTOS.md).
 
 Host controls reject malformed metadata without C entry, exercise both byte
 ceilings, compare the six actual C allocations against the checked plan, and

@@ -668,7 +668,7 @@ invariant. The complete fast configuration explores 144,598 generated states,
 54,705 distinct states, and depth 12 with TLC 2.19.
 
 The design and implementation sequence are described in
-[`../architecture/authorization-policy.md`](../architecture/authorization-policy.md). The local
+[`../architecture/authorisation-policy.md`](../architecture/authorisation-policy.md). The local
 name service now implements the co-located decision-and-delegation path using
 kernel-authenticated domain generations and principals. Bearer-key name
 lookup opcodes are retired. Public bootstrap naming cannot resolve or replace

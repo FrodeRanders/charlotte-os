@@ -12,7 +12,7 @@ def validate(data):
     lines = [line.rstrip(b"\r") for line in data.split(b"\n")[:-1]]
     if b"Kernel panic:" in data or b"SELFTEST COMPLETE:" in data:
         return False
-    return (any(line.endswith(b"CHARLOTTE_BOOT_MODE=minimal") for line in lines)
+    return (any(line.endswith(b"KNYTOS_BOOT_MODE=minimal") for line in lines)
             and any(re.search(rb"\[boot validation\] memory passed: usable=[0-9]+ MiB, "
                               rb"free=[1-9][0-9]* frames, heap reserve=[0-9]+ MiB$", line)
                     for line in lines)

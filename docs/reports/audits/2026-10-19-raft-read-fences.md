@@ -168,5 +168,5 @@ lease qualification boundary. Authenticated network identity, raw transport
 ownership/readiness, broader metadata admission and general storage-failure
 recovery remain open. Shared protobuf/no-op grammar, durable formats and runtime
 ABI are unchanged. The Graft checkout is unchanged; no new Jepsen, upstream
-execution or mixed Charlotte/Graft cluster result is claimed. Numbered security
+execution or mixed Knytos/Graft cluster result is claimed. Numbered security
 finding dispositions remain unchanged.

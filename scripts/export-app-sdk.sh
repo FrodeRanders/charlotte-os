@@ -70,7 +70,7 @@ for package in knytos-rt knytos-syscall knytos-launch knytos-lifecycle \
     tar -C "$ROOT/crates" --exclude target --exclude .DS_Store -cf - "$package" \
         | tar -C "$SDK/crates" -xf -
 done
-SITAS_DIR="${CHARLOTTE_SITAS_DIR:-$ROOT/../../gautelis/sitas}"
+SITAS_DIR="${KNYTOS_SITAS_DIR:-$ROOT/../../gautelis/sitas}"
 #SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "$ROOT/.github/workflows/ci.yml" | head -1)"
 SITAS_REVISION="$(sed -n 's/^  SITAS_REV: //p' "./.github/workflows/ci.yml" | head -1)"
 [ -n "$SITAS_REVISION" ] || { echo "error: missing pinned Sitas revision" >&2; exit 1; }

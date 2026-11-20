@@ -1055,7 +1055,7 @@ impl PreparingObserver {
             .parse::<u64>()
             .expect("build validated telemetry archive interval");
         crate::logln!(concat!(
-            "CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS=",
+            "KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS=",
             env!("KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS"),
             ";"
         ));

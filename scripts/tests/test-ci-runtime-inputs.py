@@ -42,7 +42,7 @@ class CiRuntimeInputs(unittest.TestCase):
     def test_previous_ci_pin_is_rejected(self):
         # This immutable revision predates the crate rename; keep its historical path.
         source = self.sitas_source("94eca68554e88f06721df4ccf3a69222a963c2c9",
-                                   crate="sitas-charlotte")
+                                   crate="sitas-knytos")
         with self.assertRaisesRegex(ValueError, "lacks the mandatory checked CQ wait"):
             checked_wait_number(source)
 

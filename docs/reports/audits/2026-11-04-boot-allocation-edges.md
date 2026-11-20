@@ -29,7 +29,7 @@ SIGSEGV. A local copy adds the null guard before any child access. All remaining
 initialization and success-path C code is unchanged. The registry checksum,
 original file hashes and license are preserved in
 [`UPSTREAM.json`](../../../crates/flanterm-bindings/UPSTREAM.json) and
-[`CHARLOTTE.md`](../../../crates/flanterm-bindings/CHARLOTTE.md). The lockfile
+[`KNYTOS.md`](../../../crates/flanterm-bindings/KNYTOS.md). The lockfile
 changes only this same-version dependency's source to the local path. Rust
 callback zero/invalid layouts now return null rather than panic.
 

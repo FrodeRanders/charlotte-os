@@ -24,7 +24,7 @@ boot = module("minimal_boot", "scripts/validate-minimal-boot.py")
 profile = module("boot_profile", "scripts/check-boot-profile.py")
 MEMORY = b"[boot validation] memory passed: usable=490 MiB, free=120000 frames, heap reserve=16 MiB\n"
 SEED = b"[store] bootstrap seed complete: retained=0 written=25\n"
-MINIMAL = b"CHARLOTTE_BOOT_MODE=minimal\n" + MEMORY + SEED + boot.COMPLETE + b"\n"
+MINIMAL = b"KNYTOS_BOOT_MODE=minimal\n" + MEMORY + SEED + boot.COMPLETE + b"\n"
 
 
 def elf(mode, symbol=b"_RNvCs123_6catten8bsp_main"):
@@ -79,7 +79,7 @@ class BootProfiles(unittest.TestCase):
     def test_cached_kernel_cannot_silently_change_archive_policy(self):
         for mode in profile.MODES:
             for interval in (0, 1000, 10000, 60000, 86400000):
-                data = elf(mode) + f"CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS={interval};".encode()
+                data = elf(mode) + f"KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS={interval};".encode()
                 profile.validate(data, mode, interval)
                 with self.assertRaisesRegex(ValueError, "telemetry archive policy"):
                     profile.validate(data, mode, 0 if interval else 10000)
@@ -89,7 +89,7 @@ class BootProfiles(unittest.TestCase):
     def test_cached_kernel_cannot_silently_redirect_telemetry(self):
         disabled=hashlib.sha256(profile.otlp_profile({})).hexdigest()
         enabled=hashlib.sha256(profile.otlp_profile({"KNYTOS_OTLP_ENDPOINT":"http://10.0.2.2:4318/v1/metrics"})).hexdigest()
-        data=elf("minimal")+f"CHARLOTTE_OTLP_PROFILE_SHA256={enabled};".encode()
+        data=elf("minimal")+f"KNYTOS_OTLP_PROFILE_SHA256={enabled};".encode()
         profile.validate(data,"minimal",otlp_sha256=enabled)
         with self.assertRaisesRegex(ValueError,"OTLP profile"):
             profile.validate(data,"minimal",otlp_sha256=disabled)

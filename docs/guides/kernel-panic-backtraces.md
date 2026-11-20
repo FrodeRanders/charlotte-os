@@ -19,7 +19,7 @@ addition to printing the kernel SHA-256, that helper uses the Rust toolchain's
 `llvm-nm` to write a demangled, address-sorted symbol map beside the ELF:
 
 ```text
-target/<kernel-target>/<profile>/catten.symbols
+target/<kernel-target>/<profile>/knytos.symbols
 ```
 
 The map header records the SHA-256 of the exact ELF. A copy is also retained by
@@ -49,7 +49,7 @@ Pass the matching kernel ELF and serial log to the postprocessor:
 
 ```sh
 scripts/symbolize-kernel-panic.py \
-  --kernel target/x86_64-unknown-none-knytos/debug/catten \
+  --kernel target/x86_64-unknown-none-knytos/debug/knytos \
   tmp/kernel-panic.log
 ```
 
@@ -64,7 +64,7 @@ Add `--source` to ask LLDB for DWARF file and line information:
 
 ```sh
 scripts/symbolize-kernel-panic.py --source \
-  --kernel target/x86_64-unknown-none-knytos/debug/catten \
+  --kernel target/x86_64-unknown-none-knytos/debug/knytos \
   tmp/kernel-panic.log
 ```
 

@@ -43,7 +43,7 @@ logic, and external managed infrastructure at explicit boundaries.
 
 ## Security and cluster direction
 
-- [Authorization policy](authorization-policy.md) — controlled capability
+- [Authorization policy](authorisation-policy.md) — controlled capability
   issuance and the policy/name-service boundary.
 - [Cluster artifacts and placement](cluster-artifacts-and-placement.md) —
   signed artifact admission, placement records, and honest remaining limits.

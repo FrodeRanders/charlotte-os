@@ -36,7 +36,7 @@
     "crates/catten/src/main.rs": "d7cdf191c4d78a6037fa803c2e1733c348e029612c542e62c58bf1b6906dbcbb",
     "crates/catten/src/init/mod.rs": "6554a1f839d97a0081ab343d33804f3dd42d75bdd16d715d51513585f982133c",
     "crates/catten/src/cpu/scheduler/system_scheduler/mod.rs": "d927776a6118202c4006b2410189104e719f5313e8f2e511792f5c4040a9aaa7",
-    "crates/flanterm-bindings/CHARLOTTE.md": "6382362ed400c33ff7690378e93f2d63145744d0f0ccee8a799db71d1496163d",
+    "crates/flanterm-bindings/KNYTOS.md": "6382362ed400c33ff7690378e93f2d63145744d0f0ccee8a799db71d1496163d",
     "crates/flanterm-bindings/Cargo.toml": "e7b81628801895c7a8890dad9349084a9819547907dc40300270789022c10e19",
     "crates/flanterm-bindings/LICENSE": "201cea7095834beb9eed543928cd74ee90d456489a42aa05d6201fac0c5e36c6",
     "crates/flanterm-bindings/README.md": "b85c9eb38bed32320e037a62ccf4a66bcb88b2de556b8535418d177e3293c295",

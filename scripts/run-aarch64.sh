@@ -614,7 +614,7 @@ if [ -n "$INSTANCE" ]; then
     INSTANCE_SUFFIX="-${INSTANCE}"
 fi
 IMAGE="${IMAGE_DIR}/knytos-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
-KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
+KERNEL="./target/${TARGET_DIR}/${PROFILE}/knytos"
 EFI_BOOT_FILE="BOOTAA64.EFI"
 
 # Locate the AArch64 UEFI firmware. Distribution packaging puts it in

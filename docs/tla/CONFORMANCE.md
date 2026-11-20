@@ -966,7 +966,7 @@ twelve-register receive ABI (71–73); retired nine-register receives reject.
 The name service synchronizes that exact identity into its policy
 store, evaluates default-deny rules, delegates only requested rights, and
 records bounded audit entries. The design contract is in
-[`../architecture/authorization-policy.md`](../architecture/authorization-policy.md).
+[`../architecture/authorisation-policy.md`](../architecture/authorisation-policy.md).
 
 | TLA+ action | Intended Knytos implementation | Correspondence |
 |---|---|---|

@@ -88,8 +88,8 @@ the reproduced fault.
 On any host with Docker and QEMU:
 
 ```sh
-# in the broker repository, with CHARLOTTE_OS_DIR pointing at a full checkout
-CHARLOTTE_OS_DIR=../knytos tools/soak/run_soak.sh --duration 1200 --rate 20
+# in the broker repository, with KNYTOS_OS_DIR pointing at a full checkout
+KNYTOS_OS_DIR=../knytos tools/soak/run_soak.sh --duration 1200 --rate 20
 ```
 
 The guest serial log and kernel symbols needed for offline symbolization are:

@@ -897,7 +897,7 @@
     "Known stale-read witness remains reproducible after the clock correction; request-specific quorum barrier still needed.",
     "Host clock regression simulates the old reactor increment; no native pause or invalid-clock abort injection.",
     "No changed wire grammar, resource owner, cleanup family, physical completion proof or numbered finding closure.",
-    "No upstream execution, Jepsen rerun, native delayed-packet or mixed Charlotte/Graft cluster result."
+    "No upstream execution, Jepsen rerun, native delayed-packet or mixed Knytos/Graft cluster result."
   ],
   "pre_fix_node_with_new_clock_test_sha256": "70bb40f506c0ffba4475b65dd0fb239db7ad3f143dc22999ef6ea636c87ee5a0",
   "pre_fix_callsite_excerpts": [

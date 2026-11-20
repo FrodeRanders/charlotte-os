@@ -345,7 +345,7 @@ connection without any policy decision or audit record:
 - [ns.rs:786](../../../crates/knytos-services/src/bin/ns.rs#L786) routes the
   public `OP_LOOKUP` opcode here with caller key 0.
 
-The [authorization policy](../../architecture/authorization-policy.md)
+The [authorization policy](../../architecture/authorisation-policy.md)
 explicitly states that legacy opcodes are not an authorization boundary and
 that security-sensitive clients must use the authorized opcodes. The defect
 is therefore a known compatibility surface, but it still means any signed

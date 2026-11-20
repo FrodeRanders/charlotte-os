@@ -671,7 +671,7 @@
     "Model contact input does not prove authority or a safe lease; quorum/log/election correctness assumed from other layers.",
     "Apply lag host check is an isolated invariant fixture; synchronous apply normally completes before reactor access.",
     "Follower bounded-staleness policy unchanged; no wire/resource-owner/cleanup behavior changes.",
-    "No upstream execution, Jepsen rerun or mixed Charlotte/Graft cluster."
+    "No upstream execution, Jepsen rerun or mixed Knytos/Graft cluster."
   ],
   "pre_fix_node_with_new_regression_sha256": "cafed7d7d7c4903f15d6b4dfa592dbbd8c7d6833a4af1d2c164847aa8743f646",
   "manual_validation": {

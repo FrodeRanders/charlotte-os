@@ -1411,7 +1411,7 @@
     "Exact Arc domain/term/epoch binding, application and compaction checked by Rust; quorum/log/election/persistence validity assumed from other layers.",
     "No native delayed-packet, allocation/mapping fault, invocation CQ binding rejection or pending-read timeout/drop injection.",
     "General metadata allocation, raw transport ownership/readiness, physical cleanup and authenticated network identity remain open.",
-    "No new Graft Jepsen/upstream execution or mixed Charlotte/Graft cluster."
+    "No new Graft Jepsen/upstream execution or mixed Knytos/Graft cluster."
   ],
   "corrected_stale_read_witness": {
     "command": "cargo run --locked --manifest-path <repo>/crates/knytos-graft/Cargo.toml --example audit_receive_lease (outside root Cargo configuration)",
@@ -1651,7 +1651,7 @@
     "limits": [
       "Two QEMU AArch64 guests with fresh storage; no physical hardware claim.",
       "Native delayed packets, allocation/mapping faults, waiter-binding rejection and timeout/drop of the new read phases were not injected.",
-      "No mixed Charlotte/Graft cluster, upstream execution or new Jepsen result."
+      "No mixed Knytos/Graft cluster, upstream execution or new Jepsen result."
     ]
   },
   "verified_bundle": {

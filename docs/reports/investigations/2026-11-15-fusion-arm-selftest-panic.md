@@ -10,7 +10,7 @@ the user's running appliance was not modified or stopped.
 
 The kernel extracted from the user's boot VMDK had SHA-256
 `deba44f5e3378b64a88d5324c4deae88ec1c565fe59b19fd7bda7aeb189a0bc1`.
-Its serial log reported `CHARLOTTE_BOOT_MODE=tests`, successful framebuffer
+Its serial log reported `KNYTOS_BOOT_MODE=tests`, successful framebuffer
 initialization and no supported SMMUv3, followed by:
 
 ```text

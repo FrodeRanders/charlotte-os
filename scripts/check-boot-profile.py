@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import struct
 
-MODES = {"minimal": b"CHARLOTTE_BOOT_MODE=minimal", "test": b"CHARLOTTE_BOOT_MODE=tests"}
+MODES = {"minimal": b"KNYTOS_BOOT_MODE=minimal", "test": b"KNYTOS_BOOT_MODE=tests"}
 
 
 def otlp_profile(env):
@@ -70,11 +70,11 @@ def validate(data, mode, archive_interval_ms=None, otlp_sha256=None):
     if MODES[mode] not in data or any(marker in data for key, marker in MODES.items() if key != mode):
         raise ValueError(f"kernel does not match requested {mode} boot mode; rebuild it")
     if archive_interval_ms is not None:
-        selected = re.findall(rb"CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS=([0-9]+);", data)
+        selected = re.findall(rb"KNYTOS_TELEMETRY_ARCHIVE_INTERVAL_MS=([0-9]+);", data)
         if not selected or any(int(value) != archive_interval_ms for value in selected):
             raise ValueError("kernel telemetry archive policy does not match requested interval; rebuild it")
     if otlp_sha256 is not None:
-        selected = re.findall(rb"CHARLOTTE_OTLP_PROFILE_SHA256=([0-9a-f]{64});", data)
+        selected = re.findall(rb"KNYTOS_OTLP_PROFILE_SHA256=([0-9a-f]{64});", data)
         if not selected or any(value.decode() != otlp_sha256 for value in selected):
             raise ValueError("kernel OTLP profile does not match requested collector policy; rebuild it")
     names = list(symbols(data))

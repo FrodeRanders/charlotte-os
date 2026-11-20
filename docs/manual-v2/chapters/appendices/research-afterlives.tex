@@ -39,7 +39,7 @@ and treats file descriptors as attenuable capabilities inside Unix
 (\url{https://man.freebsd.org/cgi/man.cgi?query=capsicum&sektion=4}). CHERI
 moved bounds and permissions into tagged pointers and processor support. Arm's
 Morello board and CheriBSD established a substantial experimental stack, while
-CHERI-RISC-V work continues toward standardization
+CHERI-RISC-V work continues toward standardisation
 (\url{https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/}). These are
 complementary outcomes: Capsicum confines named Unix resources and CHERI
 constrains memory references, but neither is by itself a complete object-capability
@@ -58,7 +58,7 @@ refinement nor a substitute for CHERI.
 
 \section{IPC, typed channels, and ownership}
 
-\textbf{Mach.} Pure Mach did not become the dominant Unix organization, but
+\textbf{Mach.} Pure Mach did not become the dominant Unix organisation, but
 it was absorbed into Apple XNU. XNU uses Mach tasks, virtual memory, ports,
 and IPC while co-locating BSD, networking, filesystems, and I/O components in
 one kernel for performance. Apple's description is candid about this hybrid
@@ -91,7 +91,7 @@ from memory-bearing IPC. It takes Singularity's ownership-moving discipline
 but enforces it through capabilities, page mappings, teardown state machines,
 and DMA rules rather than a managed-language verifier. Copy, move, read-only
 borrow, and writable borrow have explicit failure, cancellation, restoration,
-and rollback behavior. Typed protocol crates provide channel contracts above
+and rollback behaviour. Typed protocol crates provide channel contracts above
 an ABI that still validates untyped words at the kernel boundary.
 
 \section{Multicore systems, runtimes, and fast I/O}
@@ -100,9 +100,9 @@ an ABI that still validates untyped words at the kernel boundary.
 should be treated as a distributed system with explicit messages and
 topology-aware state placement. The project now identifies itself as inactive
 (\url{https://barrelfish.org/download.html}). Arrakis gave applications
-virtualized device queues while leaving allocation and protection policy in
+virtualised device queues while leaving allocation and protection policy in
 the kernel, and it merged back into Barrelfish in 2015. The code line ended, but
-per-core runtimes, hardware queue virtualization, and control/data-plane
+per-core runtimes, hardware queue virtualisation, and control/data-plane
 separation became widespread design patterns.
 
 \textbf{IX, DPDK, and Seastar.} IX was a research dataplane OS. Its
@@ -144,7 +144,7 @@ restart from being transparent.
 Knytos adopts the strong containment boundary and the honest recovery
 contract. The supervisor can revoke capabilities and borrows, reset a device,
 reconcile operations and DMA, start a fresh generation, and require clients to
-resolve it again. A stateful upgrade transfers explicitly serialized state, but
+resolve it again. A stateful upgrade transfers explicitly serialised state, but
 it does not inherit a process image or promise uninterrupted execution. This
 is closer to MINIX's supervision goal than to transparent recovery.
 
@@ -280,24 +280,24 @@ an explicit, failure-safe transfer of mutable ownership.
 
 TUF separates update roles, versions, thresholds, and expiry
 (\url{https://theupdateframework.github.io/specification/v1.0.28/}). In-toto
-binds artifacts to verifiable supply-chain steps
+binds artefacts to verifiable supply-chain steps
 (\url{https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias}).
 RFC~9180 defines Hybrid Public Key Encryption
 (\url{https://www.rfc-editor.org/info/rfc9180/}). Knytos composes those
 ideas into a runtime-authority path:
 
 \begin{itemize}
-    \item development signs executable behavior and release descriptors;
+    \item development signs executable behaviour and release descriptors;
     \item operations independently signs an HPKE-encrypted Kafka or S3 profile
         bound to one cluster, release, connector, sequence, and expiry;
     \item the leader verifies both authorities against trusted UTC and commits
         only compact references and replay fences; and
     \item the selected node retrieves the ciphertext, after which the kernel
-        re-verifies it, decrypts into temporary zeroizing memory, and moves a
+        re-verifies it, decrypts into temporary zeroing memory, and moves a
         read-only profile capability into the connector.
 \end{itemize}
 
-This gives the two organizational roles different powers. Development cannot
+This gives the two organisational roles different powers. Development cannot
 select production credentials. Operations cannot replace the approved
 executable through a connector binding. Production KMS/HSM custody, measured
 boot or attestation, rotation, recovery, audit, and readiness-driven connector
@@ -331,7 +331,7 @@ APIs, generate adapters, and build tests.
 Recent migration benchmarks show both promise and substantial failure. The
 2025 CODEMENV study evaluates package and environment adaptation
 (\url{https://arxiv.org/abs/2506.00894}), while FreshBrew evaluates project-level
-Java migration and emphasizes semantic preservation under strong tests
+Java migration and emphasises semantic preservation under strong tests
 (\url{https://arxiv.org/abs/2510.04852}). These results make compatibility cost
 an empirical question, while reinforcing the need for conformance tests,
 review, reproducible generation, and provenance.
@@ -351,8 +351,8 @@ returned by policy-controlled lookup. Its replicated catalog and relmsg path
 carry request identity, generation fencing, duplicate handling, deadlines, and
 explicit uncertain outcomes. Signed releases drive deterministic replica
 placement, while exact-generation readiness gates publication and DSR, and assigned
-agents retrieve digest-pinned artifacts from central S3. Applications obtain
-signed, attenuated grants, while independently authorized connector profiles
+agents retrieve digest-pinned artefacts from central S3. Applications obtain
+signed, attenuated grants, while independently authorised connector profiles
 hold infrastructure details and credentials.
 
 The result is Amoeba-like in invocation, Borg/Kubernetes-like in desired-state

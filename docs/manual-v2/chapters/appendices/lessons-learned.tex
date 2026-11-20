@@ -27,7 +27,7 @@ stays \texttt{current\_handle} until the yield saves its context.
 \subsection{RwLock held-across-call deadlocks}
 
 \textbf{Symptom:} \texttt{sleep()} worked with logging but hung without it
-(a heisenbug). \textbf{Root cause:} an \texttt{if let} binding extended an
+(a Heisenbug). \textbf{Root cause:} an \texttt{if let} binding extended an
 RwLock read guard's lifetime across a call that tried to acquire the write lock.
 \textbf{Fix:} bind the value out of the scrutinee first, so the temporary guard
 drops before the re-locking call.

@@ -1115,7 +1115,7 @@ pub(crate) fn launch_steady_state_with_trust(
     } else {
         None
     };
-    logln!(concat!("CHARLOTTE_OTLP_PROFILE_SHA256=", env!("KNYTOS_OTLP_PROFILE_SHA256"), ";"));
+    logln!(concat!("KNYTOS_OTLP_PROFILE_SHA256=", env!("KNYTOS_OTLP_PROFILE_SHA256"), ";"));
     let telemetry_profile = include_bytes!(env!("KNYTOS_OTLP_PROFILE_FILE"));
     let telemetry = if network.is_some() && !telemetry_profile.is_empty() {
         Some(crate::service::supervisor::spawn_with_manifest(

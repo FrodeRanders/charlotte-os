@@ -17,7 +17,7 @@ target builds, Clippy, and boot tests. Each layer answers a different question:
     \item[TLA+ model] Is the protocol design safe under every modeled action
         ordering, crash point, retry, and stale event within the configured
         bounds?
-    \item[Conformance map] Which concrete Rust state and linearization point
+    \item[Conformance map] Which concrete Rust state and linearisation point
         implement each abstract action?
     \item[Rust and boot tests] Does the implementation exercise the intended
         transition on the host and on Knytos targets?
@@ -40,7 +40,7 @@ state machines with TLC and maintains a reviewed correspondence to Rust.
 That correspondence is not a mechanically checked implementation refinement.
 
 The practical value of the Knytos approach is early examination of
-lifecycle, ownership and distributed-protocol interleavings, including known
+lifecycle, ownership and distributed-protocol interleaving, including known
 unsafe variants that must produce counterexamples. It supports the method
 developed in this chapter while leaving much of the code and hardware outside
 the model. A successful bounded exploration proves the stated invariant for
@@ -88,13 +88,13 @@ Invariants == TypeOK /\ Safety
 
 The square temporal operator means that every step must be a \texttt{Next}
 step or a stuttering step and that the invariant must hold throughout the
-behavior. TLC constructs the reachable state graph rather than sampling it.
+behaviour. TLC constructs the reachable state graph rather than sampling it.
 Constants in a \texttt{.cfg} file bound identities, queue capacities,
 generations, terms, and log indices so that this graph is finite.
 
 Small bounds are intentional. Many protocol violations need only two owners,
 two generations, or three Raft nodes. Exhaustive exploration of that small
-instance is often more revealing than a large randomized run because TLC
+instance is often more revealing than a large randomised run because TLC
 systematically covers the orderings rather than hoping to encounter them.
 
 \section{The safeguarding loop}
@@ -126,9 +126,9 @@ implementation, and validation:
         This proves that the invariant and test harness are capable of seeing
         the regression rather than passing vacuously.
     \item \textbf{Map back to code.} \repofile|docs/tla/CONFORMANCE.md| records
-        the concrete function, persisted field, and linearization point for
+        the concrete function, persisted field, and linearisation point for
         every modeled action. Disagreement is resolved by changing the model,
-        changing Knytos, or documenting behavior outside the abstraction.
+        changing Knytos, or documenting behaviour outside the abstraction.
     \item \textbf{Validate both levels.} Run TLC, focused Rust tests, target
         builds and Clippy, and relevant boot or multi-node tests.
 \end{enumerate}
@@ -155,7 +155,7 @@ checks. Read it as an inventory of separate boundaries. Detailed projection
 notes follow the table, grouped by resource accounting and request lifecycle.
 
 \small
-\begin{longtable}{|p{0.26\textwidth}|p{0.26\textwidth}|p{0.38\textwidth}|}
+\begin{longtable}{|p{0.22\textwidth}|p{0.28\textwidth}|p{0.40\textwidth}|}
 \hline
 \textbf{Model} & \textbf{Functional boundary} & \textbf{Principal safety properties} \\
 \hline
@@ -164,190 +164,190 @@ notes follow the table, grouped by resource accounting and request lifecycle.
 \textbf{Model} & \textbf{Functional boundary} & \textbf{Principal safety properties} \\
 \hline
 \endhead
-\tlbreak{Charlotte}{DeploymentClose} & Logical socket-close admission and
+\texttt{DeploymentClose} & Logical socket-close admission and
     acknowledgement & Accepted close submitted once; owner and position retained
     until acknowledgement; failure retains scope through abort. \\
 \hline
-\tlbreak{Charlotte}{DeploymentOutput} & Confirmed output prefixes and original
+\texttt{DeploymentOutput} & Confirmed output prefixes and original
     budgets & Once-only prefix submission; unchanged deadlines; wakes grant no
     enqueue or replay authority. \\
 \hline
-\tlbreak{Charlotte}{DeploymentControl} & Accepted controller calls, independent
+\texttt{DeploymentControl} & Accepted controller calls, independent
     reply readiness, timeout and receiver backing & Complete wait interests;
     once-only submission; retained owners on rejected wait; timeout grants no
     receiver release authority. \\
 \hline
-\tlbreak{Charlotte}{DeploymentInput} & Four admitted HTTP inputs, rotating
+\texttt{DeploymentInput} & Four admitted HTTP inputs, rotating
     turns, shared prefix budget and original deadlines & Bounded retained
     prefixes; ready input turn bound; unchanged budgets; retained owners on
     rejected wait. \\
 \hline
-\tlbreak{Charlotte}{IPC} & Endpoint calls, reply tokens, memory move/copy/borrow,
+\texttt{Ipc} & Endpoint calls, reply tokens, memory move/copy/borrow,
     cancellation, endpoint close, domain teardown & Bounded queues; unique
     receiver-visible reply authority; exclusive write borrow; every remaining
     borrow backed by a live token; no dangling moved-memory capability. \\
 \hline
-\tlbreak{KnytosIpc}{Transaction} & Multi-entry vector preparation,
+\texttt{IpcTransaction} & Multi-entry vector preparation,
     connection attachment, rollback, delivery, reply and non-terminal timeout &
     Failed preparation restores every affected registry; attached connections
     cannot escape their transaction; timeout cannot release a live call's loan. \\
 \hline
-\tlbreak{KnytosIpc}{Publication} & Captured reservation, move escrow,
+\texttt{IpcPublication} & Captured reservation, move escrow,
     hidden memory/connection delivery and namespace replacement & Publication
     validates the whole batch; receive/observation grants access once; late
     cleanup preserves successor authority and original metadata charges. \\
 \hline
-\tlbreak{Charlotte}{EndpointObservers} & Readiness observers and connection-close
+\texttt{EndpointObservers} & Readiness observers and connection-close
     watches & Ordinary message arrival cannot falsely signal endpoint closure;
     closure wakes the appropriate observers. \\
 \hline
-\tlbreak{Charlotte}{CQ} & Completion operations, CQ ring/backlog, wait/wake,
+\texttt{Cq} & Completion operations, CQ ring/backlog, wait/wake,
     cancellation, timers & Non-lossy completion tracking; bounded visible ring;
     no lost wakeup; timer completion remains tied to its operation; a buffered
     operation retains its kernel loan through cancellation until terminal completion. \\
 \hline
-\tlbreak{Charlotte}{TimedWait} & Work-generation publication, delayed wake
+\texttt{TimedWait} & Work-generation publication, delayed wake
     delivery, and watchdog expiry & A timer cannot report timeout after a new
     work generation has already been published. \\
 \hline
-\tlbreak{Charlotte}{CheckedWait} & Fallible watchdog/source admission,
+\texttt{CheckedWait} & Fallible watchdog/source admission,
     registration, park recheck, unrelated wakes and result observation &
     Pending owners and loans survive rejected admission and timeout; wakes
     cannot adopt results; retries preserve one deadline and accepted request. \\
 \hline
-\tlbreak{Charlotte}{Scheduler} & Spawn, admission, execution, blocking, migration,
+\texttt{Scheduler} & Spawn, admission, execution, blocking, migration,
     cross-LP abort, reaping, address-space destruction & At most one execution
     per LP; only the owner LP retires an executing thread; reaping occurs
     off-CPU; domain abort prevents late sibling publication; destroyed address
     spaces have no live threads. \\
 \hline
-\tlbreak{Charlotte}{ThreadJoin} & Recyclable TIDs, spawn generations, delayed
+\texttt{ThreadJoin} & Recyclable TIDs, spawn generations, delayed
     exit-observer registration & A captured handle observes only its exact
     generation; a missing or recycled slot completes immediately; exhausted
     generation identity fails closed before wrap. \\
 \hline
-\tlbreak{Charlotte}{StackGrowth} & Demand-grown user stacks, admitted budgets,
+\texttt{StackGrowth} & Demand-grown user stacks, admitted budgets,
     pressure reserve and domain exit & Growth stays within its committed-page
     budget and preserves the free-frame reserve; modeled exit releases frames. \\
 \hline
-\tlbreak{Charlotte}{AddressSpace} & Reusable numeric ASIDs and software-generation
+\texttt{AddressSpace} & Reusable numeric ASIDs and software-generation
     handles & A stale handle cannot close a replacement that reused the same
     numeric ASID. \\
 \hline
-\tlbreak{Charlotte}{NamespaceDrain} & Fenced namespace selection, peer close,
+\texttt{NamespaceDrain} & Fenced namespace selection, peer close,
     rejected preparation and presence recheck & Missing selections rescan;
     Pending checks presence; live claims prevent namespace completion. \\
 \hline
-\tlbreak{Charlotte}{RootRetirement} & Exact-root leases, staged close,
+\texttt{RootRetirement} & Exact-root leases, staged close,
     invalidation retry, abandonment and physical release & Complete owners
     survive uncertain invalidation; leases fence detachment; physical cleanup
     runs once after acknowledgement; rejected release retains original charges. \\
 \hline
-\tlbreak{Charlotte}{HardwareAsid} & Hardware-ASID allocation, retirement, cached
+\texttt{HardwareAsid} & Hardware-ASID allocation, retirement, cached
     translations, invalidation & A hardware tag is not reused while stale
     translations for its former owner remain. \\
 \hline
-\tlbreak{Charlotte}{InterruptRoute} & Interrupt binding, queued wake, unbinding,
+\texttt{InterruptRoute} & Interrupt binding, queued wake, unbinding,
     deferred drain & A queued wake cannot be delivered through a later route
     generation to the wrong owner. \\
 \hline
-\tlbreak{Charlotte}{Capability} & Unified per-address-space capability namespace
+\texttt{Capability} & Unified per-address-space capability namespace
     and move rollback & Handles are fresh and authoritative; move revokes the
     source; rollback restores only the exact transaction; a closed namespace
     is empty. \\
 \hline
-\tlbreak{Charlotte}{Authorization} & Versioned subject/service policy,
+\texttt{Authorization} & Versioned subject/service policy,
     generation-fenced service bindings, decisions and capability issuance &
-    Only authorized roles mutate policy or publication; decisions are bound to
+    Only authorised roles mutate policy or publication; decisions are bound to
     a subject, policy version, service generation and rights; redemption is
     single-use and cannot amplify authority. \\
 \hline
-\tlbreak{KnytosName}{Publication} & Local public/policy classes, prepared
+\texttt{NamePublication} & Local public/policy classes, prepared
     death watches, replacement and retirement & Public paths cannot issue
     policy-published connections; watch admission precedes mutation; stale hints
     need the current producer's own result; disposal preserves watch/source order. \\
 \hline
-\tlbreak{KnytosBoot}{Trust} & Verifier, exact installed fixture, one-shot
+\texttt{BootTrust} & Verifier, exact installed fixture, one-shot
     handoff and conditional protected installation & Signed verification does
     not install policy; boot uses committed identity; the slot cannot be replaced;
     bootstrap and later images use one selected authority; future commit/reboot
     ordering assumes protected atomic state. \\
 \hline
-\tlbreak{Charlotte}{DMA} & CPU mapping, IPC loans, coherent/exclusive SMMU
+\texttt{Dma} & CPU mapping, IPC loans, coherent/exclusive SMMU
     mapping, invalidation, quarantine, driver exit, pin reclamation & Unique
     stream/domain ownership; exclusive DMA has no overlapping CPU authority,
     loan, or second pin; mapped memory stays pinned; failed hardware
     acknowledgement retains rather than prematurely frees authority. \\
 \hline
-\tlbreak{KnytosDma}{Operation} & Fixed-unit readiness, retained map/unmap
+\texttt{DmaOperation} & Fixed-unit readiness, retained map/unmap
     owners, typed rejection and CPU teardown & Availability grants no completion
     proof; started attempts cannot replay; confirmed DMA survives CPU-unmap
     failure; uncertain pins retain backing and its original charge. \\
 \hline
-\tlbreak{Charlotte}{ServiceLifecycle} & Signed artifact staging, loading, start,
+\texttt{ServiceLifecycle} & Signed artefact staging, loading, start,
     two-phase publication, lookup, fenced unregister, exit and teardown &
     Untrusted images never load; only activated generations resolve; stale
     activation/unregister cannot affect a replacement; teardown follows
     domain-wide reaping after cooperative exit or domain abort. \\
 \hline
-\tlbreak{Charlotte}{Raft} & Terms, durable votes, election, higher-term step-down,
+\texttt{Raft} & Terms, durable votes, election, higher-term step-down,
     crash/restart & A voter records at most one durable vote per term and at
     most one leader can hold a term. \\
 \hline
-\tlbreak{Charlotte}{RaftLog} & Append, conflict repair, replication, commit,
+\texttt{RaftLog} & Append, conflict repair, replication, commit,
     crash/restart & Log matching, committed-entry agreement, commit within the
     log, and leader completeness. \\
 \hline
-\tlbreak{Charlotte}{RaftResponse} & Delayed term replies, admitted peers and
+\texttt{RaftResponse} & Delayed term replies, admitted peers and
     confirmed replication progress & An old prefix acknowledgement cannot commit
     a replacement; reordered replies and backoff preserve confirmed progress. \\
 \hline
-\tlbreak{Charlotte}{RaftRead} & Per-read log fences, delayed replies, ownership
+\texttt{RaftRead} & Per-read log fences, delayed replies, ownership
     binding and query completion & Reads require a fresh quorum-confirmed index,
     application and exact node/domain, term and membership episode. \\
 \hline
-\tlbreak{Charlotte}{RaftMembership} & Voters/learners, joint consensus,
-    finalization, decommissioning & Both voter majorities are required while
-    joint; all proposed peers reach the joint fence before finalization;
+\texttt{RaftMembership} & Voters/learners, joint consensus,
+    finalisation, decommissioning & Both voter majorities are required while
+    joint; all proposed peers reach the joint fence before finalisation;
     leadership and decommissioning follow active membership. \\
 \hline
-\tlbreak{Charlotte}{RaftJoin} & Selected-anchor admission before membership,
+\texttt{RaftJoin} & Selected-anchor admission before membership,
     JOIN fence, catch-up, crash/restart & A joiner accepts only the chosen
     anchor, cannot campaign, is promoted only after catch-up, and restores its
     durable admission fence after restart. \\
 \hline
-\tlbreak{Charlotte}{RaftSnapshot} & Chunk reception, durable installation,
+\texttt{RaftSnapshot} & Chunk reception, durable installation,
     matching suffix, membership recovery & Stale snapshots cannot regress
     progress; the installed state and retained suffix agree; restart restores
     membership and application state before use. \\
 \hline
-\tlbreak{Charlotte}{RaftStream} & Leader/term-bound snapshot chunks and offset
+\texttt{RaftStream} & Leader/term-bound snapshot chunks and offset
     order & A replacement election discards partial bytes; installation uses
     one sender episode in strict offset order. \\
 \hline
-\tlbreak{Charlotte}{SnapshotRestore} & Application acceptance, rejected restore,
+\texttt{SnapshotRestore} & Application acceptance, rejected restore,
     persistence failure and restart exposure & Rejection preserves application,
     durable state, progress, membership and join admission; recovery must accept
     the snapshot before exposing its node. \\
 \hline
-\tlbreak{KnytosCluster}{Ingress} & Joint membership, replica placement,
+\texttt{ClusterIngress} & Joint membership, replica placement,
     exact-generation readiness, drain, immutable ingress snapshots, and
     retained flow epochs & New flows require a fresh snapshot lease; eligible backends are
     placed, ready, admitted, and non-draining; incomplete snapshots do not
     install; an unretained flow epoch cannot silently remap. \\
 \hline
-\tlbreak{Charlotte}{PlacementControl} & Filtered pressure, dwell, cooldown,
+\texttt{PlacementControl} & Filtered pressure, dwell, cooldown,
     eligibility loss and capacity reservations & Pressure-only moves respect
     stability gates; lost eligibility permits forced movement; reservations
     preserve the protected capacity reserve. \\
 \hline
-\tlbreak{Charlotte}{RemoteCall} & Call identity, target generation, duplicate
+\texttt{RemoteCall} & Call identity, target generation, duplicate
     suppression, timeout uncertainty, result eviction & At most one execution
     while tracked; stale targets never execute; uncertain outcomes are not
     reported as success; deduplication evidence remains until transport
     settlement. \\
 \hline
-\tlbreak{Charlotte}{ReliableMessage} & Wire sessions across retry abandonment and
+\texttt{ReliableMessage} & Wire sessions across retry abandonment and
     unilateral service restart & Logical epochs have unique ordered wire
     identities and delayed sessions cannot move receive state backwards. \\
 \hline
@@ -374,7 +374,7 @@ principal. Moves, retirement and abandonment retain the original charge, and exp
 physical confirmation alone refunds it. Six negative controls include early
 reservation refund and double-charged growth. Object counts, allocator/node
 metadata, hardware and pressure fairness lie outside the projection. See
-\path{docs/tla/KnytosPrincipalBacking.tla}.
+\repofile|docs/tla/PrincipalBacking.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Thread metadata}
@@ -387,7 +387,7 @@ or bill the replacement principal. The safe graph has 4,132 distinct states,
 12,559 generated states and depth 15. Stack-release proof is an input, while node
 reserve, allocator overhead, observer/table storage, IRQ contexts and pressure
 fairness lie outside the projection. See
-\path{docs/tla/KnytosThreadMetadata.tla}.
+\repofile|docs/tla/ThreadMetadata.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Principal history}
@@ -401,17 +401,17 @@ depth 19. Exact bytes, allocator/hardware/generation proofs and pressure fairnes
 remain outside it. The seven focused cases pass. The 24 October follow-up also completes the full
 190-case suite: 47 safe configurations and 143 expected counterexamples across
 44 modules. See
-\path{docs/tla/KnytosPrincipalHistory.tla}.
+\repofile|docs/tla/PrincipalHistory.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Namespace drain}
-The namespace-drain projection checks one poll with two nonreused token
+The namespace-drain projection checks one poll with two non-reused token
 identities under an existing admission fence. A competing close can remove the
 selection before cancellation preparation. Rechecking absence permits rescan, but
 every still-present claim remains Pending. Negative controls restore stale
 Pending or skip live work. Actual root, loan, backing and peer-completion proofs
 are boundary inputs, and later wakes/deadlines lie outside this projection.
-See \path{docs/tla/KnytosNamespaceDrain.tla}.
+See \repofile|docs/tla/NamespaceDrain.tla|.
 \end{implementationdetail}
 
 \subsection{Deployment request lifecycle projections}
@@ -429,7 +429,7 @@ timer. Negative controls replay a phase, restart its budget or park beside a
 ready reply. Binding, producer delivery and atomic turns are assumptions, while
 shutdown, dynamic cross-phase admission, byte validation, TCP state and
 wall-clock fairness remain outside the projection. See
-\path{docs/tla/KnytosDeploymentListener.tla}.
+\repofile|docs/tla/DeploymentListener.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Input admission and turn rotation}
@@ -439,7 +439,7 @@ intervening turns. Negative controls keep a busy input's cursor or restart
 its deadline. Atomic input turns and producer/CQ delivery are assumptions, while
 controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
-\path{docs/tla/KnytosDeploymentInput.tla} and its conformance map.
+\repofile|docs/tla/DeploymentInput.tla| and its conformance map.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Controller calls}
@@ -449,7 +449,7 @@ once-only submission. Receiver backing may survive caller cancellation until
 its own release action. Negative controls park on one silent call while another
 reply is ready or replay a timed-out request. Preparation, byte admission,
 controller-server execution, response latency and physical teardown are omitted.
-See \path{docs/tla/KnytosDeploymentControl.tla}.
+See \repofile|docs/tla/DeploymentControl.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Controller-server relay}
@@ -460,7 +460,7 @@ may survive local termination until its receiver releases it. Negative controls
 turn unknown into absence, restart time, park beside a ready reply or replay
 mutation. Admission, signature/record validation, shutdown, legacy handlers and
 wall-clock fairness are outside the projection. See
-\path{docs/tla/KnytosControllerRelay.tla}.
+\repofile|docs/tla/ControllerRelay.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Output prefixes}
@@ -470,7 +470,7 @@ remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
 keep the original deadline. Negative controls replay an uncertain prefix or
 restart its budget. Byte framing, capacity, actual TCP delivery, socket close,
 wall-clock scheduling and whole-service fairness are outside the projection.
-See \path{docs/tla/KnytosDeploymentOutput.tla}.
+See \repofile|docs/tla/DeploymentOutput.tla|.
 \end{implementationdetail}
 
 \begin{implementationdetail}{Logical close}
@@ -482,11 +482,11 @@ replay an accepted close or release its owner before acknowledgement. Bound repl
 sources and atomic turns are assumptions, while actual ID allocation/reaping, wire
 decoding, socket setup, dynamic
 admission, whole-shutdown timing and physical release remain outside the model.
-A one-owner blocking configuration also checks terminal unstarted admission
+A one-owner blocking configuration also checks terminal un-started admission
 retention. Its destructor-fallback negative control re-enables work after that
 state and violates \texttt{NoReentry}, and accepted replay has its existing control.
 This is no recoverable custody, deadline-duration, field-destructor or runtime
-abort proof. See \path{docs/tla/KnytosDeploymentClose.tla}.
+abort proof. See \repofile|docs/tla/DeploymentClose.tla|.
 \end{implementationdetail}
 
 \section[Model-driven findings]{How model reasoning changes Knytos}
@@ -496,30 +496,30 @@ model. The correct response depends on which side was wrong: sometimes the
 manual or model overstated functionality, but sometimes the code lacked a safety
 fence.
 
-\subsection{Authorization is controlled capability issuance}
+\subsection{Authorisation is controlled capability issuance}
 
-The local name service implements policy-controlled authorization alongside
+The local name service implements policy-controlled authorisation alongside
 public bootstrap naming. Bearer-key lookup opcodes are retired. The
-signed loader binds an artifact-derived stable principal, exact address-space
+signed loader binds an artefact-derived stable principal, exact address-space
 generation, and roles in a kernel-only table. IPC enqueue places that
 authenticated snapshot in the receive envelope, so request memory cannot choose
 the caller identity.
 
-The authorization model makes the intended boundary explicit. The catalog
+The authorisation model makes the intended boundary explicit. The catalog
 publishes a service generation and the maximum rights that may be delegated.
 A separate logical policy role maps a stable principal and service identity to
 an allowed-rights set and policy version. A decision is bound to the
 kernel-authenticated subject, requested rights, current service generation and
 policy version, and can be redeemed once for an attenuated connection. A
 co-located name/policy process performs decision and attenuated connection
-delegation as one serialized transition. Policy mutation and authorized
+delegation as one serialised transition. Policy mutation and authorised
 publication require distinct roles, and issuance, denial, and delegation
 failure enter a bounded administrator-readable audit stream. A later split
 service needs an unforgeable single-use grant and must revalidate every binding
 at redemption. Policy and audit state are not yet durable or replicated.
 Public lookup cannot resolve a policy-published service, and public
 registration cannot displace one. These publication-class checks remain
-outside the authorization model and are projected separately below.
+outside the authorisation model and are projected separately below.
 
 The model also prevents an attractive but false claim. A policy update blocks
 new issuance and invalidates unredeemed decisions, but cannot selectively
@@ -527,17 +527,17 @@ retract a direct connection already delegated by the kernel. Hard revocation
 requires endpoint closure, a revocable proxy, or a future kernel lease object.
 This prospective revocation contract is safer than documenting authority that
 the implementation cannot enforce. The practical design is recorded in
-\repofile|docs/architecture/authorization-policy.md|.
+\repofile|docs/architecture/authorisation-policy.md|.
 
 \subsection{Boot verification and installation are separate}
 
 \tlbreak{KnytosBoot}{Trust} distinguishes a signed verification receipt from
 boot authority. Installation verification accepts the current record or its
 direct successor. Shared \texttt{verify\_for\_boot} instead requires the exact
-installed revision and digest, rejecting enrollment and uninstalled successors.
-Kernel preparation requires a \tlbreak{Verified}{BootPolicy} receipt from this
+installed revision and digest, rejecting enrolment and uninstalled successors.
+Kernel preparation requires a \texttt{VerifiedBootPolicy} receipt from this
 check. The x86 fixture uses the same path. Before the first platform domain,
-the BSP selects its artifact authority into the existing boot slot. Bootstrap
+the BSP selects its artefact authority into the existing boot slot. Bootstrap
 and later platform images use that key, and missing selection rejects. Composition
 takes the preparation once, leaving public authority intact, and publication
 requires the same policy and digest. It supplies the public policy used by
@@ -548,7 +548,7 @@ selected explicitly and is never a fallback after verification failure.
 The model has two configurations. The first projects those implemented fixture
 and development paths. The second is a conditional contract for the missing
 protected installer: it assumes an authenticated context, atomic rollback-resistant
-state commit and serialization through early authority selection and boot
+state commit and serialisation through early authority selection and boot
 publication. Once selection starts platform loading, installation is fenced. Two signed successors
 may verify against one old expectation, but only one can commit it. An interrupted
 commit may leave the whole old or new record durable, so the caller must read
@@ -565,15 +565,15 @@ erasure, outer contexts and physical lifetime remain outside the projection.
 
 \subsection{Local publication owns its death watch}
 
-\tlbreak{KnytosName}{Publication} follows the node-local registry. A candidate
+\texttt{NamePublication} follows the node-local registry. A candidate
 owns its source connection before preparing a persistent endpoint-death watch.
 Watch rejection leaves the current publication authoritative. Successful policy
-publication and registry replacement are separate internal steps, but the serialized
+publication and registry replacement are separate internal steps, but the serialised
 reactor admits no request between them. Deferred replies use the installed
 publication, and only then is the previous watch disposed before its source.
 Public lookup rejects policy-published entries whether immediate or deferred.
 Public replacement requires an existing public entry from the same nonzero
-registrar. Authorized lookup still needs its policy decision, and both publication
+registrar. Authorised lookup still needs its policy decision, and both publication
 classes have policy-store bindings.
 
 A CQ entry supplies a readiness hint. Even when an old hint matches a current
@@ -581,14 +581,14 @@ watch, retirement needs that current owner's own confirmed endpoint-close
 result. Pending or unrelated hints preserve the entry. Unexpected observation,
 rejected waiting and lifecycle abort retain the registry through terminal abort.
 Explicit retirement separately requires the exact generation and authenticated
-registrar or manager. These transitions establish logical unpublication and
+registrar or manager. These transitions establish logical un-publication and
 supply no physical cleanup proof.
 
 Source comparison found a further exhaustion boundary. The policy store could
 publish an unsigned generation beyond the positive signed NS result range.
 The later NS conversion rejected after policy mutation. Publication now
 checks the signed limit first, preserving an active binding or tombstone on
-exhaustion. Host regressions reproduced the earlier behavior and verify that
+exhaustion. Host regressions reproduced the earlier behaviour and verify that
 \texttt{i64::MAX} can be published once before later attempts reject.
 
 One finite instance checks two names, principals and candidates at live capacity
@@ -601,7 +601,7 @@ remain boundary assumptions.
 \subsection{IPC attachments are cross-registry transactions}
 
 The base IPC model intentionally collapses vector attachments. The
-\tlbreak{KnytosIpc}{Transaction} refinement instead represents two or more
+\texttt{IpcTransaction} refinement instead represents two or more
 moved entries, a live memory loan, an attached connection, the queue and the
 pending-call registry. Current vector calls carry the memory entries, while
 scalar calls carry connection attachments and may copy memory. The refinement
@@ -617,7 +617,7 @@ release a buffer still reachable by the kernel or receiver. The unsafe timeout
 transition releases that loan while the call remains pending and must violate
 \texttt{TimeoutRetainsLoan}.
 
-\tlbreak{KnytosIpc}{Publication} follows the owning outputs through a
+\texttt{IpcPublication} follows the owning outputs through a
 further boundary. A unified capability entry can be live while its memory or
 connection payload remains hidden in a queued request or unobserved reply.
 Receive commit and first reply observation make those resources usable.
@@ -634,7 +634,7 @@ actual allocator/IRQ/guard contexts remain separate obligations.
 
 \subsection{DMA availability and completion}
 
-\tlbreak{KnytosDma}{Operation} separates unit availability, backend
+\texttt{DmaOperation} separates unit availability, backend
 acknowledgement and public completion. Readiness retains the original map
 owner until both the actual command engine and recorded domain cell can be
 claimed. Preparation may lose a race to restoration, and another claimant may
@@ -681,7 +681,7 @@ safety that the implementation enforces.
 
 \subsection{Reliable-message session identity}
 
-The reliable-message service formerly initialized a wire session from the
+The reliable-message service formerly initialised a wire session from the
 service generation and incremented that number when abandoning a retry epoch.
 Generation $N$ after one abandonment could therefore use the same identity as
 generation $N+1$ before abandonment. A bounded retired-session window also
@@ -693,7 +693,7 @@ $(\mathit{serviceGeneration},\mathit{retryEpoch})$. The repaired wire encoding
 packs those values into disjoint 32-bit fields, accepts a replacement session
 only when the packed identity is well formed and strictly newer, and disables
 sends rather than wrapping at exhaustion. Two unsafe configurations preserve the
-old flat-identity collision and receive-regression behaviors as required
+old flat-identity collision and receive-regression behaviours as required
 counterexamples.
 
 \subsection{Restart-safe Raft admission}
@@ -702,7 +702,7 @@ Dynamic admission originally kept \texttt{joining} and
 \texttt{joining\_from} only in process memory. A node could select an existing
 cluster as its authority, crash before membership became durable, restart from
 its launch-time singleton configuration, and campaign. The gap represented
-a behavior of the implementation that the model had not captured.
+a behaviour of the implementation that the model had not captured.
 
 The repaired implementation persists a \texttt{JoinAdmission} record
 containing the selected anchor and the snapshot index that existed before
@@ -715,7 +715,7 @@ This ordering covers both crash edges:
     \item before the membership snapshot is durable, restart keeps the
         anchor fence and the node cannot campaign;
     \item after the snapshot is durable but before the fence-clear write,
-        restart recognizes the strictly newer membership snapshot as completion
+        restart recognises the strictly newer membership snapshot as completion
         evidence and safely clears the stale admission record.
 \end{itemize}
 
@@ -733,20 +733,20 @@ schedules and membership changes. That evidence makes core and runtime parity
 an explicit review concern, so a local model or host test does not replace it.
 
 A source comparison found that Knytos had replaced the Java/Rust automatic
-finalization catch-up gate with immediate proposal after JOINT committed. The
+finalisation catch-up gate with immediate proposal after JOINT committed. The
 port now waits for every proposed remote voter and learner to reach the committed
 JOINT fence. The leader owns that prefix locally. Committing FINALIZE still
 requires both voter majorities. A slow proposed member can delay automatic
-completion, while explicit/manual finalization is a separate path.
+completion, while explicit/manual finalisation is a separate path.
 
-A second regression finalizes the current leader as a retained learner. The
+A second regression finalises the current leader as a retained learner. The
 previous Knytos code kept it in the leader state. It now becomes a follower
 immediately, keeps its existing-term durable vote, and remains a member. The
 upstream Jepsen demotion scenario selects a non-leader, while leader removal has
 its own scenario, and the new regression covers the retained-leader transition.
 
-\tlbreak{Charlotte}{RaftMembership} checks 6,232 distinct states. It includes
-next-only voter elections with both majorities and rejects automatic finalization
+RaftMembership checks 6,232 distinct states. It includes
+next-only voter elections with both majorities and rejects automatic finalisation
 while a proposed member lags. Three counterexamples remove the catch-up,
 leader-eligibility and dual-quorum guards. Durable vote persistence remains a
 source-test obligation. Native Knytos checks do not establish Graft TCP
@@ -765,11 +765,10 @@ exceed the local tail. Reordered successes preserve the strongest confirmed pref
 append rejection cannot back off below it. Committed joiners can still replicate
 before promotion, while voter quorum rules remain unchanged.
 
-\tlbreak{Charlotte}{RaftResponse} checks this boundary in 49,395 distinct states
-and includes four counterexamples. The source tests reproduce the unsafe commit
-before correction. Transport authenticity, request correlation, removal epochs
-and the timing assumptions of the existing quorum-contact read gate remain
-outside this proof.
+RaftResponse checks this and includes four counterexamples. The source tests
+reproduce the unsafe commit before correction. Transport authenticity, request
+correlation, removal epochs and the timing assumptions of the existing
+quorum-contact read gate remain outside this proof.
 
 \subsection{Each read carries a fresh quorum fence}
 
@@ -793,11 +792,12 @@ lookup strips delegation rights, so DNS does not attempt to re-mint that grant
 for a different caller. Invocation starts only after confirmed routing and
 another deadline check, using the existing owned NS lookup/call phases on the
 shared CQ.
+
 Timeout or drop abandons the query while its no-op may still commit, but it cannot
 execute or replay the business call. Readiness-binding rejection aborts with
 accepted work live. No extra per-read timer or blocking reactor wait is added.
 
-\tlbreak{Charlotte}{RaftRead} explores 9,916 distinct states, including delayed
+RaftRead explores 9,916 distinct states, including delayed
 replies and external leader replacement unseen by the old node. Four controls
 remove commitment, application, fresh-fence or owner-binding checks. The former
 stale-read host schedule now rejects. A quorum may have confirmed a fence after
@@ -826,7 +826,7 @@ only the snapshot boundary and offset: a new leader, or the same leader in a new
 election term, could complete an earlier buffer. Host regressions reproduced
 installation of a combined prefix and suffix. The buffer now captures the leader
 and RPC term, and elections and higher-term observations discard it. A replacement
-must begin at offset zero. \tlbreak{Charlotte}{RaftStream} checks this owner and
+must begin at offset zero. \texttt{RaftStream} checks this owner and
 strict ordering in 400 distinct states, with two weakened controls. It assumes
 one immutable byte image per sender/term/boundary, while same-episode image replacement,
 transport authentication and general allocation failure remain outside this model.
@@ -840,7 +840,7 @@ collections intact. Raft propagates rejection before publishing the snapshot,
 commit/applied indices, membership or join completion. Construction returns an
 error before exposing the node or clearing durable admission.
 
-\tlbreak{Charlotte}{SnapshotRestore} makes this boundary explicit alongside the
+\texttt{SnapshotRestore} makes this boundary explicit alongside the
 existing chunk and suffix model. Its finite configuration explores 168 distinct
 states, and seven weakened configurations must produce counterexamples. Separate
 streamed/recovery coverage requires both completed joins and retained admission.
@@ -852,7 +852,7 @@ membership excluding this node retains its admission fence.
 Restore succeeds before the durable write. If persistence fails, the Raft caller
 terminates, so a later caller must restore the whole durable image again. This
 ordering does not provide an atomic transaction across application and disk.
-The model assumes the existing whole-object storage contract and serialized
+The model assumes the existing whole-object storage contract and serialised
 Raft execution. It does not prove decoder correctness, fallible allocation,
 concurrent-reader isolation, endpoint withdrawal or sibling-thread termination.
 
@@ -872,7 +872,7 @@ generation, and nodes not draining. A router installs only a complete snapshot
 for which all member routes are known. New flows require the router's installed
 policy to hold a bounded local freshness lease. The policy may lag the latest
 global commit during asynchronous propagation, while an abstract fair expiry action
-prevents an unrenewed lease from persisting forever. Established flows keep
+prevents an un-renewed lease from persisting forever. Established flows keep
 their selected policy while its snapshot remains present. After history
 eviction, the binding remains pinned but its packets fail closed instead of
 silently choosing a new backend. Concrete snapshot installation additionally
@@ -947,7 +947,7 @@ present conformance obligations:
 \tlbreak{UnsafeRepublish}{Observed} & Repeated reply observation revives a
     resource already closed by the caller. & \tlbreak{ObservedCloseStays}{Closed} \\
 \hline
-\tlbreak{UnsafeRollbackNeeds}{Admission} & Source restoration attempts fresh
+\tlbreak{UnsafeRollback}{NeedsAdmission} & Source restoration attempts fresh
     admission and strands escrow at the limit. &
     \tlbreak{RollbackRestores}{CapturedSource} \\
 \hline
@@ -957,7 +957,7 @@ present conformance obligations:
 \tlbreak{UnsafeSpawn}{DuringAbort} & A sibling publishes after the domain-abort
     snapshot. & \texttt{AbortingThreadsDoomed} \\
 \hline
-\tlbreak{UnsafeCancelReleases}{Buffer} & Cancellation releases a mutable buffer
+\tlbreak{UnsafeCancel}{ReleasesBuffer} & Cancellation releases a mutable buffer
     before the operation becomes terminal. &
     \tlbreak{NonTerminalBuffer}{RemainsLoaned} \\
 \hline
@@ -973,7 +973,7 @@ present conformance obligations:
 \tlbreak{UnsafeRestart}{Deadline} & A wake starts a fresh timeout budget. &
     \texttt{DeadlineUnchanged} \\
 \hline
-\tlbreak{UnsafeWakeAdopts}{Result} & A readiness hint adopts a result before
+\tlbreak{UnsafeWake}{AdoptsResult} & A readiness hint adopts a result before
     confirmed completion. & \tlbreak{ResultNeeds}{TerminalProof} \\
 \hline
 \tlbreak{UnsafeParkWithout}{Recheck} & Completion precedes registration and the
@@ -1008,7 +1008,7 @@ present conformance obligations:
 \tlbreak{UnsafeRejectDrops}{Preparation} & Rejected wait admission drops the
     original root, claim and pending pin. & \tlbreak{PreclaimRetains}{Preparation} \\
 \hline
-\texttt{UnsafeReplayMap} & A map error is used to authorize resubmission. &
+\texttt{UnsafeReplayMap} & A map error is used to authorise resubmission. &
     \texttt{MapSubmittedOnce} \\
 \hline
 \tlbreak{UnsafeRearmStarted}{Unmap} & A failure after backend claim rearms
@@ -1083,14 +1083,14 @@ present conformance obligations:
 \tlbreak{UnsafePlatform}{Fallback} & A platform image uses the development key
     after signed-policy selection. & \tlbreak{PlatformImagesUse}{SelectedAuthority} \\
 \hline
-\tlbreak{UnsafeSelection}{Overwrite} & Selected artifact authority changes
+\tlbreak{UnsafeSelection}{Overwrite} & Selected artefact authority changes
     within one boot. & \tlbreak{SelectedAuthority}{MatchesState} \\
 \hline
 \texttt{UnsafeStaleCommit} & A second installer reuses a stale expectation. &
     \texttt{NoForkedInstallation} \\
 \hline
 \tlbreak{UnsafeEnrollment}{Fallback} & An installed-state read failure becomes
-    enrollment. & \texttt{NoEnrollmentFallback} \\
+    enrolment. & \texttt{NoEnrollmentFallback} \\
 \hline
 \texttt{UnsafeOverwrite} & The same boot publishes a second policy. &
     \texttt{OnePublicationPerBoot} \\
@@ -1149,7 +1149,7 @@ present conformance obligations:
 \tlbreak{UnsafeFinalize}{BeforeCatchUp} & Automatic FINALIZE bypasses proposed-member catch-up. &
     \tlbreak{ProposedMembers}{CaughtUp} \\
 \hline
-\tlbreak{UnsafeFinalize}{LearnerLeader} & A finalized learner keeps leadership. &
+\tlbreak{UnsafeFinalize}{LearnerLeader} & A finalised learner keeps leadership. &
     \tlbreak{LeaderIs}{Eligible} \\
 \hline
 \tlbreak{UnsafeFinalize}{OldOnly} & FINALIZE commits without the new voter majority. &
@@ -1208,7 +1208,7 @@ present conformance obligations:
     established flow select a different backend. & \texttt{FlowBackendStable} \\
 \hline
 \tlbreak{UnsafeAdmitStale}{Readiness} & Readiness from an old deployment
-    generation authorizes its replacement. &
+    generation authorises its replacement. &
     \tlbreak{CommittedPoliciesAre}{Derived} \\
 \hline
 \tlbreak{UnsafeEarlyPressure}{Move} & Placement pressure bypasses dwell or
@@ -1249,7 +1249,7 @@ has lost sensitivity and the suite fails.
 
 TLA+ actions are atomic. Rust code usually crosses several structures, locks,
 or persistent writes. The conformance review must therefore identify a
-linearization point or represent the concrete intermediate states explicitly.
+linearisation point or represent the concrete intermediate states explicitly.
 
 The mapping uses two correspondence classes:
 
@@ -1302,36 +1302,36 @@ An invariant can pass because a transition is accidentally disabled. Required
 action coverage detects this vacuity, although it does not prove that an action
 is correct.
 
-At the 6 September 2026 implementation synchronization point, representative
+At the 6 September 2026 implementation synchronisation point, representative
 fast configurations produced the following complete state graphs:
 
 \begin{longtable}{|p{0.32\textwidth}|r|r|r|}
 \hline
 \textbf{Model} & \textbf{Generated} & \textbf{Distinct} & \textbf{Depth} \\
 \hline
-\texttt{KnytosIPC} & 6,118,645 & 1,254,153 & 13 \\
+\texttt{Ipc} & 6,118,645 & 1,254,153 & 13 \\
 \hline
-\texttt{KnytosCQ} & 1,586,249 & 302,659 & 12 \\
+\texttt{Cq} & 1,586,249 & 302,659 & 12 \\
 \hline
-\texttt{KnytosTimedWait} & 22 & 15 & 8 \\
+\texttt{TimedWait} & 22 & 15 & 8 \\
 \hline
-\texttt{KnytosScheduler} & 4,308,577 & 819,972 & 22 \\
+\texttt{Scheduler} & 4,308,577 & 819,972 & 22 \\
 \hline
-\texttt{KnytosThreadJoin} & 46 & 39 & 10 \\
+\texttt{ThreadJoin} & 46 & 39 & 10 \\
 \hline
-\tlbreak{KnytosIpc}{Transaction} & 71 & 26 & 11 \\
+\texttt{IpcTransaction} & 71 & 26 & 11 \\
 \hline
-\tlbreak{Charlotte}{ServiceLifecycle} & 689,321 & 74,232 & 37 \\
+\texttt{ServiceLifecycle} & 689,321 & 74,232 & 37 \\
 \hline
-\texttt{KnytosDMA} & 19,331,379 & 2,092,882 & 26 \\
+\texttt{Dma} & 19,331,379 & 2,092,882 & 26 \\
 \hline
-\tlbreak{Charlotte}{Authorization} & 144,598 & 54,705 & 12 \\
+\texttt{Authorization} & 144,598 & 54,705 & 12 \\
 \hline
-\texttt{KnytosRaftJoin} & 2,029 & 520 & 13 \\
+\texttt{RaftJoin} & 2,029 & 520 & 13 \\
 \hline
-\tlbreak{Charlotte}{ReliableMessage} & 30 & 21 & 5 \\
+\texttt{ReliableMessage} & 30 & 21 & 5 \\
 \hline
-\tlbreak{KnytosCluster}{Ingress} & 3,522,889 & 576,764 & 17 \\
+\texttt{ClusterIngress} & 3,522,889 & 576,764 & 17 \\
 \hline
 \end{longtable}
 
@@ -1343,7 +1343,7 @@ coverage matter more than graph size.
 \subsection{Implementation validation}
 
 TLC is followed by validation proportional to the affected code. The August
-synchronization work, including the 15 August domain-abort and memory-ownership
+synchronisation work, including the 15 August domain-abort and memory-ownership
 repair, included:
 
 \begin{itemize}
@@ -1393,9 +1393,9 @@ mean one of three things:
 \begin{enumerate}
     \item \textbf{Functionality is unsafe.} The Raft admission restart gap was
         of this kind and required a Knytos change.
-    \item \textbf{The model overclaims.} Atomic service replacement was of this
+    \item \textbf{The model over-claims.} Atomic service replacement was of this
         kind, so the model was corrected to admit temporary unavailability.
-    \item \textbf{The behavior is outside scope.} It must be documented rather
+    \item \textbf{The behaviour is outside scope.} It must be documented rather
         than silently attributed to the checked invariants.
 \end{enumerate}
 
@@ -1410,10 +1410,10 @@ A practical review checklist is:
     \item Search \repofile|docs/tla/CONFORMANCE.md| for the changed Rust
         function or state field.
     \item Decide whether the change adds an action, changes an enabling
-        condition, moves a linearization point, or changes durable/volatile
+        condition, moves a linearisation point, or changes durable/volatile
         classification.
     \item Update the safe model and bounds. If repairing a discovered fault,
-        keep the old behavior as an unsafe action and named negative
+        keep the old behaviour as an unsafe action and named negative
         configuration.
     \item Add the new action to the required-coverage list in
         \repofile|docs/tla/check.sh|.

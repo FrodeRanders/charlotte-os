@@ -11,19 +11,19 @@ Source, tests, and repository history remain authoritative.
 Startup memory validation is mandatory and independent of native regressions.
 It checks physical availability, private-frame readback and accounting, heap
 reserve bounds and one aligned 8 KiB heap readback. Actual hardware discovery,
-IOMMU initialization, signatures, admission and service readiness remain normal
+IOMMU initialisation, signatures, admission and service readiness remain normal
 boot requirements. The operational launcher seeds signed bootstrap service
-artifacts before publishing its service set, including when no NVMe verifier
-runs, and valid installed artifacts are retained.
+artefacts before publishing its service set, including when no NVMe verifier
+runs, and valid installed artefacts are retained.
 
 Both QEMU runners accept \texttt{--minimal} for an operational node without
 native fixtures or bundled probe applications. Their development default,
 \texttt{--tests}, enables the \texttt{kernel\_tests} feature, and integration features
-imply it. Optimization selection (\texttt{debug}/\texttt{release}) is independent.
+imply it. Optimisation selection (\texttt{debug}/\texttt{release}) is independent.
 \texttt{--build-only} creates the selected images without starting QEMU.
 Minimal and development bundles/disks are separated and cached kernel modes
 are checked before image creation. Minimal completion follows confirmed local
-storage readiness and does not synthesize a self-test verdict. See
+storage readiness and does not synthesise a self-test verdict. See
 \repofile|docs/reference/boot-modes.md| for the contract and retired exercises.
 
 \section{Implementation phases}
@@ -41,7 +41,7 @@ storage readiness and does not synthesize a self-test verdict. See
     accounting & Done \\
 5 & Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation,
     cancellation, server-death recovery & Done \\
-6 & CQ subsystem normalization: operation IDs, detached submission,
+6 & CQ subsystem normalisation: operation IDs, detached submission,
     checked CQ wait/CQ\_WAKE, per-shard CQ partitioning, backlog batching, 32-byte
     completion records & Done \\
 7 & Sitas endpoint/CQ backend: endpoint readiness binding, unified shard
@@ -51,7 +51,7 @@ storage readiness and does not synthesize a self-test verdict. See
     interrupt-driven deferred reads, crash recovery & Done \\
 9 & Virtio-net driver: PCI/MSI-X and protected DMA, RX/TX, used-ring
     descriptor reclamation, frame demultiplexing and smoltcp 0.13 TCP/IP.
-    Broader hardware qualification and buffer-pool/batching optimization remain
+    Broader hardware qualification and buffer-pool/batching optimisation remain
     open. &
     Focused two-guest TCG network suite \\
 10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
@@ -130,7 +130,7 @@ storage readiness and does not synthesize a self-test verdict. See
 
         A two-disk VMware Fusion appliance additionally qualifies UEFI boot,
         guest-visible VT-d, the virtual NVMe controller, blank-store formatting,
-        idempotent installation of signed service artifacts, persistent
+        idempotent installation of signed service artefacts, persistent
         restart, and the userspace E1000E path through link-up and hardware
         transmit completion. Paired VMware guests and VMXNET3 remain
         unqualified.
@@ -158,11 +158,11 @@ storage readiness and does not synthesize a self-test verdict. See
         from trusted thread and trap context, never a userspace parameter.
         Runtime ABI 4 uses the twelve-register IPC receive envelope:
         scalar, blocking and vector receives return the captured sender generation,
-        signed-artifact principal and roles. Nine-register syscalls 22/27/53 are
+        signed-artefact principal and roles. Nine-register syscalls 22/27/53 are
         retired, and checked CQ wait 88 has an explicit timed flag and retired 12/42
         adapters are removed. Signed components require exact ABI matching.
 
-    \item \textbf{Authorization:} the local name service hosts a default-deny
+    \item \textbf{Authorisation:} the local name service hosts a default-deny
         policy engine. Separate roles protect policy changes and service
         publication. Connection issuance is attenuated and generation-fenced, and
         an administrator can read its bounded audit stream. Policy and audit
@@ -183,7 +183,7 @@ storage readiness and does not synthesize a self-test verdict. See
     \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service
         runtime-validated over the frame demultiplexer, and reliable-message v3
         uses 32-bit lengths with an initial 1~MiB policy ceiling. Network capability, DHCP, discovery, cluster
-        formation, HTTP, and time synchronization launch by default when a
+        formation, HTTP, and time synchronisation launch by default when a
         supported NIC is discovered, and with local durable storage this also
         starts signed-descriptor ingress, cluster administration, and the node
         deployment agent. Test features only add verifiers. S3 and
@@ -220,14 +220,14 @@ storage readiness and does not synthesize a self-test verdict. See
         key custody are unfinished. Development boot uses public fixture trust.
         Discovery/reliable-message peer routes lack cryptographic authentication, so
         session correlation and committed Raft membership do not supply it.
-        Time synchronization is also not an authenticated security-time source.
+        Time synchronisation is also not an authenticated security-time source.
         The security ledger is 29 corrected in scope, seven partial and two
         open findings out of 38. See
         \repofile|docs/reference/security-remediation.md|.
     \item \textbf{External data-service compatibility:} S3 is fixture-tested
         with RustFS, while Dell EMC ECS namespace support is implemented but
         not yet qualified against an ECS installation. Kafka is limited to
-        profile-fixed partitions. Its connector joins, synchronizes,
+        profile-fixed partitions. Its connector joins, synchronises,
         heartbeats, leaves, and generation-fences commits with a Knytos
         fixed-partition assignor, while replicas for the same partition become
         standbys. It routes among explicitly provisioned brokers, refreshes
@@ -236,6 +236,7 @@ storage readiness and does not synthesize a self-test verdict. See
         interoperability, additional SASL
         mechanisms, client-certificate chains and key algorithms, compression,
         and topic administration.
+        
         Its versioned, digest-checked profile is already delivered only to the
         broker connector as read-only launch memory, but production secret injection
         and trust-anchor rotation remain controller work. The generic step
@@ -254,6 +255,7 @@ storage readiness and does not synthesize a self-test verdict. See
         The resulting node-shutdown request propagates to ordinary applications
         and then their operational connectors, with the earlier of the child
         and node deadlines enforced.
+        
         Deployment and HTTP ingress stop admission through bounded,
         remotely-cancellable socket waits, while the UTC time service closes
         admission and unwinds a pending NTP operation through owned resources.
@@ -267,6 +269,7 @@ storage readiness and does not synthesize a self-test verdict. See
         now participate in the same bounded lifecycle. The production fixture
         requires all eleven high-level phases to acknowledge without a forced
         or unacknowledged exit before device ownership transfers.
+        
         A kernel-owned coordinator implements the reverse-dependency
         high-level service plan through object-store drain and transfers
         hardware-root domains exactly once to a fail-closed device-quiescence
@@ -306,7 +309,7 @@ storage readiness and does not synthesize a self-test verdict. See
         TX descriptor reclamation, frame demultiplexing, reliable messages,
         distributed name service and TCP/IP have QEMU TCG fixture coverage.
         HVF remains unsuitable for direct EL0 device MMIO. Broader hardware
-        qualification, buffer-pool and batching optimization remain open.
+        qualification, buffer-pool and batching optimisation remain open.
     \item \textbf{General process loader:} the ELF loader is fixed-address for
         reference service images. General argv/env/auxv-style setup is not
         implemented.
@@ -325,11 +328,13 @@ storage readiness and does not synthesize a self-test verdict. See
         CQ registration and kernel-owned backing have count/byte admission,
         fallible staging and loader rollback. Physical ring pages remain owned
         by mappings and outside the CQ heap-byte counter.
+        
         Endpoint-close watches have bounded one-shot entries, locally cancellable
         owning tokens and transactional submission rollback. Completion/CQ
         and endpoint-readiness/pending-call scheduler waiters have bounded
         generation-sponsored entries, admission before parking and owning
         cancellation on competing wake or reaping.
+        
         Generation-owned waiter-account bundles have separate count admission, and
         their original backing charge survives root retirement and ASID reuse
         through final weak/allocator release. Scheduler/completion timer-account
@@ -343,6 +348,7 @@ storage readiness and does not synthesize a self-test verdict. See
         Individual authority-record candidates and detached nodes also retain
         byte/count admission through actual deallocation, independently of
         capability resource counts and later promotion.
+        
         Mailbox endpoint nodes separately admit candidate/retained backing and
         keep both backing and mailbox resource charges until node deallocation,
         including final-root invalidation rejection and guarded abandonment.
@@ -353,6 +359,7 @@ storage readiness and does not synthesize a self-test verdict. See
         notification. Actual observer Arc-layout bytes and fixed holder bundles
         remain charged through final weak/private-holder release. Other payload
         metadata and aggregate heap/principal accounting remain gaps.
+        
         Completion, detached-operation and CQ registry nodes have independent
         requested-byte/count admission through candidates, retained backlog and
         actual node deallocation, separately from their record/CQ resource limits.
@@ -365,6 +372,7 @@ storage readiness and does not synthesize a self-test verdict. See
         Connection, retained-call and outstanding-reply records have separate
         domain/node count admission. Grantors sponsor direct connections, while
         callers sponsor call/reply pairs and solicited returned connections.
+        
         Reservation precedes attachment transfer,
         and retirement fences receive and connection publication before teardown.
         Timed admission failures retain the completion owner, but untimed waits
@@ -374,6 +382,7 @@ storage readiness and does not synthesize a self-test verdict. See
         now share owning admission, runnable retry on rejection and broadcast
         notification after release. They have test users but no production
         callers, but fairness and owner-death recovery are not provided.
+        
         Scheduler timer observers share owning admission, while internal timer
         callbacks occupy one embedded slot. Sleep falls back to runnable
         deadline waiting on rejection. Sleep/watchdog events now have separate
@@ -391,6 +400,7 @@ storage readiness and does not synthesize a self-test verdict. See
         lifetime account: 1,024 frames per domain, a node pool of one sixteenth
         of usable RAM and reserved platform headroom. Partial linked trees and
         cached empty branches remain charged until confirmed physical teardown.
+        
         Trusted platform classification precedes root allocation, and failed release
         retains the original charge. Fresh shared kernel tables have a separate
         one-sixty-fourth-RAM node pool, but inherited boot tables remain outside it.
@@ -398,6 +408,7 @@ storage readiness and does not synthesize a self-test verdict. See
         ceilings. Runtime stacks reserve their maximum user/kernel extent in a
         separate one-eighth-RAM pool, retaining that charge through uncertain
         cleanup. These independent pools do not form a complete RAM ledger.
+        
         Thread context and retirement-node layouts now reserve requested bytes
         and bundle counts against shared principal and node/ordinary ceilings,
         retaining charges through actual deallocation. Table capacity,
@@ -411,6 +422,7 @@ storage readiness and does not synthesize a self-test verdict. See
         IPC namespace nodes and both budget accounts now prepare fallibly
         before publication guards, and an exact-root lease protects post-table
         publication under IPC alone. Empty-node disposal leaves IPC first.
+        
         Pending and reply-token nodes reserve their original counts before fallible
         allocation outside IPC, and the complete call owner retains its exact root
         through preparation, publication and ordinary rollback. Detached node
@@ -419,6 +431,7 @@ storage readiness and does not synthesize a self-test verdict. See
         and list preparation now leave IPC with an exact-root owner, and growth keeps
         original sponsorship, old backing and revalidation through FIFO replacement.
         Final closed endpoint nodes dispose post-IPC before record refund.
+        
         Per-capability nodes now prepare fallibly before authority publication, and
         installation relinks them and detached payload/authority metadata disposes
         post-IPC before connection-count refund. Call/endpoint shared-authority
@@ -435,6 +448,7 @@ storage readiness and does not synthesize a self-test verdict. See
         nodes now prepare fallibly before source escrow and relink at commit, and
         confirmed cleanup carries borrower and exact authority past the memory
         guard, freeing the borrower node before original authority admission.
+        
         Memory-capability and namespace nodes now also prepare before
         publication, so complete mixed commit relinks all payloads without heap work.
         Retirement carries payload/authority nodes in the existing source, loan,
@@ -449,24 +463,28 @@ storage readiness and does not synthesize a self-test verdict. See
         nodes total, 3 MiB and 24576 ordinary, shared with namespace and read-borrower
         nodes. A read loan needs three temporary nodes before source escrow, and
         its borrower charge retains the original destination classification.
+        
         Admission precedes allocation and follows actual node deallocation,
         including unused candidates and abandoned metadata after authority
         teardown. These defaults use the central compile-time policy. Broader outer transfer/backing
         and IRQ/destructor contexts remain separate.
         Mapping nodes and snapshot capacity now prepare outside memory
-        serialization, then revalidate before relink/pin publication. Existing
+        serialisation, then revalidate before relink/pin publication. Existing
         pins/receipts retain detached records and peer leases through uncertainty.
+        
         Mapping preparation's partial node/shared-snapshot fields now retain
         storage inertly on abandonment, but ordinary constructed returns explicitly
         finish after local memory/table guards. Full captured namespace generation
         also revalidates before mapping/pin publication. Broader contexts and
         aggregate metadata admission remain separate.
+        
         Mapping/copy/DMA snapshot buffers now share requested-byte/count limits:
         4 MiB/8,192 total and 3 MiB/6,144 ordinary. Original admission moves with
         each buffer and refunds after deallocation, and captured classification
         survives promotion and root reuse. Empty escrow pins allocate no buffer.
         Inline metadata, allocator overhead, aggregate principals and concurrent
         essential-progress qualification remain open.
+        
         Kernel resource capacities, RAM ratios, backing limits and local source
         ceilings now use one typed compile-time policy. An absolute-file build
         profile can override related settings, and consistency/arithmetic validation
@@ -480,12 +498,14 @@ storage readiness and does not synthesize a self-test verdict. See
         retains both without counter/allocator entry, and no replacement teardown
         node, physical proof or retry owner is introduced. Principal/heap limits
         and concurrent progress remain separate.
-        Copy-pin snapshot capacity also prepares outside memory serialization,
+        
+        Copy-pin snapshot capacity also prepares outside memory serialisation,
         with exact-generation/source revalidation before snapshot fill and pin
         publication. Bare preparation/pin fallback retains its allocation, but
         explicit snapshot disposal precedes backing-fence decrement. Automatic
         scoped/source-transfer destructors and aggregate principal admission
         remain separate qualification.
+        
         DMA snapshots now share that inert preparation before either pin counter
         changes, with full source/direction/rights/exclusion revalidation. Bare
         DMA-pin fallback retains metadata, but explicit snapshot free precedes
@@ -499,6 +519,7 @@ storage readiness and does not synthesize a self-test verdict. See
         512 KiB/8,192 total and 384 KiB/6,144 ordinary nodes. Candidates and
         retained metadata keep their original charge until actual node free, and
         captured classification survives promotion and ASID reuse.
+        
         Scalar scratch identity, broader factories/destructors, aggregate
         principal metadata, allocator overhead and pressure progress remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
@@ -506,7 +527,7 @@ storage readiness and does not synthesize a self-test verdict. See
         reliable-message frame transport and remote Raft peer routing are
         connected during ordinary networked boots, while \texttt{--dns-test} adds
         the cross-node validation workload and pass/fail result.
-    \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
+    \item \textbf{Observability HTTP:} the \texttt{httpd} keyhole aggregates the
         \texttt{observe} snapshot and per-service status into a JSON report
         served over the TCP/IP service during ordinary boots.
         Its \texttt{/cluster} view renders a bounded, versioned snapshot of
@@ -522,20 +543,23 @@ storage readiness and does not synthesize a self-test verdict. See
         for keyed state and transcript forks, including unfinished Drop.
         Rustls output/key copies, connector-client state, forced termination and
         physical erasure remain separate SEC-15 boundaries.
+        
         Status and deployment rotate four owned client positions across CQ-bound
         setup, TLS/header input, output and logical close. Status input keeps its
         original five-second deadline, while responses retain at most 512\,KiB and
         use the existing five-second output budget. Shutdown drains all client
         phases through consuming logical close. Snapshot collection/rendering
         remains synchronous, and full-pool flood fairness is not established.
+        
         Deployment ingress cancels incomplete input during shutdown, continues
         accepted controller/output work under original budgets, and requires
         all five client phases empty before acknowledgement. The signed ARM
         shutdown fixture checks held idle TLS clients and cooperative retirement, but
         stalled controller/output and receiver-held cleanup remain separate.
+        
         Ordinary networked development builds provision credentials and QEMU
         forwarding for the HTTPS HTML/JSON dashboards. \texttt{--http-test}
-        adds verified response validation. Protected enrollment,
+        adds verified response validation. Protected enrolment,
         native rotation/failover and wider pressure qualification remain open, and
         SEC-10 is partial. See Chapter~\ref{chap:configuration}.
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via

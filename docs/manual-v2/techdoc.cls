@@ -54,7 +54,7 @@
 % --- Numbering
 % ---------------------------------------------------------------------------
 \setcounter{secnumdepth}{3}
-\setcounter{tocdepth}{2}
+\setcounter{tocdepth}{1} % Chapters and sections.
 
 \makeatletter
 \renewcommand{\thesection}{%

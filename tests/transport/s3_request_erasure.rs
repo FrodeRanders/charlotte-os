@@ -55,7 +55,7 @@ fn signed() -> Signature {
             },
         },
         Credentials {
-            access_key: "CHARLOTTE",
+            access_key: "KNYTOS",
             secret_key: b"public signing fixture",
         },
     )

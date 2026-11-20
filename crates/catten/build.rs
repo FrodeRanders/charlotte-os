@@ -36,7 +36,7 @@ fn main() {
         Ok(mode) if mode == "development" => {}
         Ok(mode) if mode == "production" => panic!(
             "production images are disabled: protected trust and recipient-key provisioning is \
-             not implemented; development fixtures must not protect real credentials"
+             not implemented; development fixtures must not be used to produce production artefacts"
         ),
         _ => panic!("KNYTOS_TRUST_MODE must be development or production"),
     }

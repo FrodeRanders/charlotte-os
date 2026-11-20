@@ -41,7 +41,7 @@
       },
       "host_check_groups": 1,
       "diagnostics": [
-        "[+     0.026092] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.026092] KNYTOS_BOOT_MODE=minimal",
         "[+     0.026712] [boot validation] memory passed: usable=469 MiB, free=101625 frames, heap reserve=64 MiB",
         "[+     0.595858] [store] bootstrap seed complete: retained=8 written=0",
         "[+     4.060814] BOOT COMPLETE: validation passed; local storage ready; services submitted"
@@ -83,7 +83,7 @@
       },
       "host_check_groups": 1,
       "diagnostics": [
-        "[+     0.024544] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.024544] KNYTOS_BOOT_MODE=minimal",
         "[+     0.025400] [boot validation] memory passed: usable=449 MiB, free=96526 frames, heap reserve=64 MiB",
         "[+     0.723023] [store] bootstrap seed complete: retained=23 written=0",
         "[+     3.906461] BOOT COMPLETE: validation passed; local storage ready; services submitted"
@@ -125,7 +125,7 @@
       },
       "host_check_groups": 0,
       "diagnostics": [
-        "[+     0.017432] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.017432] KNYTOS_BOOT_MODE=minimal",
         "[+     0.018001] [boot validation] memory passed: usable=449 MiB, free=96657 frames, heap reserve=64 MiB",
         "[+     2.572231] [store] bootstrap seed complete: retained=0 written=23",
         "[+     5.731011] BOOT COMPLETE: validation passed; local storage ready; services submitted"
@@ -170,7 +170,7 @@
       },
       "host_check_groups": 0,
       "diagnostics": [
-        "[+     0.017815] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.017815] KNYTOS_BOOT_MODE=minimal",
         "[+     0.018408] [boot validation] memory passed: usable=449 MiB, free=96657 frames, heap reserve=64 MiB",
         "[+     0.714948] [store] bootstrap seed complete: retained=23 written=0",
         "[+     3.867102] BOOT COMPLETE: validation passed; local storage ready; services submitted"
@@ -214,7 +214,7 @@
       },
       "host_check_groups": 21,
       "diagnostics": [
-        "[+     0.021204] CHARLOTTE_BOOT_MODE=tests",
+        "[+     0.021204] KNYTOS_BOOT_MODE=tests",
         "[+     0.021794] [boot validation] memory passed: usable=458 MiB, free=98997 frames, heap reserve=64 MiB",
         "[+     7.609848] [store] bootstrap seed complete: retained=8 written=0",
         "[+    80.785274] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
@@ -256,7 +256,7 @@
       },
       "host_check_groups": 21,
       "diagnostics": [
-        "[+     0.026181] CHARLOTTE_BOOT_MODE=tests",
+        "[+     0.026181] KNYTOS_BOOT_MODE=tests",
         "[+     0.027014] [boot validation] memory passed: usable=438 MiB, free=93729 frames, heap reserve=64 MiB",
         "[+    18.488668] [store] bootstrap seed complete: retained=33 written=0",
         "[+    98.095462] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
@@ -310,7 +310,7 @@
       },
       "host_check_groups": 0,
       "diagnostics": [
-        "[+     0.018208] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.018208] KNYTOS_BOOT_MODE=minimal",
         "[+     0.018830] [boot validation] memory passed: usable=469 MiB, free=101639 frames, heap reserve=64 MiB",
         "[+     3.760068] BOOT COMPLETE: validation passed; local storage ready; services submitted"
       ],
@@ -339,7 +339,7 @@
       },
       "host_check_groups": 0,
       "diagnostics": [
-        "[+     0.021929] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.021929] KNYTOS_BOOT_MODE=minimal",
         "[+     0.022541] [boot validation] memory passed: usable=469 MiB, free=101625 frames, heap reserve=64 MiB",
         "[+     3.893889] BOOT COMPLETE: validation passed; local storage ready; services submitted"
       ],
@@ -369,7 +369,7 @@
       },
       "host_check_groups": 0,
       "diagnostics": [
-        "[+     0.025872] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.025872] KNYTOS_BOOT_MODE=minimal",
         "[+     0.026701] [boot validation] memory passed: usable=448 MiB, free=96338 frames, heap reserve=64 MiB",
         "[+     3.465915] BOOT COMPLETE: validation passed; local storage ready; services submitted"
       ],
@@ -420,7 +420,7 @@
       },
       "host_check_groups": 0,
       "diagnostics": [
-        "[+     0.017402] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.017402] KNYTOS_BOOT_MODE=minimal",
         "[+     0.017951] [boot validation] memory passed: usable=448 MiB, free=96477 frames, heap reserve=64 MiB",
         "[+     3.699981] BOOT COMPLETE: validation passed; local storage ready; services submitted"
       ],

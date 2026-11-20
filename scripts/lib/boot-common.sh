@@ -388,7 +388,7 @@ knytos_boot_create_uefi_image() {
             && mmd -i "$temporary_image" ::/EFI \
             && mmd -i "$temporary_image" ::/EFI/BOOT \
             && mcopy -i "$temporary_image" "$efi_boot_file" "::/EFI/BOOT/$(basename "$efi_boot_file")" \
-            && mcopy -i "$temporary_image" "$kernel" ::/catten \
+            && mcopy -i "$temporary_image" "$kernel" ::/knytos \
             && mcopy -i "$temporary_image" "$limine_config" ::/limine.conf \
             && chmod 0644 "$temporary_image"
     }; then

@@ -450,7 +450,7 @@ mod tests {
                 },
             },
             Credentials {
-                access_key: "CHARLOTTE",
+                access_key: "KNYTOS",
                 secret_key: b"correct horse battery staple", // https://xkcd.com/936/ :)
             },
         )
